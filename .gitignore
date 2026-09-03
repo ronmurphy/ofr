@@ -1,0 +1,5 @@
+# Godot's import cache and editor state -- regenerated on open, never committed.
+.godot/
+.import/
+export_presets.cfg
+*.translation
