@@ -16,6 +16,11 @@ enum {
 	DOOR_OPEN,
 	STAIRS_DOWN,
 	BRAZIER,
+	PILLAR,
+	RUBBLE,
+	WATER,
+	ROCK,
+	CAVE_FLOOR,
 }
 
 ## walk  = an actor may stand here
@@ -29,6 +34,14 @@ const DATA := {
 	STAIRS_DOWN: {"id": &"stairs_down", "walk": true,  "clear": true},
 	# Waist-high: you cannot walk through it, but you can see over it.
 	BRAZIER:     {"id": &"brazier",     "walk": false, "clear": true},
+	# A pillar is the inverse -- solid AND opaque, so it throws a real shadow
+	# and gives you something to break line of sight behind.
+	PILLAR:      {"id": &"pillar",      "walk": false, "clear": false},
+	RUBBLE:      {"id": &"rubble",      "walk": true,  "clear": true},
+	WATER:       {"id": &"water",       "walk": true,  "clear": true},
+	# Natural stone, as opposed to WALL's masonry. Drawn differently.
+	ROCK:        {"id": &"rock",        "walk": false, "clear": false},
+	CAVE_FLOOR:  {"id": &"cave_floor",  "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:
@@ -39,3 +52,8 @@ static func is_transparent(t: int) -> bool:
 
 static func appearance_id(t: int) -> StringName:
 	return DATA[t]["id"]
+
+## Anything an actor can stand on. Used by generation and decoration to avoid
+## painting over a corridor or a staircase.
+static func is_open_floor(t: int) -> bool:
+	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER

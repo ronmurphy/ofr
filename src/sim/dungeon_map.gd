@@ -62,3 +62,12 @@ func clear_visible() -> void:
 
 func reveal_all() -> void:
 	explored.fill(1)
+
+## Overview/debug helper: treat every cell as currently lit.
+##
+## This exists as a method rather than being done from outside because
+## `some_map.visible_now.fill(1)` mutates a COPY -- PackedArrays are
+## copy-on-write, and reaching through a property hands you a temporary. Inside
+## the class the member access is direct and the write sticks.
+func set_all_visible() -> void:
+	visible_now.fill(1)

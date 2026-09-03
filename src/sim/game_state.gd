@@ -23,6 +23,9 @@ var ground: Array = []
 var player: Entity
 var static_lights: Array = []
 var stairs: Vector2i
+## Cave regions carved on this level, kept so tests and later features can
+## reason about them.
+var cave_regions: Array[Rect2i] = []
 
 var depth: int = 1
 var turns: int = 0
@@ -85,32 +88,50 @@ func build_level() -> void:
 				map.set_tile(x, y, Tiles.FLOOR)
 		rooms = [Rect2i(1, 1, 11, 7)] as Array[Rect2i]
 
-	var start := rooms[0].get_center()
+	var start := _open_cell_in(rooms[0])
 	player.x = start.x
 	player.y = start.y
 
-	stairs = rooms[-1].get_center()
+	stairs = _open_cell_in(rooms[-1])
 	map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_DOWN)
 
+	cave_regions = gen.caves.duplicate()
+	_gather_lights()
 	for i in range(1, rooms.size()):
-		_populate_room(rooms[i])
+		_populate_room(rooms[i], gen.archetypes[i])
+	for region in gen.caves:
+		_populate_cave(region)
 
 	pathfinder = Pathfinder.new(map)
 	update_vision()
 
-func _populate_room(room: Rect2i) -> void:
-	# A brazier now and then. Static light is what makes the dark feel
-	# navigable rather than merely oppressive.
-	if rng.randf() < 0.30:
-		var bx := rng.randi_range(room.position.x, room.end.x - 1)
-		var by := rng.randi_range(room.position.y, room.end.y - 1)
-		if map.is_walkable(bx, by) and Vector2i(bx, by) != stairs:
-			map.set_tile(bx, by, Tiles.BRAZIER)
-			static_lights.append(LightSource.new(bx, by, 6,
-				Color(0.95, 0.55, 0.20), Color(0.35, 0.20, 0.30), 0.85, true))
+## Decoration can now put a pillar or a brazier on a room's exact centre, so
+## neither the player nor the stairs can simply be dropped there any more.
+func _open_cell_in(room: Rect2i) -> Vector2i:
+	var c := room.get_center()
+	var best := c
+	var best_d := 1 << 30
+	for y in range(room.position.y, room.end.y):
+		for x in range(room.position.x, room.end.x):
+			if not map.is_walkable(x, y):
+				continue
+			var d := absi(x - c.x) + absi(y - c.y)
+			if d < best_d:
+				best_d = d
+				best = Vector2i(x, y)
+	return best
 
-	# Loot. Generous on purpose: with no healing the game is just a countdown,
-	# and the interesting decision is whether to drink now or hoard.
+## Braziers are terrain now -- the generator places them, and the lighting
+## rig is derived from the map rather than maintained alongside it.
+func _gather_lights() -> void:
+	static_lights = []
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == Tiles.BRAZIER:
+				static_lights.append(LightSource.new(x, y, 6,
+					Color(0.95, 0.55, 0.20), Color(0.35, 0.20, 0.30), 0.85, true))
+
+func _populate_room(room: Rect2i, archetype: int) -> void:
 	if rng.randf() < 0.55:
 		var ix := rng.randi_range(room.position.x, room.end.x - 1)
 		var iy := rng.randi_range(room.position.y, room.end.y - 1)
@@ -121,23 +142,38 @@ func _populate_room(room: Rect2i) -> void:
 				loot.y = iy
 				ground.append(loot)
 
-	var count := rng.randi_range(0, 2 + depth / 3)
+	# A shrine keeps a guardian; a collapsed room is where things nest.
+	var bonus := 0
+	if archetype == MapGen.Archetype.SHRINE or archetype == MapGen.Archetype.COLLAPSED:
+		bonus = 1
+	var count := rng.randi_range(0, 2 + depth / 3) + bonus
 	for _i in count:
-		var mx := rng.randi_range(room.position.x, room.end.x - 1)
-		var my := rng.randi_range(room.position.y, room.end.y - 1)
-		if not map.is_walkable(mx, my) or entity_at(mx, my) != null:
-			continue
-		var pick := _roll_monster()
-		if pick.is_empty():
-			continue
-		var m := Entity.new(pick["name"], pick["app"], mx, my)
-		m.max_hp = pick["hp"]
-		m.hp = pick["hp"]
-		m.power = pick["power"]
-		m.defense = pick["def"]
-		m.speed = pick["speed"]
-		m.ai = &"hunter"
-		entities.append(m)
+		_spawn_in(Rect2i(room.position, room.size))
+
+func _populate_cave(region: Rect2i) -> void:
+	# Caves are wilder than rooms, and unlit -- worth a little more danger.
+	var count := rng.randi_range(1, 3 + depth / 3)
+	for _i in count:
+		_spawn_in(region)
+
+func _spawn_in(area: Rect2i) -> void:
+	var mx := rng.randi_range(area.position.x, area.end.x - 1)
+	var my := rng.randi_range(area.position.y, area.end.y - 1)
+	if not map.is_walkable(mx, my) or entity_at(mx, my) != null:
+		return
+	if Vector2i(mx, my) == stairs or Vector2i(mx, my) == Vector2i(player.x, player.y):
+		return
+	var pick := _roll_monster()
+	if pick.is_empty():
+		return
+	var m := Entity.new(pick["name"], pick["app"], mx, my)
+	m.max_hp = pick["hp"]
+	m.hp = pick["hp"]
+	m.power = pick["power"]
+	m.defense = pick["def"]
+	m.speed = pick["speed"]
+	m.ai = &"hunter"
+	entities.append(m)
 
 func _roll_monster() -> Dictionary:
 	var eligible := []

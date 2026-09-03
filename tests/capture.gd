@@ -93,6 +93,21 @@ func _run() -> void:
 	_scene._refresh()
 	await _shot("06_glyph_check.png")
 
+	# Whole-level overview: everything revealed and lit, so generation can be
+	# judged as a layout rather than through a torch-sized hole.
+	for seed_value in [SEED, 8801, 8802]:
+		var over := GameState.new(seed_value)
+		over.new_game()
+		_use(over)
+		over.light_map.ambient = Color(0.46, 0.47, 0.52)
+		var sources: Array = [over.player.light]
+		sources.append_array(over.static_lights)
+		over.light_map.compute(over.map, sources)
+		over.map.reveal_all()
+		over.map.set_all_visible()
+		_scene._refresh()
+		await _shot("09_layout_%d.png" % seed_value)
+
 	quit()
 
 func _use(gs: GameState) -> void:

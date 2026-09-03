@@ -144,12 +144,29 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 
 	var tile := map.get_tile(x, y)
 	var is_wall := tile == Tiles.WALL
+	# Masonry buried inside solid rock is never visible in play -- field of
+	# view can only reach a wall that faces open space. Skipping it keeps the
+	# revealed-map overview readable instead of a field of stray marks.
+	if is_wall and not _is_face_wall(map, x, y):
+		return
 	var ch := ""
 	var fg: Color
 	var bg: Color
 
+	var is_rock := tile == Tiles.ROCK
+	var is_pillar := tile == Tiles.PILLAR
+
 	if is_wall:
 		fg = Palette.STONE_LIGHT
+		bg = Palette.STONE_DARK
+	elif is_rock:
+		# Deterministic per-cell jitter, so natural stone reads as rough rather
+		# than as a flat slab, and looks the same every time it is drawn.
+		var n := _hash01(x, y)
+		fg = Palette.ROCK_LIGHT.lerp(Palette.ROCK_DARK, n * 0.55)
+		bg = fg
+	elif is_pillar:
+		fg = Palette.PILLAR
 		bg = Palette.STONE_DARK
 	else:
 		var app := render_theme.appearance(Tiles.appearance_id(tile))
@@ -166,11 +183,21 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		bg = _remembered(bg)
 
 	var origin := Vector2(x * cell_size, y * cell_size)
+	var cell := Vector2(cell_size, cell_size)
+
 	if is_wall:
 		_draw_wall(origin, _wall_mask(map, x, y), fg, bg)
 		return
+	if is_rock:
+		# Solid, no box-drawing: caverns were not built by masons.
+		draw_rect(Rect2(origin, cell), fg, true)
+		return
+	if is_pillar:
+		draw_rect(Rect2(origin, cell), bg, true)
+		draw_circle(origin + cell * 0.5, cell_size * 0.34, fg)
+		return
 
-	draw_rect(Rect2(origin, Vector2(cell_size, cell_size)), bg, true)
+	draw_rect(Rect2(origin, cell), bg, true)
 	if ch != " ":
 		draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), ch, font_size, fg)
 
@@ -229,6 +256,11 @@ func _is_face_wall(map: DungeonMap, x: int, y: int) -> bool:
 			if map.is_walkable(x + dx, y + dy):
 				return true
 	return false
+
+## Cheap deterministic noise in [0,1) from a cell coordinate.
+func _hash01(x: int, y: int) -> float:
+	var h := (x * 73856093) ^ (y * 19349663)
+	return float(absi(h) % 1024) / 1024.0
 
 func _remembered(c: Color) -> Color:
 	var m := c.lerp(Palette.MEMORY, Palette.MEMORY_MIX)

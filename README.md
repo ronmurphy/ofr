@@ -67,6 +67,40 @@ so a stat system later slots in there rather than at every call site. **No stat
 system was needed to make a sword work** -- that dependency only looks real
 when the feature list is read forwards.
 
+## Level generation
+
+A pipeline of passes in `mapgen.gd`:
+
+    caves reserved -> rooms -> caves carved -> corridors
+      -> cave links -> doors -> decoration -> natural stone
+
+Two orderings in there are load-bearing:
+
+- **Caves are reserved before rooms are placed.** The first version placed
+  rooms first and looked for a cave-sized gap afterwards. Rooms fill a 72x40
+  map so thoroughly that this produced *one cave in a hundred and twenty
+  levels*. Claiming the space up front and making rooms route around it turned
+  that into roughly 1.4 caves per level.
+- **Corridors are carved after caverns.** Cut last, they punch through whatever
+  the cellular automaton left behind, so the level stays connected without any
+  special-case repair logic.
+
+Rooms get an archetype -- plain, pillared, shrine, collapsed, or pool -- which
+decides both decoration and how dangerous the room is. Decoration only ever
+paints over plain floor, so it can never bury the stairs, plug a doorway or
+overwrite a corridor.
+
+**Pillars are the interesting piece.** A pillar is solid *and* opaque -- the
+inverse of a brazier, which is solid but see-through. Because the field of view
+and lighting systems already existed, a pillar immediately casts a real shadow
+and gives you something to break line of sight behind. Colonnades are laid on
+an even lattice inset from the walls, and that spacing guarantees a free cell
+between any two pillars, so a colonnade can never seal a room off.
+
+Masonry and natural stone are separate tile types and are drawn differently:
+walls get thin box-drawing lines, cavern rock gets a solid fill with
+deterministic per-cell jitter. A cave never looks like a bricked-up room.
+
 ## Layout
 
     src/sim/      the game. No Godot nodes, no drawing, no input.

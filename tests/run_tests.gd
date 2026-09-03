@@ -25,6 +25,10 @@ func _initialize() -> void:
 	_test_equipment()
 	_test_inventory_letters()
 	_test_inventory_grouping()
+	_test_terrain_properties()
+	_test_pillar_casts_a_shadow()
+	_test_spawn_points_are_open()
+	_test_caves_are_reachable()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -39,6 +43,70 @@ func check(name: String, condition: bool, detail: String = "") -> void:
 		print("  FAIL  %s   %s" % [name, detail])
 
 # ---------------------------------------------------------------- tests ----
+
+func _test_terrain_properties() -> void:
+	check("pillars block movement", not Tiles.is_walkable(Tiles.PILLAR))
+	check("pillars block sight", not Tiles.is_transparent(Tiles.PILLAR))
+	check("natural rock is solid", not Tiles.is_walkable(Tiles.ROCK))
+	check("water can be waded", Tiles.is_walkable(Tiles.WATER))
+	check("rubble can be walked over", Tiles.is_walkable(Tiles.RUBBLE))
+
+## The whole point of a pillar: it breaks line of sight, so a room with a
+## colonnade offers cover instead of being an open killing floor.
+func _test_pillar_casts_a_shadow() -> void:
+	var m := DungeonMap.new(21, 5)
+	for y in 5:
+		for x in 21:
+			m.set_tile(x, y, Tiles.FLOOR)
+	m.set_tile(10, 2, Tiles.PILLAR)
+
+	var buf := PackedByteArray()
+	buf.resize(21 * 5)
+	Fov.compute(m, 2, 2, 15, buf)
+	check("pillar itself is seen", buf[m.idx(10, 2)] == 1)
+	check("pillar hides what stands behind it", buf[m.idx(14, 2)] == 0)
+	check("you can still see past it on another row", buf[m.idx(14, 1)] == 1)
+
+## Decoration can now paint pillars, water and braziers into rooms, so the
+## spots the player and the stairs land on are no longer trivially safe.
+func _test_spawn_points_are_open() -> void:
+	var bad_start := 0
+	var bad_stairs := 0
+	var trials := 200
+	for i in trials:
+		var gs := GameState.new(6000 + i)
+		gs.new_game()
+		if not gs.map.is_walkable(gs.player.x, gs.player.y):
+			bad_start += 1
+		if not gs.map.is_walkable(gs.stairs.x, gs.stairs.y):
+			bad_stairs += 1
+	check("player never starts inside solid terrain (%d seeds)" % trials,
+		bad_start == 0, "%d bad" % bad_start)
+	check("stairs always sit on open ground", bad_stairs == 0, "%d bad" % bad_stairs)
+
+func _test_caves_are_reachable() -> void:
+	var seen := 0
+	var unreachable := 0
+	for i in 120:
+		var gs := GameState.new(7000 + i)
+		gs.new_game()
+		for region in gs.cave_regions:
+			var target := Vector2i(-1, -1)
+			for y in range(region.position.y, region.end.y):
+				for x in range(region.position.x, region.end.x):
+					if gs.map.get_tile(x, y) == Tiles.CAVE_FLOOR:
+						target = Vector2i(x, y)
+						break
+				if target.x >= 0:
+					break
+			if target.x < 0:
+				continue
+			seen += 1
+			if gs.pathfinder.path(Vector2i(gs.player.x, gs.player.y), target).is_empty():
+				unreachable += 1
+	check("caves actually generate", seen > 0, "%d found" % seen)
+	check("every cave is reachable (%d checked)" % seen, unreachable == 0,
+		"%d unreachable" % unreachable)
 
 func _test_item_depth_gating() -> void:
 	var rng := RandomNumberGenerator.new()
