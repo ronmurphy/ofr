@@ -19,6 +19,8 @@ const STAIRS        := Color("d9cf9a")
 const BRAZIER       := Color("e0913c")
 const POTION        := Color("d2607a")
 const SCROLL        := Color("cfc39a")
+const WEAPON        := Color("9fb3c8")
+const ARMOUR        := Color("a89a7c")
 
 ## Explored-but-unlit terrain. Cold and desaturated, so memory reads as memory
 ## and never competes with what is actually lit.

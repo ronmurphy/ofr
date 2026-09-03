@@ -22,14 +22,18 @@ Godot 4.7. Windows and Linux.
 | `x` or `;` | look mode: drive a cursor with the movement keys, `esc` to exit |
 | `g` or `,` | pick up what you are standing on |
 | `i` | inventory — click to use, right-click to drop, or press the item's letter |
+| `tab` | inside the inventory: cycle the category filter (`shift+tab` backwards) |
 | left click | travel to a seen cell, stopping if anything comes into view |
 | hover | inspect a cell; the route there is previewed as dots |
 | `R` | new game |
 
 ## Items
 
-Three consumables so far: a potion of healing, a scroll of light, and a scroll
-of blink. All of them are deliberately **untargeted**.
+Three consumables -- potion of healing, scroll of light, scroll of blink -- and
+six pieces of equipment across two slots: dagger, short sword and war axe;
+leather armour, chain mail and plate mail.
+
+The consumables are deliberately **untargeted**.
 
 That is a scope boundary, not an oversight. Targeting needs a cursor, a
 line-of-fire check and range validation -- it is its own feature, and folding it
@@ -43,6 +47,25 @@ Two rules the item code keeps, both of which matter more than they look:
   kind of thing that makes people put a game down.
 - **Inventory lives on `Entity`, not on the player.** Lootable corpses later
   are a read of a field that already exists rather than a new system.
+- **One action for the whole list.** Clicking a row does the obvious thing: a
+  potion is drunk, a sword is wielded, a worn item is taken off. The player
+  should not have to remember which verb a given slot wants.
+- **Letters belong to the item, not to the row.** An item is assigned a letter
+  when it enters the pack and keeps it until it leaves; the letter is freed for
+  reuse afterwards. This is what makes sorting safe. With positional letters,
+  picking up a sword would silently rebind the healing potion from `b` to `c`,
+  and every key the player had memorised would quietly become wrong.
+
+The list is grouped -- equipped items first, then weapons, armour, potions,
+scrolls -- and sorted best-first within each group, so choosing what to wear is
+a glance at the top of a group rather than a scan. `tab` filters to one
+category; the panel resizes to its contents.
+
+Equipment modifies the `power` and `defense` fields that `Entity` already had,
+via `total_power()` and `total_defense()`. Combat reads only those two methods,
+so a stat system later slots in there rather than at every call site. **No stat
+system was needed to make a sword work** -- that dependency only looks real
+when the feature list is read forwards.
 
 ## Layout
 

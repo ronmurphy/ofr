@@ -70,7 +70,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	# The inventory is modal and swallows everything else while it is up.
 	if inventory.visible:
-		if key == KEY_ESCAPE or key == KEY_I:
+		if key == KEY_TAB:
+			inventory.cycle_filter(-1 if key_event.shift_pressed else 1)
+		elif key == KEY_ESCAPE or key == KEY_I:
 			_close_inventory()
 		else:
 			var picked: int = inventory.letter_to_index(key)

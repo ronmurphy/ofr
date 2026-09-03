@@ -148,6 +148,28 @@ func _roll_monster() -> Dictionary:
 		return {}
 	return eligible[rng.randi_range(0, eligible.size() - 1)]
 
+const LETTERS := "abcdefghijklmnopqrstuvwxyz"
+
+## Adds an item to the pack with a stable letter.
+##
+## Persistent letters matter more than they look. Once the inventory is sorted
+## or filtered, a letter derived from screen position would change every time
+## you picked something up -- so "quaff b", typed from muscle memory, would
+## drink the wrong thing. The letter belongs to the item, not to the row.
+func give_item(item: Item) -> bool:
+	if player.inventory.size() >= Entity.INVENTORY_MAX:
+		return false
+	var used := {}
+	for it in player.inventory:
+		used[it.letter] = true
+	for i in Entity.INVENTORY_MAX:
+		var ch := LETTERS[i]
+		if not used.has(ch):
+			item.letter = ch
+			break
+	player.inventory.append(item)
+	return true
+
 func items_at(x: int, y: int) -> Array:
 	var out := []
 	for it in ground:
@@ -246,8 +268,9 @@ func player_pickup() -> bool:
 		return false
 	var item: Item = here[0]
 	ground.erase(item)
-	player.inventory.append(item)
-	msg_log.add("You pick up the %s." % item.name, Color(0.75, 0.80, 0.90))
+	give_item(item)
+	msg_log.add("You pick up the %s (%s)." % [item.name, item.letter],
+		Color(0.75, 0.80, 0.90))
 	_end_player_turn()
 	return true
 
@@ -256,20 +279,47 @@ func player_use(index: int) -> bool:
 		return false
 	_travel.clear()
 	var item: Item = player.inventory[index]
+
+	# One action for the whole list: a potion is drunk, a sword is wielded.
+	# The player should not have to remember which verb a slot wants.
+	if item.is_equipment():
+		_toggle_equip(item)
+		_end_player_turn()
+		return true
+
 	# A refused effect costs neither the item nor the turn. Wasting a potion to
 	# a misclick is the kind of thing that makes people stop playing.
 	if not _apply_effect(item):
 		return false
 	player.inventory.remove_at(index)
+	item.letter = ""
 	_end_player_turn()
 	return true
+
+func _toggle_equip(item: Item) -> void:
+	if player.is_equipped(item):
+		player.equipped.erase(item.slot)
+		msg_log.add("You put away the %s." % item.name)
+		return
+	var previous: Item = player.equipped.get(item.slot, null)
+	player.equipped[item.slot] = item
+	if previous == null:
+		msg_log.add("You %s the %s." % [item.verb(), item.name], Color(0.80, 0.85, 0.95))
+	else:
+		msg_log.add("You swap the %s for the %s." % [previous.name, item.name],
+			Color(0.80, 0.85, 0.95))
 
 func player_drop(index: int) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
 		return false
 	_travel.clear()
 	var item: Item = player.inventory[index]
+	# Dropping something you are wearing takes it off first, rather than
+	# leaving a dangling reference in `equipped`.
+	if player.is_equipped(item):
+		player.equipped.erase(item.slot)
 	player.inventory.remove_at(index)
+	item.letter = ""
 	item.x = player.x
 	item.y = player.y
 	ground.append(item)
@@ -399,7 +449,7 @@ func _take_ai_turn(actor: Entity) -> void:
 	actor.y = step.y
 
 func _attack(attacker: Entity, defender: Entity) -> void:
-	var dmg := maxi(1, attacker.power - defender.defense + rng.randi_range(-1, 1))
+	var dmg := maxi(1, attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1))
 	defender.take_damage(dmg)
 
 	if attacker.is_player:

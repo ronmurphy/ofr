@@ -1,5 +1,17 @@
-# Godot's import cache and editor state -- regenerated on open, never committed.
+# Godot's import cache and editor state. This is the big one: it holds the
+# converted binary assets and is regenerated on first open.
 .godot/
 .import/
+
+# Export config can carry keystore paths and passwords.
 export_presets.cfg
+
+# Binary artefacts generated from source files.
 *.translation
+
+# Platform build output.
+/android/
+
+# OS noise.
+.DS_Store
+Thumbs.db

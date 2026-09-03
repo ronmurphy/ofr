@@ -18,6 +18,8 @@ const TABLE := {
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},
 	&"scroll":      {"ch": "?", "fg": Palette.SCROLL},
+	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
+	&"armour":      {"ch": "[", "fg": Palette.ARMOUR},
 
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},

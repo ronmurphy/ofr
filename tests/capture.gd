@@ -36,12 +36,20 @@ func _run() -> void:
 	await _shot("02_explored.png")
 
 	# Inventory, stocked so the panel has something to show.
-	for want in [&"potion_healing", &"scroll_light", &"scroll_blink", &"potion_healing"]:
-		gs.player.inventory.append(Item.make(want))
+	for want in [&"potion_healing", &"scroll_light", &"dagger", &"leather_armour",
+			&"scroll_blink", &"chain_mail", &"short_sword", &"potion_healing"]:
+		gs.give_item(Item.make(want))
+	# Set directly rather than via player_use, so the shot is not disturbed by
+	# the turns that equipping would cost.
+	gs.player.equipped[Item.Slot.WEAPON] = gs.player.inventory[2]
+	gs.player.equipped[Item.Slot.ARMOR] = gs.player.inventory[3]
 	_scene._open_inventory()
-	_scene.inventory._hover_row = 1  # show the hover affordance in the shot
+	_scene.inventory._hover_index = 5  # show the hover affordance in the shot
 	_scene._refresh()
 	await _shot("07_inventory.png")
+	_scene.inventory.filter = InventoryPanel.Filter.ARMOUR
+	_scene._refresh()
+	await _shot("08_inventory_filtered.png")
 	_scene._close_inventory()
 
 	# Look mode, parked on a brazier so the shot shows both new things at once.

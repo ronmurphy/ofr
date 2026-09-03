@@ -64,10 +64,16 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w, 10)), Palette.UI_FRAME, false, 1.0)
 	y += 10 + LINE
 
-	_line(font, y, "power    %d" % p.power, Palette.UI_TEXT)
+	# Totals, not base values -- what the player needs is the number that
+	# actually goes into the damage roll.
+	_stat_row(y, "power", str(p.total_power()), p.total_power() != p.power)
 	y += LINE
-	_line(font, y, "defense  %d" % p.defense, Palette.UI_TEXT)
-	y += LINE * 1.8
+	_stat_row(y, "defense", str(p.total_defense()), p.total_defense() != p.defense)
+	y += LINE
+	_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
+	y += LINE
+	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
+	y += LINE * 1.7
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
 	# driving a cursor rather than the player.
@@ -89,6 +95,19 @@ func _draw() -> void:
 
 func _line(f: Font, y: float, text: String, color: Color) -> void:
 	draw_string(f, Vector2(PAD, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+func _slot_name(p: Entity, slot: int) -> String:
+	var item = p.equipped.get(slot, null)
+	return "--" if item == null else item.name
+
+## Label left, value right-aligned. `boosted` tints the value so a bonus from
+## equipment is visible at a glance without reading the equipment lines.
+func _stat_row(y: float, label: String, value: String, boosted: bool) -> void:
+	draw_string(font, Vector2(PAD, y), label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+	draw_string(font, Vector2(PAD, y), _fit(value),
+		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
+		Palette.HP_GOOD if boosted else Palette.UI_TEXT)
 
 ## Key on the left, action right-aligned against the frame.
 ##

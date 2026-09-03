@@ -32,6 +32,11 @@ var energy: int = 0
 var inventory: Array = []
 const INVENTORY_MAX := 20
 
+## Item.Slot -> Item. Equipped things stay in `inventory` and are merely
+## flagged here, which is how most roguelikes do it and saves inventing a
+## second screen to move things between two lists.
+var equipped: Dictionary = {}
+
 var ai: StringName = &"none"
 var light: LightSource = null
 
@@ -42,6 +47,26 @@ func _init(n: String, app: StringName, px: int, py: int) -> void:
 	appearance = app
 	x = px
 	y = py
+
+## Base power/defense plus whatever is worn. Combat reads only these, so a
+## stat system later slots in here rather than at every call site.
+func total_power() -> int:
+	var v := power
+	for slot in equipped:
+		v += equipped[slot].power_bonus
+	return v
+
+func total_defense() -> int:
+	var v := defense
+	for slot in equipped:
+		v += equipped[slot].defense_bonus
+	return v
+
+func is_equipped(item) -> bool:
+	for slot in equipped:
+		if equipped[slot] == item:
+			return true
+	return false
 
 func distance_to(other: Entity) -> float:
 	return Vector2(x - other.x, y - other.y).length()
