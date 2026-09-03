@@ -11,6 +11,14 @@ extends RefCounted
 const MAP_W := 72
 const MAP_H := 40
 const TORCH_RADIUS := 8
+## Dark-adapted eyes: enough to move by, far too little to be seen by. The
+## trade between seeing and being seen is the whole mechanic.
+const DOUSED_RADIUS := 3
+
+## Resting at a brazier. Each one holds a fixed pool, spent two points at a
+## time, and then goes out for good.
+const BRAZIER_CHARGE := 10
+const BRAZIER_HEAL := 2
 
 var rng := RandomNumberGenerator.new()
 var map: DungeonMap
@@ -22,14 +30,25 @@ var entities: Array = []
 var ground: Array = []
 var player: Entity
 var static_lights: Array = []
+## Cell -> hit points left in that brazier.
+var brazier_charge: Dictionary = {}
 var stairs: Vector2i
 ## Cave regions carved on this level, kept so tests and later features can
 ## reason about them.
 var cave_regions: Array[Rect2i] = []
 
+var torch_lit := true
 var depth: int = 1
 var turns: int = 0
 var game_over: bool = false
+
+## Presentation events produced by the turn just resolved.
+##
+## The simulation NEVER waits for an animation. A shot resolves instantly in
+## game time -- exactly as Angband and DCSS do it -- and this queue only tells
+## the renderer what to draw after the fact. Anything else would put a reflex
+## test inside a turn-based game.
+var events: Array = []
 
 var _fov_buffer := PackedByteArray()
 ## A queued mouse-travel path. Consumed one step per turn, abandoned the
@@ -110,6 +129,11 @@ func build_level() -> void:
 	map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_DOWN)
 
 	cave_regions = gen.caves.duplicate()
+	brazier_charge.clear()
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == Tiles.BRAZIER:
+				brazier_charge[Vector2i(x, y)] = BRAZIER_CHARGE
 	_gather_lights()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
@@ -238,15 +262,32 @@ func entity_at(x: int, y: int) -> Entity:
 # ---------------------------------------------------------------- vision ----
 
 func update_vision() -> void:
-	Fov.compute(map, player.x, player.y, TORCH_RADIUS, _fov_buffer)
+	var radius := TORCH_RADIUS if torch_lit else DOUSED_RADIUS
+	Fov.compute(map, player.x, player.y, radius, _fov_buffer)
 	map.visible_now = _fov_buffer.duplicate()
 	map.remember_visible()
 
 	player.light.x = player.x
 	player.light.y = player.y
+	if torch_lit:
+		player.light.radius = TORCH_RADIUS
+		player.light.intensity = 1.0
+		player.light.color = Color(1.00, 0.72, 0.36)
+		player.light.color_far = Color(0.30, 0.34, 0.55)
+	else:
+		player.light.radius = DOUSED_RADIUS
+		player.light.intensity = 0.30
+		player.light.color = Color(0.42, 0.50, 0.68)
+		player.light.color_far = Color(0.20, 0.24, 0.36)
 	var sources := [player.light]
 	sources.append_array(static_lights)
 	light_map.compute(map, sources)
+
+## Drains the presentation queue. Called by the renderer once per refresh.
+func take_events() -> Array:
+	var out := events.duplicate()
+	events.clear()
+	return out
 
 func visible_monsters() -> Array:
 	var out := []
@@ -289,12 +330,55 @@ func player_move(dx: int, dy: int) -> bool:
 	_end_player_turn()
 	return true
 
+## Costs a turn on purpose. Going dark is a decision, not a free toggle.
+func player_toggle_torch() -> bool:
+	if game_over:
+		return false
+	_travel.clear()
+	torch_lit = not torch_lit
+	if torch_lit:
+		msg_log.add("You uncover the torch. Light floods back.", Color(0.95, 0.78, 0.42))
+	else:
+		msg_log.add("You smother the torch. The dark closes in.", Color(0.58, 0.64, 0.85))
+	_end_player_turn()
+	return true
+
+## Waiting beside a lit brazier warms you. The light keeps the dark at bay.
+##
+## Note what this costs, which is not obvious: resting puts you in the
+## brightest cell on the level for several turns while the world keeps taking
+## turns. The awareness system makes that genuinely dangerous, which is why
+## this heals slowly rather than all at once -- an instant heal would be free,
+## and a free heal is not a decision.
 func player_wait() -> bool:
 	if game_over:
 		return false
 	_travel.clear()
+
+	var brazier := _adjacent_brazier()
+	if brazier.x >= 0 and player.hp < player.max_hp:
+		var healed := mini(BRAZIER_HEAL, player.max_hp - player.hp)
+		player.hp += healed
+		brazier_charge[brazier] = int(brazier_charge[brazier]) - healed
+		msg_log.add("You warm yourself at the brazier. (+%d)" % healed,
+			Color(0.96, 0.76, 0.44))
+		if int(brazier_charge[brazier]) <= 0:
+			brazier_charge.erase(brazier)
+			map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_SPENT)
+			_gather_lights()
+			msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
+
 	_end_player_turn()
 	return true
+
+## A lit brazier beside the player with something left in it.
+func _adjacent_brazier() -> Vector2i:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			if map.get_tile(c.x, c.y) == Tiles.BRAZIER and int(brazier_charge.get(c, 0)) > 0:
+				return c
+	return Vector2i(-1, -1)
 
 func player_descend() -> bool:
 	if game_over:
@@ -482,10 +566,11 @@ func _run_world() -> void:
 func _take_ai_turn(actor: Entity) -> void:
 	if not actor.alive or game_over:
 		return
-	# Placeholder gate: a monster only acts while the player can see it.
-	# Symmetric shadowcasting makes that a fair proxy for "it can see you", but
-	# the awareness pass will replace it with a real per-monster notice check.
-	if not map.is_visible(actor.x, actor.y):
+
+	_update_awareness(actor)
+	# Asleep, or merely stirring: it spends its turn not acting. That pause is
+	# the player's window to withdraw, and it is the point of the middle state.
+	if actor.alertness != Entity.Alert.AWAKE:
 		return
 
 	_update_morale(actor)
@@ -498,6 +583,62 @@ func _take_ai_turn(actor: Entity) -> void:
 		&"ranged":  _ai_ranged(actor)
 		&"pack":    _ai_pack(actor)
 		_:          _ai_hunter(actor)
+
+func _update_awareness(actor: Entity) -> void:
+	var d := Los.steps(actor.x, actor.y, player.x, player.y)
+
+	if actor.alertness == Entity.Alert.AWAKE:
+		# Keep track of the player, or eventually lose the trail. Without this
+		# a woken monster would pursue across the whole level forever.
+		if d <= actor.notice_range * 2 and Los.clear(map, actor.x, actor.y, player.x, player.y):
+			actor.last_seen = Vector2i(player.x, player.y)
+			actor.lost_turns = 0
+		else:
+			actor.lost_turns += 1
+			if actor.lost_turns > 10:
+				actor.alertness = Entity.Alert.SUSPICIOUS
+				actor.calm_turns = 0
+		return
+
+	if _notices_player(actor, d):
+		if actor.alertness == Entity.Alert.ASLEEP:
+			actor.alertness = Entity.Alert.SUSPICIOUS
+			actor.calm_turns = 0
+		else:
+			wake(actor)
+		return
+
+	if actor.alertness == Entity.Alert.SUSPICIOUS:
+		actor.calm_turns += 1
+		if actor.calm_turns > 6:
+			actor.alertness = Entity.Alert.ASLEEP
+
+## Light dominates the roll. Carrying a torch is both how you see and how you
+## are seen, which is the trade the whole mechanic rests on.
+func _notices_player(actor: Entity, d: int) -> bool:
+	if d > actor.notice_range:
+		return false
+	if not Los.clear(map, actor.x, actor.y, player.x, player.y):
+		return false
+	# Anything you are standing next to finds you, however dark it is.
+	if d <= 1:
+		return true
+
+	var lum := light_map.get_light(player.x, player.y).get_luminance()
+	var closeness := 1.0 - float(d) / float(actor.notice_range + 1)
+	var chance := closeness * (0.10 + 1.6 * lum)
+	if actor.alertness == Entity.Alert.SUSPICIOUS:
+		chance *= 2.0
+	return rng.randf() < clampf(chance, 0.0, 0.95)
+
+func wake(actor: Entity) -> void:
+	if actor.alertness == Entity.Alert.AWAKE or not actor.alive:
+		return
+	actor.alertness = Entity.Alert.AWAKE
+	actor.last_seen = Vector2i(player.x, player.y)
+	actor.lost_turns = 0
+	events.append({"kind": &"notice", "to": Vector2i(actor.x, actor.y)})
+	msg_log.add("The %s notices you!" % actor.name, Color(0.98, 0.78, 0.35))
 
 ## Nothing rallies yet, since only the player can heal -- but the threshold is
 ## checked each turn rather than latched, so a healing monster later works
@@ -624,6 +765,25 @@ func _step_away(actor: Entity) -> bool:
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 	var dmg := maxi(1, attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1))
 	defender.take_damage(dmg)
+
+	events.append({
+		"kind": &"ranged" if ranged else &"melee",
+		"from": Vector2i(attacker.x, attacker.y),
+		"to": Vector2i(defender.x, defender.y),
+		"amount": dmg,
+		"on_player": defender.is_player,
+	})
+	if defender.is_player:
+		# Never keep auto-walking into something that is hurting you.
+		_travel.clear()
+	else:
+		wake(defender)
+
+	# Fighting is loud. Noise carries through stone, so this deliberately
+	# ignores line of sight.
+	for e in entities:
+		if e.alive and not e.is_player and Los.steps(e.x, e.y, defender.x, defender.y) <= 4:
+			wake(e)
 
 	if attacker.is_player:
 		msg_log.add("You hit the %s for %d." % [defender.name, dmg], Color(0.80, 0.85, 0.70))

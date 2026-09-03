@@ -7,6 +7,11 @@ extends RefCounted
 
 enum Faction { PLAYER, MONSTER, NEUTRAL }
 
+## Three states rather than two. A binary asleep/awake makes stealth feel
+## arbitrary -- you are either invisible or caught, with no warning. The middle
+## state is the tell that lets a player back off before it is too late.
+enum Alert { ASLEEP, SUSPICIOUS, AWAKE }
+
 var name: String = "thing"
 var appearance: StringName = &"unknown"
 var x: int
@@ -52,6 +57,15 @@ var attack_range: int = 1
 ## mindless things should not.
 var flee_below: float = 0.0
 var fleeing: bool = false
+
+## Monsters start asleep. Until this pass everything was omnisciently aware the
+## instant the player could see it, which handed the initiative to whatever was
+## in the room.
+var alertness: int = Alert.ASLEEP
+var notice_range: int = 8
+var last_seen := Vector2i(-1, -1)
+var lost_turns: int = 0
+var calm_turns: int = 0
 var light: LightSource = null
 
 var alive: bool = true

@@ -92,6 +92,85 @@ by `los.gd`, so stepping behind a pillar genuinely stops it. Until this pass
 the pillars, corridors and torch radius were a tactical stage with nothing on
 it that required tactics.
 
+## Combat feedback
+
+A shot **resolves instantly in game time**, exactly as Angband and DCSS do it.
+The animation plays afterwards and is pure feedback -- it shows what already
+happened, and nothing can be dodged in flight.
+
+That is the turn-based contract, not laziness. Real travel time would put a
+reflex test inside a tactical game: the player would have to react during an
+animation, punishing a moment of inattention rather than rewarding good
+positioning. The dodge already exists, one turn earlier -- it is called not
+standing in the archer's line, and it is what the pillars are for. (The
+turn-based version of the idea is a *telegraphed* attack: announced on one
+turn, landing on the next, so you get a turn to move. Worth having for big slow
+enemies later.)
+
+The simulation records events -- `{kind, from, to, amount, on_player}` -- and
+`GlyphGrid` drains that queue and animates them. **The simulation never waits
+for an animation.** That queue is also what a replay or a scrolling combat log
+would need.
+
+What you get:
+
+- a projectile stepping the line at ~28ms per cell (a quarter second per cell
+  would add 1.5s to every archer's turn, hundreds of times a run)
+- floating damage numbers, drawn with a dark backing so they stay legible
+- a hit flash on the cell taking damage
+- an HP bar that flares when you are hit and keeps throbbing below 30%
+- any damage cancelling auto-travel
+
+Projectiles are never drawn across cells you cannot see, so an animation can
+never give away an archer's position.
+
+The effect system is deliberately generic -- a damage number and an overhead
+`!` or `zzZ` are the same thing, a marker that appears above a cell and fades.
+
+## Sleep, awareness, and the torch
+
+Monsters start **asleep**. Until this pass everything was omnisciently aware
+the instant the player could see it, which handed the initiative to whatever
+happened to be in the room.
+
+Three states, not two. A binary asleep/awake makes stealth feel arbitrary --
+you are either invisible or caught, with no warning:
+
+| state | marker | behaviour |
+|---|---|---|
+| asleep | animated `zzZ` | inert; rolls to notice you each turn |
+| suspicious | `?` | still inert, but twice as likely to notice; settles after 6 quiet turns |
+| awake | a one-shot `!` | full AI; loses the trail after 10 turns without sight |
+
+**The notice roll is dominated by light.** Carrying a torch is both how you see
+and how you are seen. `t` smothers it: field of view drops from 8 to 3, the
+warm light is replaced by a dim cold radius that reads as dark-adapted eyes,
+and you become far harder to spot. Measured over 200 trials at six cells, a lit
+torch was noticed **95** times and a doused one **28** -- about a 70% reduction.
+It costs a turn, because going dark should be a decision.
+
+Two things always give you away regardless: standing adjacent, and fighting.
+Combat noise wakes anything within four cells and deliberately ignores line of
+sight, because noise travels through stone.
+
+Markers are drawn from *state* (`zzZ`, `?`) while the `!` is an *event*, so it
+fires once on the transition. And no effect is ever drawn over a cell the
+player cannot see -- an animation must never give away a position.
+
+## Resting at braziers
+
+Waiting (`.`) beside a lit brazier restores 2 hit points and draws down a pool
+of 10. When the pool runs out the brazier gutters and goes dark for good, so
+you can see at a glance which ones you have already burned.
+
+The cost is not obvious and is the reason this heals slowly rather than all at
+once: **resting parks you in the brightest cell on the level while the world
+keeps taking turns.** Under the awareness rules that is exactly when you are
+most likely to be noticed. An instant heal would have been free, and a free
+heal is not a decision.
+
+Resting at full health wastes nothing.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

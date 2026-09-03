@@ -49,6 +49,20 @@ var _glyph_baseline := 0.0
 var _flicker := 1.0
 var _flicker_accum := 0.0
 
+## Transient visual effects. Deliberately generic: a floating damage number and
+## an overhead "!" or "zzZ" are the same thing -- a marker that appears above a
+## cell and fades -- so the awareness pass gets those almost for free.
+var _effects: Array = []
+## Guards against an animation outliving the level it belongs to. Descending
+## mid-flight would otherwise draw the old level's arrow on the new one.
+var _last_map: DungeonMap = null
+
+## Roughly DCSS's pace. A quarter-second per cell would add a second and a half
+## to every archer's turn, hundreds of times a run.
+const SHOT_PER_CELL := 0.028
+const FLASH_LIFE := 0.30
+const POPUP_LIFE := 0.85
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if font == null:
@@ -64,15 +78,63 @@ func _measure_font() -> void:
 	_glyph_baseline = (cell_size - (ascent + descent)) * 0.5 + ascent
 
 func _process(delta: float) -> void:
-	# Refresh flicker at ~15Hz rather than every frame: cheaper, and a choppier
-	# flame actually reads more like a real torch than a smooth sine does.
+	var animating := not _effects.is_empty()
+	if animating:
+		for e in _effects:
+			e["t"] += delta
+		_effects = _effects.filter(func(e): return not _expired(e))
+
+	# Flicker refreshes at ~15Hz rather than every frame: cheaper, and a
+	# choppier flame reads more like a real torch than a smooth sine does.
+	# Effects, when running, redraw at full rate.
 	_flicker_accum += delta
-	if _flicker_accum < 1.0 / 15.0:
-		return
-	_flicker_accum = 0.0
-	var t := Time.get_ticks_msec() / 1000.0
-	_flicker = 1.0 + sin(t * 11.0) * 0.035 + sin(t * 23.7) * 0.022 + randf_range(-0.02, 0.02)
-	queue_redraw()
+	var flicker_due := _flicker_accum >= 1.0 / 15.0
+	if flicker_due:
+		_flicker_accum = 0.0
+		var t := Time.get_ticks_msec() / 1000.0
+		_flicker = 1.0 + sin(t * 11.0) * 0.035 + sin(t * 23.7) * 0.022 + randf_range(-0.02, 0.02)
+
+	if animating or flicker_due:
+		queue_redraw()
+
+## Turns simulation events into animations. The outcome is already decided by
+## the time this runs -- these only show the player what happened.
+func play_events(evts: Array) -> void:
+	for e in evts:
+		var to: Vector2i = e["to"]
+
+		if e["kind"] == &"notice":
+			# The Metal Gear beat: a big "!" over the head of whatever just
+			# clocked you.
+			_effects.append({"type": &"popup", "cell": to, "t": 0.0, "text": "!",
+				"colour": Palette.ALERT, "size": font_size + 3})
+			continue
+
+		var hostile: bool = e["on_player"]
+		var delay := 0.0
+
+		if e["kind"] == &"ranged":
+			var line := Los.path(e["from"].x, e["from"].y, to.x, to.y)
+			if not line.is_empty():
+				_effects.append({"type": &"shot", "path": line, "t": 0.0})
+				delay = line.size() * SHOT_PER_CELL
+
+		# Negative time is a delay: the impact lands when the shot arrives.
+		_effects.append({"type": &"flash", "cell": to, "t": -delay,
+			"colour": Palette.HP_BAD if hostile else Palette.HIT_FLASH})
+		_effects.append({"type": &"popup", "cell": to, "t": -delay,
+			"text": str(e["amount"]),
+			"colour": Palette.HP_BAD if hostile else Palette.UI_TEXT})
+
+	if not _effects.is_empty():
+		queue_redraw()
+
+func _expired(e: Dictionary) -> bool:
+	match e["type"]:
+		&"shot":  return e["t"] >= e["path"].size() * SHOT_PER_CELL
+		&"flash": return e["t"] >= FLASH_LIFE
+		&"popup": return e["t"] >= POPUP_LIFE
+	return true
 
 func grid_size() -> Vector2:
 	if state == null:
@@ -116,6 +178,9 @@ func _draw() -> void:
 	if state == null:
 		return
 	var map := state.map
+	if map != _last_map:
+		_last_map = map
+		_effects.clear()
 	draw_rect(Rect2(Vector2.ZERO, grid_size()), Palette.BG, true)
 
 	for y in map.height:
@@ -134,8 +199,15 @@ func _draw() -> void:
 	if state.player.alive:
 		_draw_glyph(state.player.appearance, state.player.x, state.player.y)
 
+	# Awareness markers are state, not events -- they persist for as long as
+	# the monster is in that state, unlike the one-shot "!".
+	for e in state.entities:
+		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
+			_draw_awareness(e)
+
 	_draw_preview()
 	_draw_cursor()
+	_draw_effects()
 
 func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 	var visible_here := map.is_visible(x, y)
@@ -256,6 +328,75 @@ func _is_face_wall(map: DungeonMap, x: int, y: int) -> bool:
 			if map.is_walkable(x + dx, y + dy):
 				return true
 	return false
+
+func _draw_awareness(e: Entity) -> void:
+	var text := ""
+	var colour := Palette.SLEEP
+	if e.alertness == Entity.Alert.ASLEEP:
+		# Cycles z / zZ / zzZ so it reads as breathing rather than a label.
+		var phase := int(Time.get_ticks_msec() / 420.0) % 3
+		text = ["z", "zZ", "zzZ"][phase]
+	elif e.alertness == Entity.Alert.SUSPICIOUS:
+		text = "?"
+		colour = Palette.ALERT
+	else:
+		return
+
+	var size_px := font_size - 5
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+	var pos := Vector2(e.x * cell_size + (cell_size - w) * 0.5, e.y * cell_size + 1.0)
+	draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		size_px, Color(0, 0, 0, 0.8))
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, colour)
+
+func _centre(cell: Vector2i) -> Vector2:
+	return Vector2(cell.x * cell_size, cell.y * cell_size) + Vector2(cell_size, cell_size) * 0.5
+
+func _draw_effects() -> void:
+	for e in _effects:
+		var t: float = e["t"]
+		if t < 0.0:
+			continue
+		match e["type"]:
+			&"shot":  _draw_shot(e, t)
+			&"flash": _draw_flash(e, t)
+			&"popup": _draw_popup(e, t)
+
+func _draw_shot(e: Dictionary, t: float) -> void:
+	var line: Array = e["path"]
+	var i := clampi(int(t / SHOT_PER_CELL), 0, line.size() - 1)
+	var cell: Vector2i = line[i]
+	# Never animate through unseen ground -- a visible arrow from an invisible
+	# archer would give away a position the player has not earned.
+	if not state.map.is_visible(cell.x, cell.y):
+		return
+	draw_circle(_centre(cell), maxf(1.5, cell_size * 0.15), Palette.SHOT)
+
+func _draw_flash(e: Dictionary, t: float) -> void:
+	var cell: Vector2i = e["cell"]
+	if not state.map.is_visible(cell.x, cell.y):
+		return
+	var origin := Vector2(cell.x * cell_size, cell.y * cell_size)
+	var a := (1.0 - t / FLASH_LIFE) * 0.5
+	draw_rect(Rect2(origin, Vector2(cell_size, cell_size)), Color(e["colour"], a), true)
+
+func _draw_popup(e: Dictionary, t: float) -> void:
+	# Same rule as the projectile: never draw an effect over ground the player
+	# cannot see, or an animation gives away a position they have not earned.
+	var at: Vector2i = e["cell"]
+	if not state.map.is_visible(at.x, at.y):
+		return
+	var k := t / POPUP_LIFE
+	var pos := _centre(at) + Vector2(0, -cell_size * (0.35 + k * 1.1))
+	var a := 1.0 if k < 0.55 else 1.0 - (k - 0.55) / 0.45
+	var text: String = e["text"]
+	var size_px: int = e.get("size", font_size - 3)
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+	# Drawn twice: a dark backing so a number over a lit floor stays readable.
+	draw_string(font, pos - Vector2(w * 0.5 - 1.0, -1.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Color(0, 0, 0, a * 0.8))
+	draw_string(font, pos - Vector2(w * 0.5, 0.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Color(e["colour"], a))
 
 ## Cheap deterministic noise in [0,1) from a cell coordinate.
 func _hash01(x: int, y: int) -> float:

@@ -36,6 +36,18 @@ func _initialize() -> void:
 	_test_cornered_monsters_fight()
 	_test_erratic_is_not_a_beeline()
 	_test_goblins_are_bolder_together()
+	_test_projectile_path()
+	_test_combat_events_are_recorded()
+	_test_damage_cancels_travel()
+	_test_monsters_start_asleep()
+	_test_sleeping_monsters_do_not_act()
+	_test_adjacency_always_notices()
+	_test_torch_makes_you_visible()
+	_test_fighting_is_loud()
+	_test_awake_monsters_lose_the_trail()
+	_test_cave_cover_exists()
+	_test_brazier_resting()
+	_test_levels_offer_braziers()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -67,6 +79,11 @@ func _arena(w: int, h: int) -> GameState:
 	gs.ground = []
 	gs.player.max_hp = 9999
 	gs.player.hp = 9999
+	# Resize by assignment, not `gs._fov_buffer.resize()` -- PackedArrays are
+	# copy-on-write and reaching through a property mutates a temporary.
+	var buf := PackedByteArray()
+	buf.resize(w * h)
+	gs._fov_buffer = buf
 	return gs
 
 func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
@@ -82,11 +99,250 @@ func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
 		m.ai = e.get("ai", &"hunter")
 		m.attack_range = e.get("range", 1)
 		m.flee_below = e.get("flee", 0.0)
+		# Behaviour tests want behaviour, not the awareness gate. Awareness has
+		# its own tests below, which set this back to ASLEEP explicitly.
+		m.alertness = Entity.Alert.AWAKE
 		gs.entities.append(m)
 		return m
 	return null
 
 # ---------------------------------------------------------------- tests ----
+
+func _test_monsters_start_asleep() -> void:
+	var gs := GameState.new(9100)
+	gs.new_game()
+	var awake := 0
+	var total := 0
+	for e in gs.entities:
+		if e.is_player:
+			continue
+		total += 1
+		if e.alertness != Entity.Alert.ASLEEP:
+			awake += 1
+	check("the level has monsters to check", total > 0, "%d" % total)
+	check("every monster starts asleep", awake == 0, "%d awake" % awake)
+
+func _test_sleeping_monsters_do_not_act() -> void:
+	var gs := _arena(31, 13)
+	gs.player.x = 5
+	gs.player.y = 6
+	gs.torch_lit = false
+	gs.update_vision()
+
+	var m := _spawn(gs, "kobold", 20, 6)
+	m.alertness = Entity.Alert.ASLEEP
+	var where := Vector2i(m.x, m.y)
+	var hp := gs.player.hp
+	for _i in 10:
+		gs._take_ai_turn(m)
+	check("a sleeping monster stays put", Vector2i(m.x, m.y) == where)
+	check("and does not attack", gs.player.hp == hp)
+
+func _test_adjacency_always_notices() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = false
+	gs.update_vision()
+
+	var m := _spawn(gs, "kobold", 6, 4)
+	m.alertness = Entity.Alert.ASLEEP
+	gs._update_awareness(m)
+	gs._update_awareness(m)
+	check("standing next to something wakes it however dark it is",
+		m.alertness == Entity.Alert.AWAKE)
+
+## The mechanic in one test: the torch is both how you see and how you are seen.
+func _test_torch_makes_you_visible() -> void:
+	var trials := 200
+	var lit_notices := 0
+	var dark_notices := 0
+
+	for lit in [true, false]:
+		var gs := _arena(31, 13)
+		gs.player.x = 5
+		gs.player.y = 6
+		gs.torch_lit = lit
+		gs.update_vision()
+		for _i in trials:
+			var m := _spawn(gs, "kobold", 11, 6)
+			m.alertness = Entity.Alert.ASLEEP
+			gs._update_awareness(m)
+			if m.alertness != Entity.Alert.ASLEEP:
+				if lit:
+					lit_notices += 1
+				else:
+					dark_notices += 1
+			gs.entities.erase(m)
+
+	check("a lit torch gets you noticed (%d/%d)" % [lit_notices, trials],
+		lit_notices > trials / 5, "%d" % lit_notices)
+	check("dousing it roughly halves that or better (%d vs %d)"
+		% [dark_notices, lit_notices], dark_notices * 2 < lit_notices)
+
+func _test_fighting_is_loud() -> void:
+	var gs := _arena(25, 11)
+	gs.player.x = 5
+	gs.player.y = 4
+	var target := _spawn(gs, "kobold", 6, 4)
+	var neighbour := _spawn(gs, "goblin", 9, 4)
+	var distant := _spawn(gs, "orc", 20, 9)
+	for m in [target, neighbour, distant]:
+		m.alertness = Entity.Alert.ASLEEP
+
+	gs._attack(gs.player, target)
+	check("the thing you hit wakes", target.alertness == Entity.Alert.AWAKE)
+	check("so does anything within earshot", neighbour.alertness == Entity.Alert.AWAKE)
+	check("but not something across the level",
+		distant.alertness == Entity.Alert.ASLEEP)
+
+func _test_awake_monsters_lose_the_trail() -> void:
+	var gs := _arena(31, 13)
+	gs.player.x = 3
+	gs.player.y = 6
+	var m := _spawn(gs, "kobold", 27, 6)
+	m.alertness = Entity.Alert.AWAKE
+
+	for _i in 11:
+		gs._update_awareness(m)
+	check("a monster that loses you stops hunting",
+		m.alertness != Entity.Alert.AWAKE)
+
+	for _i in 8:
+		gs._update_awareness(m)
+	check("and eventually settles back to sleep",
+		m.alertness == Entity.Alert.ASLEEP)
+
+## Caves were open killing floors, which left ranged monsters unanswerable in
+## exactly the place the generator liked to put them.
+func _test_cave_cover_exists() -> void:
+	var with_cover := 0
+	var caves := 0
+	for i in 60:
+		var gs := GameState.new(9500 + i)
+		gs.new_game()
+		for region in gs.cave_regions:
+			caves += 1
+			var found := false
+			for y in range(region.position.y, region.end.y):
+				for x in range(region.position.x, region.end.x):
+					if gs.map.get_tile(x, y) == Tiles.STALAGMITE:
+						found = true
+						break
+				if found:
+					break
+			if found:
+				with_cover += 1
+	check("caves are generated to check", caves > 0, "%d" % caves)
+	check("most caves carry some cover (%d/%d)" % [with_cover, caves],
+		with_cover > caves / 2, "%d" % with_cover)
+	check("stalagmites block movement", not Tiles.is_walkable(Tiles.STALAGMITE))
+	check("stalagmites block sight", not Tiles.is_transparent(Tiles.STALAGMITE))
+
+func _test_brazier_resting() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge = {Vector2i(6, 4): GameState.BRAZIER_CHARGE}
+	gs._gather_lights()
+	gs.player.max_hp = 30
+	gs.player.hp = 10
+	check("the brazier is lighting the room", gs.static_lights.size() == 1)
+
+	gs.player_wait()
+	check("resting beside a brazier heals", gs.player.hp == 12, "%d" % gs.player.hp)
+	check("and draws down its charge",
+		int(gs.brazier_charge[Vector2i(6, 4)]) == GameState.BRAZIER_CHARGE - 2)
+
+	for _i in 10:
+		gs.player_wait()
+	check("a brazier's pool is finite",
+		gs.player.hp == 10 + GameState.BRAZIER_CHARGE, "%d" % gs.player.hp)
+	check("a spent brazier goes out", gs.map.get_tile(6, 4) == Tiles.BRAZIER_SPENT)
+	check("and stops giving light", gs.static_lights.is_empty())
+	check("a spent brazier is still an obstacle",
+		not Tiles.is_walkable(Tiles.BRAZIER_SPENT))
+
+	var hp := gs.player.hp
+	gs.player.x = 15
+	gs.player_wait()
+	check("waiting away from a brazier is just waiting", gs.player.hp == hp)
+
+	# Charge must not be wasted by resting at full health.
+	var full := _arena(21, 9)
+	full.player.x = 5
+	full.player.y = 4
+	full.map.set_tile(6, 4, Tiles.BRAZIER)
+	full.brazier_charge = {Vector2i(6, 4): GameState.BRAZIER_CHARGE}
+	full.player.max_hp = 30
+	full.player.hp = 30
+	full.player_wait()
+	check("resting at full health wastes nothing",
+		int(full.brazier_charge[Vector2i(6, 4)]) == GameState.BRAZIER_CHARGE)
+
+func _test_levels_offer_braziers() -> void:
+	var with_any := 0
+	var trials := 40
+	var total := 0
+	for i in trials:
+		var gs := GameState.new(9700 + i)
+		gs.new_game()
+		total += gs.brazier_charge.size()
+		if gs.brazier_charge.size() > 0:
+			with_any += 1
+	check("most levels offer somewhere to rest (%d/%d, %d braziers)"
+		% [with_any, trials, total], with_any > trials * 3 / 4, "%d" % with_any)
+
+func _test_projectile_path() -> void:
+	var line := Los.path(2, 2, 6, 2)
+	check("a path excludes the origin", not line.has(Vector2i(2, 2)))
+	check("a path ends on the target", line.back() == Vector2i(6, 2))
+	check("a four-cell shot crosses four cells", line.size() == 4)
+	check("a diagonal path counts three, not six", Los.path(0, 0, 3, 3).size() == 3)
+	check("a zero-length path is empty", Los.path(5, 5, 5, 5).is_empty())
+
+## The renderer animates from these. The simulation must never wait on them.
+func _test_combat_events_are_recorded() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.take_events()
+
+	var kobold := _spawn(gs, "kobold", 4, 4)
+	gs._attack(kobold, gs.player)
+	var evts := gs.take_events()
+	check("a melee hit records one event", evts.size() == 1, str(evts.size()))
+	check("it is tagged melee", evts.size() > 0 and evts[0]["kind"] == &"melee")
+	check("it is tagged as landing on the player",
+		evts.size() > 0 and evts[0]["on_player"])
+	check("it carries the damage dealt", evts.size() > 0 and evts[0]["amount"] > 0)
+	check("take_events drains the queue", gs.take_events().is_empty())
+
+	var archer := _spawn(gs, "kobold slinger", 9, 4)
+	gs._attack(archer, gs.player, true)
+	var shots := gs.take_events()
+	check("a shot is tagged ranged", shots.size() == 1 and shots[0]["kind"] == &"ranged")
+	check("a shot records where it was fired from",
+		shots.size() > 0 and shots[0]["from"] == Vector2i(9, 4))
+
+func _test_damage_cancels_travel() -> void:
+	var gs := _arena(25, 11)
+	gs.player.x = 3
+	gs.player.y = 5
+	# Parked far away so it does not stop travel merely by being seen.
+	var rat := _spawn(gs, "giant rat", 21, 9)
+	# The arena marks every cell visible for the AI tests; recompute real field
+	# of view here so the rat is genuinely out of sight.
+	gs.update_vision()
+	gs.map.reveal_all()
+
+	check("auto-travel starts", gs.begin_travel(Vector2i(20, 5)))
+	if gs.travelling():
+		gs._attack(rat, gs.player)
+		check("taking damage stops auto-travel", not gs.travelling())
+	else:
+		check("taking damage stops auto-travel", false, "travel ended early")
 
 func _test_line_of_sight() -> void:
 	var m := DungeonMap.new(15, 5)

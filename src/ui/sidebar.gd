@@ -13,16 +13,20 @@ var state: GameState
 var hovered := Vector2i(-1, -1)
 var look_mode := false
 
+var _last_hp := -1
+var _hit_at := -10.0
+
 const PAD := 14.0
 const LINE := 21.0
 
 const KEYS := [
 	["arrows / hjklyubn", "move"],
-	[". or 5", "wait"],
+	[". or 5", "wait / rest"],
 	[">", "descend"],
 	["x", "look"],
 	["g", "pick up"],
 	["i", "inventory"],
+	["t", "torch"],
 	["click", "travel"],
 ]
 
@@ -32,6 +36,14 @@ func _ready() -> void:
 		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+
+func _process(_delta: float) -> void:
+	if state == null:
+		return
+	var hp := state.player.hp
+	if _last_hp >= 0 and hp < _last_hp:
+		_hit_at = Time.get_ticks_msec() / 1000.0
+	_last_hp = hp
 
 func _draw() -> void:
 	if state == null:
@@ -56,11 +68,27 @@ func _draw() -> void:
 	elif frac < 0.6:
 		col = Palette.HP_WARN
 
-	_line(font, y, "HP %d/%d" % [p.hp, p.max_hp], Palette.UI_TEXT)
+	# Two pulses share one channel: a short flare when hit, and a continuous
+	# throb below 30%. Motion at the edge of vision is what catches you while
+	# you are reading the map -- which is exactly how the slinger got its kill.
+	var now := Time.get_ticks_msec() / 1000.0
+	var since_hit := now - _hit_at
+	var pulse := 0.0
+	if since_hit < 0.45:
+		pulse = 1.0 - since_hit / 0.45
+	if frac < 0.3:
+		pulse = maxf(pulse, 0.30 + 0.30 * sin(now * 7.0))
+
+	_line(font, y, "HP %d/%d" % [p.hp, p.max_hp], col if frac < 0.3 else Palette.UI_TEXT)
 	y += 8.0
 	var bar_w := size.x - PAD * 2.0
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w, 10)), Color("1e1f26"), true)
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w * frac, 10)), col, true)
+	if pulse > 0.0:
+		draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w * frac, 10)),
+			Color(1, 1, 1, pulse * 0.42), true)
+		draw_rect(Rect2(Vector2(PAD - 2.0, y - 2.0), Vector2(bar_w + 4.0, 14.0)),
+			Color(Palette.HP_BAD, pulse * 0.85), false, 2.0)
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w, 10)), Palette.UI_FRAME, false, 1.0)
 	y += 10 + LINE
 
@@ -73,6 +101,13 @@ func _draw() -> void:
 	_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
 	y += LINE
 	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
+	y += LINE
+	# Doused is the unusual, dangerous state, so it is the one that is tinted.
+	draw_string(font, Vector2(PAD, y), "torch",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+	draw_string(font, Vector2(PAD, y), "lit" if state.torch_lit else "doused",
+		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
+		Palette.UI_TEXT if state.torch_lit else Palette.SLEEP)
 	y += LINE * 1.7
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
@@ -86,7 +121,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 8.0
+	y = size.y - PAD - LINE * 9.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:

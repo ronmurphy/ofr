@@ -21,6 +21,8 @@ enum {
 	WATER,
 	ROCK,
 	CAVE_FLOOR,
+	STALAGMITE,
+	BRAZIER_SPENT,
 }
 
 ## walk  = an actor may stand here
@@ -42,6 +44,13 @@ const DATA := {
 	# Natural stone, as opposed to WALL's masonry. Drawn differently.
 	ROCK:        {"id": &"rock",        "walk": false, "clear": false},
 	CAVE_FLOOR:  {"id": &"cave_floor",  "walk": true,  "clear": true},
+	# A pillar's natural cousin. Caves were open killing floors without them,
+	# which left ranged monsters with no counter-play in exactly the place the
+	# generator liked to put them.
+	STALAGMITE:  {"id": &"stalagmite",  "walk": false, "clear": false},
+	# A brazier you have already burned down. Still an obstacle, no longer a
+	# light, and visibly dead so you can see at a glance which ones are used.
+	BRAZIER_SPENT: {"id": &"brazier_spent", "walk": false, "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:

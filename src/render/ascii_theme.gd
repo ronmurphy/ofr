@@ -17,6 +17,8 @@ const TABLE := {
 	&"cave_floor":  {"ch": "·", "fg": Palette.CAVE_FLOOR, "bg": Color("1c1814")},
 	&"rubble":      {"ch": "▒", "fg": Palette.RUBBLE,   "bg": Color("1a150f")},
 	&"water":       {"ch": "~",      "fg": Palette.WATER,    "bg": Palette.WATER_BG},
+	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
+	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
 
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},

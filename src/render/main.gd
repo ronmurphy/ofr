@@ -129,6 +129,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_G, KEY_COMMA:
 			if state.player_pickup():
 				_refresh()
+		KEY_T:
+			if state.player_toggle_torch():
+				_refresh()
 
 func _on_cell_clicked(cell: Vector2i) -> void:
 	_end_look()
@@ -190,6 +193,9 @@ func _drop_item(index: int) -> void:
 	_refresh()
 
 func _refresh() -> void:
+	# Hand the turn's events to the renderer to animate. The simulation has
+	# already resolved them; this is purely showing the player what happened.
+	grid.play_events(state.take_events())
 	grid.queue_redraw()
 	sidebar.queue_redraw()
 	log_view.queue_redraw()

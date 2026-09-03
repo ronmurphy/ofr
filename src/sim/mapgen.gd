@@ -146,8 +146,33 @@ func _carve_caves(map: DungeonMap) -> void:
 		# A cellular automaton can collapse to almost nothing; drop the region
 		# rather than leaving a link to three cells of floor.
 		if painted >= 24:
+			_scatter_cave_cover(map, region)
 			kept.append(region)
 	caves = kept
+
+## Stalagmites, placed only where all eight neighbours are open floor.
+##
+## That restriction is what makes this safe: a lone obstacle in the middle of
+## open ground always leaves eight ways around it, so scattering cover can
+## never sever a cavern. It also means they land in the open middle of a cave
+## rather than plugging its narrow throats.
+func _scatter_cave_cover(map: DungeonMap, region: Rect2i) -> void:
+	for y in range(region.position.y + 1, region.end.y - 1):
+		for x in range(region.position.x + 1, region.end.x - 1):
+			if map.get_tile(x, y) != Tiles.CAVE_FLOOR:
+				continue
+			if rng.randf() >= 0.055:
+				continue
+			var open := true
+			for dy in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					if not map.is_walkable(x + dx, y + dy):
+						open = false
+						break
+				if not open:
+					break
+			if open:
+				map.set_tile(x, y, Tiles.STALAGMITE)
 
 ## Tie each cave back to the nearest room, so it is somewhere you can reach
 ## rather than a pocket of unreachable scenery.

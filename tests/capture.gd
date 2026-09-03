@@ -93,6 +93,144 @@ func _run() -> void:
 	_scene._refresh()
 	await _shot("06_glyph_check.png")
 
+	# Combat feedback: stage a shot in an open arena and photograph it both
+	# mid-flight and on impact.
+	var fx := GameState.new(4242)
+	fx.new_game()
+	var aw := 40
+	var ah := 22
+	fx.map = DungeonMap.new(aw, ah)
+	for y in range(1, ah - 1):
+		for x in range(1, aw - 1):
+			fx.map.set_tile(x, y, Tiles.FLOOR)
+	fx.light_map = LightMap.new(aw, ah)
+	fx.pathfinder = Pathfinder.new(fx.map)
+	fx.entities = [fx.player]
+	fx.ground = []
+	fx.static_lights = []
+	var fov := PackedByteArray()
+	fov.resize(aw * ah)
+	fx._fov_buffer = fov
+	fx.player.x = 8
+	fx.player.y = 10
+	fx.player.max_hp = 40
+	fx.player.hp = 11
+	fx.player.alive = true
+
+	var archer := Entity.new("kobold slinger", &"slinger", 14, 10)
+	archer.max_hp = 5
+	archer.hp = 5
+	archer.power = 3
+	archer.speed = 100
+	archer.ai = &"ranged"
+	archer.attack_range = 6
+	fx.entities.append(archer)
+	fx.update_vision()
+	_use(fx)
+
+	fx._take_ai_turn(archer)
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("10_shot_inflight.png")
+	for _i in 8:
+		await process_frame
+	await _shot("11_impact.png")
+
+	# Awareness markers and the torch trade.
+	var sneak := GameState.new(777)
+	sneak.new_game()
+	var ww := 34
+	var wh := 19
+	sneak.map = DungeonMap.new(ww, wh)
+	for y in range(1, wh - 1):
+		for x in range(1, ww - 1):
+			sneak.map.set_tile(x, y, Tiles.FLOOR)
+	sneak.map.set_tile(10, 11, Tiles.PILLAR)
+	sneak.map.set_tile(15, 8, Tiles.STALAGMITE)
+	sneak.light_map = LightMap.new(ww, wh)
+	sneak.pathfinder = Pathfinder.new(sneak.map)
+	sneak.entities = [sneak.player]
+	sneak.ground = []
+	sneak.static_lights = []
+	var fov2 := PackedByteArray()
+	fov2.resize(ww * wh)
+	sneak._fov_buffer = fov2
+	sneak.player.x = 8
+	sneak.player.y = 9
+	sneak.player.hp = 30
+	sneak.player.max_hp = 30
+	sneak.player.alive = true
+	sneak.torch_lit = true
+
+	var sleepers := []
+	for spec in [[12, 7, &"kobold", "kobold"], [13, 12, &"goblin", "goblin"],
+			[11, 9, &"rat", "giant rat"], [14, 10, &"slinger", "kobold slinger"]]:
+		var m := Entity.new(spec[3], spec[2], spec[0], spec[1])
+		m.max_hp = 8
+		m.hp = 8
+		m.alertness = Entity.Alert.ASLEEP
+		sneak.entities.append(m)
+		sleepers.append(m)
+	sleepers[2].alertness = Entity.Alert.SUSPICIOUS
+	sneak.update_vision()
+	_use(sneak)
+	for _i in 3:
+		await process_frame
+	await _shot("12_awareness.png")
+
+	sneak.wake(sleepers[3])
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("13_noticed.png")
+
+	sneak.torch_lit = false
+	sneak.update_vision()
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("14_doused.png")
+
+	# Brazier resting: one burned out beside one still lit.
+	var hearth := GameState.new(555)
+	hearth.new_game()
+	var hw := 30
+	var hh := 15
+	hearth.map = DungeonMap.new(hw, hh)
+	for y in range(1, hh - 1):
+		for x in range(1, hw - 1):
+			hearth.map.set_tile(x, y, Tiles.FLOOR)
+	hearth.map.set_tile(9, 7, Tiles.BRAZIER)
+	hearth.map.set_tile(13, 7, Tiles.BRAZIER)
+	hearth.light_map = LightMap.new(hw, hh)
+	hearth.pathfinder = Pathfinder.new(hearth.map)
+	hearth.entities = [hearth.player]
+	hearth.ground = []
+	hearth.brazier_charge = {
+		Vector2i(9, 7): GameState.BRAZIER_CHARGE,
+		Vector2i(13, 7): GameState.BRAZIER_CHARGE,
+	}
+	var fov3 := PackedByteArray()
+	fov3.resize(hw * hh)
+	hearth._fov_buffer = fov3
+	hearth.player.x = 8
+	hearth.player.y = 7
+	hearth.player.max_hp = 30
+	hearth.player.hp = 9
+	hearth.player.alive = true
+	hearth.torch_lit = true
+	hearth._gather_lights()
+	hearth.update_vision()
+	_use(hearth)
+
+	for _i in 7:
+		hearth.player_wait()
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("15_hearth.png")
+
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.
 	for seed_value in [SEED, 8801, 8802]:
