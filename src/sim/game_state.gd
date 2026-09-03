@@ -8,8 +8,8 @@ extends RefCounted
 ## combat maths are exactly the things you want to run ten thousand times in a
 ## loop without a window open.
 
-const MAP_W := 72
-const MAP_H := 40
+const MAP_W := 96
+const MAP_H := 54
 const TORCH_RADIUS := 8
 ## Dark-adapted eyes: enough to move by, far too little to be seen by. The
 ## trade between seeing and being seen is the whole mechanic.
@@ -19,6 +19,24 @@ const DOUSED_RADIUS := 3
 ## time, and then goes out for good.
 const BRAZIER_CHARGE := 10
 const BRAZIER_HEAL := 2
+
+## The threat ceiling.
+##
+## Deliberately a CEILING, not a budget. A budget would shape every room toward
+## a target and flatten the swinginess that makes the game tense; this only
+## clips the disasters -- the room that rolls three orcs against a 30 hp
+## character with no answer. Density is untouched.
+const ROOM_THREAT_BASE := 10
+const ROOM_THREAT_PER_DEPTH := 2
+## Caverns are open ground, so a lone character cannot use a doorway to turn
+## being outnumbered into a series of duels. Less forgiving terrain, smaller
+## ceiling.
+const CAVE_THREAT_SCALE := 0.7
+
+## How fast a monster stops appearing once the dungeon has moved past its tier.
+## Without this, rats are as likely on depth 9 as on depth 1.
+const TIER_FADE := 0.22
+const TIER_GRACE := 1
 
 var rng := RandomNumberGenerator.new()
 var map: DungeonMap
@@ -36,6 +54,8 @@ var stairs: Vector2i
 ## Cave regions carved on this level, kept so tests and later features can
 ## reason about them.
 var cave_regions: Array[Rect2i] = []
+## Kept so the encounter maths can be measured after the fact.
+var room_rects: Array[Rect2i] = []
 
 var torch_lit := true
 var depth: int = 1
@@ -61,21 +81,33 @@ var _travel: Array[Vector2i] = []
 ##
 ## Capital glyphs mark the dangerous variant of a family -- K is a kobold that
 ## shoots back.
+## Behaviour matters more than the numbers here. Six monsters that all walk at
+## you in a straight line are one monster with six stat blocks.
+##
+## `threat` is this game's challenge rating. It is not derived from the stats
+## by formula, because the stats do not capture what actually makes something
+## dangerous to a lone character: a slinger costs more than its hit points
+## suggest because it attacks from safety, and a bat costs more than its damage
+## suggests because you cannot disengage from it.
+##
+## Capital glyphs mark the dangerous variant of a family -- K is a kobold that
+## shoots back.
 const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
-	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1},
+	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"hunter", "flee": 0.25, "min_depth": 1},
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "min_depth": 1, "threat": 3},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "min_depth": 2},
+	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "min_depth": 2,
+	 "threat": 6},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
-	 "speed": 170, "ai": &"erratic", "flee": 0.0, "min_depth": 2},
+	 "speed": 170, "ai": &"erratic", "flee": 0.0, "min_depth": 2, "threat": 5},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
-	 "speed": 100, "ai": &"pack", "flee": 0.20, "min_depth": 2},
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "min_depth": 2, "threat": 5},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "min_depth": 3},
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "min_depth": 3, "threat": 8},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "min_depth": 4},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "min_depth": 4, "threat": 10},
 ]
 
 func _init(seed_value: int = 0) -> void:
@@ -129,6 +161,7 @@ func build_level() -> void:
 	map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_DOWN)
 
 	cave_regions = gen.caves.duplicate()
+	room_rects = gen.rooms.duplicate()
 	brazier_charge.clear()
 	for y in map.height:
 		for x in map.width:
@@ -169,6 +202,12 @@ func _gather_lights() -> void:
 				static_lights.append(LightSource.new(x, y, 6,
 					Color(0.95, 0.55, 0.20), Color(0.35, 0.20, 0.30), 0.85, true))
 
+func room_threat_ceiling() -> int:
+	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * depth
+
+func cave_threat_ceiling() -> int:
+	return int(round(room_threat_ceiling() * CAVE_THREAT_SCALE))
+
 func _populate_room(room: Rect2i, archetype: int) -> void:
 	if rng.randf() < 0.55:
 		var ix := rng.randi_range(room.position.x, room.end.x - 1)
@@ -184,26 +223,39 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 	var bonus := 0
 	if archetype == MapGen.Archetype.SHRINE or archetype == MapGen.Archetype.COLLAPSED:
 		bonus = 1
+	# The count roll is unchanged -- density is intentional. The ceiling only
+	# stops that count from landing on something unsurvivable.
 	var count := rng.randi_range(0, 2 + depth / 3) + bonus
+	var spent := 0
+	var ceiling := room_threat_ceiling()
 	for _i in count:
-		_spawn_in(Rect2i(room.position, room.size))
+		var cost := _spawn_in(Rect2i(room.position, room.size), ceiling - spent)
+		if cost < 0:
+			break
+		spent += cost
 
 func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
 	var count := rng.randi_range(1, 3 + depth / 3)
+	var spent := 0
+	var ceiling := cave_threat_ceiling()
 	for _i in count:
-		_spawn_in(region)
+		var cost := _spawn_in(region, ceiling - spent)
+		if cost < 0:
+			break
+		spent += cost
 
-func _spawn_in(area: Rect2i) -> void:
+## Returns the threat spent, or -1 if nothing was placed.
+func _spawn_in(area: Rect2i, remaining: int) -> int:
 	var mx := rng.randi_range(area.position.x, area.end.x - 1)
 	var my := rng.randi_range(area.position.y, area.end.y - 1)
 	if not map.is_walkable(mx, my) or entity_at(mx, my) != null:
-		return
+		return 0
 	if Vector2i(mx, my) == stairs or Vector2i(mx, my) == Vector2i(player.x, player.y):
-		return
-	var pick := _roll_monster()
+		return 0
+	var pick := _roll_monster(remaining)
 	if pick.is_empty():
-		return
+		return -1
 	var m := Entity.new(pick["name"], pick["app"], mx, my)
 	m.max_hp = pick["hp"]
 	m.hp = pick["hp"]
@@ -213,16 +265,39 @@ func _spawn_in(area: Rect2i) -> void:
 	m.ai = pick.get("ai", &"hunter")
 	m.attack_range = pick.get("range", 1)
 	m.flee_below = pick.get("flee", 0.0)
+	m.threat = int(pick["threat"])
 	entities.append(m)
+	return m.threat
 
-func _roll_monster() -> Dictionary:
-	var eligible := []
+## Weighted by tier, and filtered to what still fits under the ceiling.
+##
+## A monster is at full weight for its own tier and a grace depth after it,
+## then fades. That is what stops depth 9 from spawning giant rats, and it is
+## also why the ceiling alone would not be enough: without the fade, deep
+## floors would just be many cheap monsters instead of few expensive ones.
+func _roll_monster(remaining: int) -> Dictionary:
+	var pool := []
+	var total := 0.0
 	for e in BESTIARY:
-		if e["min_depth"] <= depth:
-			eligible.append(e)
-	if eligible.is_empty():
+		if e["min_depth"] > depth:
+			continue
+		if int(e["threat"]) > remaining:
+			continue
+		var band := depth - int(e["min_depth"])
+		var weight := 1.0 - TIER_FADE * float(maxi(0, band - TIER_GRACE))
+		if weight <= 0.0:
+			continue
+		total += weight
+		pool.append({"entry": e, "weight": weight})
+
+	if pool.is_empty():
 		return {}
-	return eligible[rng.randi_range(0, eligible.size() - 1)]
+	var pick := rng.randf() * total
+	for p in pool:
+		pick -= p["weight"]
+		if pick <= 0.0:
+			return p["entry"]
+	return pool[-1]["entry"]
 
 const LETTERS := "abcdefghijklmnopqrstuvwxyz"
 

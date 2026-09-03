@@ -231,6 +231,32 @@ func _run() -> void:
 		await process_frame
 	await _shot("15_hearth.png")
 
+	# Stairs beacon: everything remembered, nothing currently lit.
+	var beacon := GameState.new(4711)
+	beacon.new_game()
+	# Stand 12-18 cells from the stairs: far enough that they are remembered
+	# rather than lit, close enough that both fit in one screen.
+	var placed := false
+	for ry in beacon.map.height:
+		if placed:
+			break
+		for rx in beacon.map.width:
+			var d := Los.steps(rx, ry, beacon.stairs.x, beacon.stairs.y)
+			if d >= 12 and d <= 18 and beacon.map.is_walkable(rx, ry):
+				beacon.player.x = rx
+				beacon.player.y = ry
+				placed = true
+				break
+	beacon.update_vision()
+	beacon.map.reveal_all()
+	_use(beacon)
+	_scene.grid.centre_on_player()
+	print("  stairs %s  player (%d,%d)" % [beacon.stairs, beacon.player.x, beacon.player.y])
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("16_stairs.png")
+
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.
 	for seed_value in [SEED, 8801, 8802]:

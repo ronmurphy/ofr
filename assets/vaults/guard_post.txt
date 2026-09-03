@@ -1,0 +1,14 @@
+name: abandoned guard post
+weight: 12
+min_depth: 1
+max_depth: 6
+rotate: yes
+LAYOUT
+#########
+#m..#..m#
+#...#...#
+##+###+##
+#.......#
+#.*...[.#
+#.......#
+####+####

@@ -171,6 +171,21 @@ heal is not a decision.
 
 Resting at full health wastes nothing.
 
+## The camera
+
+The map (96x54) is larger than the visible grid (72x40), so the view scrolls.
+
+It uses a **deadzone**: the camera holds completely still until the player comes
+within `scroll_margin` cells of an edge, then follows. A camera locked to the
+player slides the entire map on every step, which is disorienting in a game you
+read off a grid — you lose track of where things were between turns.
+
+This is renderer-only. `GlyphGrid` keeps an `_origin` cell, `_screen()` converts
+map cells to pixels, and `cell_at()` converts back for the mouse. The simulation
+has no idea a viewport exists. The draw loop also walks only the visible window
+rather than the whole map, which is most of the cost of a redraw on a large
+level.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

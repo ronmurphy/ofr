@@ -25,6 +25,14 @@ enum WallStyle {
 ## default because font box-glyphs are only ~0.6 cells wide and leave visible
 ## gaps in horizontal runs once the cell is square.
 @export var wall_style: WallStyle = WallStyle.LINE
+## Cells of clearance kept between the player and the viewport edge before the
+## camera moves at all.
+##
+## A camera locked to the player slides the entire map on every single step,
+## which is disorienting in a game you read off a grid -- you lose track of
+## where things were. A deadzone keeps the map still while you move around a
+## room and only scrolls when you approach an edge.
+@export var scroll_margin: int = 8
 
 var state: GameState
 var render_theme: RenderTheme = AsciiTheme.new()
@@ -56,6 +64,8 @@ var _effects: Array = []
 ## Guards against an animation outliving the level it belongs to. Descending
 ## mid-flight would otherwise draw the old level's arrow on the new one.
 var _last_map: DungeonMap = null
+## Top-left map cell currently shown.
+var _origin := Vector2i.ZERO
 
 ## Roughly DCSS's pace. A quarter-second per cell would add a second and a half
 ## to every archer's turn, hundreds of times a run.
@@ -141,8 +151,46 @@ func grid_size() -> Vector2:
 		return Vector2.ZERO
 	return Vector2(state.map.width * cell_size, state.map.height * cell_size)
 
+## Size of the visible window, in cells.
+func viewport_cells() -> Vector2i:
+	return Vector2i(floori(size.x / cell_size), floori(size.y / cell_size))
+
+## Map cell -> pixel position within this control.
+func _screen(cell: Vector2i) -> Vector2:
+	return Vector2((cell.x - _origin.x) * cell_size, (cell.y - _origin.y) * cell_size)
+
 func cell_at(local_pos: Vector2) -> Vector2i:
-	return Vector2i(floori(local_pos.x / cell_size), floori(local_pos.y / cell_size))
+	return Vector2i(floori(local_pos.x / cell_size) + _origin.x,
+		floori(local_pos.y / cell_size) + _origin.y)
+
+func centre_on_player() -> void:
+	if state == null:
+		return
+	var vc := viewport_cells()
+	_origin = Vector2i(state.player.x - vc.x / 2, state.player.y - vc.y / 2)
+	_clamp_origin()
+
+func _update_camera() -> void:
+	var vc := viewport_cells()
+	var p := Vector2i(state.player.x, state.player.y)
+
+	# Only move if the player has come inside the margin. Otherwise leave the
+	# view exactly where it was.
+	var lo_x := p.x - vc.x + 1 + scroll_margin
+	var hi_x := p.x - scroll_margin
+	if lo_x <= hi_x:
+		_origin.x = clampi(_origin.x, lo_x, hi_x)
+	var lo_y := p.y - vc.y + 1 + scroll_margin
+	var hi_y := p.y - scroll_margin
+	if lo_y <= hi_y:
+		_origin.y = clampi(_origin.y, lo_y, hi_y)
+
+	_clamp_origin()
+
+func _clamp_origin() -> void:
+	var vc := viewport_cells()
+	_origin.x = clampi(_origin.x, 0, maxi(0, state.map.width - vc.x))
+	_origin.y = clampi(_origin.y, 0, maxi(0, state.map.height - vc.y))
 
 # ------------------------------------------------------------------ input ---
 
@@ -181,10 +229,19 @@ func _draw() -> void:
 	if map != _last_map:
 		_last_map = map
 		_effects.clear()
-	draw_rect(Rect2(Vector2.ZERO, grid_size()), Palette.BG, true)
+		# A new level should not inherit the old one's scroll position.
+		centre_on_player()
+	_update_camera()
 
-	for y in map.height:
-		for x in map.width:
+	draw_rect(Rect2(Vector2.ZERO, size), Palette.BG, true)
+
+	# Only the visible window is drawn. On a large map that is most of the
+	# cost of a redraw.
+	var vc := viewport_cells()
+	var x1 := mini(map.width, _origin.x + vc.x + 1)
+	var y1 := mini(map.height, _origin.y + vc.y + 1)
+	for y in range(_origin.y, y1):
+		for x in range(_origin.x, x1):
 			_draw_cell(map, x, y)
 
 	# Ground items sit under actors, so a monster standing on loot still reads
@@ -250,11 +307,18 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		var lit: Color = state.light_map.get_light(x, y) * _flicker
 		fg = (fg * lit).clamp()
 		bg = (bg * lit).clamp()
+	elif tile == Tiles.STAIRS_DOWN:
+		# Exempt from memory dimming, and breathing gently so the eye finds it
+		# on a large map.
+		var pulse := 0.78 + 0.22 * sin(Time.get_ticks_msec() / 620.0)
+		fg = Color(Palette.STAIRS_KNOWN.r * pulse, Palette.STAIRS_KNOWN.g * pulse,
+			Palette.STAIRS_KNOWN.b * pulse, 1.0)
+		bg = _remembered(bg)
 	else:
 		fg = _remembered(fg)
 		bg = _remembered(bg)
 
-	var origin := Vector2(x * cell_size, y * cell_size)
+	var origin := _screen(Vector2i(x, y))
 	var cell := Vector2(cell_size, cell_size)
 
 	if is_wall:
@@ -344,13 +408,13 @@ func _draw_awareness(e: Entity) -> void:
 
 	var size_px := font_size - 5
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
-	var pos := Vector2(e.x * cell_size + (cell_size - w) * 0.5, e.y * cell_size + 1.0)
+	var pos := _screen(Vector2i(e.x, e.y)) + Vector2((cell_size - w) * 0.5, 1.0)
 	draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1,
 		size_px, Color(0, 0, 0, 0.8))
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, colour)
 
 func _centre(cell: Vector2i) -> Vector2:
-	return Vector2(cell.x * cell_size, cell.y * cell_size) + Vector2(cell_size, cell_size) * 0.5
+	return _screen(cell) + Vector2(cell_size, cell_size) * 0.5
 
 func _draw_effects() -> void:
 	for e in _effects:
@@ -376,7 +440,7 @@ func _draw_flash(e: Dictionary, t: float) -> void:
 	var cell: Vector2i = e["cell"]
 	if not state.map.is_visible(cell.x, cell.y):
 		return
-	var origin := Vector2(cell.x * cell_size, cell.y * cell_size)
+	var origin := _screen(cell)
 	var a := (1.0 - t / FLASH_LIFE) * 0.5
 	draw_rect(Rect2(origin, Vector2(cell_size, cell_size)), Color(e["colour"], a), true)
 
@@ -414,7 +478,7 @@ func _draw_glyph(id: StringName, x: int, y: int) -> void:
 	# Floor of 0.45 so something standing in gloom is still legible. Realism
 	# loses to readability every time in a game you play by reading.
 	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()
-	var origin := Vector2(x * cell_size, y * cell_size)
+	var origin := _screen(Vector2i(x, y))
 	draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), app["ch"], font_size, fg)
 
 func _draw_preview() -> void:
@@ -424,17 +488,15 @@ func _draw_preview() -> void:
 		return
 	var r := cell_size * 0.16
 	for cell in _preview:
-		var c := Vector2(cell.x * cell_size, cell.y * cell_size) + Vector2(cell_size, cell_size) * 0.5
-		draw_circle(c, r, Color(Palette.PATH_HINT, 0.55))
+		draw_circle(_centre(cell), r, Color(Palette.PATH_HINT, 0.55))
 
 func _draw_cursor() -> void:
 	var cell := Vector2(cell_size, cell_size)
 	if state.map.in_bounds(look_cursor.x, look_cursor.y):
-		var lo := Vector2(look_cursor.x * cell_size, look_cursor.y * cell_size)
+		var lo := _screen(look_cursor)
 		draw_rect(Rect2(lo, cell), Color(Palette.CURSOR, 0.14), true)
 		draw_rect(Rect2(lo, cell), Palette.CURSOR, false, 2.0)
 		return
 	if not state.map.in_bounds(_hover.x, _hover.y):
 		return
-	var origin := Vector2(_hover.x * cell_size, _hover.y * cell_size)
-	draw_rect(Rect2(origin, cell), Color(Palette.CURSOR, 0.85), false, 1.0)
+	draw_rect(Rect2(_screen(_hover), cell), Color(Palette.CURSOR, 0.85), false, 1.0)

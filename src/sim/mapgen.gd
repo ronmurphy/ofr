@@ -11,7 +11,7 @@ extends RefCounted
 
 enum Archetype { PLAIN, PILLARED, SHRINE, COLLAPSED, POOL }
 
-const MAX_ROOMS := 16
+const MAX_ROOMS := 22
 const ROOM_MIN := 6
 const ROOM_MAX := 13
 const CAVE_MIN := Vector2i(14, 10)

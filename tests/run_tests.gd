@@ -48,6 +48,10 @@ func _initialize() -> void:
 	_test_cave_cover_exists()
 	_test_brazier_resting()
 	_test_levels_offer_braziers()
+	_test_threat_ceiling_holds()
+	_test_tiers_fade_with_depth()
+	_test_camera_deadzone()
+	_report_encounter_curve()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -293,6 +297,129 @@ func _test_levels_offer_braziers() -> void:
 			with_any += 1
 	check("most levels offer somewhere to rest (%d/%d, %d braziers)"
 		% [with_any, trials, total], with_any > trials * 3 / 4, "%d" % with_any)
+
+## The headline guarantee: no room can roll something unsurvivable.
+func _test_threat_ceiling_holds() -> void:
+	var worst_over := 0
+	var breaches := 0
+	var rooms_checked := 0
+
+	for d in range(1, 9):
+		for i in 25:
+			var gs := GameState.new(11000 + d * 100 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			var ceiling := gs.room_threat_ceiling()
+			for room in gs.room_rects:
+				rooms_checked += 1
+				var sum := 0
+				for e in gs.entities:
+					if not e.is_player and room.has_point(Vector2i(e.x, e.y)):
+						sum += e.threat
+				if sum > ceiling:
+					breaches += 1
+					worst_over = maxi(worst_over, sum - ceiling)
+
+	check("no room exceeds its threat ceiling (%d rooms, depths 1-8)" % rooms_checked,
+		breaches == 0, "%d breaches, worst %d over" % [breaches, worst_over])
+
+func _test_tiers_fade_with_depth() -> void:
+	var shallow_orcs := 0
+	var deep_rats := 0
+	for i in 40:
+		var shallow := GameState.new(12000 + i)
+		shallow.new_game()
+		for e in shallow.entities:
+			if e.name == "orc":
+				shallow_orcs += 1
+
+		var deep := GameState.new(12500 + i)
+		deep.new_game()
+		deep.depth = 10
+		deep.build_level()
+		for e in deep.entities:
+			if e.name == "giant rat":
+				deep_rats += 1
+
+	check("orcs never appear on depth 1", shallow_orcs == 0, "%d" % shallow_orcs)
+	check("giant rats have faded out by depth 10", deep_rats == 0, "%d" % deep_rats)
+
+## Not an assertion -- a measurement, so the numbers can be argued with.
+func _report_encounter_curve() -> void:
+	print("")
+	print("  encounter curve            ceiling   worst room   avg room   monsters/floor")
+	for d in [1, 2, 3, 4, 6, 8]:
+		var worst := 0
+		var total := 0
+		var rooms := 0
+		var mobs := 0
+		var runs := 30
+		var ceiling := 0
+		for i in runs:
+			var gs := GameState.new(13000 + d * 100 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			ceiling = gs.room_threat_ceiling()
+			for e in gs.entities:
+				if not e.is_player:
+					mobs += 1
+			for room in gs.room_rects:
+				var sum := 0
+				for e in gs.entities:
+					if not e.is_player and room.has_point(Vector2i(e.x, e.y)):
+						sum += e.threat
+				rooms += 1
+				total += sum
+				worst = maxi(worst, sum)
+		print("    depth %-2d                  %3d       %3d          %5.1f      %5.1f"
+			% [d, ceiling, worst, float(total) / maxf(1.0, float(rooms)),
+			   float(mobs) / float(runs)])
+	print("")
+
+## The camera is renderer-only, but it is still logic and still worth pinning.
+func _test_camera_deadzone() -> void:
+	var gs := _arena(120, 60)
+	var grid := GlyphGrid.new()
+	grid.cell_size = 18
+	grid.scroll_margin = 8
+	grid.size = Vector2(72 * 18, 40 * 18)
+	grid.state = gs
+
+	check("the viewport is 72x40 cells", grid.viewport_cells() == Vector2i(72, 40),
+		str(grid.viewport_cells()))
+
+	gs.player.x = 40
+	gs.player.y = 30
+	grid.centre_on_player()
+	var start: Vector2i = grid._origin
+
+	# Moving inside the deadzone must not shift the map at all -- this is the
+	# whole point of the margin.
+	gs.player.x = 45
+	grid._update_camera()
+	check("the camera holds still inside the deadzone", grid._origin == start,
+		"%s -> %s" % [start, grid._origin])
+
+	gs.player.x = 100
+	grid._update_camera()
+	check("it follows once you approach the edge", grid._origin.x > start.x)
+	check("and keeps you inside the margin",
+		gs.player.x - grid._origin.x <= 72 - grid.scroll_margin)
+
+	gs.player.x = 119
+	gs.player.y = 59
+	grid._update_camera()
+	check("it never scrolls past the map edge",
+		grid._origin.x <= 120 - 72 and grid._origin.y <= 60 - 40,
+		str(grid._origin))
+
+	# A mouse click must resolve to the right cell once the view has moved.
+	var probe := grid.cell_at(Vector2(5 * 18 + 4, 3 * 18 + 4))
+	check("mouse position accounts for the scroll",
+		probe == Vector2i(grid._origin.x + 5, grid._origin.y + 3), str(probe))
+	grid.free()
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)
