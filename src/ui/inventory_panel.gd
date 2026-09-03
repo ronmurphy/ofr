@@ -10,6 +10,7 @@ extends Control
 
 signal use_requested(index: int)
 signal drop_requested(index: int)
+signal merge_requested(index: int)
 signal close_requested()
 
 enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS }
@@ -200,7 +201,10 @@ func _gui_input(event: InputEvent) -> void:
 			close_requested.emit()
 		return
 	if click.button_index == MOUSE_BUTTON_LEFT:
-		use_requested.emit(hit)
+		if click.shift_pressed:
+			merge_requested.emit(hit)
+		else:
+			use_requested.emit(hit)
 	elif click.button_index == MOUSE_BUTTON_RIGHT:
 		drop_requested.emit(hit)
 
@@ -245,7 +249,11 @@ func _draw() -> void:
 		else:
 			_draw_row(entry["rect"], entry["row"]["item"], entry["row"]["index"])
 
+	# The forge line only appears where forging is possible, so it teaches the
+	# mechanic exactly when it is relevant instead of being permanent clutter.
 	var hint := "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
+	if state.can_forge_here():
+		hint = "shift+click FORGE  ·  click use/equip  ·  right-click drop  ·  esc"
 	var hs := font_size - 2
 	while hs > 9 and font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x \
 			> PANEL_W - PAD * 2.0:
@@ -291,7 +299,7 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	draw_string(font, base + Vector2(34.0, 0.0), app["ch"],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, app["fg"])
-	draw_string(font, base + Vector2(60.0, 0.0), item.name,
+	draw_string(font, base + Vector2(60.0, 0.0), item.display_name(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, label)
 
 	var status := item.bonus_text()

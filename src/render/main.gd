@@ -46,6 +46,7 @@ func _ready() -> void:
 	grid.cell_clicked.connect(_on_cell_clicked)
 	inventory.use_requested.connect(_use_item)
 	inventory.drop_requested.connect(_drop_item)
+	inventory.merge_requested.connect(_merge_item)
 	inventory.close_requested.connect(_close_inventory)
 	_refresh()
 
@@ -77,7 +78,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		else:
 			var picked: int = inventory.letter_to_index(key)
 			if picked >= 0:
-				_use_item(picked)
+				if key_event.shift_pressed:
+					_merge_item(picked)
+				else:
+					_use_item(picked)
 		return
 
 	if key == KEY_I:
@@ -186,6 +190,12 @@ func _close_inventory() -> void:
 func _use_item(index: int) -> void:
 	if state.player_use(index):
 		_close_inventory()
+	_refresh()
+
+## Forging keeps the panel open, so the result is visible and a second merge
+## does not need the list reopened.
+func _merge_item(index: int) -> void:
+	state.player_merge(index)
 	_refresh()
 
 func _drop_item(index: int) -> void:

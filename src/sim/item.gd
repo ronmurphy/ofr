@@ -23,6 +23,14 @@ var magnitude: int = 0
 # Equipment fields
 var power_bonus: int = 0
 var defense_bonus: int = 0
+## What this item rolled as. Upgrades are capped relative to this, so a dagger
+## can never become a war axe -- merging improves an item, it does not replace
+## the reason to find better ones.
+var base_power_bonus: int = 0
+var base_defense_bonus: int = 0
+
+## A dagger tops out at +4, a short sword at +6, leather at +3, and so on.
+const MAX_UPGRADES := 2
 
 ## Stable inventory letter, held from pickup until the item leaves the pack.
 var letter: String = ""
@@ -83,7 +91,28 @@ static func make(item_id: StringName) -> Item:
 	it.magnitude = data.get("magnitude", 0)
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
+	it.base_power_bonus = it.power_bonus
+	it.base_defense_bonus = it.defense_bonus
 	return it
+
+## How many times this item has been merged.
+func upgrade_level() -> int:
+	return (power_bonus - base_power_bonus) + (defense_bonus - base_defense_bonus)
+
+func can_upgrade() -> bool:
+	return is_equipment() and upgrade_level() < MAX_UPGRADES
+
+## Applies one merge. Weapons gain power, armour gains defense.
+func upgrade() -> void:
+	if kind == Kind.WEAPON:
+		power_bonus += 1
+	else:
+		defense_bonus += 1
+
+## Name as the player should see it, carrying any upgrades.
+func display_name() -> String:
+	var up := upgrade_level()
+	return name if up == 0 else "%s +%d" % [name, up]
 
 func is_equipment() -> bool:
 	return slot != Slot.NONE

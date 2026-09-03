@@ -133,7 +133,7 @@ func _line(f: Font, y: float, text: String, color: Color) -> void:
 
 func _slot_name(p: Entity, slot: int) -> String:
 	var item = p.equipped.get(slot, null)
-	return "--" if item == null else item.name
+	return "--" if item == null else item.display_name()
 
 ## Label left, value right-aligned. `boosted` tints the value so a bonus from
 ## equipment is visible at a glance without reading the equipment lines.

@@ -157,6 +157,24 @@ Markers are drawn from *state* (`zzZ`, `?`) while the `!` is an *event*, so it
 fires once on the transition. And no effect is ever drawn over a cell the
 player cannot see -- an animation must never give away a position.
 
+## Forging
+
+Two identical weapons or armours can be merged into one at **+1**, capped at
+**+2 over base** — so a dagger tops out at +4 and plate at +7. Three of a kind
+is the whole cost. Shift+click the survivor in the inventory, or shift+letter.
+
+**It costs brazier charge, from the same pool as healing.** That is the point:
+standing at a brazier hurt, with two daggers in your pack, should be a genuine
+choice between recovering now and hitting harder later.
+
+Durability was the other candidate for that cost and it fails, for a specific
+reason: it punishes *using* the good item, so players hoard the +3 dagger for a
+fight that never comes and play the whole run with the +0 one. Brazier charge
+gives the same decision, recurring, with no bookkeeping and no hoarding.
+
+Merging never replaces the reason to find better gear — an upgraded dagger
+never catches a war axe.
+
 ## Resting at braziers
 
 Waiting (`.`) beside a lit brazier restores 2 hit points and draws down a pool

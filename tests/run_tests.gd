@@ -51,6 +51,7 @@ func _initialize() -> void:
 	_test_threat_ceiling_holds()
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
+	_test_forging()
 	_report_encounter_curve()
 
 	print("")
@@ -420,6 +421,72 @@ func _test_camera_deadzone() -> void:
 	check("mouse position accounts for the scroll",
 		probe == Vector2i(grid._origin.x + 5, grid._origin.y + 3), str(probe))
 	grid.free()
+
+func _forge_arena() -> GameState:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge = {Vector2i(6, 4): GameState.BRAZIER_CHARGE}
+	gs._gather_lights()
+	gs.player.max_hp = 30
+	gs.player.hp = 30
+	return gs
+
+func _test_forging() -> void:
+	var gs := _forge_arena()
+	var a := Item.make(&"dagger")
+	var b := Item.make(&"dagger")
+	gs.give_item(a)
+	gs.give_item(b)
+
+	check("a brazier can forge", gs.can_forge_here())
+	check("merging succeeds", gs.player_merge(0))
+	check("the donor is consumed", gs.player.inventory.size() == 1)
+	check("the survivor gained a point",
+		a.power_bonus == a.base_power_bonus + 1, "%d" % a.power_bonus)
+	check("it reads as upgraded", a.display_name() == "dagger +1", a.display_name())
+	check("forging drew down the brazier",
+		int(gs.brazier_charge[Vector2i(6, 4)])
+			== GameState.BRAZIER_CHARGE - GameState.MERGE_COST)
+
+	# Two upgrades is the cap: three daggers take one to +4 total.
+	gs.give_item(Item.make(&"dagger"))
+	check("a plain donor can feed an upgraded item", gs.player_merge(0))
+	check("a second merge lands", a.upgrade_level() == 2, "%d" % a.upgrade_level())
+	check("and then it is capped", not a.can_upgrade())
+	check("three daggers is the whole cost", a.power_bonus == 4, "%d" % a.power_bonus)
+	gs.give_item(Item.make(&"dagger"))
+	check("merging past the cap is refused", not gs.player_merge(0))
+
+	# Everything else that should be refused.
+	var bare := _arena(21, 9)
+	bare.player.x = 5
+	bare.player.y = 4
+	bare.give_item(Item.make(&"dagger"))
+	bare.give_item(Item.make(&"dagger"))
+	check("no brazier, no forge", not bare.player_merge(0))
+
+	var lone := _forge_arena()
+	lone.give_item(Item.make(&"dagger"))
+	check("a single item has nothing to merge with", not lone.player_merge(0))
+
+	var potions := _forge_arena()
+	potions.give_item(Item.make(&"potion_healing"))
+	potions.give_item(Item.make(&"potion_healing"))
+	check("consumables cannot be forged", not potions.player_merge(0))
+
+	# Forging away something you are wearing must take it off first.
+	var worn := _forge_arena()
+	var keep := Item.make(&"leather_armour")
+	var donor := Item.make(&"leather_armour")
+	worn.give_item(keep)
+	worn.give_item(donor)
+	worn.player.equipped[Item.Slot.ARMOR] = donor
+	check("merging a worn donor works", worn.player_merge(0))
+	check("and it is no longer equipped", not worn.player.is_equipped(donor))
+	check("armour gains defense, not power",
+		keep.defense_bonus == keep.base_defense_bonus + 1)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

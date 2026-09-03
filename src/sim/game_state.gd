@@ -19,6 +19,12 @@ const DOUSED_RADIUS := 3
 ## time, and then goes out for good.
 const BRAZIER_CHARGE := 10
 const BRAZIER_HEAL := 2
+## Merging two identical items costs brazier charge, which is the same finite
+## pool as healing. That is the whole point: standing at a brazier hurt, with
+## two daggers in your pack, should be a real choice between recovering now and
+## hitting harder later. Durability was the other candidate and it fails,
+## because it punishes using the good item and players simply hoard it.
+const MERGE_COST := 4
 
 ## The threat ceiling.
 ##
@@ -445,6 +451,69 @@ func player_wait() -> bool:
 
 	_end_player_turn()
 	return true
+
+## Is there a lit brazier beside the player with enough heat left to forge?
+func can_forge_here() -> bool:
+	var b := _adjacent_brazier()
+	return b.x >= 0 and int(brazier_charge.get(b, 0)) >= MERGE_COST
+
+## Merge the item at `index` with an identical one from the pack, at a brazier.
+func player_merge(index: int) -> bool:
+	if game_over or index < 0 or index >= player.inventory.size():
+		return false
+	var item: Item = player.inventory[index]
+
+	if not item.is_equipment():
+		msg_log.add("Only weapons and armour can be worked.", Color(0.7, 0.6, 0.4))
+		return false
+	if not item.can_upgrade():
+		msg_log.add("The %s cannot take another edge." % item.display_name(),
+			Color(0.7, 0.6, 0.4))
+		return false
+
+	var brazier := _adjacent_brazier()
+	if brazier.x < 0:
+		msg_log.add("You need a lit brazier to work metal.", Color(0.7, 0.6, 0.4))
+		return false
+	if int(brazier_charge.get(brazier, 0)) < MERGE_COST:
+		msg_log.add("The brazier has not the heat left.", Color(0.7, 0.6, 0.4))
+		return false
+
+	var donor := _find_duplicate(item)
+	if donor == null:
+		msg_log.add("You have nothing else like the %s." % item.name,
+			Color(0.7, 0.6, 0.4))
+		return false
+
+	_travel.clear()
+	if player.is_equipped(donor):
+		player.equipped.erase(donor.slot)
+	player.inventory.erase(donor)
+	donor.letter = ""
+
+	item.upgrade()
+	brazier_charge[brazier] = int(brazier_charge[brazier]) - MERGE_COST
+	msg_log.add("You work the metal together over the flame. (%s)" % item.display_name(),
+		Color(0.85, 0.88, 0.70))
+	if int(brazier_charge[brazier]) <= 0:
+		brazier_charge.erase(brazier)
+		map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_SPENT)
+		_gather_lights()
+		msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
+
+	_end_player_turn()
+	return true
+
+## Any other item of the same kind, whatever its own upgrade level.
+##
+## Requiring matched levels was the first version and it made the cost
+## geometric -- four daggers for a +2 rather than three. The cap already does
+## the balancing, so the simpler rule wins.
+func _find_duplicate(item: Item) -> Item:
+	for other in player.inventory:
+		if other != item and other.id == item.id:
+			return other
+	return null
 
 ## A lit brazier beside the player with something left in it.
 func _adjacent_brazier() -> Vector2i:
