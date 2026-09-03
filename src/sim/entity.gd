@@ -64,6 +64,12 @@ var attack_range: int = 1
 var flee_below: float = 0.0
 var fleeing: bool = false
 
+## Hit points recovered each turn. A regenerating monster cannot be chipped
+## down and then escaped from -- you either commit to the kill or you have
+## wasted the damage, which makes disengaging a real decision rather than a
+## free one.
+var regen: int = 0
+
 ## Monsters start asleep. Until this pass everything was omnisciently aware the
 ## instant the player could see it, which handed the initiative to whatever was
 ## in the room.

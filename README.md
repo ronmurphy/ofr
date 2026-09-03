@@ -81,6 +81,21 @@ differently instead:
 | `ranged` | kobold slinger | attacks along a clear line, and backs off when you close |
 | `pack` | goblin | bold with allies nearby, hesitant alone |
 
+Beyond the deepest tier the fade **stops advancing**, so the heaviest monsters
+stay at full weight. Without that clamp the ascent, which runs past depth 10,
+would fade every monster in the game out of the pool and generate empty floors.
+
+The deep tiers (ogre, harpy, cave troll, wight, wyvern, stone golem, shadow,
+young dragon) run from depth 5 to 10, with power from 7 upward. That floor on
+power is not arbitrary: below it a levelled character in chain mail simply
+stops taking damage, and the dungeon gets *easier* the deeper you go. They also
+carry the entire ascent, which runs at effective depths of 10 to 19.
+
+A **cave troll regenerates** two hit points a turn, awake or asleep. That makes
+disengaging a real decision -- wound one, run, come back and it is whole again,
+so you either commit to the kill or you wasted the damage. The look panel marks
+regenerating monsters with a `*`.
+
 Any monster can also have a **morale** threshold and run when badly hurt --
 except the undead, which never break. A cornered animal with nowhere to run
 fights instead.

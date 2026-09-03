@@ -35,6 +35,17 @@ const TABLE := {
 	&"orc":         {"ch": "o", "fg": Color("b5643c")},
 	# Capital marks the ranged variant of a family -- it shoots back.
 	&"slinger":     {"ch": "K", "fg": Color("d8a04a")},
+
+	# Deep tiers. Capitals throughout: in a glance-read game the letter case
+	# should tell you the weight of the thing before the colour does.
+	&"ogre":        {"ch": "O", "fg": Color("8a9a5b")},
+	&"harpy":       {"ch": "H", "fg": Color("a87fb8")},
+	&"troll":       {"ch": "T", "fg": Color("6fa15c")},
+	&"wight":       {"ch": "w", "fg": Color("b8c4d8")},
+	&"wyvern":      {"ch": "W", "fg": Color("c05a3a")},
+	&"golem":       {"ch": "G", "fg": Color("9aa0a8")},
+	&"shadow":      {"ch": "S", "fg": Color("8a63c4")},
+	&"dragon":      {"ch": "D", "fg": Color("e8a63c")},
 }
 
 const FALLBACK := {"ch": "?", "fg": Color.MAGENTA, "bg": Palette.BG}

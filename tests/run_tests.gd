@@ -55,6 +55,8 @@ func _initialize() -> void:
 	_test_materials_are_painted()
 	_test_experience_and_levels()
 	_test_armour_reduces_but_never_negates()
+	_test_deep_tiers()
+	_test_regeneration()
 	_report_encounter_curve()
 
 	print("")
@@ -616,6 +618,68 @@ func _test_armour_reduces_but_never_negates() -> void:
 		gs._attack(rat, gs.player)
 		seen = maxi(seen, b - gs.player.hp)
 	check("a rat against light armour is unchanged", seen <= 2, "%d" % seen)
+
+func _test_deep_tiers() -> void:
+	var shallow := {}
+	for i in 30:
+		var gs := GameState.new(6100 + i)
+		gs.new_game()
+		for e in gs.entities:
+			if not e.is_player:
+				shallow[e.name] = true
+	check("no dragons on depth 1", not shallow.has("young dragon"))
+	check("no ogres on depth 1", not shallow.has("ogre"))
+
+	var deep := {}
+	for i in 30:
+		var gs := GameState.new(6200 + i)
+		gs.new_game()
+		gs.depth = 10
+		gs.build_level()
+		for e in gs.entities:
+			if not e.is_player:
+				deep[e.name] = true
+	check("deep floors field the heavy tiers",
+		deep.has("young dragon") or deep.has("stone golem") or deep.has("shadow"),
+		str(deep.keys()))
+	check("and the starting rabble has faded out",
+		not deep.has("giant rat") and not deep.has("kobold"), str(deep.keys()))
+
+	# The ascent runs at effective depths past the deepest tier. Without the
+	# fade clamp every monster would drop out of the pool and floors would
+	# generate empty.
+	var ascent := 0
+	for i in 20:
+		var gs := GameState.new(6300 + i)
+		gs.new_game()
+		gs.depth = 19
+		gs.build_level()
+		for e in gs.entities:
+			if not e.is_player:
+				ascent += 1
+	check("floors beyond the deepest tier still populate (%d)" % ascent,
+		ascent > 0, "%d" % ascent)
+
+func _test_regeneration() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 15
+	gs.player.y = 4
+
+	var troll := _spawn(gs, "cave troll", 3, 4)
+	troll.alertness = Entity.Alert.ASLEEP
+	troll.hp = 10
+	gs._take_ai_turn(troll)
+	check("a troll knits itself back together even asleep",
+		troll.hp == 10 + troll.regen, "%d" % troll.hp)
+
+	troll.hp = troll.max_hp
+	gs._take_ai_turn(troll)
+	check("and never past full", troll.hp == troll.max_hp)
+
+	var orc := _spawn(gs, "orc", 4, 6)
+	orc.hp = 5
+	gs._take_ai_turn(orc)
+	check("things without regeneration stay wounded", orc.hp == 5)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

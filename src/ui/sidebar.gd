@@ -190,7 +190,10 @@ func _describe() -> Array:
 	if m.is_visible(hovered.x, hovered.y):
 		for e in state.entities:
 			if e.alive and e.x == hovered.x and e.y == hovered.y:
-				out.append("%s  %d/%d hp" % [e.name, e.hp, e.max_hp])
+				var tag := "%s  %d/%d hp" % [e.name, e.hp, e.max_hp]
+				if e.regen > 0:
+					tag += " *"
+				out.append(tag)
 		for it in state.items_at(hovered.x, hovered.y):
 			out.append(it.name)
 	else:

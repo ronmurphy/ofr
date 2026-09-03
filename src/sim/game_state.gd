@@ -152,7 +152,42 @@ const BESTIARY := [
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "min_depth": 3, "threat": 8},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "min_depth": 4, "threat": 10},
+
+	# --- deep tiers -------------------------------------------------------
+	# Power from 7 upward, because below that a levelled character in chain
+	# mail simply stops taking damage and the dungeon gets easier as it goes
+	# deeper. These also carry the whole ascent, which runs at effective
+	# depths of 10 to 19.
+	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "min_depth": 5, "threat": 14},
+	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
+	 "speed": 160, "ai": &"erratic", "flee": 0.25, "min_depth": 5, "threat": 12},
+	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "min_depth": 6,
+	 "threat": 16},
+	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "min_depth": 7, "threat": 17},
+	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
+	 "speed": 140, "ai": &"hunter", "flee": 0.10, "min_depth": 7, "threat": 20},
+	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
+	 "speed": 70, "ai": &"hunter", "flee": 0.0, "min_depth": 8, "threat": 20},
+	{"name": "shadow", "app": &"shadow", "hp": 20, "power": 13, "def": 1,
+	 "speed": 130, "ai": &"erratic", "flee": 0.0, "min_depth": 9, "threat": 19},
+	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
+	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "min_depth": 10,
+	 "threat": 28},
 ]
+
+## The deepest tier that exists.
+##
+## Beyond it the tier fade stops progressing. Without this the ascent -- which
+## runs at effective depths of 10 to 19 -- would fade every monster in the game
+## out of the pool and generate empty floors.
+static func deepest_tier() -> int:
+	var d := 1
+	for e in BESTIARY:
+		d = maxi(d, int(e["min_depth"]))
+	return d
 
 func _init(seed_value: int = 0) -> void:
 	if seed_value == 0:
@@ -309,6 +344,7 @@ func _spawn_in(area: Rect2i, remaining: int) -> int:
 	m.ai = pick.get("ai", &"hunter")
 	m.attack_range = pick.get("range", 1)
 	m.flee_below = pick.get("flee", 0.0)
+	m.regen = pick.get("regen", 0)
 	m.threat = int(pick["threat"])
 	entities.append(m)
 	return m.threat
@@ -322,12 +358,15 @@ func _spawn_in(area: Rect2i, remaining: int) -> int:
 func _roll_monster(remaining: int) -> Dictionary:
 	var pool := []
 	var total := 0.0
+	# Past the deepest tier the fade stops advancing, so the heaviest monsters
+	# stay at full weight instead of everything vanishing.
+	var effective := mini(depth, deepest_tier() + TIER_GRACE)
 	for e in BESTIARY:
 		if e["min_depth"] > depth:
 			continue
 		if int(e["threat"]) > remaining:
 			continue
-		var band := depth - int(e["min_depth"])
+		var band := effective - int(e["min_depth"])
 		var weight := 1.0 - TIER_FADE * float(maxi(0, band - TIER_GRACE))
 		if weight <= 0.0:
 			continue
@@ -783,6 +822,11 @@ func _run_world() -> void:
 func _take_ai_turn(actor: Entity) -> void:
 	if not actor.alive or game_over:
 		return
+
+	# Regeneration ticks even while asleep, so a troll you wounded and fled
+	# from is whole again when you come back. That is the point of it.
+	if actor.regen > 0 and actor.hp < actor.max_hp:
+		actor.hp = mini(actor.max_hp, actor.hp + actor.regen)
 
 	_update_awareness(actor)
 	# Asleep, or merely stirring: it spends its turn not acting. That pause is

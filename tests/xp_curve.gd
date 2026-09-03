@@ -32,9 +32,10 @@ func _initialize() -> void:
 		var df := []
 		var xp := []
 		var ceil_at := []
+		var mob_pow := []
 		for d in MAX_DEPTH:
 			lv.append(0.0); hp.append(0.0); pw.append(0.0)
-			df.append(0.0); xp.append(0.0); ceil_at.append(0)
+			df.append(0.0); xp.append(0.0); ceil_at.append(0); mob_pow.append(0.0)
 
 		for r in RUNS:
 			var gs := GameState.new(50000 + r)
@@ -51,15 +52,26 @@ func _initialize() -> void:
 				df[i] += gs.player.defense
 				xp[i] += gs.player.xp
 				ceil_at[i] = gs.room_threat_ceiling()
+				var mp := 0.0
+				var n := 0
+				for e in gs.entities:
+					if not e.is_player:
+						mp += e.power
+						n += 1
+				mob_pow[i] += mp / maxf(1.0, float(n))
 				gs.player.x = gs.stairs.x
 				gs.player.y = gs.stairs.y
 				gs.player_descend()
 
 		print("  %s" % style[0])
-		print("    depth  ceiling   level     hp   power   def       xp")
+		print("    depth  ceiling   level     hp   power   def       xp   mob pow   dmg taken")
 		for i in MAX_DEPTH:
-			print("      %-2d      %3d    %5.1f  %5.1f   %5.1f  %4.1f   %6.0f"
+			# Assume tier-appropriate armour: roughly +1 defense per 3 depths.
+			var gear_def: float = df[i] / RUNS + minf(5.0, float(i) / 2.0)
+			var mob: float = mob_pow[i] / RUNS
+			var taken: float = maxf(ceil(mob * 0.25), mob - gear_def)
+			print("      %-2d      %3d    %5.1f  %5.1f   %5.1f  %4.1f   %6.0f    %5.1f      %5.1f"
 				% [i + 1, ceil_at[i], lv[i] / RUNS, hp[i] / RUNS,
-				   pw[i] / RUNS, df[i] / RUNS, xp[i] / RUNS])
+				   pw[i] / RUNS, df[i] / RUNS, xp[i] / RUNS, mob, taken])
 		print("")
 	quit()
