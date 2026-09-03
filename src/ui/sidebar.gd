@@ -56,7 +56,22 @@ func _draw() -> void:
 	_line(font_bold, y, "OFR", Palette.STAIRS)
 	y += LINE
 	_line(font, y, "depth %d    turn %d" % [state.depth, state.turns], Palette.UI_DIM)
-	y += LINE * 1.6
+	y += LINE
+
+	# Level, with progress toward the next one. The bar matters more than the
+	# number: it answers "is one more fight worth it" at a glance.
+	var into := state.xp_into_level()
+	var need := maxi(1, state.xp_needed_for_next())
+	draw_string(font_bold, Vector2(PAD, y), "level %d" % state.player.level,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.STAIRS)
+	draw_string(font, Vector2(PAD, y), "%d/%d" % [into, need],
+		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, Palette.UI_DIM)
+	y += 7.0
+	var xp_w := size.x - PAD * 2.0
+	draw_rect(Rect2(Vector2(PAD, y), Vector2(xp_w, 5)), Color("1e1f26"), true)
+	draw_rect(Rect2(Vector2(PAD, y), Vector2(xp_w * clampf(float(into) / float(need), 0.0, 1.0), 5)),
+		Palette.STAIRS, true)
+	y += 5 + LINE * 1.2
 
 	# Health bar. A bar plus the numbers -- the bar for the glance, the numbers
 	# for the decision about whether one more fight is survivable.

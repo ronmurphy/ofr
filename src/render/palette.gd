@@ -34,6 +34,22 @@ const SCROLL        := Color("cfc39a")
 const WEAPON        := Color("9fb3c8")
 const ARMOUR        := Color("a89a7c")
 
+## Material tints, applied to terrain base colours -- deliberately NOT to the
+## light.
+##
+## The lighting channel already carries meaning: warm means lit right now, cold
+## blue means remembered. Tinting the torch for a flooded room, which is the
+## obvious implementation, would collide with that read and make a lit room
+## look like a recalled one. Tinting the stone instead gives the same
+## atmosphere and leaves the most important signal on screen intact.
+const MATERIAL_TINT := {
+	Materials.STONE:   Color(1.00, 1.00, 1.00),
+	Materials.FLOODED: Color(0.68, 0.95, 1.10),
+	Materials.RUIN:    Color(1.12, 0.88, 0.70),
+	Materials.SANCTUM: Color(1.10, 1.01, 0.76),
+	Materials.CAVERN:  Color(1.05, 0.93, 0.80),
+}
+
 ## Explored-but-unlit terrain. Cold and desaturated, so memory reads as memory
 ## and never competes with what is actually lit.
 const MEMORY        := Color("2b3347")

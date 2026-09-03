@@ -255,7 +255,13 @@ func _run() -> void:
 	_scene._refresh()
 	for _i in 3:
 		await process_frame
-	await _shot("16_stairs.png")
+	for boost in [1.0, 1.8, 2.6]:
+		_scene.grid.memory_material_boost = boost
+		_scene._refresh()
+		for _i in 2:
+			await process_frame
+		await _shot("16_biome_%.1f.png" % boost)
+	_scene.grid.memory_material_boost = 1.8
 
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.

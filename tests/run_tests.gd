@@ -52,6 +52,9 @@ func _initialize() -> void:
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
 	_test_forging()
+	_test_materials_are_painted()
+	_test_experience_and_levels()
+	_test_armour_reduces_but_never_negates()
 	_report_encounter_curve()
 
 	print("")
@@ -487,6 +490,132 @@ func _test_forging() -> void:
 	check("and it is no longer equipped", not worn.player.is_equipped(donor))
 	check("armour gains defense, not power",
 		keep.defense_bonus == keep.base_defense_bonus + 1)
+
+## Materials are what finally make the archetypes visible. Without a check
+## here, a generator change could silently stop painting them and the only
+## symptom would be a map that quietly got harder to read.
+func _test_materials_are_painted() -> void:
+	var seen := {}
+	var caverns_ok := 0
+	var caves := 0
+	for i in 40:
+		var gs := GameState.new(41000 + i)
+		gs.new_game()
+		for y in gs.map.height:
+			for x in gs.map.width:
+				seen[gs.map.material_at(x, y)] = true
+		for region in gs.cave_regions:
+			caves += 1
+			var c := region.get_center()
+			if gs.map.material_at(c.x, c.y) == Materials.CAVERN:
+				caverns_ok += 1
+
+	check("plain stone is painted", seen.has(Materials.STONE))
+	check("flooded rooms are painted", seen.has(Materials.FLOODED))
+	check("ruined rooms are painted", seen.has(Materials.RUIN))
+	check("sanctums are painted", seen.has(Materials.SANCTUM))
+	check("caverns are painted", seen.has(Materials.CAVERN))
+	check("every cave centre reads as cavern (%d/%d)" % [caverns_ok, caves],
+		caverns_ok == caves, "%d of %d" % [caverns_ok, caves])
+	var probe := GameState.new(1)
+	probe.new_game()
+	check("out of bounds falls back to stone",
+		probe.map.material_at(-5, -5) == Materials.STONE)
+
+func _test_experience_and_levels() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	check("a new character is level 1 with no xp",
+		gs.player.level == 1 and gs.player.xp == 0)
+	check("level 1 costs nothing", gs.xp_for_level(1) == 0)
+	check("levels cost progressively more",
+		gs.xp_for_level(3) - gs.xp_for_level(2)
+			< gs.xp_for_level(4) - gs.xp_for_level(3))
+
+	# A kill pays its threat, which is the same number the ceiling is built on.
+	var orc := _spawn(gs, "orc", 6, 4)
+	orc.hp = 1
+	gs.player.power = 99
+	gs._attack(gs.player, orc)
+	check("killing something awards its threat", gs.player.xp == orc.threat,
+		"%d vs %d" % [gs.player.xp, orc.threat])
+
+	var before_hp := gs.player.max_hp
+	var before_power := gs.player.power
+	gs.award_xp(gs.xp_for_level(2))
+	check("enough xp raises the level", gs.player.level == 2)
+	check("a level grants hit points",
+		gs.player.max_hp == before_hp + GameState.LEVEL_HP)
+	check("and power on even levels", gs.player.power == before_power + 1)
+
+	# A single large award must be able to cross several thresholds at once.
+	gs.award_xp(gs.xp_for_level(6))
+	check("one award can cross several levels", gs.player.level >= 5,
+		"%d" % gs.player.level)
+
+	# Descending pays a multiple of the ceiling for the floor just left.
+	var deep := GameState.new(777)
+	deep.new_game()
+	var expected := deep.room_threat_ceiling() * GameState.XP_DEPTH_MULTIPLIER
+	deep.player.x = deep.stairs.x
+	deep.player.y = deep.stairs.y
+	check("descending succeeds", deep.player_descend())
+	check("and pays for the floor survived", deep.player.xp == expected,
+		"%d vs %d" % [deep.player.xp, expected])
+	check("the payment uses the OLD floor's ceiling",
+		expected < deep.room_threat_ceiling() * GameState.XP_DEPTH_MULTIPLIER)
+
+	# Stealth must not fall hopelessly behind: descending alone has to be a
+	# meaningful share of what clearing the floor would pay.
+	var ghost := GameState.new(4242)
+	ghost.new_game()
+	var floor_kills := 0
+	for e in ghost.entities:
+		if not e.is_player:
+			floor_kills += e.threat
+	var descend_pay := ghost.room_threat_ceiling() * GameState.XP_DEPTH_MULTIPLIER
+	check("descending is worth a real share of clearing (%d vs %d)"
+		% [descend_pay, floor_kills], descend_pay * 2 >= floor_kills)
+
+## Armour must stay worth wearing without becoming immunity.
+func _test_armour_reduces_but_never_negates() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+
+	var orc := _spawn(gs, "orc", 6, 4)
+	orc.alertness = Entity.Alert.AWAKE
+
+	# Defense equal to the attacker's power used to floor damage at 1.
+	gs.player.defense = orc.power
+	var worst := 0
+	for _i in 60:
+		var before := gs.player.hp
+		gs._attack(orc, gs.player)
+		worst = maxi(worst, before - gs.player.hp)
+	var least := int(ceil(float(orc.power) * GameState.DAMAGE_FLOOR_FRACTION))
+	check("heavy armour never reduces a blow to nothing", worst >= least,
+		"worst %d, floor %d" % [worst, least])
+
+	# Absurd armour still cannot make you immune.
+	gs.player.defense = 999
+	var before2 := gs.player.hp
+	gs._attack(orc, gs.player)
+	check("even absurd armour leaves the floor intact",
+		before2 - gs.player.hp >= least)
+
+	# And the early game is untouched: a rat still does what it always did.
+	var rat := _spawn(gs, "giant rat", 4, 4)
+	gs.player.defense = 1
+	var seen := 0
+	for _i in 40:
+		var b := gs.player.hp
+		gs._attack(rat, gs.player)
+		seen = maxi(seen, b - gs.player.hp)
+	check("a rat against light armour is unchanged", seen <= 2, "%d" % seen)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

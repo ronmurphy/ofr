@@ -26,6 +26,44 @@ const BRAZIER_HEAL := 2
 ## because it punishes using the good item and players simply hoard it.
 const MERGE_COST := 4
 
+## Experience.
+##
+## A kill is worth its `threat` -- that value already IS this game's challenge
+## rating, hand-tuned for what makes something dangerous to a lone character,
+## so there is no second table to keep in sync.
+##
+## Descending pays a multiple of the threat ceiling for the floor just left.
+## Tying it to the ceiling means the same number that decides how hard a floor
+## may be also decides what surviving it is worth: change one and the other
+## follows, with no drift.
+##
+## The split matters because stealth is intended play. If XP came only from
+## kills, creeping past things -- the mode the game is built around -- would
+## quietly fall behind the depth curve. Descending is the main driver, fighting
+## is the accelerator.
+const XP_DEPTH_MULTIPLIER := 6
+
+## Levels cost quadratically more, NOT exponentially like D&D. See the README:
+## D&D's curve is shaped around campaign tiers across dozens of sessions, and
+## transplanted here it would grant three levels on floor one and then nothing
+## for an hour.
+const XP_CURVE_A := 18
+const XP_CURVE_B := 42
+
+const LEVEL_HP := 5
+
+## The least a blow can be reduced to, as a fraction of the attacker's power.
+##
+## Flat damage reduction has a known failure mode: negligible while small, then
+## absolute once defense catches up to power. Measured at depth 8, a levelled
+## player in chain mail took the floored minimum of 1 from every orc in the
+## game -- sixty hit points against one damage a hit.
+##
+## A floor tied to the attacker keeps armour worth wearing without ever making
+## it immunity, and it makes the armour curve smooth instead of cliff-edged. It
+## barely touches the early game: nothing changes at depths 1-3.
+const DAMAGE_FLOOR_FRACTION := 0.25
+
 ## The threat ceiling.
 ##
 ## Deliberately a CEILING, not a budget. A budget would shape every room toward
@@ -452,6 +490,38 @@ func player_wait() -> bool:
 	_end_player_turn()
 	return true
 
+## Total experience required to have reached `n`.
+func xp_for_level(n: int) -> int:
+	if n <= 1:
+		return 0
+	var k := n - 1
+	return XP_CURVE_A * k * k + XP_CURVE_B * k
+
+func xp_into_level() -> int:
+	return player.xp - xp_for_level(player.level)
+
+func xp_needed_for_next() -> int:
+	return xp_for_level(player.level + 1) - xp_for_level(player.level)
+
+func award_xp(amount: int) -> void:
+	if amount <= 0:
+		return
+	player.xp += amount
+	while player.xp >= xp_for_level(player.level + 1):
+		_level_up()
+
+func _level_up() -> void:
+	player.level += 1
+	player.max_hp += LEVEL_HP
+	# Healed by the gain, so a level is a small reprieve as well as a stat bump.
+	player.hp = mini(player.max_hp, player.hp + LEVEL_HP)
+	if player.level % 2 == 0:
+		player.power += 1
+	if player.level % 3 == 0:
+		player.defense += 1
+	msg_log.add("You reach level %d." % player.level, Color(0.98, 0.90, 0.45))
+	events.append({"kind": &"levelup", "to": Vector2i(player.x, player.y)})
+
 ## Is there a lit brazier beside the player with enough heat left to forge?
 func can_forge_here() -> bool:
 	var b := _adjacent_brazier()
@@ -530,9 +600,12 @@ func player_descend() -> bool:
 	if map.get_tile(player.x, player.y) != Tiles.STAIRS_DOWN:
 		msg_log.add("There are no stairs here.", Color(0.7, 0.6, 0.4))
 		return false
+	# Paid for the floor just survived, not the one being entered.
+	var earned := room_threat_ceiling() * XP_DEPTH_MULTIPLIER
 	depth += 1
 	build_level()
 	msg_log.add("You descend to depth %d." % depth, Color(0.85, 0.72, 0.45))
+	award_xp(earned)
 	return true
 
 func player_pickup() -> bool:
@@ -907,7 +980,9 @@ func _step_away(actor: Entity) -> bool:
 	return true
 
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
-	var dmg := maxi(1, attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1))
+	var raw := attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1)
+	var least := int(ceil(float(attacker.total_power()) * DAMAGE_FLOOR_FRACTION))
+	var dmg := maxi(maxi(1, least), raw)
 	defender.take_damage(dmg)
 
 	events.append({
@@ -942,3 +1017,5 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
 		else:
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
+			if attacker.is_player:
+				award_xp(defender.threat)

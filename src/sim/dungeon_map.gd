@@ -12,6 +12,8 @@ extends RefCounted
 var width: int
 var height: int
 var tiles: PackedByteArray
+## Parallel to `tiles`: what each cell is built from. See Materials.
+var material: PackedByteArray
 var explored: PackedByteArray
 var visible_now: PackedByteArray
 
@@ -21,6 +23,8 @@ func _init(w: int, h: int) -> void:
 	var n := w * h
 	tiles.resize(n)
 	tiles.fill(Tiles.VOID)
+	material.resize(n)
+	material.fill(Materials.STONE)
 	explored.resize(n)
 	visible_now.resize(n)
 
@@ -38,6 +42,20 @@ func get_tile(x: int, y: int) -> int:
 func set_tile(x: int, y: int, t: int) -> void:
 	if in_bounds(x, y):
 		tiles[idx(x, y)] = t
+
+func material_at(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return Materials.STONE
+	return material[idx(x, y)]
+
+## Paints a rectangle, including one cell of surrounding wall so a room's
+## masonry carries its own material rather than the corridor's.
+func paint_material(rect: Rect2i, m: int) -> void:
+	var grown := rect.grow(1)
+	for y in range(grown.position.y, grown.end.y):
+		for x in range(grown.position.x, grown.end.x):
+			if in_bounds(x, y):
+				material[idx(x, y)] = m
 
 func is_walkable(x: int, y: int) -> bool:
 	return Tiles.is_walkable(get_tile(x, y))

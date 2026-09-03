@@ -47,8 +47,11 @@ var equipped: Dictionary = {}
 ##   erratic - moves unpredictably; hard to disengage from
 ##   ranged  - attacks along a clear line, and backs off when crowded
 ##   pack    - bold with allies nearby, hesitant alone
-## This game's challenge rating. Also what a kill will be worth in XP.
+## This game's challenge rating, and what a kill is worth in XP.
 var threat: int = 0
+
+var level: int = 1
+var xp: int = 0
 
 var ai: StringName = &"none"
 

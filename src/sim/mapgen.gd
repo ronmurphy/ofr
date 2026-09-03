@@ -43,6 +43,7 @@ func generate(map: DungeonMap) -> void:
 	_place_doors(map)
 	_decorate(map)
 	_naturalise_cave_walls(map)
+	_paint_materials(map)
 
 # ------------------------------------------------------------------ rooms ---
 
@@ -234,6 +235,20 @@ func _place_doors(map: DungeonMap) -> void:
 				var vert := not map.is_walkable(x - 1, y) and not map.is_walkable(x + 1, y)
 				if (horiz or vert) and rng.randf() < 0.55:
 					map.set_tile(x, y, Tiles.DOOR_CLOSED)
+
+## Materials ride on the archetypes the generator already assigns, so this adds
+## no new generation logic -- it just stops the renderer throwing that
+## information away.
+func _paint_materials(map: DungeonMap) -> void:
+	for region in caves:
+		map.paint_material(region, Materials.CAVERN)
+	for i in rooms.size():
+		var m := Materials.STONE
+		match archetypes[i]:
+			Archetype.POOL:      m = Materials.FLOODED
+			Archetype.COLLAPSED: m = Materials.RUIN
+			Archetype.SHRINE:    m = Materials.SANCTUM
+		map.paint_material(rooms[i], m)
 
 # ------------------------------------------------------------- decoration ---
 

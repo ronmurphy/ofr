@@ -33,6 +33,10 @@ enum WallStyle {
 ## where things were. A deadzone keeps the map still while you move around a
 ## room and only scrolls when you approach an edge.
 @export var scroll_margin: int = 8
+## How hard a room's material is re-asserted on remembered terrain. 1.0 is the
+## same strength as lit ground, which memory's desaturation mostly erases;
+## above that trades subtlety for legibility at a glance. Purely taste.
+@export var memory_material_boost: float = 1.8
 
 var state: GameState
 var render_theme: RenderTheme = AsciiTheme.new()
@@ -112,6 +116,11 @@ func _process(delta: float) -> void:
 func play_events(evts: Array) -> void:
 	for e in evts:
 		var to: Vector2i = e["to"]
+
+		if e["kind"] == &"levelup":
+			_effects.append({"type": &"popup", "cell": to, "t": 0.0,
+				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": font_size})
+			continue
 
 		if e["kind"] == &"notice":
 			# The Metal Gear beat: a big "!" over the head of whatever just
@@ -303,10 +312,12 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		fg = app["fg"]
 		bg = app.get("bg", Palette.BG)
 
+	var tint := _material_tint(map.material_at(x, y), 1.0)
+
 	if visible_here:
 		var lit: Color = state.light_map.get_light(x, y) * _flicker
-		fg = (fg * lit).clamp()
-		bg = (bg * lit).clamp()
+		fg = (fg * tint * lit).clamp()
+		bg = (bg * tint * lit).clamp()
 	elif tile == Tiles.STAIRS_DOWN:
 		# Exempt from memory dimming, and breathing gently so the eye finds it
 		# on a large map.
@@ -315,8 +326,17 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 			Palette.STAIRS_KNOWN.b * pulse, 1.0)
 		bg = _remembered(bg)
 	else:
-		fg = _remembered(fg)
-		bg = _remembered(bg)
+		# The material is re-applied, harder, after desaturation -- without it
+		# every remembered room washes to the same blue and the whole point,
+		# telling one room from another on the memory map, is lost.
+		#
+		# But brightness is held to exactly what untinted memory would have
+		# been. A tint that lifts luminance makes a remembered room read as a
+		# lit one, which is the same collision as tinting the torch, arriving
+		# by a different route.
+		var memory_tint := _material_tint(map.material_at(x, y), memory_material_boost)
+		fg = _tint_keeping_luma(_remembered(fg), memory_tint)
+		bg = _tint_keeping_luma(_remembered(bg), memory_tint)
 
 	var origin := _screen(Vector2i(x, y))
 	var cell := Vector2(cell_size, cell_size)
@@ -461,6 +481,23 @@ func _draw_popup(e: Dictionary, t: float) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Color(0, 0, 0, a * 0.8))
 	draw_string(font, pos - Vector2(w * 0.5, 0.0), text,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, Color(e["colour"], a))
+
+## `strength` above 1 over-drives the tint, which is what keeps materials
+## legible once memory has desaturated them.
+func _material_tint(m: int, strength: float) -> Color:
+	var t: Color = Palette.MATERIAL_TINT[m]
+	return Color.WHITE.lerp(t, strength)
+
+## Shifts hue by `tint` while holding the original brightness.
+func _tint_keeping_luma(c: Color, tint: Color) -> Color:
+	var before := c.get_luminance()
+	if before <= 0.001:
+		return c
+	var out := c * tint
+	var after := out.get_luminance()
+	if after <= 0.001:
+		return c
+	return (out * (before / after)).clamp()
 
 ## Cheap deterministic noise in [0,1) from a cell coordinate.
 func _hash01(x: int, y: int) -> float:

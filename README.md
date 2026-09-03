@@ -10,6 +10,7 @@ Godot 4.7. Windows and Linux.
 
     godot                                        # play
     godot --headless --script res://tests/run_tests.gd   # simulation tests
+    godot --headless --script res://tests/xp_curve.gd    # power vs threat curve
     godot --script res://tests/capture.gd -- /tmp/shots  # screenshots
 
 ## Controls
@@ -188,6 +189,56 @@ most likely to be noticed. An instant heal would have been free, and a free
 heal is not a decision.
 
 Resting at full health wastes nothing.
+
+## Experience and levels
+
+A kill is worth its `threat` -- the same number the encounter ceiling is built
+from, so there is no second table to keep in sync. Descending pays
+`ceiling x 6` for the floor just survived.
+
+**The split exists because stealth is intended play.** If XP came only from
+kills, creeping past things would quietly fall behind the depth curve and the
+game would punish its own best mode. Measured over 20 runs to depth 10, a
+player who kills nothing still earns 46% of what one who kills everything does
+-- behind, but not hopeless. Descending drives progress; fighting accelerates
+it.
+
+A level grants +5 max hit points (healed immediately), +1 power on even levels
+and +1 defense every third.
+
+### Why not D&D's curve
+
+D&D 2024's table is 300 / 900 / 2,700 / 6,500 / 14,000 -- explosive early, then
+flattening. That shape is built around campaign tiers across dozens of
+sessions, where levels 1-4 are meant to pass quickly. Scaled to a run of this
+length it would grant three levels on the first floor and then almost nothing
+for an hour. What transfers is the *principle* that each level costs more than
+the last; the rate does not. Ours is quadratic rather than exponential.
+
+Run `tests/xp_curve.gd` after changing any of it.
+
+## Room materials
+
+Every room already had an archetype -- plain, pillared, shrine, collapsed,
+pool. The renderer drew them all in identical stone, so that information was
+generated and then thrown away. `materials.gd` gives each region a semantic
+material (stone, flooded, ruin, sanctum, cavern) and the palette turns that
+into colour.
+
+**This is navigation, not decoration.** At 96x54 every remembered room used to
+look like every other remembered room; now you recall *the flooded room* rather
+than *a room*.
+
+Two rules keep it from breaking the thing it sits on top of:
+
+- **The terrain is tinted, never the light.** The lighting channel already
+  carries meaning -- warm is lit now, cold blue is remembered -- and tinting a
+  flooded room's torchlight blue would make lit ground read as recalled ground.
+  Tinting the stone gives the same atmosphere and leaves that signal intact.
+- **Remembered terrain keeps its brightness.** The material is re-asserted
+  harder after desaturation (`memory_material_boost`, default 1.8) or memory
+  washes every room to the same blue -- but luminance is held to what untinted
+  memory would have been, so a tinted room never reads as a lit one.
 
 ## The camera
 
