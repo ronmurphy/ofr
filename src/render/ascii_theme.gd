@@ -31,6 +31,8 @@ const TABLE := {
 	&"bat":         {"ch": "b", "fg": Color("8e6fa8")},
 	&"skeleton":    {"ch": "s", "fg": Color("d6d2c4")},
 	&"orc":         {"ch": "o", "fg": Color("b5643c")},
+	# Capital marks the ranged variant of a family -- it shoots back.
+	&"slinger":     {"ch": "K", "fg": Color("d8a04a")},
 }
 
 const FALLBACK := {"ch": "?", "fg": Color.MAGENTA, "bg": Palette.BG}

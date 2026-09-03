@@ -29,6 +29,13 @@ func _initialize() -> void:
 	_test_pillar_casts_a_shadow()
 	_test_spawn_points_are_open()
 	_test_caves_are_reachable()
+	_test_line_of_sight()
+	_test_ranged_attacks_from_afar()
+	_test_a_pillar_stops_an_arrow()
+	_test_wounded_monsters_flee()
+	_test_cornered_monsters_fight()
+	_test_erratic_is_not_a_beeline()
+	_test_goblins_are_bolder_together()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -42,7 +49,162 @@ func check(name: String, condition: bool, detail: String = "") -> void:
 		_failed += 1
 		print("  FAIL  %s   %s" % [name, detail])
 
+# --------------------------------------------------------------- helpers ----
+
+## A controlled open arena, so AI tests are not at the mercy of whatever the
+## dungeon generator felt like producing.
+func _arena(w: int, h: int) -> GameState:
+	var gs := GameState.new(1)
+	gs.new_game()
+	gs.map = DungeonMap.new(w, h)
+	for y in range(1, h - 1):
+		for x in range(1, w - 1):
+			gs.map.set_tile(x, y, Tiles.FLOOR)
+	gs.map.set_all_visible()
+	gs.light_map = LightMap.new(w, h)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs.entities = [gs.player]
+	gs.ground = []
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+	return gs
+
+func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
+	for e in GameState.BESTIARY:
+		if e["name"] != mname:
+			continue
+		var m := Entity.new(e["name"], e["app"], x, y)
+		m.max_hp = e["hp"]
+		m.hp = e["hp"]
+		m.power = e["power"]
+		m.defense = e["def"]
+		m.speed = e["speed"]
+		m.ai = e.get("ai", &"hunter")
+		m.attack_range = e.get("range", 1)
+		m.flee_below = e.get("flee", 0.0)
+		gs.entities.append(m)
+		return m
+	return null
+
 # ---------------------------------------------------------------- tests ----
+
+func _test_line_of_sight() -> void:
+	var m := DungeonMap.new(15, 5)
+	for y in 5:
+		for x in 15:
+			m.set_tile(x, y, Tiles.FLOOR)
+	check("clear line across open floor", Los.clear(m, 1, 2, 12, 2))
+
+	m.set_tile(6, 2, Tiles.PILLAR)
+	check("a pillar breaks the line", not Los.clear(m, 1, 2, 12, 2))
+	check("a parallel line is unaffected", Los.clear(m, 1, 1, 12, 1))
+
+	# A brazier is solid but see-through, so it must not stop an arrow.
+	m.set_tile(6, 2, Tiles.BRAZIER)
+	check("a brazier does not break the line", Los.clear(m, 1, 2, 12, 2))
+	check("diagonals count as one step", Los.steps(0, 0, 3, 3) == 3)
+
+func _test_ranged_attacks_from_afar() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	var archer := _spawn(gs, "kobold slinger", 9, 4)
+	var hp_before := gs.player.hp
+	var where := Vector2i(archer.x, archer.y)
+	gs._take_ai_turn(archer)
+	check("an archer hurts you from six cells away", gs.player.hp < hp_before)
+	check("and does not close the distance to do it",
+		Vector2i(archer.x, archer.y) == where)
+
+## The whole justification for the behaviour pass: cover now works.
+func _test_a_pillar_stops_an_arrow() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.map.set_tile(6, 4, Tiles.PILLAR)
+	gs.pathfinder = Pathfinder.new(gs.map)
+
+	var archer := _spawn(gs, "kobold slinger", 9, 4)
+	var hp_before := gs.player.hp
+	gs._take_ai_turn(archer)
+	check("a pillar stops the arrow", gs.player.hp == hp_before)
+	check("the archer moves to regain its line",
+		Vector2i(archer.x, archer.y) != Vector2i(9, 4))
+
+func _test_wounded_monsters_flee() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	var rat := _spawn(gs, "giant rat", 7, 4)
+	rat.hp = 1
+	var before := Los.steps(rat.x, rat.y, gs.player.x, gs.player.y)
+	gs._take_ai_turn(rat)
+	check("a badly wounded rat breaks", rat.fleeing)
+	check("and it puts distance between you",
+		Los.steps(rat.x, rat.y, gs.player.x, gs.player.y) > before)
+
+	# A skeleton is mindless and must never run.
+	var bones := _spawn(gs, "skeleton", 9, 4)
+	bones.hp = 1
+	gs._take_ai_turn(bones)
+	check("undead never break", not bones.fleeing)
+
+func _test_cornered_monsters_fight() -> void:
+	var gs := _arena(5, 5)
+	gs.player.x = 2
+	gs.player.y = 2
+	var rat := _spawn(gs, "giant rat", 1, 1)
+	rat.hp = 1
+	var hp_before := gs.player.hp
+	gs._take_ai_turn(rat)
+	check("a cornered animal fights instead of cowering", gs.player.hp < hp_before)
+
+func _test_erratic_is_not_a_beeline() -> void:
+	var gs := _arena(25, 11)
+	gs.player.x = 3
+	gs.player.y = 5
+	var closed := 0
+	var trials := 60
+	for _i in trials:
+		var bat := _spawn(gs, "cave bat", 12, 5)
+		var before := Los.steps(bat.x, bat.y, gs.player.x, gs.player.y)
+		gs._take_ai_turn(bat)
+		if Los.steps(bat.x, bat.y, gs.player.x, gs.player.y) < before:
+			closed += 1
+		gs.entities.erase(bat)
+	check("a bat approaches sometimes but never reliably (%d/%d)" % [closed, trials],
+		closed > 5 and closed < trials - 5, "%d" % closed)
+
+func _test_goblins_are_bolder_together() -> void:
+	var trials := 50
+	var lone := 0
+	var together := 0
+
+	var gs := _arena(25, 11)
+	gs.player.x = 4
+	gs.player.y = 5
+	for _i in trials:
+		var g := _spawn(gs, "goblin", 12, 5)
+		var before := Vector2i(g.x, g.y)
+		gs._take_ai_turn(g)
+		if Vector2i(g.x, g.y) != before:
+			lone += 1
+		gs.entities.erase(g)
+
+	for _i in trials:
+		var g := _spawn(gs, "goblin", 12, 5)
+		var mate := _spawn(gs, "goblin", 13, 7)
+		var before := Vector2i(g.x, g.y)
+		gs._take_ai_turn(g)
+		if Vector2i(g.x, g.y) != before:
+			together += 1
+		gs.entities.erase(g)
+		gs.entities.erase(mate)
+
+	check("a lone goblin often hangs back (%d/%d advanced)" % [lone, trials],
+		lone < trials - 5, "%d" % lone)
+	check("goblins with company always advance (%d/%d)" % [together, trials],
+		together == trials, "%d" % together)
 
 func _test_terrain_properties() -> void:
 	check("pillars block movement", not Tiles.is_walkable(Tiles.PILLAR))

@@ -67,6 +67,31 @@ so a stat system later slots in there rather than at every call site. **No stat
 system was needed to make a sword work** -- that dependency only looks real
 when the feature list is read forwards.
 
+## Monsters
+
+Behaviour matters more than the stat block. Six monsters that all walk at you
+in a straight line are one monster with six stat blocks, so each family plays
+differently instead:
+
+| behaviour | who | what it does |
+|---|---|---|
+| `hunter` | rat, kobold, skeleton, orc | walks at you and hits you |
+| `erratic` | cave bat | moves unpredictably; you cannot reliably disengage *or* corner it |
+| `ranged` | kobold slinger | attacks along a clear line, and backs off when you close |
+| `pack` | goblin | bold with allies nearby, hesitant alone |
+
+Any monster can also have a **morale** threshold and run when badly hurt --
+except the undead, which never break. A cornered animal with nowhere to run
+fights instead.
+
+Capital glyphs mark the dangerous variant of a family: `K` is a kobold that
+shoots back.
+
+**`ranged` is the one that pays for the rest.** It needs a clear line, computed
+by `los.gd`, so stepping behind a pillar genuinely stops it. Until this pass
+the pillars, corridors and torch radius were a tactical stage with nothing on
+it that required tactics.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

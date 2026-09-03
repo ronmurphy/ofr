@@ -37,7 +37,21 @@ const INVENTORY_MAX := 20
 ## second screen to move things between two lists.
 var equipped: Dictionary = {}
 
+## How this actor decides what to do. See GameState._take_ai_turn.
+##   hunter  - walks at you and hits you
+##   erratic - moves unpredictably; hard to disengage from
+##   ranged  - attacks along a clear line, and backs off when crowded
+##   pack    - bold with allies nearby, hesitant alone
 var ai: StringName = &"none"
+
+## Attacks beyond 1 cell need a clear line of sight, which is what turns a
+## pillar from decoration into cover.
+var attack_range: int = 1
+
+## Runs once hp falls to this fraction of max. 0.0 never breaks -- undead and
+## mindless things should not.
+var flee_below: float = 0.0
+var fleeing: bool = false
 var light: LightSource = null
 
 var alive: bool = true

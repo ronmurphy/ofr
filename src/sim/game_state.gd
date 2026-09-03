@@ -36,13 +36,27 @@ var _fov_buffer := PackedByteArray()
 ## instant something hostile comes into view.
 var _travel: Array[Vector2i] = []
 
+## Behaviour matters more than the numbers here. Six monsters that all walk at
+## you in a straight line are one monster with six stat blocks; the point of
+## this pass is that a bat, an archer and a goblin now play differently.
+##
+## Capital glyphs mark the dangerous variant of a family -- K is a kobold that
+## shoots back.
 const BESTIARY := [
-	{"name": "giant rat",  "app": &"rat",      "hp": 4,  "power": 2, "def": 0, "speed": 120, "min_depth": 1},
-	{"name": "kobold",     "app": &"kobold",   "hp": 6,  "power": 3, "def": 0, "speed": 100, "min_depth": 1},
-	{"name": "goblin",     "app": &"goblin",   "hp": 9,  "power": 4, "def": 1, "speed": 100, "min_depth": 2},
-	{"name": "cave bat",   "app": &"bat",      "hp": 5,  "power": 3, "def": 0, "speed": 160, "min_depth": 2},
-	{"name": "skeleton",   "app": &"skeleton", "hp": 12, "power": 5, "def": 2, "speed": 90,  "min_depth": 3},
-	{"name": "orc",        "app": &"orc",      "hp": 16, "power": 6, "def": 2, "speed": 100, "min_depth": 4},
+	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
+	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1},
+	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "min_depth": 1},
+	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
+	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "min_depth": 2},
+	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
+	 "speed": 170, "ai": &"erratic", "flee": 0.0, "min_depth": 2},
+	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "min_depth": 2},
+	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "min_depth": 3},
+	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "min_depth": 4},
 ]
 
 func _init(seed_value: int = 0) -> void:
@@ -172,7 +186,9 @@ func _spawn_in(area: Rect2i) -> void:
 	m.power = pick["power"]
 	m.defense = pick["def"]
 	m.speed = pick["speed"]
-	m.ai = &"hunter"
+	m.ai = pick.get("ai", &"hunter")
+	m.attack_range = pick.get("range", 1)
+	m.flee_below = pick.get("flee", 0.0)
 	entities.append(m)
 
 func _roll_monster() -> Dictionary:
@@ -466,30 +482,153 @@ func _run_world() -> void:
 func _take_ai_turn(actor: Entity) -> void:
 	if not actor.alive or game_over:
 		return
-	# Symmetric shadowcasting means "the player can see it" and "it can see
-	# the player" agree, so one FOV pass serves both sides.
+	# Placeholder gate: a monster only acts while the player can see it.
+	# Symmetric shadowcasting makes that a fair proxy for "it can see you", but
+	# the awareness pass will replace it with a real per-monster notice check.
 	if not map.is_visible(actor.x, actor.y):
 		return
 
+	_update_morale(actor)
+	if actor.fleeing:
+		_ai_flee(actor)
+		return
+
+	match actor.ai:
+		&"erratic": _ai_erratic(actor)
+		&"ranged":  _ai_ranged(actor)
+		&"pack":    _ai_pack(actor)
+		_:          _ai_hunter(actor)
+
+## Nothing rallies yet, since only the player can heal -- but the threshold is
+## checked each turn rather than latched, so a healing monster later works
+## without touching this.
+func _update_morale(actor: Entity) -> void:
+	if actor.flee_below <= 0.0:
+		return
+	var frac := float(actor.hp) / float(actor.max_hp)
+	if not actor.fleeing and frac <= actor.flee_below:
+		actor.fleeing = true
+		msg_log.add("The %s turns to flee!" % actor.name, Color(0.78, 0.82, 0.58))
+	elif actor.fleeing and frac > actor.flee_below + 0.25:
+		actor.fleeing = false
+
+func _ai_hunter(actor: Entity) -> void:
 	if actor.is_adjacent(player):
 		_attack(actor, player)
 		return
+	_step_toward(actor, Vector2i(player.x, player.y))
 
-	var route := pathfinder.path(Vector2i(actor.x, actor.y), Vector2i(player.x, player.y))
+## Bites when it happens to be beside you, but will not hold a line -- so you
+## cannot reliably disengage from one, and cannot reliably corner it either.
+func _ai_erratic(actor: Entity) -> void:
+	if actor.is_adjacent(player) and rng.randf() < 0.7:
+		_attack(actor, player)
+		return
+	if rng.randf() < 0.6:
+		_step_random(actor)
+		return
+	_step_toward(actor, Vector2i(player.x, player.y))
+
+## The behaviour that makes pillars matter: it needs a clear line, so stepping
+## behind cover genuinely stops it, and it backs off rather than letting you
+## close to melee for free.
+func _ai_ranged(actor: Entity) -> void:
+	var dist := Los.steps(actor.x, actor.y, player.x, player.y)
+
+	if dist <= 1:
+		if _step_away(actor):
+			return
+		_attack(actor, player)
+		return
+
+	if dist <= actor.attack_range and Los.clear(map, actor.x, actor.y, player.x, player.y):
+		_attack(actor, player, true)
+		return
+
+	_step_toward(actor, Vector2i(player.x, player.y))
+
+## Bold with company, hesitant alone -- so a lone goblin hangs back and a pair
+## of them commit, which makes thinning a group worth doing.
+func _ai_pack(actor: Entity) -> void:
+	if actor.is_adjacent(player):
+		_attack(actor, player)
+		return
+	if _allies_near(actor, 5) > 0 or rng.randf() < 0.45:
+		_step_toward(actor, Vector2i(player.x, player.y))
+
+func _allies_near(actor: Entity, radius: int) -> int:
+	var n := 0
+	for e in entities:
+		if e == actor or not e.alive or e.is_player:
+			continue
+		if Los.steps(actor.x, actor.y, e.x, e.y) <= radius:
+			n += 1
+	return n
+
+func _ai_flee(actor: Entity) -> void:
+	if _step_away(actor):
+		return
+	# Cornered. A trapped animal fights.
+	if actor.is_adjacent(player):
+		_attack(actor, player)
+
+func _step_toward(actor: Entity, target: Vector2i) -> void:
+	var route := pathfinder.path(Vector2i(actor.x, actor.y), target)
 	if route.is_empty():
 		return
-	var step := route[0]
+	var step: Vector2i = route[0]
 	if entity_at(step.x, step.y) != null:
 		return
 	actor.x = step.x
 	actor.y = step.y
 
-func _attack(attacker: Entity, defender: Entity) -> void:
+func _step_random(actor: Entity) -> void:
+	var opts: Array[Vector2i] = []
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var nx: int = actor.x + dx
+			var ny: int = actor.y + dy
+			if map.is_walkable(nx, ny) and entity_at(nx, ny) == null:
+				opts.append(Vector2i(nx, ny))
+	if opts.is_empty():
+		return
+	var pick: Vector2i = opts[rng.randi_range(0, opts.size() - 1)]
+	actor.x = pick.x
+	actor.y = pick.y
+
+## Returns false when there is nowhere further from the player to go.
+func _step_away(actor: Entity) -> bool:
+	var here := Los.steps(actor.x, actor.y, player.x, player.y)
+	var best := Vector2i(actor.x, actor.y)
+	var best_d := here
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var nx: int = actor.x + dx
+			var ny: int = actor.y + dy
+			if not map.is_walkable(nx, ny) or entity_at(nx, ny) != null:
+				continue
+			var d := Los.steps(nx, ny, player.x, player.y)
+			if d > best_d:
+				best_d = d
+				best = Vector2i(nx, ny)
+	if best_d <= here:
+		return false
+	actor.x = best.x
+	actor.y = best.y
+	return true
+
+func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 	var dmg := maxi(1, attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1))
 	defender.take_damage(dmg)
 
 	if attacker.is_player:
 		msg_log.add("You hit the %s for %d." % [defender.name, dmg], Color(0.80, 0.85, 0.70))
+	elif ranged:
+		msg_log.add("The %s shoots you for %d." % [attacker.name, dmg], Color(0.95, 0.62, 0.35))
 	else:
 		msg_log.add("The %s hits you for %d." % [attacker.name, dmg], Color(0.90, 0.45, 0.40))
 
