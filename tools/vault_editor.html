@@ -1,0 +1,416 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OFR vault editor</title>
+<style>
+  :root {
+    --bg: #0b0c10; --panel: #101118; --frame: #42404a;
+    --text: #c7c2b4; --dim: #6d6a60; --gold: #d9cf9a;
+    --ok: #8fe0a8; --bad: #e07a6a; --warn: #d9c46f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  header { padding: 14px 18px; border-bottom: 1px solid var(--frame); }
+  header h1 { margin: 0; font-size: 15px; color: var(--gold); letter-spacing: .04em; }
+  header p { margin: 4px 0 0; color: var(--dim); font-size: 12px; }
+  main { display: grid; grid-template-columns: 230px 1fr 300px; gap: 16px; padding: 16px; align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--frame); padding: 12px; }
+  .panel h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: .12em; color: var(--dim); font-weight: 700; }
+  /* palette */
+  .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .sw { display: flex; align-items: center; gap: 7px; padding: 5px 6px; cursor: pointer;
+        border: 1px solid transparent; background: #00000030; }
+  .sw:hover { border-color: #ffffff22; }
+  .sw.on { border-color: var(--gold); background: #d9cf9a18; }
+  .sw b { width: 15px; text-align: center; font-size: 15px; }
+  .sw span { font-size: 10px; color: var(--dim); line-height: 1.15; }
+  .sw.on span { color: var(--text); }
+  .note { margin-top: 10px; font-size: 11px; color: var(--dim); }
+  /* grid */
+  #board { display: grid; gap: 0; background: #000; border: 1px solid var(--frame);
+           width: max-content; user-select: none; cursor: crosshair; }
+  .cell { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+          font-size: 15px; line-height: 1; }
+  .cell.void { background: #0d0e13; color: #1d1f26; }
+  .cell.void::after { content: "·"; }
+  .size { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 11px; color: var(--dim); }
+  .size input { width: 52px; }
+  /* forms */
+  label { display: block; margin: 8px 0 2px; font-size: 11px; color: var(--dim); }
+  input, select, textarea, button {
+    font: inherit; background: #00000040; color: var(--text);
+    border: 1px solid var(--frame); padding: 5px 7px; width: 100%;
+  }
+  button { cursor: pointer; background: #1a1c26; }
+  button:hover { border-color: var(--gold); color: #fff; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  textarea { height: 190px; resize: vertical; white-space: pre; overflow-x: auto; font-size: 12px; }
+  /* validation */
+  #checks { margin: 0; padding: 0; list-style: none; font-size: 11px; }
+  #checks li { padding: 3px 0 3px 16px; position: relative; }
+  #checks li::before { position: absolute; left: 0; }
+  li.pass { color: var(--dim); } li.pass::before { content: "ok"; color: var(--ok); font-size: 9px; top: 4px; }
+  li.fail { color: var(--bad); } li.fail::before { content: "\00d7"; color: var(--bad); }
+  li.warn { color: var(--warn); } li.warn::before { content: "!"; color: var(--warn); }
+</style>
+
+<header>
+  <h1>OFR vault editor</h1>
+  <p>Paint a room, watch it check itself, save the .txt into assets/vaults/.
+     Same rules as tests/vault_lint.gd — if it passes here it will load in the game.</p>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Palette</h2>
+    <div class="swatches" id="palette"></div>
+    <p class="note">Click to paint, drag to fill. Right-click erases back to
+      outside-the-vault.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Layout</h2>
+    <div class="size">
+      <span>size</span>
+      <input type="number" id="cols" min="3" max="24" value="11">
+      <span>&times;</span>
+      <input type="number" id="rows" min="3" max="24" value="9">
+      <button id="frame" style="width:auto;padding:4px 9px">wall the border</button>
+      <button id="clear" style="width:auto;padding:4px 9px">clear</button>
+    </div>
+    <div id="board"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Metadata</h2>
+    <label for="name">name</label><input id="name" value="new vault">
+    <div class="row">
+      <div style="flex:1"><label for="weight">weight</label><input type="number" id="weight" value="8" min="0"></div>
+      <div style="flex:1"><label for="minD">min depth</label><input type="number" id="minD" value="1" min="1"></div>
+      <div style="flex:1"><label for="maxD">max depth</label><input type="number" id="maxD" value="10" min="1"></div>
+    </div>
+    <div class="row">
+      <div style="flex:1"><label for="rot">rotate</label>
+        <select id="rot"><option value="yes">yes</option><option value="no">no</option></select></div>
+      <div style="flex:1"><label for="ter">terrain</label>
+        <select id="ter"><option value="fixed">fixed</option><option value="random">random</option></select></div>
+    </div>
+
+    <h2 style="margin-top:16px">Checks</h2>
+    <ul id="checks"></ul>
+
+    <h2 style="margin-top:16px">File</h2>
+    <textarea id="out" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="save">download .txt</button>
+      <button id="load">open a vault…</button>
+    </div>
+    <div class="row">
+      <button id="parse">read the box above</button>
+    </div>
+    <input type="file" id="file" accept=".txt" hidden>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+/* The legend, mirroring src/sim/vault.gd. `show` is what the game actually
+   draws, so the board is a preview rather than a spreadsheet. */
+const TILES = [
+  { ch: "#", show: "█", name: "wall",        fg: "#8d8578", bg: "#3a382f", pass: false },
+  { ch: ".", show: "·", name: "floor",       fg: "#57534a", bg: "#17171c", pass: true  },
+  { ch: "_", show: "·", name: "cave floor",  fg: "#6d6250", bg: "#1c1814", pass: true  },
+  { ch: "+", show: "+",      name: "door",        fg: "#b4813f", bg: "#1c1712", pass: true  },
+  { ch: "'", show: "'",      name: "open door",   fg: "#b4813f", bg: "#14120f", pass: true  },
+  { ch: "O", show: "●", name: "pillar",      fg: "#9a9082", bg: "#3a382f", pass: false },
+  { ch: "^", show: "▲", name: "stalagmite",  fg: "#857a69", bg: "#241f19", pass: false },
+  { ch: "~", show: "~",      name: "water",       fg: "#4d7f9e", bg: "#15242e", pass: true  },
+  { ch: "=", show: "░", name: "mud",         fg: "#7a6248", bg: "#241d16", pass: true  },
+  { ch: "%", show: "▒", name: "rubble",      fg: "#6b5b47", bg: "#1a150f", pass: true  },
+  { ch: ",", show: ",",      name: "bones",       fg: "#bdb69f", bg: "#1d1c19", pass: true  },
+  { ch: "*", show: "*",      name: "fungus",      fg: "#7fd9b0", bg: "#14201b", pass: true  },
+  { ch: "&", show: "Ω", name: "brazier",     fg: "#e0913c", bg: "#241408", pass: false },
+  { ch: "A", show: "∩", name: "shrine",      fg: "#b98ad9", bg: "#1c1826", pass: true  },
+  { ch: "X", show: "●", name: "pit",         fg: "#000000", bg: "#05050a", pass: true  },
+  { ch: "t", show: "^",      name: "trap",        fg: "#d4674f", bg: "#2a1714", pass: true  },
+  { ch: ">", show: ">",      name: "stairs down", fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
+  { ch: "<", show: "<",      name: "stairs up",   fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
+  { ch: "m", show: "m",      name: "monster",     fg: "#6f9c4e", bg: "#17171c", pass: true  },
+  { ch: "M", show: "M",      name: "guardian",    fg: "#c05a3a", bg: "#17171c", pass: true  },
+  { ch: "?", show: "?",      name: "any item",    fg: "#cfc39a", bg: "#17171c", pass: true  },
+  { ch: "!", show: "!",      name: "potion",      fg: "#d2607a", bg: "#17171c", pass: true  },
+  { ch: ")", show: ")",      name: "weapon",      fg: "#9fb3c8", bg: "#17171c", pass: true  },
+  { ch: "[", show: "[",      name: "armour",      fg: "#a89a7c", bg: "#17171c", pass: true  },
+  { ch: "}", show: "}",      name: "launcher",    fg: "#c8b28a", bg: "#17171c", pass: true  },
+  { ch: " ", show: "",       name: "outside",     fg: "#1d1f26", bg: "#0d0e13", pass: false },
+];
+const BY_CH = Object.fromEntries(TILES.map(t => [t.ch, t]));
+
+let W = 11, H = 9;
+let cells = [];
+let brush = "#";
+let painting = false;
+
+const $ = id => document.getElementById(id);
+
+function blank() {
+  cells = Array.from({ length: H }, () => Array(W).fill(" "));
+}
+
+function resize(w, h) {
+  const old = cells, oh = old.length, ow = oh ? old[0].length : 0;
+  W = w; H = h; blank();
+  for (let y = 0; y < Math.min(h, oh); y++)
+    for (let x = 0; x < Math.min(w, ow); x++) cells[y][x] = old[y][x];
+}
+
+function drawBoard() {
+  const board = $("board");
+  board.style.gridTemplateColumns = `repeat(${W}, 22px)`;
+  board.textContent = "";
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const ch = cells[y][x], t = BY_CH[ch] || BY_CH[" "];
+      const d = document.createElement("div");
+      d.className = ch === " " ? "cell void" : "cell";
+      if (ch !== " ") {
+        d.textContent = t.show;
+        d.style.color = t.fg;
+        d.style.background = t.bg;
+      }
+      d.dataset.x = x; d.dataset.y = y;
+      board.appendChild(d);
+    }
+  }
+}
+
+function paint(el, erase) {
+  if (!el || !el.dataset.x) return;
+  const x = +el.dataset.x, y = +el.dataset.y;
+  const ch = erase ? " " : brush;
+  if (cells[y][x] === ch) return;
+  cells[y][x] = ch;
+  refresh();
+}
+
+/* ---- the same checks tests/vault_lint.gd runs -------------------------- */
+
+function validate() {
+  const out = [];
+  const open = [];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const t = BY_CH[cells[y][x]];
+      if (t && t.pass) open.push([x, y]);
+    }
+
+  if (!open.length) {
+    out.push(["fail", "nowhere to stand"]);
+    return out;
+  }
+
+  // Everything inside must reach everything else inside.
+  const key = (x, y) => y * W + x;
+  const inside = new Set(open.map(([x, y]) => key(x, y)));
+  const seen = new Set([key(open[0][0], open[0][1])]);
+  const stack = [open[0]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const k = key(nx, ny);
+        if (inside.has(k) && !seen.has(k)) { seen.add(k); stack.push([nx, ny]); }
+      }
+  }
+  if (seen.size !== open.length)
+    out.push(["fail", `${open.length - seen.size} cells cut off from the rest`]);
+  else
+    out.push(["pass", "every cell reaches every other"]);
+
+  // Doors have to lead somewhere on both counts.
+  let doors = 0, blind = 0, outward = 0;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (cells[y][x] !== "+" && cells[y][x] !== "'") continue;
+      doors++;
+      let touchIn = 0, touchOut = 0;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) { touchOut++; continue; }
+        if (inside.has(key(nx, ny))) touchIn++;
+        else if (cells[ny][nx] === " ") touchOut++;
+      }
+      if (!touchIn) blind++;
+      if (touchOut) outward++;
+    }
+
+  if (!doors) out.push(["warn", "no doors — the generator will punch a corridor through a wall"]);
+  else if (blind) out.push(["fail", `${blind} door${blind > 1 ? "s" : ""} open onto nothing inside`]);
+  else out.push(["pass", `${doors} door${doors > 1 ? "s" : ""}, all opening onto floor`]);
+
+  if (doors && !outward)
+    out.push(["warn", "no door reaches the outside edge — entry will be punched through"]);
+
+  // Size.
+  const b = bounds();
+  if (b) {
+    const w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
+    if (w > 16 || h > 16) out.push(["warn", `${w}×${h} is large; the generator reserves the whole box`]);
+    else out.push(["pass", `${w}×${h}, ${open.length} cells`]);
+  }
+  return out;
+}
+
+/* ---- export ------------------------------------------------------------ */
+
+function bounds() {
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      if (cells[y][x] !== " ") {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+  return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
+
+function serialise() {
+  const b = bounds();
+  const head =
+    `name: ${$("name").value.trim() || "unnamed"}\n` +
+    `weight: ${$("weight").value}\n` +
+    `min_depth: ${$("minD").value}\n` +
+    `max_depth: ${$("maxD").value}\n` +
+    `rotate: ${$("rot").value}\n` +
+    `terrain: ${$("ter").value}\n` +
+    `LAYOUT\n`;
+  if (!b) return head;
+  const lines = [];
+  for (let y = b.y0; y <= b.y1; y++) {
+    let row = "";
+    for (let x = b.x0; x <= b.x1; x++) row += cells[y][x];
+    // Trailing spaces mean nothing to the loader, so they are trimmed.
+    lines.push(row.replace(/\s+$/, ""));
+  }
+  return head + lines.join("\n") + "\n";
+}
+
+function deserialise(text) {
+  const lines = text.split("\n");
+  let inLayout = false;
+  const body = [];
+  const meta = {};
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, "");
+    if (!inLayout) {
+      if (line.trim() === "LAYOUT") { inLayout = true; continue; }
+      const m = line.match(/^([a-z_]+)\s*:\s*(.*)$/i);
+      if (m) meta[m[1].trim()] = m[2].trim();
+      continue;
+    }
+    body.push(line);
+  }
+  while (body.length && !body[0].trim()) body.shift();
+  while (body.length && !body[body.length - 1].trim()) body.pop();
+  if (!body.length) return false;
+
+  const w = Math.max(...body.map(r => r.length));
+  W = Math.min(24, Math.max(3, w));
+  H = Math.min(24, Math.max(3, body.length));
+  blank();
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const ch = x < body[y].length ? body[y][x] : " ";
+      cells[y][x] = BY_CH[ch] ? ch : " ";
+    }
+  if (meta.name) $("name").value = meta.name;
+  if (meta.weight) $("weight").value = meta.weight;
+  if (meta.min_depth) $("minD").value = meta.min_depth;
+  if (meta.max_depth) $("maxD").value = meta.max_depth;
+  if (meta.rotate) $("rot").value = meta.rotate === "no" ? "no" : "yes";
+  if (meta.terrain) $("ter").value = meta.terrain === "random" ? "random" : "fixed";
+  $("cols").value = W; $("rows").value = H;
+  return true;
+}
+
+/* ---- wiring ------------------------------------------------------------ */
+
+function refresh() {
+  drawBoard();
+  const list = $("checks");
+  list.textContent = "";
+  for (const [kind, msg] of validate()) {
+    const li = document.createElement("li");
+    li.className = kind; li.textContent = msg;
+    list.appendChild(li);
+  }
+  $("out").value = serialise();
+}
+
+function buildPalette() {
+  const p = $("palette");
+  for (const t of TILES) {
+    const b = document.createElement("div");
+    b.className = "sw" + (t.ch === brush ? " on" : "");
+    b.innerHTML = `<b style="color:${t.fg}">${t.show || "·"}</b>` +
+                  `<span>${t.name}<br>${t.ch === " " ? "space" : t.ch}</span>`;
+    b.onclick = () => {
+      brush = t.ch;
+      [...p.children].forEach(c => c.classList.remove("on"));
+      b.classList.add("on");
+    };
+    p.appendChild(b);
+  }
+}
+
+const board = $("board");
+board.addEventListener("mousedown", e => {
+  painting = true; paint(e.target, e.button === 2); e.preventDefault();
+});
+board.addEventListener("mouseover", e => { if (painting) paint(e.target, false); });
+board.addEventListener("contextmenu", e => e.preventDefault());
+window.addEventListener("mouseup", () => painting = false);
+
+$("cols").oninput = $("rows").oninput = () => {
+  resize(Math.max(3, +$("cols").value | 0), Math.max(3, +$("rows").value | 0));
+  refresh();
+};
+for (const id of ["name", "weight", "minD", "maxD", "rot", "ter"])
+  $(id).oninput = refresh;
+
+$("clear").onclick = () => { blank(); refresh(); };
+$("frame").onclick = () => {
+  for (let x = 0; x < W; x++) { cells[0][x] = "#"; cells[H - 1][x] = "#"; }
+  for (let y = 0; y < H; y++) { cells[y][0] = "#"; cells[y][W - 1] = "#"; }
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++)
+      if (cells[y][x] === " ") cells[y][x] = ".";
+  refresh();
+};
+
+$("save").onclick = () => {
+  const name = ($("name").value.trim() || "vault").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const blob = new Blob([serialise()], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name + ".txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("load").onclick = () => $("file").click();
+$("file").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  f.text().then(t => { if (deserialise(t)) refresh(); });
+};
+$("parse").onclick = () => { if (deserialise($("out").value)) refresh(); };
+
+blank();
+buildPalette();
+$("frame").onclick();
+</script>

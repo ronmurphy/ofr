@@ -27,6 +27,16 @@ var rng: RandomNumberGenerator
 ## Cleared on the bottom floor and on the way out: there is nothing below the
 ## deepest level, and falling while climbing would undo the run.
 var allow_pits := true
+## Set by GameState; vaults are gated by depth like everything else.
+var depth := 1
+var library: Array[Vault] = []
+
+## Placed vaults, and what they asked to have put in them.
+var vault_spots: Array = []
+var vault_contents: Array = []
+## Cells a vault owns. Corridors, decoration and scattered features all route
+## around these -- a hand-authored room must survive every later pass intact.
+var protected: Dictionary = {}
 var rooms: Array[Rect2i] = []
 var archetypes: Array[int] = []
 var caves: Array[Rect2i] = []
@@ -38,22 +48,33 @@ func generate(map: DungeonMap) -> void:
 	rooms.clear()
 	archetypes.clear()
 	caves.clear()
+	vault_spots.clear()
+	vault_contents.clear()
+	protected.clear()
 	map.tiles.fill(Tiles.WALL)
 
 	# Caves are reserved BEFORE rooms rather than squeezed in afterwards.
 	# Placing rooms first fills the map so thoroughly that a cave-sized gap
 	# almost never survives -- the first version of this produced one cave in
 	# a hundred and twenty levels.
+	# Vaults claim their space first. They are the least flexible thing on the
+	# level -- a fixed rectangle that cannot be nudged or reshaped -- so
+	# everything else gets to fit around them rather than the other way round.
+	_reserve_vaults(map)
 	_reserve_caves(map)
 	_place_rooms(map)
 	_carve_caves(map)
 	_connect_rooms(map)
 	_connect_caves(map)
+	_stamp_vaults(map)
+	_connect_vaults(map)
 	_place_doors(map)
 	_ensure_sanctums()
 	_decorate(map)
 	_lay_terrain(map)
 	_scatter_features(map)
+	_ensure_connected(map)
+	_seal_blind_doors(map)
 	_naturalise_cave_walls(map)
 	_paint_materials(map)
 
@@ -74,7 +95,12 @@ func _place_rooms(map: DungeonMap) -> void:
 		for reserved in caves:
 			if room.grow(1).intersects(reserved.grow(2)):
 				blocked = true
-				break
+		# Vaults reserve their space before any room exists, so the check in
+		# _free_box sees an empty room list. The avoidance has to be here too,
+		# or a room lands on top of an authored one.
+		for spot in vault_spots:
+			if room.grow(1).intersects(spot["rect"].grow(2)):
+				blocked = true
 		if blocked:
 			continue
 		for ry in range(room.position.y, room.end.y):
@@ -115,13 +141,248 @@ func _carve_corridor(map: DungeonMap, a: Vector2i, b: Vector2i) -> void:
 
 func _carve_h(map: DungeonMap, x1: int, x2: int, y: int) -> void:
 	for x in range(mini(x1, x2), maxi(x1, x2) + 1):
+		if protected.has(Vector2i(x, y)):
+			continue
 		if not Tiles.is_open_floor(map.get_tile(x, y)):
 			map.set_tile(x, y, Tiles.FLOOR)
 
 func _carve_v(map: DungeonMap, y1: int, y2: int, x: int) -> void:
 	for y in range(mini(y1, y2), maxi(y1, y2) + 1):
+		if protected.has(Vector2i(x, y)):
+			continue
 		if not Tiles.is_open_floor(map.get_tile(x, y)):
 			map.set_tile(x, y, Tiles.FLOOR)
+
+# ----------------------------------------------------------------- vaults ---
+
+func _reserve_vaults(map: DungeonMap) -> void:
+	if library.is_empty():
+		return
+	var eligible: Array[Vault] = []
+	var total := 0
+	for v in library:
+		if v.min_depth <= depth and v.max_depth >= depth and v.weight > 0:
+			eligible.append(v)
+			total += v.weight
+	if eligible.is_empty():
+		return
+
+	# Roughly three floors in ten have none. A vault that turns up every single
+	# level is furniture; one that does not is a find.
+	var roll := rng.randf()
+	var wanted := 0 if roll < 0.30 else (1 if roll < 0.84 else 2)
+	for _i in wanted:
+		var pick := _weighted_vault(eligible, total)
+		if pick == null:
+			continue
+		var quarters := rng.randi_range(0, 3) if pick.may_rotate else 0
+		var mirror := pick.may_rotate and rng.randf() < 0.5
+		var grid := pick.oriented(quarters, mirror)
+		var w := 0
+		for r in grid:
+			w = maxi(w, String(r).length())
+		var box := Vector2i(w, grid.size())
+		var at := _free_box(map, box)
+		if at.x < 0:
+			continue
+		vault_spots.append({
+			"vault": pick, "grid": grid,
+			"rect": Rect2i(at, box),
+		})
+
+func _weighted_vault(pool: Array[Vault], total: int) -> Vault:
+	var pick := rng.randi_range(1, maxi(1, total))
+	for v in pool:
+		pick -= v.weight
+		if pick <= 0:
+			return v
+	return pool[-1]
+
+## Somewhere the box fits with a cell of clearance, clear of anything already
+## claimed.
+func _free_box(map: DungeonMap, box: Vector2i) -> Vector2i:
+	for _try in 80:
+		var x := rng.randi_range(2, maxi(2, map.width - box.x - 3))
+		var y := rng.randi_range(2, maxi(2, map.height - box.y - 3))
+		var here := Rect2i(x, y, box.x, box.y)
+		var clear := true
+		for other in vault_spots:
+			if here.grow(2).intersects(other["rect"]):
+				clear = false
+		for cave in caves:
+			if here.grow(2).intersects(cave):
+				clear = false
+		for room in rooms:
+			if here.grow(2).intersects(room):
+				clear = false
+		if clear:
+			return Vector2i(x, y)
+	return Vector2i(-1, -1)
+
+func _stamp_vaults(map: DungeonMap) -> void:
+	for spot in vault_spots:
+		var grid: Array = spot["grid"]
+		var at: Vector2i = spot["rect"].position
+		for y in grid.size():
+			var row := String(grid[y])
+			for x in row.length():
+				var ch := row[x]
+				if ch == " ":
+					continue
+				var cell := at + Vector2i(x, y)
+				if not map.in_bounds(cell.x, cell.y):
+					continue
+				if Vault.TERRAIN.has(ch):
+					map.set_tile(cell.x, cell.y, Vault.TERRAIN[ch])
+				elif Vault.CONTENTS.has(ch):
+					map.set_tile(cell.x, cell.y, Tiles.FLOOR)
+					vault_contents.append({"ch": ch, "pos": cell})
+				else:
+					continue
+				if spot["vault"].fixed_terrain:
+					protected[cell] = true
+
+## Joins each vault to the nearest room through one of its own doors, rather
+## than letting a corridor punch a hole wherever it likes.
+func _connect_vaults(map: DungeonMap) -> void:
+	for spot in vault_spots:
+		var mouth := _vault_mouth(spot)
+		if mouth.x < 0 or rooms.is_empty():
+			continue
+		var best := rooms[0].get_center()
+		var best_d := 1 << 30
+		for room in rooms:
+			var c := room.get_center()
+			var d := absi(c.x - mouth.x) + absi(c.y - mouth.y)
+			if d < best_d:
+				best_d = d
+				best = c
+		_carve_corridor(map, best, mouth)
+
+## The cell just outside one of the vault's doors.
+func _vault_mouth(spot: Dictionary) -> Vector2i:
+	var grid: Array = spot["grid"]
+	var at: Vector2i = spot["rect"].position
+	var options := []
+	for y in grid.size():
+		var row := String(grid[y])
+		for x in row.length():
+			if row[x] != "+" and row[x] != "'":
+				continue
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = Vector2i(x, y) + d
+				var outside := n.y < 0 or n.y >= grid.size()
+				if not outside:
+					var nrow := String(grid[n.y])
+					outside = n.x < 0 or n.x >= nrow.length() or nrow[n.x] == " "
+				if outside:
+					options.append(at + n)
+	if options.is_empty():
+		return Vector2i(-1, -1)
+	return options[rng.randi_range(0, options.size() - 1)]
+
+## A door that opens onto solid rock is a small lie, and forcing a corridor to
+## every door on a four-door vault would turn it into a crossroads. So the
+## third option: if it does not lead anywhere, it is not a door.
+##
+## A door is live when it has walkable ground on two or more sides -- which
+## covers both an interior door joining two halves of a vault and an exterior
+## one a corridor actually reached. The last live door is never sealed, so this
+## can never cut a vault off.
+func _seal_blind_doors(map: DungeonMap) -> void:
+	for spot in vault_spots:
+		var doors := []
+		var live := 0
+		var grid: Array = spot["grid"]
+		var at: Vector2i = spot["rect"].position
+		for y in grid.size():
+			var row := String(grid[y])
+			for x in row.length():
+				if row[x] != "+" and row[x] != "'":
+					continue
+				var cell := at + Vector2i(x, y)
+				var touching := 0
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					if map.is_walkable(cell.x + d.x, cell.y + d.y):
+						touching += 1
+				doors.append({"cell": cell, "live": touching >= 2})
+				if touching >= 2:
+					live += 1
+		if live == 0:
+			continue
+		for door in doors:
+			if not door["live"]:
+				var c: Vector2i = door["cell"]
+				map.set_tile(c.x, c.y, Tiles.WALL)
+
+# ----------------------------------------------------------- connectivity ---
+
+## Guarantees the level is one connected space, whatever every pass before it
+## did. A safety net rather than a plan: vaults and caves both claim ground
+## that corridors were counting on, and the alternative is discovering it in a
+## seed nobody ever plays.
+func _ensure_connected(map: DungeonMap) -> void:
+	for _attempt in 8:
+		var regions := _walkable_regions(map)
+		if regions.size() <= 1:
+			return
+		var main: Array = regions[0]
+		var other: Array = regions[1]
+		var from: Vector2i = main[0]
+		var to: Vector2i = other[0]
+		var best := 1 << 30
+		# Sampled rather than exhaustive: regions can be thousands of cells and
+		# the nearest pair does not have to be exact, only close.
+		for a: Vector2i in _sample(main, 120):
+			for b: Vector2i in _sample(other, 120):
+				var d: int = absi(a.x - b.x) + absi(a.y - b.y)
+				if d < best:
+					best = d
+					from = a
+					to = b
+		_carve_corridor(map, from, to)
+
+func _routable(map: DungeonMap, x: int, y: int) -> bool:
+	return map.is_walkable(x, y) and not Tiles.is_avoided(map.get_tile(x, y))
+
+func _sample(cells: Array, limit: int) -> Array:
+	if cells.size() <= limit:
+		return cells
+	var out := []
+	var step := float(cells.size()) / float(limit)
+	for i in limit:
+		out.append(cells[int(i * step)])
+	return out
+
+## Walkable regions, largest first.
+##
+## Uses the same rule the pathfinder does -- walkable AND not avoided -- because
+## a region reachable only across a pit is not reachable at all as far as
+## travel or a monster is concerned.
+func _walkable_regions(map: DungeonMap) -> Array:
+	var seen := {}
+	var regions := []
+	for y in map.height:
+		for x in map.width:
+			var start := Vector2i(x, y)
+			if seen.has(start) or not _routable(map, x, y):
+				continue
+			var region := []
+			var stack := [start]
+			seen[start] = true
+			while not stack.is_empty():
+				var cur: Vector2i = stack.pop_back()
+				region.append(cur)
+				for dy in [-1, 0, 1]:
+					for dx in [-1, 0, 1]:
+						var n := cur + Vector2i(dx, dy)
+						if seen.has(n) or not _routable(map, n.x, n.y):
+							continue
+						seen[n] = true
+						stack.append(n)
+			regions.append(region)
+	regions.sort_custom(func(a, b): return a.size() > b.size())
+	return regions
 
 # ------------------------------------------------------------------ caves ---
 
@@ -140,7 +401,9 @@ func _reserve_caves(map: DungeonMap) -> void:
 			for other in caves:
 				if region.grow(2).intersects(other):
 					clear = false
-					break
+			for spot in vault_spots:
+				if region.grow(2).intersects(spot["rect"]):
+					clear = false
 			if clear:
 				caves.append(region)
 				break
@@ -261,9 +524,20 @@ func _ensure_sanctums():
 	# Never the first room, which is where the player starts.
 	var candidates := []
 	for i in range(1, rooms.size()):
-		if archetypes[i] != Archetype.SHRINE and rooms[i].size.x >= 7 and rooms[i].size.y >= 7:
+		# 6x6 rather than 7x7: vaults now compete for the large rooms, and a
+		# slightly cramped sanctum beats a floor with no shrine on it.
+		if archetypes[i] != Archetype.SHRINE and rooms[i].size.x >= 6 and rooms[i].size.y >= 6:
 			candidates.append(i)
-	candidates.shuffle()
+	# NOT candidates.shuffle(): Array.shuffle() draws on Godot's GLOBAL rng, so
+	# it made level generation unreproducible from a seed. The same seed built
+	# different dungeons on different runs, which made seeded tests flaky and
+	# quietly undermined the promise that a resumed save continues the run it
+	# left.
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var swap: int = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = swap
 	while have < want and not candidates.is_empty():
 		archetypes[candidates.pop_back()] = Archetype.SHRINE
 		have += 1
@@ -318,6 +592,8 @@ func _random_open(map: DungeonMap) -> Vector2i:
 	for _try in 60:
 		var x := rng.randi_range(1, map.width - 2)
 		var y := rng.randi_range(1, map.height - 2)
+		if protected.has(Vector2i(x, y)):
+			continue
 		var t := map.get_tile(x, y)
 		if t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR:
 			return Vector2i(x, y)
@@ -362,6 +638,8 @@ func _paint_ground(map: DungeonMap, area: Rect2i, g: int) -> void:
 	var ry := maxf(1.0, float(area.size.y) * 0.5)
 	for y in range(area.position.y, area.end.y):
 		for x in range(area.position.x, area.end.x):
+			if protected.has(Vector2i(x, y)):
+				continue
 			var here := map.get_tile(x, y)
 			if here != Tiles.FLOOR and here != Tiles.CAVE_FLOOR:
 				continue

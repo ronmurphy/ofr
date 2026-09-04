@@ -407,6 +407,34 @@ func _run() -> void:
 	await _shot("23_menu.png")
 	_scene.menu.close()
 
+	# A vault, in place on a real level.
+	for seed_try in range(7100, 7200):
+		var vlevel := GameState.new(seed_try)
+		vlevel.new_game()
+		vlevel.depth = 4
+		vlevel.build_level()
+		if vlevel.vault_rects.is_empty():
+			continue
+		vlevel.light_map.ambient = Color(0.46, 0.47, 0.52)
+		var vs: Array = [vlevel.player.light]
+		vs.append_array(vlevel.static_lights)
+		vlevel.light_map.compute(vlevel.map, vs)
+		vlevel.map.reveal_all()
+		vlevel.map.set_all_visible()
+		_use(vlevel)
+		var vr: Rect2i = vlevel.vault_rects[0]
+		var vc2: Vector2i = _scene.grid.viewport_cells()
+		_scene.grid._origin = Vector2i(
+			clampi(vr.get_center().x - vc2.x / 2, 0, maxi(0, vlevel.map.width - vc2.x)),
+			clampi(vr.get_center().y - vc2.y / 2, 0, maxi(0, vlevel.map.height - vc2.y)))
+		_scene.grid.settle_camera()
+		_scene._refresh()
+		print("  vault seed %d at %s" % [seed_try, vr])
+		for _i in 3:
+			await process_frame
+		await _shot("25_vault.png")
+		break
+
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.
 	for seed_value in [SEED, 8801, 8802]:

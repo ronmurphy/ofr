@@ -138,6 +138,8 @@ var stairs: Vector2i
 var cave_regions: Array[Rect2i] = []
 ## Kept so the encounter maths can be measured after the fact.
 var room_rects: Array[Rect2i] = []
+## Where the hand-authored rooms landed, kept for tests and later features.
+var vault_rects: Array[Rect2i] = []
 
 var torch_lit := true
 var depth: int = 1
@@ -180,6 +182,8 @@ var _last_move_cost := Scheduler.ACTION_COST
 ## announced. The energy cost was working perfectly and was completely
 ## invisible -- one keypress still looked like one turn.
 var _last_footing := Tiles.FLOOR
+## Read once and shared by every level, since the files never change mid-run.
+static var _vault_library: Array[Vault] = []
 
 ## Behaviour matters more than the numbers here. Six monsters that all walk at
 ## you in a straight line are one monster with six stat blocks; the point of
@@ -252,6 +256,8 @@ static func deepest_tier() -> int:
 	return d
 
 func _init(seed_value: int = 0) -> void:
+	if _vault_library.is_empty():
+		_vault_library = Vault.load_all()
 	if seed_value == 0:
 		rng.randomize()
 	else:
@@ -283,6 +289,8 @@ func build_level() -> void:
 	# Nothing below the bottom, and falling while climbing out would undo the
 	# run rather than complicate it.
 	gen.allow_pits = not ascending and depth < MAX_DEPTH
+	gen.depth = effective_depth()
+	gen.library = _vault_library
 	gen.generate(map)
 
 	entities = [player]
@@ -335,6 +343,10 @@ func build_level() -> void:
 		_populate_room(rooms[i], gen.archetypes[i])
 	for region in gen.caves:
 		_populate_cave(region)
+	_place_vault_contents(gen)
+	vault_rects.clear()
+	for spot in gen.vault_spots:
+		vault_rects.append(spot["rect"])
 
 	pathfinder = Pathfinder.new(map)
 	update_vision()
@@ -471,11 +483,16 @@ func _populate_cave(region: Rect2i) -> void:
 func _spawn_in(area: Rect2i, remaining: int) -> int:
 	var mx := rng.randi_range(area.position.x, area.end.x - 1)
 	var my := rng.randi_range(area.position.y, area.end.y - 1)
+	return _spawn_at(Vector2i(mx, my), -1, remaining)
+
+func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
+	var mx := at.x
+	var my := at.y
 	if not map.is_walkable(mx, my) or entity_at(mx, my) != null:
 		return 0
 	if Vector2i(mx, my) == stairs or Vector2i(mx, my) == Vector2i(player.x, player.y):
 		return 0
-	var pick := _roll_monster(remaining)
+	var pick := _roll_monster(remaining, tier)
 	if pick.is_empty():
 		return -1
 	var m := Entity.new(pick["name"], pick["app"], mx, my)
@@ -544,12 +561,56 @@ func _drop_loot(victim: Entity) -> void:
 ## then fades. That is what stops depth 9 from spawning giant rats, and it is
 ## also why the ceiling alone would not be enough: without the fade, deep
 ## floors would just be many cheap monsters instead of few expensive ones.
-func _roll_monster(remaining: int) -> Dictionary:
+## Vault contents are the author's, but they still answer to the level's threat
+## ceiling: an over-stuffed vault drops what it cannot afford rather than
+## producing a room nobody could survive.
+func _place_vault_contents(gen: MapGen) -> void:
+	var spent := 0
+	var ceiling := room_threat_ceiling()
+	for entry in gen.vault_contents:
+		var ch: String = entry["ch"]
+		var at: Vector2i = entry["pos"]
+		match ch:
+			"m", "M":
+				# A guardian is drawn from two tiers deeper than the floor.
+				var tier := effective_depth() + (2 if ch == "M" else 0)
+				spent += _spawn_at(at, tier, ceiling - spent)
+			"?":
+				_drop_item_at(Item.roll(rng, effective_depth()), at)
+			"!":
+				_drop_item_at(Item.make(&"potion_healing"), at)
+			")":
+				_drop_item_at(Item.roll_equipment(rng, effective_depth(),
+					Item.Slot.WEAPON), at)
+			"[":
+				_drop_item_at(Item.roll_equipment(rng, effective_depth(),
+					Item.Slot.ARMOR), at)
+			"}":
+				_drop_item_at(_roll_launcher(), at)
+
+func _drop_item_at(it: Item, at: Vector2i) -> void:
+	if it == null:
+		return
+	it.x = at.x
+	it.y = at.y
+	ground.append(it)
+
+func _roll_launcher() -> Item:
+	var pool := []
+	for key in Item.CATALOGUE:
+		var data: Dictionary = Item.CATALOGUE[key]
+		if int(data.get("range", 1)) > 1 and int(data["min_depth"]) <= effective_depth():
+			pool.append(key)
+	if pool.is_empty():
+		return null
+	return Item.make(pool[rng.randi_range(0, pool.size() - 1)])
+
+func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 	var pool := []
 	var total := 0.0
 	# Past the deepest tier the fade stops advancing, so the heaviest monsters
 	# stay at full weight instead of everything vanishing.
-	var here := effective_depth()
+	var here := effective_depth() if tier < 0 else tier
 	var effective := mini(here, deepest_tier() + TIER_GRACE)
 	for e in BESTIARY:
 		if e["min_depth"] > here:

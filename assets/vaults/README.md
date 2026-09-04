@@ -7,6 +7,17 @@ a candidate; there is nothing to register.
 Not every floor gets one. A vault is a set piece, and seeing the same one twice
 in a run costs more than never seeing it at all.
 
+## Two ways to make one
+
+**`tools/vault_editor.html`** — open it in a browser. Paint from a palette, and
+it checks itself as you draw: connectivity, doors that open onto nothing, size.
+Same rules as the linter, so what passes there loads in the game. It also crops
+any wasted margin, which makes the bounding box the generator reserves as small
+as the room actually needs.
+
+**A text editor** — the format below is plain enough to type. Run
+`godot --headless --script res://tests/vault_lint.gd` when you are done.
+
 ## File format
 
 Metadata lines first, then `LAYOUT`, then the drawing. Blank lines and lines

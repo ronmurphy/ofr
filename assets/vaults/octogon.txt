@@ -1,0 +1,14 @@
+name: octogon
+weight: 12
+min_depth: 2
+max_depth: 4
+rotate: yes
+terrain: random
+LAYOUT
+   #+#
+  #...#
+ #..m..#
+ +..&..+
+ #.....#
+  #...#
+   #+#

@@ -486,6 +486,53 @@ The pathfinder treats them as solid, so one dropped into a corridor severs the
 route -- the 200-seed connectivity test caught precisely that, three levels in
 two hundred with unreachable stairs.
 
+## Vaults
+
+Hand-authored rooms in `assets/vaults/*.txt`, read at startup. Roughly seven
+floors in ten carry one; a couple carry two. A vault that turns up every single
+level is furniture.
+
+**Vaults claim their space before anything else.** They are the least flexible
+thing on a level -- a fixed rectangle that cannot be nudged or reshaped -- so
+rooms and caverns fit around them rather than the other way round. Every cell a
+`terrain: fixed` vault owns is **protected**: corridors, decoration, the terrain
+pass and the scattered features all route around it, so a hand-drawn room
+survives every later pass exactly as drawn.
+
+Each is joined to the nearest room **through one of its own doors**, rather than
+having a corridor punched through a wall wherever it happens to arrive.
+
+**A door that leads nowhere is sealed back into wall.** Forcing a corridor to
+every door on a four-door vault would turn it into a crossroads; leaving them
+open onto solid rock is a small lie. A door counts as live when it has walkable
+ground on two or more sides, which covers both an interior door joining two
+halves of a vault and an exterior one a corridor actually reached. The last live
+door is never sealed, so this can never cut a vault off.
+
+`rotate: yes` gives free variety on symmetric shapes -- a diamond turned 90° is
+still a diamond, but its doors land somewhere new.
+
+Contents (`m M ? ! ) [ }`) are the author's, but still answer to the level's
+threat ceiling: an over-stuffed vault drops what it cannot afford rather than
+producing a room nobody could survive. `M` draws from two tiers deeper than the
+floor.
+
+Author them in `tools/vault_editor.html` -- a single self-contained page, no
+build step, opens straight off the filesystem -- or in any text editor.
+Validate with `tests/vault_lint.gd`. It shares this parser and these rules, so a
+vault that lints is a vault that loads.
+
+### The connectivity net
+
+`_ensure_connected()` runs last and guarantees the level is one connected space
+whatever every pass before it did -- flood-filling by the *pathfinder's* rule
+(walkable and not avoided, since a region reachable only across a pit is not
+reachable at all) and carving between any regions it finds separated.
+
+A safety net rather than a plan. Vaults and caverns both claim ground that
+corridors were counting on, and the alternative is discovering that in a seed
+nobody ever plays.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

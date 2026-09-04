@@ -1,0 +1,14 @@
+name: skull
+weight: 4
+min_depth: 3
+max_depth: 6
+rotate: yes
+terrain: random
+LAYOUT
+   ##+##
+  #.....#
+ #.m...m.#
+ #.......#
+ ###...###
+   #...#
+   ##+##
