@@ -33,6 +33,9 @@ const CAVE_FLOOR    := Color("6d6250")
 const POTION        := Color("d2607a")
 const SCROLL        := Color("cfc39a")
 const WEAPON        := Color("9fb3c8")
+const LAUNCHER      := Color("c8b28a")
+const AIM_OK        := Color("8fe0a8")
+const AIM_BLOCKED   := Color("e07a6a")
 const ARMOUR        := Color("a89a7c")
 
 ## Material tints, applied to terrain base colours -- deliberately NOT to the

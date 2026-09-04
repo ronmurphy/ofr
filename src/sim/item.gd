@@ -23,6 +23,10 @@ var magnitude: int = 0
 # Equipment fields
 var power_bonus: int = 0
 var defense_bonus: int = 0
+## Reach, for launchers. They sit in the weapon slot and trade damage for it:
+## at every tier the ranged option is about two points weaker than the melee
+## one, and that gap is the price of never being adjacent.
+var range_bonus: int = 1
 ## What this item rolled as. Upgrades are capped relative to this, so a dagger
 ## can never become a war axe -- merging improves an item, it does not replace
 ## the reason to find better ones.
@@ -71,6 +75,19 @@ const CATALOGUE := {
 		"name": "war axe", "app": &"weapon", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 7, "min_depth": 4, "weight": 3,
 	},
+	&"sling": {
+		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 1, "range": 5, "min_depth": 1, "weight": 5,
+	},
+	&"short_bow": {
+		"name": "short bow", "app": &"launcher", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 3, "range": 7, "min_depth": 3, "weight": 4,
+	},
+	&"war_bow": {
+		"name": "war bow", "app": &"launcher", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 5, "range": 8, "min_depth": 6, "weight": 3,
+	},
+
 	&"leather_armour": {
 		"name": "leather armour", "app": &"armour", "kind": Kind.ARMOR,
 		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7,
@@ -97,6 +114,7 @@ static func make(item_id: StringName) -> Item:
 	it.magnitude = data.get("magnitude", 0)
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
+	it.range_bonus = data.get("range", 1)
 	it.base_power_bonus = it.power_bonus
 	it.base_defense_bonus = it.defense_bonus
 	return it
@@ -139,6 +157,8 @@ func equipped_text() -> String:
 
 ## A short "+2" style tag for the inventory list.
 func bonus_text() -> String:
+	if range_bonus > 1:
+		return "+%d power  reach %d" % [power_bonus, range_bonus]
 	if power_bonus != 0:
 		return "+%d power" % power_bonus
 	if defense_bonus != 0:

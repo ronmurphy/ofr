@@ -285,6 +285,53 @@ func _run() -> void:
 		await _shot("16_biome_%.1f.png" % boost)
 	_scene.grid.memory_material_boost = 1.8
 
+	# Targeting: a clear shot, and the same shot blocked by cover.
+	var aim := GameState.new(3131)
+	aim.new_game()
+	var qw := 34
+	var qh := 15
+	aim.map = DungeonMap.new(qw, qh)
+	for y in range(1, qh - 1):
+		for x in range(1, qw - 1):
+			aim.map.set_tile(x, y, Tiles.FLOOR)
+	aim.light_map = LightMap.new(qw, qh)
+	aim.pathfinder = Pathfinder.new(aim.map)
+	aim.entities = [aim.player]
+	aim.ground = []
+	aim.static_lights = []
+	var fov4 := PackedByteArray()
+	fov4.resize(qw * qh)
+	aim._fov_buffer = fov4
+	aim.player.x = 6
+	aim.player.y = 7
+	aim.player.max_hp = 60
+	aim.player.hp = 47
+	aim.player.alive = true
+	var bow := Item.make(&"short_bow")
+	aim.player.inventory.append(bow)
+	aim.player.equipped[Item.Slot.WEAPON] = bow
+
+	var mark := Entity.new("goblin", &"goblin", 13, 7)
+	mark.max_hp = 9
+	mark.hp = 9
+	mark.alertness = Entity.Alert.AWAKE
+	aim.entities.append(mark)
+	aim.update_vision()
+	_use(aim)
+
+	_scene._begin_aim()
+	for _i in 2:
+		await process_frame
+	await _shot("20_aim_clear.png")
+
+	aim.map.set_tile(10, 7, Tiles.PILLAR)
+	aim.update_vision()
+	_scene._update_aim()
+	for _i in 2:
+		await process_frame
+	await _shot("21_aim_blocked.png")
+	_scene._end_aim()
+
 	# The amulet, and the moment the run turns around.
 	var relic_run := GameState.new(8800)
 	relic_run.new_game()

@@ -12,6 +12,7 @@ extends Control
 var state: GameState
 var hovered := Vector2i(-1, -1)
 var look_mode := false
+var aiming := false
 
 var _last_hp := -1
 var _hit_at := -10.0
@@ -28,6 +29,7 @@ const KEYS := [
 	["g", "pick up"],
 	["i", "inventory"],
 	["t", "torch"],
+	["f / right-click", "shoot"],
 	["click", "travel"],
 ]
 
@@ -135,7 +137,9 @@ func _draw() -> void:
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
 	# driving a cursor rather than the player.
-	if look_mode:
+	if aiming:
+		_line(font_bold, y, "SHOOTING AT", Palette.AIM_OK)
+	elif look_mode:
 		_line(font_bold, y, "LOOKING AT", Palette.CURSOR)
 	else:
 		_line(font_bold, y, "UNDER CURSOR", Palette.UI_DIM)
@@ -144,7 +148,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 10.0
+	y = size.y - PAD - LINE * 11.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:

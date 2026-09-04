@@ -26,6 +26,7 @@ const TABLE := {
 	&"scroll":      {"ch": "?", "fg": Palette.SCROLL},
 	&"amulet":      {"ch": "\"", "fg": Palette.AMULET},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
+	&"launcher":    {"ch": "}", "fg": Palette.LAUNCHER},
 	&"armour":      {"ch": "[", "fg": Palette.ARMOUR},
 
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},

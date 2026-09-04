@@ -125,6 +125,35 @@ by `los.gd`, so stepping behind a pillar genuinely stops it. Until this pass
 the pillars, corridors and torch radius were a tactical stage with nothing on
 it that required tactics.
 
+## Shooting
+
+Launchers -- sling, short bow, war bow -- sit in the weapon slot and **trade
+damage for reach**. At every tier the ranged option is about two points weaker
+than the melee one, and that gap is the price of never being adjacent.
+
+Two ways to shoot, because roguelike players split hard on this and neither
+half should feel like the afterthought:
+
+- **`f`** opens a targeting cursor on the nearest legal target. `tab` cycles
+  (`shift+tab` backwards), the movement keys steer it freely, `enter` fires,
+  `esc` cancels.
+- **Right-click** a monster and it is shot, no mode and no confirmation.
+
+Right-click rather than left, deliberately: aiming can then never be confused
+with the click-to-travel that shares the same map.
+
+The aim line is drawn **green when the shot is legal and red when it is not**,
+with the reticle matching. A blocked shot has to *look* blocked before the
+player spends a turn discovering it -- which is also what finally makes pillars,
+stalagmites and doorways matter from the player's side of the fight rather than
+only the monsters'.
+
+Shooting empty floor is refused rather than spent. There is no ammunition, so
+nothing is gained by it, and a misclick should cost nothing.
+
+Monsters roll melee weapons only. A goblin handed a bow would carry reach its
+`pack` behaviour never uses, which reads as a bug rather than a surprise.
+
 ## Combat feedback
 
 A shot **resolves instantly in game time**, exactly as Angband and DCSS do it.

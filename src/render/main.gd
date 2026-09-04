@@ -25,6 +25,15 @@ var _travel_accum := 0.0
 var _look := false
 var _look_at := Vector2i.ZERO
 
+## Targeting. Two routes in, because roguelike players split hard on this:
+## `f` opens a keyboard cursor with tab-cycling, and right-clicking a monster
+## shoots it outright. Right-click rather than left, so aiming can never be
+## confused with the click-to-travel that shares the map.
+var _aiming := false
+var _aim_at := Vector2i.ZERO
+var _aim_targets: Array = []
+var _aim_index := 0
+
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
 	KEY_UP: Vector2i(0, -1), KEY_DOWN: Vector2i(0, 1),
@@ -44,6 +53,7 @@ func _ready() -> void:
 	fresh.new_game()
 	_bind_state(fresh)
 	grid.cell_clicked.connect(_on_cell_clicked)
+	grid.cell_right_clicked.connect(_on_cell_right_clicked)
 	inventory.use_requested.connect(_use_item)
 	inventory.drop_requested.connect(_drop_item)
 	inventory.merge_requested.connect(_merge_item)
@@ -51,7 +61,12 @@ func _ready() -> void:
 	_refresh()
 
 func _process(delta: float) -> void:
-	sidebar.hovered = _look_at if _look else grid.hovered_cell()
+	if _look:
+		sidebar.hovered = _look_at
+	elif _aiming:
+		sidebar.hovered = _aim_at
+	else:
+		sidebar.hovered = grid.hovered_cell()
 	sidebar.queue_redraw()
 
 	if not state.travelling():
@@ -88,6 +103,24 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_inventory()
 		return
 
+	if _aiming:
+		if key == KEY_ESCAPE or key == KEY_F:
+			_end_aim()
+		elif key == KEY_TAB:
+			_cycle_target(-1 if key_event.shift_pressed else 1)
+		elif key == KEY_ENTER or key == KEY_KP_ENTER:
+			_fire_at_cursor()
+		elif MOVES.has(key):
+			var step: Vector2i = MOVES[key]
+			_aim_at.x = clampi(_aim_at.x + step.x, 0, state.map.width - 1)
+			_aim_at.y = clampi(_aim_at.y + step.y, 0, state.map.height - 1)
+			_update_aim()
+		return
+
+	if key == KEY_F:
+		_begin_aim()
+		return
+
 	if key == KEY_X or key == KEY_SEMICOLON:
 		_toggle_look()
 		return
@@ -105,6 +138,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	if key == KEY_R:
 		_end_look()
+		_end_aim()
 		_close_inventory()
 		var fresh := GameState.new()
 		fresh.new_game()
@@ -186,6 +220,70 @@ func _bind_state(s: GameState) -> void:
 	log_view.state = s
 	inventory.state = s
 	_refresh()
+
+func _begin_aim() -> void:
+	if state.game_over:
+		return
+	if state.player.total_range() <= 1:
+		state.msg_log.add("You have nothing to shoot with.", Color(0.7, 0.6, 0.4))
+		_refresh()
+		return
+	_end_look()
+	_aim_targets = state.firing_targets()
+	_aiming = true
+	_aim_index = 0
+	# Opens on the nearest legal target, so the common case needs no cursor
+	# work at all.
+	if _aim_targets.is_empty():
+		_aim_at = Vector2i(state.player.x, state.player.y)
+	else:
+		_aim_at = Vector2i(_aim_targets[0].x, _aim_targets[0].y)
+	sidebar.aiming = true
+	_update_aim()
+
+func _end_aim() -> void:
+	if not _aiming:
+		return
+	_aiming = false
+	_aim_targets = []
+	grid.aim_cursor = Vector2i(-1, -1)
+	grid.aim_line = []
+	sidebar.aiming = false
+	_refresh()
+
+func _cycle_target(step: int) -> void:
+	if _aim_targets.is_empty():
+		return
+	_aim_index = wrapi(_aim_index + step, 0, _aim_targets.size())
+	var t: Entity = _aim_targets[_aim_index]
+	_aim_at = Vector2i(t.x, t.y)
+	_update_aim()
+
+func _update_aim() -> void:
+	grid.aim_cursor = _aim_at
+	grid.aim_valid = state.can_fire_at(_aim_at)
+	grid.aim_line = Los.path(state.player.x, state.player.y, _aim_at.x, _aim_at.y)
+	_refresh()
+
+func _fire_at_cursor() -> void:
+	if state.player_fire(_aim_at):
+		_end_aim()
+	else:
+		_refresh()
+
+func _on_cell_right_clicked(cell: Vector2i) -> void:
+	if state.game_over:
+		return
+	if _aiming:
+		_aim_at = cell
+		_fire_at_cursor()
+		return
+	# Straight to the shot: no mode, no confirmation, and it can never be
+	# mistaken for click-to-travel.
+	if state.player_fire(cell):
+		_refresh()
+	else:
+		_refresh()
 
 func _open_inventory() -> void:
 	_end_look()

@@ -60,6 +60,7 @@ func _initialize() -> void:
 	_test_relighting_a_brazier()
 	_test_monsters_carry_gear()
 	_test_the_amulet_and_the_ascent()
+	_test_player_ranged_attacks()
 	_report_encounter_curve()
 
 	print("")
@@ -884,6 +885,65 @@ func _test_the_amulet_and_the_ascent() -> void:
 	check("that is the win", gs.won)
 	check("the run is over", gs.game_over)
 	check("and the last floor paid out", gs.player.xp > xp_before)
+
+func _test_player_ranged_attacks() -> void:
+	var gs := _arena(31, 11)
+	gs.player.x = 4
+	gs.player.y = 5
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+	gs.map.set_all_visible()
+
+	var far := _spawn(gs, "kobold", 20, 5)
+	var near := _spawn(gs, "goblin", 9, 5)
+	far.max_hp = 500
+	far.hp = 500
+	near.max_hp = 500
+	near.hp = 500
+
+	check("bare hands have no reach", gs.player.total_range() == 1)
+	check("and no targets", gs.firing_targets().is_empty())
+	check("firing without a launcher is refused",
+		not gs.player_fire(Vector2i(9, 5)))
+
+	var bow := Item.make(&"short_bow")
+	gs.player.inventory.append(bow)
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	check("a bow grants reach", gs.player.total_range() == bow.range_bonus)
+
+	# Only what is actually shootable: the far kobold is out of reach at 16.
+	var targets := gs.firing_targets()
+	check("targets are the legal shots only",
+		targets.size() == 1 and targets[0] == near, "%d" % targets.size())
+	check("and are ordered nearest first",
+		targets.is_empty() or targets[0] == near)
+	check("out of range is not a shot", not gs.can_fire_at(Vector2i(20, 5)))
+
+	# Cover breaks the shot -- the whole reason the reticle shows blocked.
+	gs.map.set_tile(6, 5, Tiles.PILLAR)
+	check("a pillar blocks the shot", not gs.can_fire_at(Vector2i(9, 5)))
+	check("and firing into it is refused", not gs.player_fire(Vector2i(9, 5)))
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	check("clearing the cover restores the shot", gs.can_fire_at(Vector2i(9, 5)))
+
+	# A real shot lands and costs a turn.
+	var hp_before := near.hp
+	var turns_before := gs.turns
+	check("the shot is taken", gs.player_fire(Vector2i(9, 5)))
+	check("it wounds the target", near.hp < hp_before)
+	check("and spends a turn", gs.turns > turns_before)
+
+	# Shooting empty floor is refused rather than wasted.
+	var turns_now := gs.turns
+	check("shooting nothing is refused", not gs.player_fire(Vector2i(11, 5)))
+	check("and costs no turn", gs.turns == turns_now)
+
+	# Melee weapons must not quietly become ranged.
+	var axe := Item.make(&"war_axe")
+	gs.player.equipped[Item.Slot.WEAPON] = axe
+	check("a war axe has no reach", gs.player.total_range() == 1)
+	check("and the launcher trades damage for it",
+		bow.power_bonus < axe.power_bonus)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

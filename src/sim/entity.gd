@@ -96,6 +96,13 @@ func total_power() -> int:
 		v += equipped[slot].power_bonus
 	return v
 
+## Effective reach: innate, or whatever is being wielded, whichever is longer.
+func total_range() -> int:
+	var r := attack_range
+	for slot in equipped:
+		r = maxi(r, equipped[slot].range_bonus)
+	return r
+
 func total_defense() -> int:
 	var v := defense
 	for slot in equipped:

@@ -408,6 +408,10 @@ func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
 		var it := Item.roll_equipment(rng, effective_depth(), slot)
 		if it == null:
 			continue
+		# Melee only. A goblin handed a bow would carry reach its `pack` AI
+		# never uses, which reads as a bug rather than a surprise.
+		if it.range_bonus > 1:
+			continue
 		var cost := it.power_bonus + it.defense_bonus
 		if spent + cost > spare:
 			continue
@@ -528,6 +532,54 @@ func take_events() -> Array:
 	var out := events.duplicate()
 	events.clear()
 	return out
+
+## Everything the player could shoot right now, nearest first. Drives target
+## cycling, so the list the cursor walks is exactly the list of legal shots.
+func firing_targets() -> Array:
+	var out := []
+	if player.total_range() <= 1:
+		return out
+	for e in entities:
+		if e.is_player or not e.alive:
+			continue
+		if can_fire_at(Vector2i(e.x, e.y)):
+			out.append(e)
+	out.sort_custom(func(a, b):
+		return Los.steps(player.x, player.y, a.x, a.y) \
+			< Los.steps(player.x, player.y, b.x, b.y))
+	return out
+
+func can_fire_at(cell: Vector2i) -> bool:
+	var reach := player.total_range()
+	if reach <= 1:
+		return false
+	if not map.is_visible(cell.x, cell.y):
+		return false
+	if Los.steps(player.x, player.y, cell.x, cell.y) > reach:
+		return false
+	return Los.clear(map, player.x, player.y, cell.x, cell.y)
+
+func player_fire(cell: Vector2i) -> bool:
+	if game_over:
+		return false
+	if player.total_range() <= 1:
+		msg_log.add("You have nothing to shoot with.", Color(0.7, 0.6, 0.4))
+		return false
+	if not can_fire_at(cell):
+		msg_log.add("You have no clear shot there.", Color(0.7, 0.6, 0.4))
+		return false
+
+	var target := entity_at(cell.x, cell.y)
+	if target == null or target.is_player:
+		# Refused rather than spent. With no ammunition there is nothing to be
+		# gained by shooting empty floor, so a misclick should cost nothing.
+		msg_log.add("There is nothing there to shoot.", Color(0.7, 0.6, 0.4))
+		return false
+
+	_travel.clear()
+	_attack(player, target, true)
+	_end_player_turn()
+	return true
 
 func visible_monsters() -> Array:
 	var out := []
@@ -1100,7 +1152,7 @@ func _ai_ranged(actor: Entity) -> void:
 		_attack(actor, player)
 		return
 
-	if dist <= actor.attack_range and Los.clear(map, actor.x, actor.y, player.x, player.y):
+	if dist <= actor.total_range() and Los.clear(map, actor.x, actor.y, player.x, player.y):
 		_attack(actor, player, true)
 		return
 
@@ -1206,7 +1258,12 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 			wake(e)
 
 	if attacker.is_player:
-		msg_log.add("You hit the %s for %d." % [defender.name, dmg], Color(0.80, 0.85, 0.70))
+		if ranged:
+			msg_log.add("You shoot the %s for %d." % [defender.name, dmg],
+				Color(0.85, 0.88, 0.68))
+		else:
+			msg_log.add("You hit the %s for %d." % [defender.name, dmg],
+				Color(0.80, 0.85, 0.70))
 	elif ranged:
 		msg_log.add("The %s shoots you for %d." % [attacker.name, dmg], Color(0.95, 0.62, 0.35))
 	else:

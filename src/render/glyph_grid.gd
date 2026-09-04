@@ -11,6 +11,7 @@ extends Control
 ##   - box-drawing walls chosen from neighbours, so rooms have real outlines
 
 signal cell_clicked(cell: Vector2i)
+signal cell_right_clicked(cell: Vector2i)
 
 enum WallStyle {
 	LINE,   ## procedural single-line box drawing -- always connects
@@ -52,6 +53,12 @@ const BOX := {
 ## Driven by the keyboard look mode. When valid it takes precedence over the
 ## mouse hover, since the two would otherwise fight for the same highlight.
 var look_cursor := Vector2i(-1, -1)
+## Targeting. `aim_line` is the path a shot would take and `aim_valid` says
+## whether it can actually be taken -- a blocked shot must look blocked before
+## the player commits a turn to it.
+var aim_cursor := Vector2i(-1, -1)
+var aim_line: Array[Vector2i] = []
+var aim_valid := false
 var _hover := Vector2i(-1, -1)
 var _preview: Array[Vector2i] = []
 var _glyph_dx := 0.0
@@ -188,6 +195,8 @@ func _update_camera() -> void:
 	var p := Vector2i(state.player.x, state.player.y)
 	if state.map.in_bounds(look_cursor.x, look_cursor.y):
 		p = look_cursor
+	elif state.map.in_bounds(aim_cursor.x, aim_cursor.y):
+		p = aim_cursor
 
 	# Only move if the player has come inside the margin. Otherwise leave the
 	# view exactly where it was.
@@ -221,8 +230,12 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 		return
 	var click := event as InputEventMouseButton
-	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+	if click == null or not click.pressed:
+		return
+	if click.button_index == MOUSE_BUTTON_LEFT:
 		cell_clicked.emit(cell_at(click.position))
+	elif click.button_index == MOUSE_BUTTON_RIGHT:
+		cell_right_clicked.emit(cell_at(click.position))
 
 func _update_preview() -> void:
 	_preview.clear()
@@ -286,6 +299,7 @@ func _draw() -> void:
 			_draw_awareness(e)
 
 	_draw_preview()
+	_draw_aim()
 	_draw_cursor()
 	_draw_effects()
 
@@ -537,12 +551,36 @@ func _draw_preview() -> void:
 		return
 	if state.map.in_bounds(look_cursor.x, look_cursor.y):
 		return
+	if state.map.in_bounds(aim_cursor.x, aim_cursor.y):
+		return
 	var r := cell_size * 0.16
 	for cell in _preview:
 		draw_circle(_centre(cell), r, Color(Palette.PATH_HINT, 0.55))
 
+func _draw_aim() -> void:
+	if not state.map.in_bounds(aim_cursor.x, aim_cursor.y):
+		return
+	var tint := Palette.AIM_OK if aim_valid else Palette.AIM_BLOCKED
+	var r := cell_size * 0.13
+	for cell in aim_line:
+		if cell == aim_cursor:
+			continue
+		draw_circle(_centre(cell), r, Color(tint, 0.75))
+
+	# A reticle rather than the plain hover box, so aiming never looks like
+	# hovering.
+	var o := _screen(aim_cursor)
+	var c := Vector2(cell_size, cell_size)
+	draw_rect(Rect2(o, c), Color(tint, 0.16), true)
+	draw_rect(Rect2(o, c), tint, false, 2.0)
+	var arm := cell_size * 0.30
+	draw_line(o + Vector2(c.x * 0.5, -arm * 0.6), o + Vector2(c.x * 0.5, arm * 0.2), tint, 1.5)
+	draw_line(o + Vector2(c.x * 0.5, c.y + arm * 0.6), o + Vector2(c.x * 0.5, c.y - arm * 0.2), tint, 1.5)
+
 func _draw_cursor() -> void:
 	var cell := Vector2(cell_size, cell_size)
+	if state.map.in_bounds(aim_cursor.x, aim_cursor.y):
+		return
 	if state.map.in_bounds(look_cursor.x, look_cursor.y):
 		var lo := _screen(look_cursor)
 		draw_rect(Rect2(lo, cell), Color(Palette.CURSOR, 0.14), true)
