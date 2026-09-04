@@ -176,6 +176,10 @@ var _travel: Array[Vector2i] = []
 ## Set by whichever movement helper an AI turn used, so the scheduler can
 ## charge for the ground actually crossed.
 var _last_move_cost := Scheduler.ACTION_COST
+## What the player was standing on last turn, so a change of footing can be
+## announced. The energy cost was working perfectly and was completely
+## invisible -- one keypress still looked like one turn.
+var _last_footing := Tiles.FLOOR
 
 ## Behaviour matters more than the numbers here. Six monsters that all walk at
 ## you in a straight line are one monster with six stat blocks; the point of
@@ -276,6 +280,9 @@ func build_level() -> void:
 	_fov_buffer.resize(MAP_W * MAP_H)
 
 	var gen := MapGen.new(rng)
+	# Nothing below the bottom, and falling while climbing out would undo the
+	# run rather than complicate it.
+	gen.allow_pits = not ascending and depth < MAX_DEPTH
 	gen.generate(map)
 
 	entities = [player]
@@ -340,7 +347,9 @@ func _open_cell_in(room: Rect2i) -> Vector2i:
 	var best_d := 1 << 30
 	for y in range(room.position.y, room.end.y):
 		for x in range(room.position.x, room.end.x):
-			if not map.is_walkable(x, y):
+			# Never a pit: landing in one after falling through another would
+			# be a chain the player never chose to start.
+			if not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y)):
 				continue
 			var d := absi(x - c.x) + absi(y - c.y)
 			if d < best_d:
@@ -354,9 +363,15 @@ func _gather_lights() -> void:
 	static_lights = []
 	for y in map.height:
 		for x in map.width:
-			if map.get_tile(x, y) == Tiles.BRAZIER:
+			var t := map.get_tile(x, y)
+			if t == Tiles.BRAZIER:
 				static_lights.append(LightSource.new(x, y, 6,
 					Color(0.95, 0.55, 0.20), Color(0.35, 0.20, 0.30), 0.85, true))
+			elif t == Tiles.FUNGUS:
+				# Small and cold, so a fungus patch reads as its own thing and
+				# never gets mistaken for firelight.
+				static_lights.append(LightSource.new(x, y, 3,
+					Color(0.34, 0.86, 0.62), Color(0.10, 0.28, 0.22), 0.45, false))
 
 ## How dangerous this floor is, as opposed to which floor it is.
 ##
@@ -765,6 +780,9 @@ func player_move(dx: int, dy: int) -> bool:
 	if not map.is_walkable(nx, ny):
 		return false
 
+	if map.get_tile(nx, ny) == Tiles.PIT:
+		return _fall_into_pit()
+
 	var cost := move_cost_for(player, nx, ny)
 	player.x = nx
 	player.y = ny
@@ -900,6 +918,72 @@ func _invoke_shrine(kind: int) -> void:
 			torch_lit = true
 			msg_log.add("Your torch roars white. You can see far -- and be seen "
 				+ "just as far.", Color(1.00, 0.90, 0.55))
+
+## Stepping into a pit. Always deliberate -- the pathfinder routes around them,
+## so neither auto-travel nor a monster can put you here.
+func _fall_into_pit() -> bool:
+	_travel.clear()
+	var hurt := rng.randi_range(3, 6 + depth / 2)
+	player.take_damage(hurt)
+	msg_log.add("The floor opens. You drop into the dark.", Color(0.85, 0.75, 0.62))
+
+	if not player.alive:
+		game_over = true
+		death_cause = "broken by a fall"
+		write_morgue()
+		return true
+
+	depth += 1
+	build_level()
+	msg_log.add("You land hard on depth %d. (-%d hp)" % [depth, hurt],
+		Color(0.90, 0.60, 0.45))
+	return true
+
+## Loud ground. Noise carries through stone, so this ignores line of sight --
+## it is the counterpart to light, and the second thing that can give you away.
+func _make_noise(at: Vector2i, radius: int) -> void:
+	if radius <= 0:
+		return
+	var roused := 0
+	for e in entities:
+		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
+			continue
+		e.alertness = Entity.Alert.AWAKE
+		e.last_seen = at
+		e.lost_turns = 0
+		e.notice_block = 0
+		if Los.steps(e.x, e.y, at.x, at.y) > radius:
+			e.alertness = Entity.Alert.ASLEEP
+			continue
+		roused += 1
+	if roused > 0:
+		msg_log.add("The noise carries. %d things turn towards it." % roused,
+			Color(0.95, 0.70, 0.40))
+
+## Announces a change of footing, once, when it changes.
+func _note_footing() -> void:
+	var here := map.get_tile(player.x, player.y)
+	if here == _last_footing:
+		return
+	var was_hard := Tiles.move_cost(_last_footing) > 1.0
+	var now_hard := Tiles.move_cost(here) > 1.0
+	_last_footing = here
+
+	if now_hard and not was_hard:
+		match here:
+			Tiles.MUD:
+				msg_log.add("You sink to the ankle. Every step will cost you.",
+					Color(0.80, 0.70, 0.55))
+			Tiles.WATER:
+				msg_log.add("You wade in. The going is slower.",
+					Color(0.62, 0.78, 0.90))
+			Tiles.RUBBLE:
+				msg_log.add("Loose stone shifts underfoot.", Color(0.78, 0.74, 0.66))
+			Tiles.BONES:
+				msg_log.add("Bone splinters crack under your boots.",
+					Color(0.88, 0.85, 0.75))
+	elif was_hard and not now_hard:
+		msg_log.add("Firm ground again.", Color(0.70, 0.72, 0.70))
 
 func player_wait() -> bool:
 	if game_over:
@@ -1275,6 +1359,9 @@ func step_travel() -> bool:
 func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
+	_note_footing()
+	_make_noise(Vector2i(player.x, player.y),
+		Tiles.noise_radius(map.get_tile(player.x, player.y)))
 	if torch_flare > 0:
 		torch_flare -= 1
 		if torch_flare == 0:

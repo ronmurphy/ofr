@@ -136,14 +136,25 @@ func _draw() -> void:
 	y += LINE
 	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
 	y += LINE
+	# Footing, because the energy cost of mud was working perfectly and was
+	# entirely invisible: one keypress still looked like one turn.
+	var ground := state.map.get_tile(state.player.x, state.player.y)
+	var pace := Tiles.move_cost(ground)
+	var ground_name := String(Tiles.appearance_id(ground)).replace("_", " ")
+	if pace > 1.0:
+		_stat_row(y, "footing", "%s  x%.1f" % [ground_name, pace], true)
+	else:
+		_stat_row(y, "footing", "firm", false)
+	y += LINE
+
 	# Doused is the unusual, dangerous state, so it is the one that is tinted.
-	draw_string(font, Vector2(PAD, y), "torch",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	var torch_text := "lit" if state.torch_lit else "doused"
 	var torch_tint := Palette.UI_TEXT if state.torch_lit else Palette.SLEEP
 	if state.torch_flare > 0:
 		torch_text = "FLARED %d" % state.torch_flare
 		torch_tint = Palette.AMULET
+	draw_string(font, Vector2(PAD, y), "torch",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	draw_string(font, Vector2(PAD, y), torch_text,
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
 	y += LINE * 1.7

@@ -321,6 +321,7 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 
 	var is_rock := tile == Tiles.ROCK
 	var is_pillar := tile == Tiles.PILLAR
+	var is_pit := tile == Tiles.PIT
 
 	if is_wall:
 		fg = Palette.STONE_LIGHT
@@ -383,6 +384,13 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 	if is_pillar:
 		draw_rect(Rect2(origin, cell), bg, true)
 		draw_circle(origin + cell * 0.5, cell_size * 0.34, fg)
+		return
+	if is_pit:
+		# Drawn rather than lettered: a hole should read as absence, and no
+		# glyph says "nothing is there" as plainly as nothing being there.
+		draw_rect(Rect2(origin, cell), Palette.BG, true)
+		draw_circle(origin + cell * 0.5, cell_size * 0.40, Color(0, 0, 0, 1))
+		draw_arc(origin + cell * 0.5, cell_size * 0.40, 0.0, TAU, 14, fg, 1.5)
 		return
 
 	draw_rect(Rect2(origin, cell), bg, true)

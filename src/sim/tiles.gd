@@ -26,6 +26,9 @@ enum {
 	STAIRS_UP,
 	SHRINE,
 	MUD,
+	BONES,
+	FUNGUS,
+	PIT,
 }
 
 ## walk  = an actor may stand here
@@ -59,6 +62,14 @@ const DATA := {
 	# never be triggered by walking.
 	SHRINE:      {"id": &"shrine",      "walk": true,  "clear": true},
 	MUD:         {"id": &"mud",         "walk": true,  "clear": true},
+	# Loose and loud. Crossing it is heard.
+	BONES:       {"id": &"bones",       "walk": true,  "clear": true},
+	# Faintly luminous. Light you did not have to carry, and cannot put out.
+	FUNGUS:      {"id": &"fungus",      "walk": true,  "clear": true},
+	# Walkable on purpose: falling in is always a choice, never an accident.
+	# The pathfinder treats it as solid, so neither travel nor a monster will
+	# ever route you into one.
+	PIT:         {"id": &"pit",         "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:
@@ -73,7 +84,8 @@ static func appearance_id(t: int) -> StringName:
 ## Anything an actor can stand on. Used by generation and decoration to avoid
 ## painting over a corridor or a staircase.
 static func is_open_floor(t: int) -> bool:
-	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER or t == MUD
+	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER \
+		or t == MUD or t == BONES or t == FUNGUS
 
 ## What it costs to step onto this, as a multiple of an ordinary stride.
 ##
@@ -85,4 +97,17 @@ static func move_cost(t: int) -> float:
 		MUD:    return 2.0
 		WATER:  return 1.4
 		RUBBLE: return 1.3
+		BONES:  return 1.2
 	return 1.0
+
+## Ground a route should never be planned through, even though a determined
+## player may still step there.
+static func is_avoided(t: int) -> bool:
+	return t == PIT
+
+## How far the noise of crossing this carries. Zero for anything quiet.
+static func noise_radius(t: int) -> int:
+	return 7 if t == BONES else 0
+
+static func is_luminous(t: int) -> bool:
+	return t == FUNGUS

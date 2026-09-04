@@ -24,7 +24,10 @@ func _init(map: DungeonMap) -> void:
 func refresh(map: DungeonMap) -> void:
 	for y in map.height:
 		for x in map.width:
-			_grid.set_point_solid(Vector2i(x, y), not map.is_walkable(x, y))
+			# Pits are walkable but never routed through, so auto-travel and
+			# monster pursuit both go around rather than dropping in.
+			var blocked := not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y))
+			_grid.set_point_solid(Vector2i(x, y), blocked)
 
 func set_solid(x: int, y: int, solid: bool) -> void:
 	_grid.set_point_solid(Vector2i(x, y), solid)

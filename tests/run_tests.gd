@@ -71,6 +71,9 @@ func _initialize() -> void:
 	_test_shrine_identity_is_shuffled()
 	_test_torch_flare()
 	_test_difficult_ground()
+	_test_bones_are_loud()
+	_test_pits()
+	_test_fungus_glows()
 	_report_encounter_curve()
 
 	print("")
@@ -1390,6 +1393,103 @@ func _test_difficult_ground() -> void:
 					muddy += 1
 	check("levels have water on them (%d cells / 40)" % wet_floors, wet_floors > 0)
 	check("and mud (%d cells / 40)" % muddy, muddy > 0)
+
+## Noise is the second thing that can give you away. Until now the awareness
+## system had exactly one input: light.
+func _test_bones_are_loud() -> void:
+	var gs := _arena(31, 13)
+	gs.player.x = 5
+	gs.player.y = 6
+	gs.torch_lit = false
+	gs.map.set_tile(6, 6, Tiles.BONES)
+	gs.update_vision()
+
+	var near := _spawn(gs, "orc", 11, 6)
+	var far := _spawn(gs, "orc", 25, 11)
+	near.alertness = Entity.Alert.ASLEEP
+	far.alertness = Entity.Alert.ASLEEP
+
+	check("bones cost a little extra to cross", Tiles.move_cost(Tiles.BONES) > 1.0)
+	check("and they are loud", Tiles.noise_radius(Tiles.BONES) > 0)
+	check("plain floor is quiet", Tiles.noise_radius(Tiles.FLOOR) == 0)
+
+	gs.player_move(1, 0)
+	check("crossing bones wakes what is near",
+		near.alertness == Entity.Alert.AWAKE)
+	check("but not what is across the level",
+		far.alertness == Entity.Alert.ASLEEP)
+
+	# Noise goes through stone: it is not line of sight.
+	var walled := _arena(31, 13)
+	walled.player.x = 5
+	walled.player.y = 6
+	walled.map.set_tile(6, 6, Tiles.BONES)
+	for y in range(1, 12):
+		walled.map.set_tile(9, y, Tiles.WALL)
+	walled.pathfinder = Pathfinder.new(walled.map)
+	var hidden := _spawn(walled, "orc", 11, 6)
+	hidden.alertness = Entity.Alert.ASLEEP
+	walled.update_vision()
+	walled.player_move(1, 0)
+	check("noise carries through a wall", hidden.alertness == Entity.Alert.AWAKE)
+
+func _test_pits() -> void:
+	check("a pit can be stepped into", Tiles.is_walkable(Tiles.PIT))
+	check("but is never routed through", Tiles.is_avoided(Tiles.PIT))
+
+	var gs := _arena(31, 13)
+	gs.player.x = 5
+	gs.player.y = 6
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	gs.map.set_tile(6, 6, Tiles.PIT)
+	gs.pathfinder = Pathfinder.new(gs.map)
+
+	# Travel must go around, not down.
+	gs.map.reveal_all()
+	var route := gs.pathfinder.path(Vector2i(5, 6), Vector2i(8, 6))
+	check("a route around a pit exists", not route.is_empty())
+	check("and it does not pass through it",
+		not route.has(Vector2i(6, 6)), str(route))
+
+	var depth_before := gs.depth
+	var hp_before := gs.player.hp
+	check("stepping in works", gs.player_move(1, 0))
+	check("it drops you a floor", gs.depth == depth_before + 1)
+	check("and it hurts", gs.player.hp < hp_before)
+	check("you never land in another pit",
+		gs.map.get_tile(gs.player.x, gs.player.y) != Tiles.PIT)
+
+	# No pits on the bottom floor, and none on the way out.
+	var bottom := GameState.new(3300)
+	bottom.new_game()
+	bottom.depth = GameState.MAX_DEPTH
+	bottom.build_level()
+	var holes := 0
+	for y in bottom.map.height:
+		for x in bottom.map.width:
+			if bottom.map.get_tile(x, y) == Tiles.PIT:
+				holes += 1
+	check("the bottom floor has no pits", holes == 0, "%d" % holes)
+
+func _test_fungus_glows() -> void:
+	check("fungus is luminous", Tiles.is_luminous(Tiles.FUNGUS))
+	check("and can be walked over", Tiles.is_walkable(Tiles.FUNGUS))
+
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.torch_lit = false
+	gs.map.set_tile(14, 4, Tiles.FUNGUS)
+	gs._gather_lights()
+	check("a fungus patch is a light source", gs.static_lights.size() == 1)
+
+	gs.update_vision()
+	var lit: Color = gs.light_map.get_light(14, 4)
+	var dark: Color = gs.light_map.get_light(19, 8)
+	check("it lights its own cell", lit.get_luminance() > dark.get_luminance())
+	check("but only faintly", lit.get_luminance() < 0.6,
+		"%.2f" % lit.get_luminance())
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

@@ -15,7 +15,7 @@ enum Archetype { PLAIN, PILLARED, SHRINE, COLLAPSED, POOL }
 ## differently between levels. Two orthogonal axes multiply the variety instead
 ## of adding to it: a pillared hall can be dry on one floor and knee-deep in
 ## mud on the next.
-enum Ground { DRY, DAMP, FLOODED, MUDDY, RUBBLED }
+enum Ground { DRY, DAMP, FLOODED, MUDDY, RUBBLED, BONEYARD }
 
 const MAX_ROOMS := 22
 const ROOM_MIN := 6
@@ -24,6 +24,9 @@ const CAVE_MIN := Vector2i(14, 10)
 const CAVE_MAX := Vector2i(22, 15)
 
 var rng: RandomNumberGenerator
+## Cleared on the bottom floor and on the way out: there is nothing below the
+## deepest level, and falling while climbing would undo the run.
+var allow_pits := true
 var rooms: Array[Rect2i] = []
 var archetypes: Array[int] = []
 var caves: Array[Rect2i] = []
@@ -50,6 +53,7 @@ func generate(map: DungeonMap) -> void:
 	_ensure_sanctums()
 	_decorate(map)
 	_lay_terrain(map)
+	_scatter_features(map)
 	_naturalise_cave_walls(map)
 	_paint_materials(map)
 
@@ -264,12 +268,51 @@ func _ensure_sanctums():
 		archetypes[candidates.pop_back()] = Archetype.SHRINE
 		have += 1
 
+## Fungus patches and pits: features rather than ground, so they are scattered
+## rather than rolled per room.
+func _scatter_features(map: DungeonMap) -> void:
+	for _patch in rng.randi_range(1, 3):
+		var seed_cell := _random_open(map)
+		if seed_cell.x < 0:
+			continue
+		for _cell in rng.randi_range(3, 7):
+			var c := seed_cell + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+			if map.get_tile(c.x, c.y) == Tiles.FLOOR \
+					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:
+				map.set_tile(c.x, c.y, Tiles.FUNGUS)
+
+	if not allow_pits:
+		return
+	for _hole in rng.randi_range(0, 3):
+		var spot := _random_open(map)
+		if spot.x < 0:
+			continue
+		# Only in plain sight, with open ground all round. A pit tucked into a
+		# doorway would be a trap; one in the middle of a floor is a choice.
+		var clear := true
+		for dy in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				if not map.is_walkable(spot.x + dx, spot.y + dy):
+					clear = false
+		if clear:
+			map.set_tile(spot.x, spot.y, Tiles.PIT)
+
+func _random_open(map: DungeonMap) -> Vector2i:
+	for _try in 60:
+		var x := rng.randi_range(1, map.width - 2)
+		var y := rng.randi_range(1, map.height - 2)
+		var t := map.get_tile(x, y)
+		if t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR:
+			return Vector2i(x, y)
+	return Vector2i(-1, -1)
+
 func _roll_ground() -> int:
 	var r := rng.randf()
 	if r < 0.60: return Ground.DRY
 	if r < 0.73: return Ground.DAMP
 	if r < 0.83: return Ground.MUDDY
-	if r < 0.93: return Ground.RUBBLED
+	if r < 0.90: return Ground.RUBBLED
+	if r < 0.96: return Ground.BONEYARD
 	return Ground.FLOODED
 
 ## Difficult ground is never placed over anything that matters -- only over
@@ -292,7 +335,8 @@ func _paint_ground(map: DungeonMap, area: Rect2i, g: int) -> void:
 		Ground.DAMP:    tile = Tiles.WATER;  density = 0.28
 		Ground.FLOODED: tile = Tiles.WATER;  density = 0.80
 		Ground.MUDDY:   tile = Tiles.MUD;    density = 0.66
-		Ground.RUBBLED: tile = Tiles.RUBBLE; density = 0.34
+		Ground.RUBBLED:  tile = Tiles.RUBBLE; density = 0.34
+		Ground.BONEYARD: tile = Tiles.BONES;  density = 0.55
 
 	# Wettest in the middle, drying towards the walls, so it reads as something
 	# that pooled rather than something that was sprayed on.

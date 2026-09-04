@@ -436,6 +436,22 @@ Difficult ground is only ever laid over plain floor, so it can never bury a
 shrine, a brazier or a staircase, and all of it stays walkable, so it cannot
 sever a level.
 
+## Bones, fungus and pits
+
+Three features scattered on top of the ground pass:
+
+- **Bones** cost a little extra to cross and are **loud**. Stepping on them
+  wakes anything within seven cells, ignoring line of sight, because noise goes
+  through stone. Until this, the awareness system had exactly one input: light.
+  Now it has two, and a floor you can *see* is dangerous to cross quietly.
+- **Fungus** glows faintly -- light you did not have to carry and cannot put
+  out. Useful, and it also means standing in it makes you visible.
+- **Pits** drop you to the next floor for some damage. They are walkable so
+  falling in is always a choice, but the **pathfinder treats them as solid**,
+  so neither auto-travel nor a pursuing monster can ever put you down one. You
+  never land in another pit, and none generate on the bottom floor or during
+  the climb out.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

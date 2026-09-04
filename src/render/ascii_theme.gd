@@ -21,6 +21,9 @@ const TABLE := {
 	&"rubble":      {"ch": "▒", "fg": Palette.RUBBLE,   "bg": Color("1a150f")},
 	&"water":       {"ch": "~",      "fg": Palette.WATER,    "bg": Palette.WATER_BG},
 	&"mud":         {"ch": "░", "fg": Palette.MUD,      "bg": Palette.MUD_BG},
+	&"bones":       {"ch": ",",      "fg": Palette.BONES,    "bg": Color("1d1c19")},
+	&"fungus":      {"ch": "*",      "fg": Palette.FUNGUS,   "bg": Color("14201b")},
+	&"pit":         {"ch": " ",      "fg": Palette.PIT_RIM,  "bg": Color("000000")},
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
 	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
 
