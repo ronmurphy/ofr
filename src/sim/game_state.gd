@@ -42,6 +42,20 @@ const MERGE_COST := 4
 ## just a strictly better way to read the scroll.
 const RELIGHT_CHARGE := 6
 
+## A flared torch, in turns. It cannot be smothered while it burns -- that is
+## the curse half: you see much further, and so does everything else.
+const FLARE_TURNS := 100
+const FLARE_MULTIPLIER := 2
+## How long the shrine of the quiet keeps a floor from noticing you. Long
+## enough to move, or to get the torch out and leave on your own terms.
+const QUIET_TURNS := 12
+
+## Ordinary human pace, and what the shrine of the weight costs you until the
+## next floor. The energy scheduler has supported this since the beginning and
+## nothing has ever moved it.
+const BASE_SPEED := 100
+const WEIGHT_SPEED := 82
+
 ## How often a slain monster's gear survives the fight.
 ##
 ## Not 1.0 on purpose. Every kill yielding a usable item would flood the floor,
@@ -134,6 +148,16 @@ var ascending := false
 var won := false
 ## What finished the run, for the morgue.
 var death_cause := ""
+
+## Cell -> shrine type. Shrines are consumed when used.
+var shrine_at: Dictionary = {}
+## Shrine type -> hue index, shuffled once per run so the colours have to be
+## learned again each time.
+var shrine_hues: Array[int] = []
+var shrine_known: Dictionary = {}
+## Raised by the shrine of the anvil, for the rest of the run.
+var forge_cap_bonus := 0
+var torch_flare := 0
 var turns: int = 0
 var game_over: bool = false
 
@@ -149,6 +173,9 @@ var _fov_buffer := PackedByteArray()
 ## A queued mouse-travel path. Consumed one step per turn, abandoned the
 ## instant something hostile comes into view.
 var _travel: Array[Vector2i] = []
+## Set by whichever movement helper an AI turn used, so the scheduler can
+## charge for the ground actually crossed.
+var _last_move_cost := Scheduler.ACTION_COST
 
 ## Behaviour matters more than the numbers here. Six monsters that all walk at
 ## you in a straight line are one monster with six stat blocks; the point of
@@ -176,7 +203,7 @@ const BESTIARY := [
 	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2,
 	 "threat": 6},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
-	 "speed": 170, "ai": &"erratic", "flee": 0.0, "min_depth": 2, "threat": 5},
+	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
 	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
@@ -190,22 +217,22 @@ const BESTIARY := [
 	# deeper. These also carry the whole ascent, which runs at effective
 	# depths of 10 to 19.
 	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "min_depth": 5, "threat": 14},
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14},
 	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
-	 "speed": 160, "ai": &"erratic", "flee": 0.25, "min_depth": 5, "threat": 12},
+	 "speed": 160, "ai": &"erratic", "flee": 0.25, "flying": true, "min_depth": 5, "threat": 12},
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "min_depth": 6,
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "heavy": true, "min_depth": 6,
 	 "threat": 16},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
-	 "speed": 140, "ai": &"hunter", "flee": 0.10, "min_depth": 7, "threat": 20},
+	 "speed": 140, "ai": &"hunter", "flee": 0.10, "flying": true, "min_depth": 7, "threat": 20},
 	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
-	 "speed": 70, "ai": &"hunter", "flee": 0.0, "min_depth": 8, "threat": 20},
+	 "speed": 70, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 8, "threat": 20},
 	{"name": "shadow", "app": &"shadow", "hp": 20, "power": 13, "def": 1,
-	 "speed": 130, "ai": &"erratic", "flee": 0.0, "min_depth": 9, "threat": 19},
+	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19},
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
-	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "min_depth": 10,
+	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
 	 "threat": 28},
 ]
 
@@ -239,6 +266,7 @@ func new_game() -> void:
 	player.defense = 1
 	player.light = LightSource.new(0, 0, TORCH_RADIUS,
 		Color(1.00, 0.72, 0.36), Color(0.30, 0.34, 0.55), 1.0, true)
+	_shuffle_shrines()
 	build_level()
 	msg_log.add("You descend into the dark, torch guttering.", Color(0.85, 0.72, 0.45))
 
@@ -278,6 +306,15 @@ func build_level() -> void:
 		relic.x = stairs.x
 		relic.y = stairs.y
 		ground.append(relic)
+
+	# The weight does not follow you down the stairs.
+	player.speed = BASE_SPEED
+
+	shrine_at.clear()
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == Tiles.SHRINE:
+				shrine_at[Vector2i(x, y)] = rng.randi_range(0, Shrines.COUNT - 1)
 
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
@@ -330,6 +367,47 @@ func effective_depth() -> int:
 	if not ascending:
 		return depth
 	return MAX_DEPTH + (MAX_DEPTH - depth)
+
+## Fisher-Yates through the run's own rng, so a seeded run always hides the
+## same effect behind the same colour.
+func _shuffle_shrines() -> void:
+	shrine_hues = []
+	for i in Shrines.COUNT:
+		shrine_hues.append(i)
+	for i in range(shrine_hues.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var swap := shrine_hues[i]
+		shrine_hues[i] = shrine_hues[j]
+		shrine_hues[j] = swap
+	shrine_known.clear()
+	forge_cap_bonus = 0
+
+func shrine_hue(kind: int) -> Color:
+	if kind < 0 or kind >= shrine_hues.size():
+		return Palette.UI_TEXT
+	return Shrines.HUES[shrine_hues[kind]]
+
+## What the player may call it. Unknown shrines are named by colour alone.
+func shrine_label(kind: int) -> String:
+	if shrine_known.has(kind):
+		return Shrines.NAMES[kind]
+	return "an unfamiliar shrine"
+
+## The forging ceiling, which the anvil raises.
+func upgrade_cap() -> int:
+	return Item.MAX_UPGRADES + forge_cap_bonus
+
+func item_can_upgrade(item: Item) -> bool:
+	return item.is_equipment() and item.upgrade_level() < upgrade_cap()
+
+## What a step onto this cell costs, for this actor.
+func move_cost_for(actor: Entity, x: int, y: int) -> int:
+	if actor.flying:
+		return Scheduler.ACTION_COST
+	var m := Tiles.move_cost(map.get_tile(x, y))
+	if actor.heavy and m > 1.0:
+		m += 0.6
+	return int(round(Scheduler.ACTION_COST * m))
 
 func room_threat_ceiling() -> int:
 	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
@@ -395,6 +473,8 @@ func _spawn_in(area: Rect2i, remaining: int) -> int:
 	m.attack_range = pick.get("range", 1)
 	m.flee_below = pick.get("flee", 0.0)
 	m.regen = pick.get("regen", 0)
+	m.flying = pick.get("flying", false)
+	m.heavy = pick.get("heavy", false)
 	m.threat = int(pick["threat"])
 	# Gear raises what a monster is actually worth facing, so it must raise the
 	# threat too. Otherwise a room of armed orcs quietly costs more than its
@@ -516,13 +596,20 @@ func entity_at(x: int, y: int) -> Entity:
 
 func update_vision() -> void:
 	var radius := TORCH_RADIUS if torch_lit else DOUSED_RADIUS
+	if torch_flare > 0:
+		radius = TORCH_RADIUS * FLARE_MULTIPLIER
 	Fov.compute(map, player.x, player.y, radius, _fov_buffer)
 	map.visible_now = _fov_buffer.duplicate()
 	map.remember_visible()
 
 	player.light.x = player.x
 	player.light.y = player.y
-	if torch_lit:
+	if torch_flare > 0:
+		player.light.radius = TORCH_RADIUS * FLARE_MULTIPLIER
+		player.light.intensity = 1.25
+		player.light.color = Color(1.00, 0.94, 0.72)
+		player.light.color_far = Color(0.45, 0.48, 0.62)
+	elif torch_lit:
 		player.light.radius = TORCH_RADIUS
 		player.light.intensity = 1.0
 		player.light.color = Color(1.00, 0.72, 0.36)
@@ -678,14 +765,19 @@ func player_move(dx: int, dy: int) -> bool:
 	if not map.is_walkable(nx, ny):
 		return false
 
+	var cost := move_cost_for(player, nx, ny)
 	player.x = nx
 	player.y = ny
-	_end_player_turn()
+	_end_player_turn(cost)
 	return true
 
 ## Costs a turn on purpose. Going dark is a decision, not a free toggle.
 func player_toggle_torch() -> bool:
 	if game_over:
+		return false
+	if torch_flare > 0:
+		msg_log.add("The flare will not be smothered. %d turns of it left."
+			% torch_flare, Color(0.95, 0.80, 0.45))
 		return false
 	_travel.clear()
 	torch_lit = not torch_lit
@@ -703,6 +795,112 @@ func player_toggle_torch() -> bool:
 ## turns. The awareness system makes that genuinely dangerous, which is why
 ## this heals slowly rather than all at once -- an instant heal would be free,
 ## and a free heal is not a decision.
+## Praying is its own key so that walking onto a shrine can never spring a
+## curse. A deliberate act, deliberately.
+func player_pray() -> bool:
+	if game_over:
+		return false
+	var here := Vector2i(player.x, player.y)
+	if map.get_tile(here.x, here.y) != Tiles.SHRINE:
+		msg_log.add("There is nothing here to pray at.", Color(0.7, 0.6, 0.4))
+		return false
+
+	var kind := int(shrine_at.get(here, Shrines.MENDING))
+	_travel.clear()
+	map.set_tile(here.x, here.y, Tiles.FLOOR)
+	shrine_at.erase(here)
+	shrine_known[kind] = true
+	msg_log.add("You lay a hand on the %s." % Shrines.NAMES[kind],
+		shrine_hue(kind))
+	_invoke_shrine(kind)
+	_end_player_turn()
+	return true
+
+func _invoke_shrine(kind: int) -> void:
+	match kind:
+		Shrines.QUIET:
+			var n := 0
+			for e in entities:
+				if e.is_player or not e.alive:
+					continue
+				e.notice_block = QUIET_TURNS
+				if e.alertness != Entity.Alert.ASLEEP:
+					e.alertness = Entity.Alert.ASLEEP
+					e.fleeing = false
+					n += 1
+			msg_log.add("A hush settles. %d things stop looking for you." % n,
+				Color(0.70, 0.85, 0.95))
+
+		Shrines.VIGIL:
+			# Set directly rather than through wake(), which would log and
+			# flash an exclamation mark for every monster on the floor.
+			var n := 0
+			for e in entities:
+				if e.is_player or not e.alive:
+					continue
+				if e.alertness != Entity.Alert.AWAKE:
+					e.alertness = Entity.Alert.AWAKE
+					e.last_seen = Vector2i(player.x, player.y)
+					e.lost_turns = 0
+					n += 1
+			msg_log.add("Something calls out, and %d things answer." % n,
+				Color(0.95, 0.55, 0.40))
+
+		Shrines.EMBERS:
+			var n := 0
+			for y in map.height:
+				for x in map.width:
+					if map.get_tile(x, y) != Tiles.BRAZIER_SPENT:
+						continue
+					map.set_tile(x, y, Tiles.BRAZIER)
+					brazier_charge[Vector2i(x, y)] = BRAZIER_CHARGE / 2
+					n += 1
+			_gather_lights()
+			msg_log.add("Cold ash catches. %d braziers burn again." % n,
+				Color(0.98, 0.78, 0.42))
+
+		Shrines.ANVIL:
+			forge_cap_bonus += 1
+			msg_log.add("Your hands remember an older craft. Metal will take "
+				+ "another edge.", Color(0.85, 0.88, 0.70))
+
+		Shrines.MENDING:
+			var healed := player.max_hp - player.hp
+			player.hp = player.max_hp
+			msg_log.add("Warmth floods through you. %d hit points restored."
+				% healed, Color(0.55, 0.85, 0.55))
+
+		Shrines.SUMMONS:
+			var before := entities.size()
+			var area := Rect2i(player.x - 4, player.y - 4, 9, 9)
+			for _i in rng.randi_range(1, 3):
+				_spawn_in(area, room_threat_ceiling())
+			var made := entities.size() - before
+			for i in range(before, entities.size()):
+				entities[i].alertness = Entity.Alert.AWAKE
+			msg_log.add("The air splits, and %d things step through." % made,
+				Color(0.95, 0.50, 0.45))
+
+		Shrines.WEIGHT:
+			var blessed := 0
+			for slot in player.equipped:
+				var it: Item = player.equipped[slot]
+				it.upgrade()
+				blessed += 1
+			player.speed = WEIGHT_SPEED
+			if blessed > 0:
+				msg_log.add("Your gear drinks it in and grows heavier. You move "
+					+ "slower for it.", Color(0.88, 0.86, 0.78))
+			else:
+				msg_log.add("The weight settles on you with nothing to bless. "
+					+ "You move slower for nothing.", Color(0.75, 0.70, 0.62))
+
+		Shrines.FLARE:
+			torch_flare = FLARE_TURNS
+			torch_lit = true
+			msg_log.add("Your torch roars white. You can see far -- and be seen "
+				+ "just as far.", Color(1.00, 0.90, 0.55))
+
 func player_wait() -> bool:
 	if game_over:
 		return false
@@ -768,8 +966,8 @@ func can_forge_here() -> bool:
 ## the mechanic advertises itself instead of relying on the player guessing
 ## which of the two items involved is the one to click.
 func can_forge_item(item: Item) -> bool:
-	return item.is_equipment() and item.can_upgrade() \
-		and _find_duplicate(item) != null and can_forge_here()
+	return item_can_upgrade(item) and _find_duplicate(item) != null \
+		and can_forge_here()
 
 ## Merge the item at `index` with an identical one from the pack, at a brazier.
 func player_merge(index: int) -> bool:
@@ -780,7 +978,7 @@ func player_merge(index: int) -> bool:
 	if not item.is_equipment():
 		msg_log.add("Only weapons and armour can be worked.", Color(0.7, 0.6, 0.4))
 		return false
-	if not item.can_upgrade():
+	if not item_can_upgrade(item):
 		msg_log.add("The %s cannot take another edge." % item.display_name(),
 			Color(0.7, 0.6, 0.4))
 		return false
@@ -1068,14 +1266,20 @@ func step_travel() -> bool:
 		return false
 	_travel.remove_at(0)
 	# Deliberately not player_move(): that clears the travel queue.
+	var cost := move_cost_for(player, next.x, next.y)
 	player.x = next.x
 	player.y = next.y
-	_end_player_turn()
+	_end_player_turn(cost)
 	return true
 
-func _end_player_turn() -> void:
-	Scheduler.spend(player)
+func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
+	Scheduler.spend(player, cost)
 	turns += 1
+	if torch_flare > 0:
+		torch_flare -= 1
+		if torch_flare == 0:
+			msg_log.add("The flare gutters down to an ordinary flame.",
+				Color(0.80, 0.75, 0.60))
 	update_vision()
 	_run_world()
 	update_vision()
@@ -1120,6 +1324,12 @@ static func load_suspend() -> GameState:
 		return null
 	return gs
 
+func _shrines_to_dict() -> Dictionary:
+	var out := {}
+	for cell in shrine_at:
+		out["%d,%d" % [cell.x, cell.y]] = int(shrine_at[cell])
+	return out
+
 func to_dict() -> Dictionary:
 	var mobs := []
 	for e in entities:
@@ -1156,6 +1366,9 @@ func to_dict() -> Dictionary:
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
 		"braziers": charges, "caves": caves, "rooms": rooms,
+		"shrines": _shrines_to_dict(), "hues": shrine_hues,
+		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
+		"flare": torch_flare,
 		"entities": mobs, "player": entities.find(player),
 		"ground": loot, "log": lines,
 	}
@@ -1192,6 +1405,21 @@ func apply_dict(d: Dictionary) -> bool:
 		var parts: PackedStringArray = String(key).split(",")
 		if parts.size() == 2:
 			brazier_charge[Vector2i(parts[0].to_int(), parts[1].to_int())] = int(charges[key])
+
+	shrine_at.clear()
+	var saved_shrines: Dictionary = d.get("shrines", {})
+	for key in saved_shrines:
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
+	shrine_hues.clear()
+	for h in d.get("hues", []):
+		shrine_hues.append(int(h))
+	shrine_known.clear()
+	for k in d.get("known", []):
+		shrine_known[int(k)] = true
+	forge_cap_bonus = int(d.get("forge_bonus", 0))
+	torch_flare = int(d.get("flare", 0))
 
 	cave_regions.clear()
 	for r in d.get("caves", []):
@@ -1267,12 +1495,13 @@ func _run_world() -> void:
 		var actor := Scheduler.next_actor(entities)
 		if actor == null or actor.is_player:
 			return
-		_take_ai_turn(actor)
-		Scheduler.spend(actor)
+		Scheduler.spend(actor, _take_ai_turn(actor))
 
-func _take_ai_turn(actor: Entity) -> void:
+## Returns what the turn cost -- difficult ground slows monsters exactly as it
+## slows the player, which is the whole reason mud can be used as a shield.
+func _take_ai_turn(actor: Entity) -> int:
 	if not actor.alive or game_over:
-		return
+		return Scheduler.ACTION_COST
 
 	# Regeneration ticks even while asleep, so a troll you wounded and fled
 	# from is whole again when you come back. That is the point of it.
@@ -1283,18 +1512,20 @@ func _take_ai_turn(actor: Entity) -> void:
 	# Asleep, or merely stirring: it spends its turn not acting. That pause is
 	# the player's window to withdraw, and it is the point of the middle state.
 	if actor.alertness != Entity.Alert.AWAKE:
-		return
+		return Scheduler.ACTION_COST
 
 	_update_morale(actor)
+	_last_move_cost = Scheduler.ACTION_COST
 	if actor.fleeing:
 		_ai_flee(actor)
-		return
+		return _last_move_cost
 
 	match actor.ai:
 		&"erratic": _ai_erratic(actor)
 		&"ranged":  _ai_ranged(actor)
 		&"pack":    _ai_pack(actor)
 		_:          _ai_hunter(actor)
+	return _last_move_cost
 
 func _update_awareness(actor: Entity) -> void:
 	var d := Los.steps(actor.x, actor.y, player.x, player.y)
@@ -1310,6 +1541,10 @@ func _update_awareness(actor: Entity) -> void:
 			if actor.lost_turns > 10:
 				actor.alertness = Entity.Alert.SUSPICIOUS
 				actor.calm_turns = 0
+		return
+
+	if actor.notice_block > 0:
+		actor.notice_block -= 1
 		return
 
 	if _notices_player(actor, d):
@@ -1432,6 +1667,7 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	var step: Vector2i = route[0]
 	if entity_at(step.x, step.y) != null:
 		return
+	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
 
@@ -1448,6 +1684,7 @@ func _step_random(actor: Entity) -> void:
 	if opts.is_empty():
 		return
 	var pick: Vector2i = opts[rng.randi_range(0, opts.size() - 1)]
+	_last_move_cost = move_cost_for(actor, pick.x, pick.y)
 	actor.x = pick.x
 	actor.y = pick.y
 
@@ -1470,6 +1707,7 @@ func _step_away(actor: Entity) -> bool:
 				best = Vector2i(nx, ny)
 	if best_d <= here:
 		return false
+	_last_move_cost = move_cost_for(actor, best.x, best.y)
 	actor.x = best.x
 	actor.y = best.y
 	return true

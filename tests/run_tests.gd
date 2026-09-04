@@ -66,6 +66,11 @@ func _initialize() -> void:
 	_test_suspend_round_trip()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
+	_test_shrines_appear()
+	_test_shrine_effects()
+	_test_shrine_identity_is_shuffled()
+	_test_torch_flare()
+	_test_difficult_ground()
 	_report_encounter_curve()
 
 	print("")
@@ -124,6 +129,13 @@ func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
 		m.ai = e.get("ai", &"hunter")
 		m.attack_range = e.get("range", 1)
 		m.flee_below = e.get("flee", 0.0)
+		# Kept in step with GameState._spawn_in. A test double that quietly
+		# drops fields makes the tests disagree with the game about what a
+		# monster even is.
+		m.regen = e.get("regen", 0)
+		m.threat = int(e["threat"])
+		m.flying = e.get("flying", false)
+		m.heavy = e.get("heavy", false)
 		# Behaviour tests want behaviour, not the awareness gate. Awareness has
 		# its own tests below, which set this back to ASLEEP explicitly.
 		m.alertness = Entity.Alert.AWAKE
@@ -999,11 +1011,15 @@ func _test_throwing() -> void:
 		% [thrown, gs.player.total_power()], thrown < gs.player.total_power())
 
 	# Throwing what you are holding works, and disarms you.
+	#
+	# Aimed at where the goblin actually is, not where it started: a world turn
+	# has passed since the first throw and it may well have walked. Hardcoding
+	# the cell made this test depend on a coin flip in the pack AI.
 	var spare := Item.make(&"dagger")
 	gs.give_item(spare)
 	gs.player.equipped[Item.Slot.WEAPON] = spare
 	check("you may hurl your own weapon",
-		gs.player_throw(gs.player.inventory.find(spare), Vector2i(8, 5)))
+		gs.player_throw(gs.player.inventory.find(spare), Vector2i(mark.x, mark.y)))
 	check("which leaves you holding nothing",
 		not gs.player.equipped.has(Item.Slot.WEAPON))
 
@@ -1155,6 +1171,225 @@ func _test_morgue_line() -> void:
 	var victory := gs.morgue_line()
 	check("a win reads as an escape", victory.contains("escaped"))
 	check("and records the amulet", victory.contains("with the Amulet"))
+
+func _shrine_arena(kind: int) -> GameState:
+	var gs := _arena(31, 13)
+	gs.player.x = 8
+	gs.player.y = 6
+	gs.player.max_hp = 60
+	gs.player.hp = 30
+	gs.map.set_tile(8, 6, Tiles.SHRINE)
+	gs.shrine_at = {Vector2i(8, 6): kind}
+	gs.map.set_all_visible()
+	return gs
+
+func _test_shrines_appear() -> void:
+	var with_shrine := 0
+	var total := 0
+	for i in 40:
+		var gs := GameState.new(77000 + i)
+		gs.new_game()
+		if gs.shrine_at.size() > 0:
+			with_shrine += 1
+		total += gs.shrine_at.size()
+	check("most floors hold a shrine (%d/40)" % with_shrine, with_shrine >= 36,
+		"%d" % with_shrine)
+	check("one or two of them, not a dozen (%.1f avg)" % (float(total) / 40.0),
+		float(total) / 40.0 <= 2.5, "%.2f" % (float(total) / 40.0))
+	check("a shrine can be stood on", Tiles.is_walkable(Tiles.SHRINE))
+
+func _test_shrine_effects() -> void:
+	# Quiet puts the floor to sleep.
+	var quiet := _shrine_arena(Shrines.QUIET)
+	var sleeper := _spawn(quiet, "orc", 12, 6)
+	sleeper.alertness = Entity.Alert.AWAKE
+	check("praying works", quiet.player_pray())
+	check("the quiet sends them back to sleep",
+		sleeper.alertness == Entity.Alert.ASLEEP,
+		"alertness %d" % sleeper.alertness)
+	# And keeps them there long enough to matter, even standing lit beside one.
+	for _i in 5:
+		quiet.player_wait()
+	check("and they stay asleep for a while",
+		sleeper.alertness == Entity.Alert.ASLEEP,
+		"alertness %d after 5 turns" % sleeper.alertness)
+	check("and the shrine is spent",
+		quiet.map.get_tile(8, 6) != Tiles.SHRINE and quiet.shrine_at.is_empty())
+	check("praying at nothing is refused", not quiet.player_pray())
+	# But the hush does run out.
+	for _i in GameState.QUIET_TURNS + 6:
+		quiet.player_wait()
+	check("the hush eventually lifts",
+		sleeper.alertness != Entity.Alert.ASLEEP,
+		"alertness %d" % sleeper.alertness)
+
+	# Vigil is the opposite.
+	var vigil := _shrine_arena(Shrines.VIGIL)
+	var dozing := _spawn(vigil, "orc", 12, 6)
+	dozing.alertness = Entity.Alert.ASLEEP
+	vigil.player_pray()
+	check("the vigil wakes the floor", dozing.alertness == Entity.Alert.AWAKE)
+
+	# Embers rekindles dead braziers.
+	var embers := _shrine_arena(Shrines.EMBERS)
+	embers.map.set_tile(11, 6, Tiles.BRAZIER_SPENT)
+	embers.player_pray()
+	check("embers relights spent braziers",
+		embers.map.get_tile(11, 6) == Tiles.BRAZIER)
+	check("at a reduced charge",
+		int(embers.brazier_charge[Vector2i(11, 6)]) < GameState.BRAZIER_CHARGE)
+
+	# The anvil raises the forging ceiling for the rest of the run.
+	var anvil := _shrine_arena(Shrines.ANVIL)
+	var cap_before := anvil.upgrade_cap()
+	anvil.player_pray()
+	check("the anvil raises the forging cap",
+		anvil.upgrade_cap() == cap_before + 1)
+	var blade := Item.make(&"dagger")
+	blade.upgrade()
+	blade.upgrade()
+	check("a maxed blade could not be improved before",
+		not blade.can_upgrade())
+	check("but the anvil lets it take one more",
+		anvil.item_can_upgrade(blade))
+
+	# The weight blesses gear and slows you until the next floor.
+	var weight := _shrine_arena(Shrines.WEIGHT)
+	var kit := Item.make(&"short_sword")
+	weight.give_item(kit)
+	weight.player.equipped[Item.Slot.WEAPON] = kit
+	var edge := kit.power_bonus
+	weight.player_pray()
+	check("the weight blesses what you carry", kit.power_bonus == edge + 1)
+	check("and slows you", weight.player.speed == GameState.WEIGHT_SPEED)
+	weight.depth = 2
+	weight.build_level()
+	check("but not past the stairs", weight.player.speed == GameState.BASE_SPEED)
+
+	# Mending closes everything.
+	var mend := _shrine_arena(Shrines.MENDING)
+	mend.player_pray()
+	check("mending heals in full", mend.player.hp == mend.player.max_hp)
+
+	# Summons brings company, awake.
+	var call := _shrine_arena(Shrines.SUMMONS)
+	var before := call.entities.size()
+	call.player_pray()
+	check("summons brings something through", call.entities.size() > before,
+		"%d -> %d" % [before, call.entities.size()])
+	var all_awake := true
+	for i in range(before, call.entities.size()):
+		if call.entities[i].alertness != Entity.Alert.AWAKE:
+			all_awake = false
+	check("and it arrives already looking for you", all_awake)
+
+func _test_shrine_identity_is_shuffled() -> void:
+	# Same seed, same secret. Different seed, usually a different one.
+	var a := GameState.new(4242)
+	a.new_game()
+	var b := GameState.new(4242)
+	b.new_game()
+	check("a seeded run hides the same effect behind the same colour",
+		a.shrine_hues == b.shrine_hues)
+
+	var differ := 0
+	for i in 20:
+		var other := GameState.new(60000 + i)
+		other.new_game()
+		if other.shrine_hues != a.shrine_hues:
+			differ += 1
+	check("but other runs shuffle it (%d/20 differ)" % differ, differ >= 18)
+
+	var gs := _shrine_arena(Shrines.QUIET)
+	gs._shuffle_shrines()
+	check("an unused shrine is unnamed",
+		gs.shrine_label(Shrines.QUIET) == "an unfamiliar shrine")
+	gs.player_pray()
+	check("using one teaches you its colour",
+		gs.shrine_label(Shrines.QUIET) == Shrines.NAMES[Shrines.QUIET])
+
+func _test_torch_flare() -> void:
+	var gs := _shrine_arena(Shrines.FLARE)
+	gs.torch_lit = false
+	gs.player_pray()
+	check("the flare lights the torch", gs.torch_lit)
+	check("and burns for a while", gs.torch_flare > 0)
+	check("it cannot be smothered", not gs.player_toggle_torch())
+	check("still burning after the attempt", gs.torch_lit)
+
+	var lit_radius := 0
+	for i in gs.map.visible_now.size():
+		if gs.map.visible_now[i] != 0:
+			lit_radius += 1
+
+	# Run it out.
+	for _i in GameState.FLARE_TURNS + 2:
+		gs.player_wait()
+	check("the flare burns out", gs.torch_flare == 0)
+	check("and the torch can be smothered again", gs.player_toggle_torch())
+
+	var normal := 0
+	for i in gs.map.visible_now.size():
+		if gs.map.visible_now[i] != 0:
+			normal += 1
+	check("a flare shows far more than an ordinary torch (%d vs %d)"
+		% [lit_radius, normal], lit_radius > normal)
+
+func _test_difficult_ground() -> void:
+	check("dry floor is a normal stride", Tiles.move_cost(Tiles.FLOOR) == 1.0)
+	check("water is slower than dry", Tiles.move_cost(Tiles.WATER) > 1.0)
+	check("mud is slower than water",
+		Tiles.move_cost(Tiles.MUD) > Tiles.move_cost(Tiles.WATER))
+	check("rubble slows you a little", Tiles.move_cost(Tiles.RUBBLE) > 1.0)
+	check("all of it is still walkable",
+		Tiles.is_walkable(Tiles.MUD) and Tiles.is_walkable(Tiles.WATER)
+			and Tiles.is_walkable(Tiles.RUBBLE))
+	check("and none of it blocks sight",
+		Tiles.is_transparent(Tiles.MUD) and Tiles.is_transparent(Tiles.WATER))
+
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.map.set_tile(6, 4, Tiles.MUD)
+	gs.map.set_tile(7, 4, Tiles.WATER)
+
+	var dry := gs.move_cost_for(gs.player, 5, 5)
+	var wet := gs.move_cost_for(gs.player, 7, 4)
+	var deep := gs.move_cost_for(gs.player, 6, 4)
+	check("wading costs more than walking (%d vs %d)" % [wet, dry], wet > dry)
+	check("mud costs more than water (%d vs %d)" % [deep, wet], deep > wet)
+
+	# A flyer never touches it.
+	var bat := _spawn(gs, "cave bat", 10, 4)
+	check("a bat is flying", bat.flying)
+	check("and difficult ground costs it nothing",
+		gs.move_cost_for(bat, 6, 4) == Scheduler.ACTION_COST)
+
+	# Something heavy sinks. This is what makes mud a tool and not only a
+	# hazard: retreat across it and the ogre falls behind while you do not.
+	var ogre := _spawn(gs, "ogre", 12, 4)
+	check("an ogre is heavy", ogre.heavy)
+	check("and it suffers worse in mud than you do (%d vs %d)"
+		% [gs.move_cost_for(ogre, 6, 4), deep],
+		gs.move_cost_for(ogre, 6, 4) > deep)
+	check("but not on dry ground",
+		gs.move_cost_for(ogre, 5, 5) == gs.move_cost_for(gs.player, 5, 5))
+
+	# The terrain pass actually lays some down.
+	var wet_floors := 0
+	var muddy := 0
+	for i in 40:
+		var level := GameState.new(88000 + i)
+		level.new_game()
+		for y in level.map.height:
+			for x in level.map.width:
+				var t := level.map.get_tile(x, y)
+				if t == Tiles.WATER:
+					wet_floors += 1
+				elif t == Tiles.MUD:
+					muddy += 1
+	check("levels have water on them (%d cells / 40)" % wet_floors, wet_floors > 0)
+	check("and mud (%d cells / 40)" % muddy, muddy > 0)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)
@@ -1611,28 +1846,36 @@ func _test_fov_blocked_by_walls() -> void:
 
 func _test_fov_is_symmetric() -> void:
 	# Symmetry matters for more than looks: monster AI asks "can it see the
-	# player" by testing the player's own FOV, which is only fair if the two
-	# agree. Perfect symmetry is not achievable with shadowcasting, so this
-	# asserts the practical property -- overwhelming agreement.
-	var gs := GameState.new(4242)
-	gs.new_game()
-	var a := PackedByteArray(); a.resize(gs.map.width * gs.map.height)
-	var b := PackedByteArray(); b.resize(gs.map.width * gs.map.height)
-	Fov.compute(gs.map, gs.player.x, gs.player.y, 8, a)
-
+	# player" by testing the player's own field of view, which is only fair if
+	# the two agree. Perfect symmetry is not achievable with shadowcasting, so
+	# this asserts the practical property -- overwhelming agreement.
+	#
+	# Sampled across several levels rather than one. A single level offers only
+	# a few dozen cells, which is far too small to hold a 97% threshold steady:
+	# two awkward corners in one room would fail it on nothing but luck.
 	var checked := 0
 	var mismatch := 0
-	for y in gs.map.height:
-		for x in gs.map.width:
-			if a[gs.map.idx(x, y)] == 0 or not gs.map.is_walkable(x, y):
-				continue
-			Fov.compute(gs.map, x, y, 8, b)
-			checked += 1
-			if b[gs.map.idx(gs.player.x, gs.player.y)] == 0:
-				mismatch += 1
+	for run in 6:
+		var gs := GameState.new(4242 + run * 17)
+		gs.new_game()
+		var a := PackedByteArray()
+		a.resize(gs.map.width * gs.map.height)
+		var b := PackedByteArray()
+		b.resize(gs.map.width * gs.map.height)
+		Fov.compute(gs.map, gs.player.x, gs.player.y, 8, a)
+
+		for y in gs.map.height:
+			for x in gs.map.width:
+				if a[gs.map.idx(x, y)] == 0 or not gs.map.is_walkable(x, y):
+					continue
+				Fov.compute(gs.map, x, y, 8, b)
+				checked += 1
+				if b[gs.map.idx(gs.player.x, gs.player.y)] == 0:
+					mismatch += 1
+
 	var rate := 1.0 - float(mismatch) / maxf(1.0, float(checked))
-	check("fov is near-symmetric (%.1f%% of %d cells)" % [rate * 100.0, checked],
-		rate > 0.97, "%d mismatches" % mismatch)
+	check("fov is near-symmetric (%.1f%% of %d cells across 6 levels)"
+		% [rate * 100.0, checked], rate > 0.97, "%d mismatches" % mismatch)
 
 func _test_light_does_not_pass_walls() -> void:
 	var m := DungeonMap.new(21, 5)

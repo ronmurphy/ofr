@@ -11,6 +11,12 @@ extends RefCounted
 
 enum Archetype { PLAIN, PILLARED, SHRINE, COLLAPSED, POOL }
 
+## Ground is rolled separately from archetype, so the same room shape plays
+## differently between levels. Two orthogonal axes multiply the variety instead
+## of adding to it: a pillared hall can be dry on one floor and knee-deep in
+## mud on the next.
+enum Ground { DRY, DAMP, FLOODED, MUDDY, RUBBLED }
+
 const MAX_ROOMS := 22
 const ROOM_MIN := 6
 const ROOM_MAX := 13
@@ -41,7 +47,9 @@ func generate(map: DungeonMap) -> void:
 	_connect_rooms(map)
 	_connect_caves(map)
 	_place_doors(map)
+	_ensure_sanctums()
 	_decorate(map)
+	_lay_terrain(map)
 	_naturalise_cave_walls(map)
 	_paint_materials(map)
 
@@ -236,6 +244,72 @@ func _place_doors(map: DungeonMap) -> void:
 				if (horiz or vert) and rng.randf() < 0.55:
 					map.set_tile(x, y, Tiles.DOOR_CLOSED)
 
+## Guarantees one or two sanctums per level.
+##
+## A sanctum always holds a shrine, so the gold room reads as a promise that
+## one is there -- while which shrine it is stays hidden behind its colour.
+func _ensure_sanctums(): 
+	var want := 1 if rng.randf() < 0.55 else 2
+	var have := 0
+	for a in archetypes:
+		if a == Archetype.SHRINE:
+			have += 1
+	# Never the first room, which is where the player starts.
+	var candidates := []
+	for i in range(1, rooms.size()):
+		if archetypes[i] != Archetype.SHRINE and rooms[i].size.x >= 7 and rooms[i].size.y >= 7:
+			candidates.append(i)
+	candidates.shuffle()
+	while have < want and not candidates.is_empty():
+		archetypes[candidates.pop_back()] = Archetype.SHRINE
+		have += 1
+
+func _roll_ground() -> int:
+	var r := rng.randf()
+	if r < 0.60: return Ground.DRY
+	if r < 0.73: return Ground.DAMP
+	if r < 0.83: return Ground.MUDDY
+	if r < 0.93: return Ground.RUBBLED
+	return Ground.FLOODED
+
+## Difficult ground is never placed over anything that matters -- only over
+## plain floor -- so it can never bury a shrine, a brazier or a staircase. And
+## because all of it stays walkable, it cannot sever a level either.
+func _lay_terrain(map: DungeonMap) -> void:
+	for room in rooms:
+		var g := _roll_ground()
+		if g != Ground.DRY:
+			_paint_ground(map, room, g)
+	for region in caves:
+		if rng.randf() < 0.45:
+			_paint_ground(map, region,
+				Ground.MUDDY if rng.randf() < 0.55 else Ground.DAMP)
+
+func _paint_ground(map: DungeonMap, area: Rect2i, g: int) -> void:
+	var tile := Tiles.WATER
+	var density := 0.3
+	match g:
+		Ground.DAMP:    tile = Tiles.WATER;  density = 0.28
+		Ground.FLOODED: tile = Tiles.WATER;  density = 0.80
+		Ground.MUDDY:   tile = Tiles.MUD;    density = 0.66
+		Ground.RUBBLED: tile = Tiles.RUBBLE; density = 0.34
+
+	# Wettest in the middle, drying towards the walls, so it reads as something
+	# that pooled rather than something that was sprayed on.
+	var c := area.get_center()
+	var rx := maxf(1.0, float(area.size.x) * 0.5)
+	var ry := maxf(1.0, float(area.size.y) * 0.5)
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var here := map.get_tile(x, y)
+			if here != Tiles.FLOOR and here != Tiles.CAVE_FLOOR:
+				continue
+			var dx := float(x - c.x) / rx
+			var dy := float(y - c.y) / ry
+			var falloff := 1.0 - clampf(sqrt(dx * dx + dy * dy), 0.0, 1.0)
+			if rng.randf() < density * (0.30 + 0.90 * falloff):
+				map.set_tile(x, y, tile)
+
 ## Materials ride on the archetypes the generator already assigns, so this adds
 ## no new generation logic -- it just stops the renderer throwing that
 ## information away.
@@ -281,10 +355,9 @@ func _decorate_shrine(map: DungeonMap, room: Rect2i) -> void:
 			Vector2i(inner.position.x, inner.end.y - 1), inner.end - Vector2i.ONE]:
 		_try_place(map, corner.x, corner.y, Tiles.PILLAR)
 	var c := room.get_center()
-	_try_place(map, c.x, c.y, Tiles.BRAZIER)
+	_try_place(map, c.x, c.y, Tiles.SHRINE)
 	for d in [Vector2i(2, 0), Vector2i(-2, 0)]:
-		if rng.randf() < 0.6:
-			_try_place(map, c.x + d.x, c.y + d.y, Tiles.BRAZIER)
+		_try_place(map, c.x + d.x, c.y + d.y, Tiles.BRAZIER)
 
 func _decorate_collapsed(map: DungeonMap, room: Rect2i) -> void:
 	var inner := room.grow(-1)

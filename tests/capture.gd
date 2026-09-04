@@ -369,6 +369,36 @@ func _run() -> void:
 		await process_frame
 	await _shot("19_amulet_taken.png")
 
+	# A shrine in its sanctum, unidentified.
+	for seed_try in range(2400, 2460):
+		var holy := GameState.new(seed_try)
+		holy.new_game()
+		if holy.shrine_at.is_empty():
+			continue
+		var cell: Vector2i = holy.shrine_at.keys()[0]
+		var spot := Vector2i(-1, -1)
+		for d in [Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1),
+				Vector2i(2, 0), Vector2i(-2, 0)]:
+			if holy.map.is_walkable(cell.x + d.x, cell.y + d.y):
+				spot = cell + d
+				break
+		if spot.x < 0:
+			continue
+		holy.player.x = spot.x
+		holy.player.y = spot.y
+		holy.update_vision()
+		_use(holy)
+		_scene._toggle_look()
+		_scene._look_at = cell
+		_scene.grid.look_cursor = cell
+		_scene._refresh()
+		for _i in 3:
+			await process_frame
+		await _shot("24_shrine.png")
+		_scene._end_look()
+		print("  shrine seed %d at %s" % [seed_try, cell])
+		break
+
 	# The pause menu.
 	_scene.menu.open()
 	_scene._refresh()

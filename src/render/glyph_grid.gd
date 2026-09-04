@@ -339,6 +339,10 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		ch = app["ch"]
 		fg = app["fg"]
 		bg = app.get("bg", Palette.BG)
+		# A shrine's colour is its whole identity, and it is shuffled per run,
+		# so it cannot live in a static theme table.
+		if tile == Tiles.SHRINE:
+			fg = state.shrine_hue(int(state.shrine_at.get(Vector2i(x, y), 0)))
 
 	var tint := _material_tint(map.material_at(x, y), 1.0)
 

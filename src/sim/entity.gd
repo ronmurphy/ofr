@@ -70,6 +70,13 @@ var fleeing: bool = false
 ## free one.
 var regen: int = 0
 
+## Difficult ground is nothing to something that never touches it.
+var flying := false
+## And it is worse for something that sinks. Heavy things suffer most in mud,
+## which is what makes mud a tool rather than only a hazard -- back across it
+## and the ogre falls behind while you do not.
+var heavy := false
+
 ## Monsters start asleep. Until this pass everything was omnisciently aware the
 ## instant the player could see it, which handed the initiative to whatever was
 ## in the room.
@@ -78,6 +85,10 @@ var notice_range: int = 8
 var last_seen := Vector2i(-1, -1)
 var lost_turns: int = 0
 var calm_turns: int = 0
+## Turns during which this cannot notice the player at all. Without it the
+## shrine of the quiet buys about two turns -- everything simply re-notices the
+## lit figure standing next to it, and the shrine reads as broken.
+var notice_block: int = 0
 var light: LightSource = null
 
 var alive: bool = true
@@ -138,7 +149,9 @@ func to_dict() -> Dictionary:
 		"attack_range": attack_range, "flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
-		"lost_turns": lost_turns, "calm_turns": calm_turns, "alive": alive,
+		"lost_turns": lost_turns, "calm_turns": calm_turns,
+		"notice_block": notice_block, "alive": alive,
+		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
 	}
 
@@ -168,6 +181,9 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.last_seen = Vector2i(int(seen[0]), int(seen[1]))
 	e.lost_turns = int(d.get("lost_turns", 0))
 	e.calm_turns = int(d.get("calm_turns", 0))
+	e.notice_block = int(d.get("notice_block", 0))
+	e.flying = d.get("flying", false)
+	e.heavy = d.get("heavy", false)
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

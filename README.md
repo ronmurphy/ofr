@@ -281,6 +281,33 @@ gives the same decision, recurring, with no bookkeeping and no hoarding.
 Merging never replaces the reason to find better gear — an upgraded dagger
 never catches a war axe.
 
+## Shrines
+
+Every level holds one or two **sanctums** -- the gold rooms -- and a sanctum
+always holds a shrine. So the room's colour is a promise that one is there,
+while the shrine's own colour tells you nothing until you have learned it.
+
+Seven kinds: the quiet (the floor falls asleep and cannot notice you for
+twelve turns), the vigil (the floor wakes and knows where you are), embers
+(spent braziers rekindle at half charge), the anvil (the forging cap rises for
+the rest of the run), mending (a full heal), summons (one to three things
+arrive, awake), and the flare (your torch roars for a hundred turns at double
+radius and **cannot be smothered**).
+
+**The colour-to-effect mapping is shuffled every run**, through the run's own
+rng so a seeded game always hides the same effect behind the same colour. If
+blue were always mending, everyone would learn it once and the guess would stop
+being a decision. Using a shrine teaches you that colour for the rest of the
+run -- the look panel names it afterwards, and calls it "an unfamiliar shrine"
+before.
+
+Seven on purpose: at one or two a floor you meet roughly fifteen in a full run,
+which is enough to learn five or six colours with confidence. Twelve kinds and
+the colour would stop being information at all.
+
+`p` prays. It is its own key, not a step onto the tile, so walking across a
+sanctum can never spring a curse.
+
 ## Resting at braziers
 
 Waiting (`.`) beside a lit brazier restores 2 hit points and draws down a pool
@@ -386,6 +413,28 @@ map cells to pixels, and `cell_at()` converts back for the mouse. The simulation
 has no idea a viewport exists. The draw loop also walks only the visible window
 rather than the whole map, which is most of the cost of a redraw on a large
 level.
+
+## Difficult ground
+
+Ground is rolled **separately from archetype**, so the same room shape plays
+differently between levels: a pillared hall can be dry on one floor and
+knee-deep in mud on the next. Two orthogonal axes multiply the variety instead
+of adding to it.
+
+Mud, water and rubble all cost extra to cross -- mud worst, rubble least. The
+cost is charged to the **action**, not to the actor's speed, because mud makes
+you a slower traveller and not a worse fighter.
+
+Two rules make it interesting rather than merely annoying:
+
+- **Flying things ignore it.** Bats, harpies, wyverns, shadows and dragons.
+- **Heavy things suffer worst.** An ogre, troll or golem sinks further than you
+  do. That is what makes mud a *tool* rather than only a hazard -- back across
+  it and the ogre falls behind while you do not. Measured: 260 against your 200.
+
+Difficult ground is only ever laid over plain floor, so it can never bury a
+shrine, a brazier or a staircase, and all of it stays walkable, so it cannot
+sever a level.
 
 ## Level generation
 

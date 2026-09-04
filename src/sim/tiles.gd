@@ -24,6 +24,8 @@ enum {
 	STALAGMITE,
 	BRAZIER_SPENT,
 	STAIRS_UP,
+	SHRINE,
+	MUD,
 }
 
 ## walk  = an actor may stand here
@@ -53,6 +55,10 @@ const DATA := {
 	# light, and visibly dead so you can see at a glance which ones are used.
 	BRAZIER_SPENT: {"id": &"brazier_spent", "walk": false, "clear": true},
 	STAIRS_UP:   {"id": &"stairs_up",   "walk": true,  "clear": true},
+	# Stood upon, not bumped into. Praying is a deliberate key, so a curse can
+	# never be triggered by walking.
+	SHRINE:      {"id": &"shrine",      "walk": true,  "clear": true},
+	MUD:         {"id": &"mud",         "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:
@@ -67,4 +73,16 @@ static func appearance_id(t: int) -> StringName:
 ## Anything an actor can stand on. Used by generation and decoration to avoid
 ## painting over a corridor or a staircase.
 static func is_open_floor(t: int) -> bool:
-	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER
+	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER or t == MUD
+
+## What it costs to step onto this, as a multiple of an ordinary stride.
+##
+## Applied to the ACTION, not to the actor's speed. Slowing the actor would
+## slow everything it does, including swinging -- but mud does not make you a
+## worse fighter, only a slower traveller.
+static func move_cost(t: int) -> float:
+	match t:
+		MUD:    return 2.0
+		WATER:  return 1.4
+		RUBBLE: return 1.3
+	return 1.0

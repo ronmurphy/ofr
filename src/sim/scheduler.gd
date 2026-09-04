@@ -31,5 +31,8 @@ static func next_actor(actors: Array) -> Entity:
 			a.energy += a.speed
 	return null
 
-static func spend(actor: Entity) -> void:
-	actor.energy -= ACTION_COST
+## Actions may cost more than the standard stride -- wading, or hauling
+## yourself through mud. The cost is on the ACTION so that difficult ground
+## slows travel without slowing anything else the actor does.
+static func spend(actor: Entity, cost: int = ACTION_COST) -> void:
+	actor.energy -= maxi(1, cost)

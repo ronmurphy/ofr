@@ -13,11 +13,14 @@ const TABLE := {
 	&"door_open":   {"ch": "'",      "fg": Palette.DOOR,     "bg": Color("14120f")},
 	&"stairs_down": {"ch": ">",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
 	&"stairs_up":   {"ch": "<",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
+	# Colour is supplied per-shrine by the grid, not from here.
+	&"shrine":      {"ch": "∩", "fg": Palette.UI_TEXT,  "bg": Color("1c1826")},
 	&"brazier":     {"ch": "Ω",      "fg": Palette.BRAZIER,  "bg": Color("241408")},
 	&"void":        {"ch": " ",      "fg": Palette.BG,       "bg": Palette.BG},
 	&"cave_floor":  {"ch": "·", "fg": Palette.CAVE_FLOOR, "bg": Color("1c1814")},
 	&"rubble":      {"ch": "▒", "fg": Palette.RUBBLE,   "bg": Color("1a150f")},
 	&"water":       {"ch": "~",      "fg": Palette.WATER,    "bg": Palette.WATER_BG},
+	&"mud":         {"ch": "░", "fg": Palette.MUD,      "bg": Palette.MUD_BG},
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
 	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
 

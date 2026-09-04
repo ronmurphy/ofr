@@ -60,6 +60,10 @@ func _ready() -> void:
 		fresh.new_game()
 	else:
 		fresh.msg_log.add("You take up where you left off.", Color(0.80, 0.85, 0.95))
+		# The consequence, not just the fact. Someone who assumes the slot
+		# still exists will only find out when they need it.
+		fresh.msg_log.add("That suspend is gone -- save again before you stop.",
+			Color(0.95, 0.80, 0.45))
 	_bind_state(fresh)
 	grid.cell_clicked.connect(_on_cell_clicked)
 	grid.cell_right_clicked.connect(_on_cell_right_clicked)
@@ -212,6 +216,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_refresh()
 		KEY_T:
 			if state.player_toggle_torch():
+				_refresh()
+		KEY_P:
+			if state.player_pray():
 				_refresh()
 
 func _on_cell_clicked(cell: Vector2i) -> void:

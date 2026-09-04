@@ -31,6 +31,7 @@ const KEYS := [
 	["t", "torch"],
 	["f / right-click", "shoot"],
 	["f (no bow)", "throw"],
+	["p", "pray at a shrine"],
 	["esc", "menu"],
 	["click", "travel"],
 ]
@@ -138,9 +139,13 @@ func _draw() -> void:
 	# Doused is the unusual, dangerous state, so it is the one that is tinted.
 	draw_string(font, Vector2(PAD, y), "torch",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
-	draw_string(font, Vector2(PAD, y), "lit" if state.torch_lit else "doused",
-		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
-		Palette.UI_TEXT if state.torch_lit else Palette.SLEEP)
+	var torch_text := "lit" if state.torch_lit else "doused"
+	var torch_tint := Palette.UI_TEXT if state.torch_lit else Palette.SLEEP
+	if state.torch_flare > 0:
+		torch_text = "FLARED %d" % state.torch_flare
+		torch_tint = Palette.AMULET
+	draw_string(font, Vector2(PAD, y), torch_text,
+		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
 	y += LINE * 1.7
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
@@ -156,7 +161,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 13.0
+	y = size.y - PAD - LINE * 14.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:
@@ -225,5 +230,9 @@ func _describe() -> Array:
 	else:
 		out.append("(remembered)")
 	var tile := m.get_tile(hovered.x, hovered.y)
-	out.append(String(Tiles.appearance_id(tile)).replace("_", " "))
+	if tile == Tiles.SHRINE:
+		# Named only once its colour has been learned the hard way.
+		out.append(state.shrine_label(int(state.shrine_at.get(hovered, 0))))
+	else:
+		out.append(String(Tiles.appearance_id(tile)).replace("_", " "))
 	return out
