@@ -450,10 +450,12 @@ func _find_tile(gs: GameState, want: int) -> Vector2i:
 
 func _shot(name: String) -> void:
 	# Must wait for the renderer to actually finish a frame, not just for the
-	# scene tree to tick, or the captured texture comes back blank.
-	await process_frame
-	await process_frame
-	RenderingServer.force_draw()
+	# scene tree to tick, or the captured texture comes back blank -- and two
+	# frames was not always enough, which let a shot pick up the NEXT stage's
+	# state instead of its own.
+	for _f in 4:
+		await process_frame
+		RenderingServer.force_draw()
 	var img := root.get_texture().get_image()
 	img.save_png(_out.path_join(name))
 	print("wrote %s" % name)

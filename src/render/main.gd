@@ -409,6 +409,10 @@ func _drop_item(index: int) -> void:
 func _refresh() -> void:
 	# Hand the turn's events to the renderer to animate. The simulation has
 	# already resolved them; this is purely showing the player what happened.
+	# Settle first, then start the new step. Anything still sliding finishes
+	# instantly, so a held key never queues up a backlog of animation.
+	grid.settle_motion()
+	grid.sync_motion()
 	grid.play_events(state.take_events())
 	grid.refresh_preview()
 	grid.queue_redraw()

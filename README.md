@@ -399,6 +399,28 @@ Two rules keep it from breaking the thing it sits on top of:
   washes every room to the same blue -- but luminance is held to what untinted
   memory would have been, so a tinted room never reads as a lit one.
 
+## Motion
+
+Entities are drawn at a **visual position that lags the logical one**, so a
+step slides rather than teleporting. The camera glides the same way instead of
+jumping a whole cell mid-stride.
+
+This is renderer-only. The simulation resolves a turn instantly and always
+will; nothing under `src/sim/` knows any of it exists.
+
+**The rule the whole thing rests on: an animation must never delay input.**
+Anything still in flight is settled the instant a new turn starts, so holding a
+direction key can never build a backlog. Fast play looks essentially instant;
+only considered play looks animated. Get that wrong and a roguelike feels like
+wading, which would be a poor joke in a game with mud in it.
+
+It also solves the mud problem properly. The footing row tells you in text what
+the game should be showing you -- with motion, a monster visibly takes two
+strides while you take one, and difficult ground needs no explanation.
+
+Steps are eased out over 100ms, and an interrupted step resumes from where the
+glyph actually looked rather than from the cell it logically left.
+
 ## The camera
 
 The map (96x54) is larger than the visible grid (72x40), so the view scrolls.
@@ -440,10 +462,14 @@ sever a level.
 
 Three features scattered on top of the ground pass:
 
-- **Bones** cost a little extra to cross and are **loud**. Stepping on them
-  wakes anything within seven cells, ignoring line of sight, because noise goes
-  through stone. Until this, the awareness system had exactly one input: light.
-  Now it has two, and a floor you can *see* is dangerous to cross quietly.
+- **Bones** cost a little extra to cross, are **loud**, and **crumble as you
+  cross them**. That turns a boneyard from a standing toll into something you
+  can *prepare*: walk it once while things are asleep and far off, and you have
+  bought a silent route for when you need one. Stepping on them
+  Stepping on them wakes anything within seven cells, ignoring line of sight,
+  because noise goes through stone. Until this, the awareness system had
+  exactly one input: light. Now it has two, and a floor you can *see* is
+  dangerous to cross quietly.
 - **Fungus** glows faintly -- light you did not have to carry and cannot put
   out. Useful, and it also means standing in it makes you visible.
 - **Pits** drop you to the next floor for some damage. They are walkable so

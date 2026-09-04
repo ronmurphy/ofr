@@ -1360,8 +1360,16 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
 	_note_footing()
-	_make_noise(Vector2i(player.x, player.y),
-		Tiles.noise_radius(map.get_tile(player.x, player.y)))
+	var underfoot := map.get_tile(player.x, player.y)
+	_make_noise(Vector2i(player.x, player.y), Tiles.noise_radius(underfoot))
+	if underfoot == Tiles.BONES:
+		# Crossing it destroys it. That turns a boneyard from a standing toll
+		# into something you can PREPARE -- walk it once while things are
+		# asleep and far off, and you have bought yourself a silent route for
+		# when you need one.
+		map.set_tile(player.x, player.y,
+			Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
+			else Tiles.FLOOR)
 	if torch_flare > 0:
 		torch_flare -= 1
 		if torch_flare == 0:

@@ -51,6 +51,7 @@ func _initialize() -> void:
 	_test_threat_ceiling_holds()
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
+	_test_motion_tweening()
 	_test_forging()
 	_test_materials_are_painted()
 	_test_experience_and_levels()
@@ -457,6 +458,8 @@ func _test_camera_deadzone() -> void:
 		str(grid._origin))
 
 	# A mouse click must resolve to the right cell once the view has moved.
+	# The drawn camera lags the logical one, so settle it before hit-testing.
+	grid.settle_camera()
 	var probe := grid.cell_at(Vector2(5 * 18 + 4, 3 * 18 + 4))
 	check("mouse position accounts for the scroll",
 		probe == Vector2i(grid._origin.x + 5, grid._origin.y + 3), str(probe))
@@ -478,6 +481,7 @@ func _test_camera_deadzone() -> void:
 
 	grid.look_cursor = Vector2i(-1, -1)
 	grid._update_camera()
+	grid.settle_camera()
 	check("leaving look mode returns the view to the player",
 		gs.player.x - grid._origin.x < 72 and gs.player.x >= grid._origin.x)
 	grid.free()
@@ -1416,6 +1420,17 @@ func _test_bones_are_loud() -> void:
 	gs.player_move(1, 0)
 	check("crossing bones wakes what is near",
 		near.alertness == Entity.Alert.AWAKE)
+	check("and grinds the bones away behind you",
+		gs.map.get_tile(6, 6) != Tiles.BONES)
+
+	# Which means the second crossing is silent.
+	var quiet_one := _spawn(gs, "orc", 9, 6)
+	quiet_one.alertness = Entity.Alert.ASLEEP
+	gs.player.x = 5
+	gs.player.y = 6
+	gs.player_move(1, 0)
+	check("a cleared path is quiet the second time",
+		quiet_one.alertness == Entity.Alert.ASLEEP)
 	check("but not what is across the level",
 		far.alertness == Entity.Alert.ASLEEP)
 
@@ -1490,6 +1505,57 @@ func _test_fungus_glows() -> void:
 	check("it lights its own cell", lit.get_luminance() > dark.get_luminance())
 	check("but only faintly", lit.get_luminance() < 0.6,
 		"%.2f" % lit.get_luminance())
+
+## Movement is animated, but only in the renderer -- and never at the cost of
+## responsiveness.
+func _test_motion_tweening() -> void:
+	var gs := _arena(31, 13)
+	gs.player.x = 5
+	gs.player.y = 6
+	var grid := GlyphGrid.new()
+	grid.cell_size = 18
+	grid.size = Vector2(72 * 18, 40 * 18)
+	grid.state = gs
+	grid.sync_motion()
+
+	check("a settled entity draws on its own cell",
+		grid._visual_cell(gs.player) == Vector2(5, 6))
+	check("and nothing is in flight", not grid._motion_running())
+
+	# A step starts a tween, and the glyph begins behind the logical position.
+	gs.player.x = 6
+	grid.sync_motion()
+	check("moving starts a tween", grid._motion_running())
+	var mid := grid._visual_cell(gs.player)
+	check("the glyph lags behind the simulation", mid.x < 6.0, "%.2f" % mid.x)
+	check("but is already on its way", mid.x >= 5.0)
+
+	# Settling is instant. This is what stops a held key building a backlog.
+	grid.settle_motion()
+	check("settling finishes the step at once",
+		grid._visual_cell(gs.player) == Vector2(6, 6))
+	check("with nothing left in flight", not grid._motion_running())
+
+	# A second step while the first is mid-flight must start from where the
+	# glyph actually is, not from the cell it logically left.
+	gs.player.x = 7
+	grid.sync_motion()
+	grid._motion[gs.player]["t"] = GlyphGrid.STEP_TIME * 0.5
+	var part := grid._visual_cell(gs.player)
+	gs.player.x = 8
+	grid.sync_motion()
+	check("an interrupted step resumes from where it looked, not where it was",
+		is_equal_approx(float(grid._motion[gs.player]["from"].x), part.x),
+		"%.3f vs %.3f" % [float(grid._motion[gs.player]["from"].x), part.x])
+
+	# The dead stop being drawn.
+	var mob := _spawn(gs, "orc", 10, 6)
+	grid.sync_motion()
+	check("living things are tracked", grid._motion.has(mob))
+	mob.alive = false
+	grid.sync_motion()
+	check("the dead are dropped", not grid._motion.has(mob))
+	grid.free()
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

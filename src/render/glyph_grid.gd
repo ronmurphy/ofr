@@ -77,6 +77,18 @@ var _effects: Array = []
 var _last_map: DungeonMap = null
 ## Top-left map cell currently shown.
 var _origin := Vector2i.ZERO
+## Where the camera is actually drawn, which lags the logical origin so the map
+## glides instead of jumping a whole cell mid-stride.
+var _camera_visual := Vector2.ZERO
+
+## Visual positions, which lag the logical ones. Keyed by entity.
+##
+## The simulation resolves a turn instantly and always will; this only changes
+## where things are DRAWN while it settles. Nothing under src/sim/ knows.
+var _motion: Dictionary = {}
+## Short on purpose. The rule that decides whether this feels good is that an
+## animation must never delay input -- see settle_motion().
+const STEP_TIME := 0.10
 
 ## Roughly DCSS's pace. A quarter-second per cell would add a second and a half
 ## to every archer's turn, hundreds of times a run.
@@ -99,7 +111,16 @@ func _measure_font() -> void:
 	_glyph_baseline = (cell_size - (ascent + descent)) * 0.5 + ascent
 
 func _process(delta: float) -> void:
-	var animating := not _effects.is_empty()
+	for e in _motion:
+		if float(_motion[e]["t"]) < STEP_TIME:
+			_motion[e]["t"] = minf(STEP_TIME, float(_motion[e]["t"]) + delta)
+	var target := Vector2(_origin)
+	if _camera_visual.distance_squared_to(target) > 0.0004:
+		_camera_visual = _camera_visual.lerp(target, clampf(delta / STEP_TIME, 0.0, 1.0))
+	else:
+		_camera_visual = target
+
+	var animating := not _effects.is_empty() or _motion_running()
 	if animating:
 		for e in _effects:
 			e["t"] += delta
@@ -173,11 +194,18 @@ func viewport_cells() -> Vector2i:
 
 ## Map cell -> pixel position within this control.
 func _screen(cell: Vector2i) -> Vector2:
-	return Vector2((cell.x - _origin.x) * cell_size, (cell.y - _origin.y) * cell_size)
+	return _screen_f(Vector2(cell))
+
+func _screen_f(cell: Vector2) -> Vector2:
+	return (cell - _camera_visual) * cell_size
 
 func cell_at(local_pos: Vector2) -> Vector2i:
-	return Vector2i(floori(local_pos.x / cell_size) + _origin.x,
-		floori(local_pos.y / cell_size) + _origin.y)
+	return Vector2i(floori(local_pos.x / cell_size + _camera_visual.x),
+		floori(local_pos.y / cell_size + _camera_visual.y))
+
+## Snaps the drawn camera onto the logical one.
+func settle_camera() -> void:
+	_camera_visual = Vector2(_origin)
 
 func centre_on_player() -> void:
 	if state == null:
@@ -185,6 +213,7 @@ func centre_on_player() -> void:
 	var vc := viewport_cells()
 	_origin = Vector2i(state.player.x - vc.x / 2, state.player.y - vc.y / 2)
 	_clamp_origin()
+	settle_camera()
 
 func _update_camera() -> void:
 	var vc := viewport_cells()
@@ -248,6 +277,55 @@ func _update_preview() -> void:
 func hovered_cell() -> Vector2i:
 	return _hover
 
+# ------------------------------------------------------------------ motion ---
+
+## Everything still in flight completes at once.
+##
+## This is the rule the whole feature rests on: holding a direction key must
+## never be slower than the simulation. Fast play then looks essentially
+## instant, and only considered play looks animated.
+func settle_motion() -> void:
+	for e in _motion:
+		_motion[e]["from"] = _motion[e]["to"]
+		_motion[e]["t"] = STEP_TIME
+
+## Starts a tween for anything that has moved since we last looked.
+func sync_motion() -> void:
+	if state == null:
+		return
+	var seen := {}
+	for e in state.entities:
+		if not e.alive:
+			continue
+		seen[e] = true
+		var now := Vector2(e.x, e.y)
+		if not _motion.has(e):
+			_motion[e] = {"from": now, "to": now, "t": STEP_TIME}
+			continue
+		var m: Dictionary = _motion[e]
+		if m["to"] != now:
+			m["from"] = _visual_cell(e)
+			m["to"] = now
+			m["t"] = 0.0
+	for e in _motion.keys():
+		if not seen.has(e):
+			_motion.erase(e)
+
+func _visual_cell(e: Entity) -> Vector2:
+	if not _motion.has(e):
+		return Vector2(e.x, e.y)
+	var m: Dictionary = _motion[e]
+	var k := clampf(float(m["t"]) / STEP_TIME, 0.0, 1.0)
+	# Eased out, so a step lands rather than drifting to a halt.
+	k = 1.0 - pow(1.0 - k, 2.0)
+	return (m["from"] as Vector2).lerp(m["to"], k)
+
+func _motion_running() -> bool:
+	for e in _motion:
+		if float(_motion[e]["t"]) < STEP_TIME:
+			return true
+	return _camera_visual.distance_squared_to(Vector2(_origin)) > 0.0004
+
 ## Recomputed whenever the world changes, not only when the mouse moves.
 ##
 ## Without this the dots were stale the moment you touched the keyboard, and
@@ -273,24 +351,28 @@ func _draw() -> void:
 
 	# Only the visible window is drawn. On a large map that is most of the
 	# cost of a redraw.
+	# One extra cell each way, so the partial row and column exposed by a
+	# gliding camera are drawn rather than leaving a blank edge.
 	var vc := viewport_cells()
-	var x1 := mini(map.width, _origin.x + vc.x + 1)
-	var y1 := mini(map.height, _origin.y + vc.y + 1)
-	for y in range(_origin.y, y1):
-		for x in range(_origin.x, x1):
+	var x0 := maxi(0, _origin.x - 1)
+	var y0 := maxi(0, _origin.y - 1)
+	var x1 := mini(map.width, _origin.x + vc.x + 2)
+	var y1 := mini(map.height, _origin.y + vc.y + 2)
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			_draw_cell(map, x, y)
 
 	# Ground items sit under actors, so a monster standing on loot still reads
 	# as the thing you need to deal with first.
 	for it in state.ground:
 		if map.is_visible(it.x, it.y):
-			_draw_glyph(it.appearance, it.x, it.y)
+			_draw_glyph(it.appearance, Vector2(it.x, it.y))
 
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
-			_draw_glyph(e.appearance, e.x, e.y)
+			_draw_glyph(e.appearance, _visual_cell(e))
 	if state.player.alive:
-		_draw_glyph(state.player.appearance, state.player.x, state.player.y)
+		_draw_glyph(state.player.appearance, _visual_cell(state.player))
 
 	# Awareness markers are state, not events -- they persist for as long as
 	# the monster is in that state, unlike the one-shot "!".
@@ -468,7 +550,7 @@ func _draw_awareness(e: Entity) -> void:
 
 	var size_px := font_size - 5
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
-	var pos := _screen(Vector2i(e.x, e.y)) + Vector2((cell_size - w) * 0.5, 1.0)
+	var pos := _screen_f(_visual_cell(e)) + Vector2((cell_size - w) * 0.5, 1.0)
 	draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1,
 		size_px, Color(0, 0, 0, 0.8))
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, colour)
@@ -548,14 +630,18 @@ func _remembered(c: Color) -> Color:
 	var m := c.lerp(Palette.MEMORY, Palette.MEMORY_MIX)
 	return Color(m.r * Palette.MEMORY_DIM, m.g * Palette.MEMORY_DIM, m.b * Palette.MEMORY_DIM, 1.0)
 
-func _draw_glyph(id: StringName, x: int, y: int) -> void:
+func _draw_glyph(id: StringName, cell: Vector2) -> void:
 	var app := render_theme.appearance(id)
 	var fg: Color = app["fg"]
+	# Lighting is sampled at the logical cell, not the fractional one -- a
+	# glyph mid-stride should not flicker between two rooms' light levels.
+	var x := int(round(cell.x))
+	var y := int(round(cell.y))
 	var lit: Color = state.light_map.get_light(x, y) * _flicker
 	# Floor of 0.45 so something standing in gloom is still legible. Realism
 	# loses to readability every time in a game you play by reading.
 	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()
-	var origin := _screen(Vector2i(x, y))
+	var origin := _screen_f(cell)
 	draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), app["ch"], font_size, fg)
 
 func _draw_preview() -> void:
