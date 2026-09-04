@@ -6,6 +6,31 @@ palette, its cell geometry and its mouse.
 
 Godot 4.7. Windows and Linux.
 
+## Suspending a run
+
+`esc` opens the menu. **Save and quit writes a single slot, and resuming
+destroys it.**
+
+That deletion is the whole anti-scum mechanism: there is never a moment when a
+save from *before* something went wrong still exists. Save, load (file gone),
+play, save again, load again (gone again) -- no rollback exists at any point.
+So the save is always available from anywhere, because there is nothing to
+ration. Gating it behind an in-world shrine would only punish people whose
+lives interrupt them, not people who play badly.
+
+Resuming restores the **exact state** -- your position, the monsters where they
+stood, which of them had noticed you, the turn count. Not the top of the floor:
+a checkpoint would reintroduce the very scumming this design removes, since you
+could die and replay a floor already knowing what is in it.
+
+Abandoning a run forfeits the slot, and dying clears it.
+
+Every finished run appends a line to `user://morgue.txt`:
+
+    2026-09-03 22:14:07  level 8  killed by a wyvern on depth 7, with the Amulet, after 4812 turns
+
+Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
+
 ## Running
 
     godot                                        # play

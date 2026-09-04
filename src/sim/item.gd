@@ -172,6 +172,29 @@ func bonus_text() -> String:
 		return "+%d defense" % defense_bonus
 	return ""
 
+# ------------------------------------------------------------ persistence ---
+
+## Only what cannot be recovered from the catalogue. Everything static -- name,
+## glyph, base bonuses, reach -- is looked up again on load, so a later balance
+## change reaches saved runs instead of being frozen into them.
+func to_dict() -> Dictionary:
+	return {
+		"id": String(id), "letter": letter, "x": x, "y": y,
+		"pow": power_bonus, "def": defense_bonus,
+	}
+
+static func from_dict(d: Dictionary) -> Item:
+	var key := StringName(d.get("id", ""))
+	if not CATALOGUE.has(key):
+		return null
+	var it := make(key)
+	it.letter = d.get("letter", "")
+	it.x = int(d.get("x", 0))
+	it.y = int(d.get("y", 0))
+	it.power_bonus = int(d.get("pow", it.power_bonus))
+	it.defense_bonus = int(d.get("def", it.defense_bonus))
+	return it
+
 ## Weighted pick from the equipment only, for one slot. Used to arm monsters,
 ## which must not be handed a potion.
 static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: int) -> Item:

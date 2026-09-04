@@ -369,6 +369,14 @@ func _run() -> void:
 		await process_frame
 	await _shot("19_amulet_taken.png")
 
+	# The pause menu.
+	_scene.menu.open()
+	_scene._refresh()
+	for _i in 2:
+		await process_frame
+	await _shot("23_menu.png")
+	_scene.menu.close()
+
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.
 	for seed_value in [SEED, 8801, 8802]:

@@ -31,6 +31,7 @@ const KEYS := [
 	["t", "torch"],
 	["f / right-click", "shoot"],
 	["f (no bow)", "throw"],
+	["esc", "menu"],
 	["click", "travel"],
 ]
 
@@ -155,7 +156,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 12.0
+	y = size.y - PAD - LINE * 13.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:

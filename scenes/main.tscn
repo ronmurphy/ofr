@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://bofr0main0scene"]
+[gd_scene load_steps=7 format=3 uid="uid://bofr0main0scene"]
 
 [ext_resource type="Script" path="res://src/render/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/render/glyph_grid.gd" id="2_grid"]
 [ext_resource type="Script" path="res://src/ui/sidebar.gd" id="3_side"]
 [ext_resource type="Script" path="res://src/ui/message_view.gd" id="4_log"]
 [ext_resource type="Script" path="res://src/ui/inventory_panel.gd" id="5_inv"]
+[ext_resource type="Script" path="res://src/ui/menu_panel.gd" id="6_menu"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -47,3 +48,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 0
 script = ExtResource("5_inv")
+
+[node name="Menu" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+script = ExtResource("6_menu")

@@ -11,6 +11,7 @@ extends Control
 @onready var sidebar: Sidebar = $Sidebar
 @onready var log_view: MessageView = $Log
 @onready var inventory: InventoryPanel = $Inventory
+@onready var menu: MenuPanel = $Menu
 
 var state: GameState
 
@@ -51,8 +52,14 @@ const MOVES := {
 }
 
 func _ready() -> void:
-	var fresh := GameState.new()
-	fresh.new_game()
+	# A suspended run resumes straight into itself. Loading destroys the file,
+	# so there is nothing left to fall back to if this run goes badly.
+	var fresh := GameState.load_suspend()
+	if fresh == null:
+		fresh = GameState.new()
+		fresh.new_game()
+	else:
+		fresh.msg_log.add("You take up where you left off.", Color(0.80, 0.85, 0.95))
 	_bind_state(fresh)
 	grid.cell_clicked.connect(_on_cell_clicked)
 	grid.cell_right_clicked.connect(_on_cell_right_clicked)
@@ -60,10 +67,15 @@ func _ready() -> void:
 	inventory.drop_requested.connect(_drop_item)
 	inventory.merge_requested.connect(_merge_item)
 	inventory.throw_requested.connect(_on_throw_chosen)
+	menu.resume_requested.connect(_close_menu)
+	menu.save_and_quit_requested.connect(_save_and_quit)
+	menu.new_run_requested.connect(_start_new_run)
 	inventory.close_requested.connect(_close_inventory)
 	_refresh()
 
 func _process(delta: float) -> void:
+	if menu.visible:
+		return
 	if _look:
 		sidebar.hovered = _look_at
 	elif _aiming:
@@ -86,6 +98,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if key_event == null or not key_event.pressed or key_event.echo:
 		return
 	var key: int = key_event.keycode
+
+	if menu.visible:
+		menu.handle_key(key)
+		return
 
 	# The inventory is modal and swallows everything else while it is up.
 	if inventory.visible:
@@ -153,12 +169,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if key == KEY_R:
-		_end_look()
-		_end_aim()
-		_close_inventory()
-		var fresh := GameState.new()
-		fresh.new_game()
-		_bind_state(fresh)
+		_start_new_run()
+		return
+
+	if key == KEY_ESCAPE:
+		menu.open()
+		_refresh()
 		return
 
 	if state.game_over:
@@ -229,12 +245,36 @@ func _end_look() -> void:
 ## The single place that points every panel at a GameState. Having this wiring
 ## copied into _ready, the restart path and the capture tool is exactly how the
 ## inventory ended up rendering a stale, empty pack.
+func _close_menu() -> void:
+	menu.close()
+	_refresh()
+
+func _save_and_quit() -> void:
+	if state.game_over:
+		# Nothing worth resuming, and writing one would resurrect a dead run.
+		GameState.clear_suspend()
+	else:
+		state.save_suspend()
+	get_tree().quit()
+
+func _start_new_run() -> void:
+	_end_look()
+	_end_aim()
+	_close_inventory()
+	menu.close()
+	# Abandoning forfeits the slot, or the old run could be resumed later.
+	GameState.clear_suspend()
+	var fresh := GameState.new()
+	fresh.new_game()
+	_bind_state(fresh)
+
 func _bind_state(s: GameState) -> void:
 	state = s
 	grid.state = s
 	sidebar.state = s
 	log_view.state = s
 	inventory.state = s
+	menu.state = s
 	_refresh()
 
 func _begin_throw_pick() -> void:
@@ -368,3 +408,4 @@ func _refresh() -> void:
 	sidebar.queue_redraw()
 	log_view.queue_redraw()
 	inventory.queue_redraw()
+	menu.queue_redraw()

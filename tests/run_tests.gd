@@ -63,6 +63,9 @@ func _initialize() -> void:
 	_test_player_ranged_attacks()
 	_test_throwing()
 	_test_launchers_are_poor_clubs()
+	_test_suspend_round_trip()
+	_test_suspend_slot_is_destroyed_on_load()
+	_test_morgue_line()
 	_report_encounter_curve()
 
 	print("")
@@ -1058,6 +1061,100 @@ func _test_launchers_are_poor_clubs() -> void:
 		gs._attack(gs.player, dummy, true, 8)
 		hurled = maxi(hurled, b - dummy.hp)
 	check("an explicit throw keeps its own power", hurled > with_bow)
+
+func _suspended_state() -> GameState:
+	var gs := GameState.new(5150)
+	gs.new_game()
+	gs.depth = 4
+	gs.build_level()
+	gs.torch_lit = false
+	gs.award_xp(500)
+	gs.give_item(Item.make(&"war_axe"))
+	gs.give_item(Item.make(&"chain_mail"))
+	gs.player.equipped[Item.Slot.WEAPON] = gs.player.inventory[0]
+	gs.player.equipped[Item.Slot.ARMOR] = gs.player.inventory[1]
+	gs.player.hp = 17
+	gs.update_vision()
+	return gs
+
+func _test_suspend_round_trip() -> void:
+	var gs := _suspended_state()
+	var back := GameState.new(1)
+	check("a save restores at all", back.apply_dict(gs.to_dict()))
+
+	check("depth survives", back.depth == gs.depth)
+	check("the torch state survives", back.torch_lit == gs.torch_lit)
+	check("level and experience survive",
+		back.player.xp == gs.player.xp and back.player.level == gs.player.level)
+	check("hit points survive", back.player.hp == gs.player.hp)
+	check("the map survives", back.map.tiles == gs.map.tiles)
+	check("room materials survive", back.map.material == gs.map.material)
+	check("what was explored survives", back.map.explored == gs.map.explored)
+	check("the monster roster survives",
+		back.entities.size() == gs.entities.size(), "%d vs %d"
+			% [back.entities.size(), gs.entities.size()])
+	check("ground loot survives", back.ground.size() == gs.ground.size())
+	check("brazier charges survive",
+		back.brazier_charge.size() == gs.brazier_charge.size())
+	check("equipment survives", back.player.equipped.size() == 2)
+	check("and so does what it adds up to",
+		back.player.total_power() == gs.player.total_power()
+			and back.player.total_defense() == gs.player.total_defense())
+
+	# The pack and the worn slots hold the SAME objects. Writing them out twice
+	# would restore a character wearing a copy of their own armour, and
+	# dropping it would leave a duplicate behind.
+	check("worn gear is the pack's own object",
+		back.player.inventory.has(back.player.equipped[Item.Slot.WEAPON]))
+
+	# Stored as a string for exactly this reason: as a JSON number the low bits
+	# of a 64-bit state are lost and the resumed run diverges.
+	check("the rng resumes exactly where it stopped",
+		back.rng.state == gs.rng.state, "%d vs %d" % [back.rng.state, gs.rng.state])
+
+	# Monster awareness has to survive, or suspending would be a free reset on
+	# everything that had noticed you.
+	var awake_before := 0
+	var awake_after := 0
+	for e in gs.entities:
+		if e.alertness == Entity.Alert.AWAKE:
+			awake_before += 1
+	for e in back.entities:
+		if e.alertness == Entity.Alert.AWAKE:
+			awake_after += 1
+	check("who had noticed you survives", awake_before == awake_after)
+
+func _test_suspend_slot_is_destroyed_on_load() -> void:
+	GameState.clear_suspend()
+	check("no slot to begin with", not GameState.has_suspend())
+
+	var gs := _suspended_state()
+	check("saving writes one", gs.save_suspend())
+	check("the slot is there", GameState.has_suspend())
+
+	var resumed := GameState.load_suspend()
+	check("it resumes", resumed != null)
+	check("resuming destroys the slot", not GameState.has_suspend())
+	check("so there is nothing to load a second time",
+		GameState.load_suspend() == null)
+	check("and the resumed run is the one that was saved",
+		resumed != null and resumed.depth == gs.depth
+			and resumed.player.hp == gs.player.hp)
+	GameState.clear_suspend()
+
+func _test_morgue_line() -> void:
+	var gs := _suspended_state()
+	gs.death_cause = "killed by a wyvern"
+	var line := gs.morgue_line()
+	check("the morgue names what killed you", line.contains("wyvern"))
+	check("and where", line.contains("depth 4"))
+	check("and says you had no amulet", line.contains("empty-handed"))
+
+	gs.give_item(Item.make(&"amulet"))
+	gs.won = true
+	var victory := gs.morgue_line()
+	check("a win reads as an escape", victory.contains("escaped"))
+	check("and records the amulet", victory.contains("with the Amulet"))
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

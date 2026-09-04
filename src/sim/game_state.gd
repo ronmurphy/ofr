@@ -12,6 +12,13 @@ extends RefCounted
 ## down -- the only way on is back the way you came.
 const MAX_DEPTH := 10
 
+## A single suspend slot, destroyed the moment it is loaded. That deletion is
+## the entire anti-scum mechanism: there is never a point at which a save from
+## *before* something went wrong still exists.
+const SUSPEND_PATH := "user://suspend.save"
+const MORGUE_PATH := "user://morgue.txt"
+const SAVE_VERSION := 1
+
 const MAP_W := 96
 const MAP_H := 54
 const TORCH_RADIUS := 8
@@ -125,6 +132,8 @@ var depth: int = 1
 ## harder than the climb down.
 var ascending := false
 var won := false
+## What finished the run, for the morgue.
+var death_cause := ""
 var turns: int = 0
 var game_over: bool = false
 
@@ -908,6 +917,7 @@ func player_ascend() -> bool:
 		won = true
 		game_over = true
 		award_xp(earned)
+		write_morgue()
 		msg_log.add("You climb into daylight, the Amulet of the Deep in hand. "
 			+ "You have escaped. Press R to descend again.",
 			Color(1.00, 0.92, 0.55))
@@ -1071,6 +1081,186 @@ func _end_player_turn() -> void:
 	update_vision()
 
 # ----------------------------------------------------------- world turn ----
+
+# ----------------------------------------------------------- persistence ----
+
+static func has_suspend() -> bool:
+	return FileAccess.file_exists(SUSPEND_PATH)
+
+static func clear_suspend() -> void:
+	if FileAccess.file_exists(SUSPEND_PATH):
+		DirAccess.remove_absolute(SUSPEND_PATH)
+
+func save_suspend() -> bool:
+	var f := FileAccess.open(SUSPEND_PATH, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(JSON.stringify(to_dict()))
+	f.close()
+	return true
+
+## Reads the slot and immediately destroys it. That deletion is the entire
+## anti-scum mechanism: there is never a moment when a save from *before*
+## something went wrong still exists.
+static func load_suspend() -> GameState:
+	if not has_suspend():
+		return null
+	var f := FileAccess.open(SUSPEND_PATH, FileAccess.READ)
+	if f == null:
+		return null
+	var text := f.get_as_text()
+	f.close()
+	clear_suspend()
+
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return null
+	var gs := GameState.new(1)
+	if not gs.apply_dict(parsed):
+		return null
+	return gs
+
+func to_dict() -> Dictionary:
+	var mobs := []
+	for e in entities:
+		mobs.append(e.to_dict())
+	var loot := []
+	for it in ground:
+		loot.append(it.to_dict())
+	var charges := {}
+	for cell in brazier_charge:
+		charges["%d,%d" % [cell.x, cell.y]] = int(brazier_charge[cell])
+	var caves := []
+	for r in cave_regions:
+		caves.append([r.position.x, r.position.y, r.size.x, r.size.y])
+	var rooms := []
+	for r in room_rects:
+		rooms.append([r.position.x, r.position.y, r.size.x, r.size.y])
+	var lines := []
+	for entry in msg_log.entries:
+		var c: Color = entry["color"]
+		lines.append({"t": entry["text"], "n": entry["count"], "c": [c.r, c.g, c.b]})
+
+	return {
+		"version": SAVE_VERSION,
+		# Strings, not numbers: JSON stores numbers as doubles, and a 64-bit
+		# rng state would quietly lose its low bits -- so a resumed run would
+		# drift away from the one that was saved.
+		"seed": str(rng.seed), "state": str(rng.state),
+		"depth": depth, "turns": turns, "ascending": ascending,
+		"won": won, "game_over": game_over, "torch_lit": torch_lit,
+		"cause": death_cause,
+		"w": map.width, "h": map.height,
+		"tiles": Marshalls.raw_to_base64(map.tiles),
+		"material": Marshalls.raw_to_base64(map.material),
+		"explored": Marshalls.raw_to_base64(map.explored),
+		"stairs": [stairs.x, stairs.y],
+		"braziers": charges, "caves": caves, "rooms": rooms,
+		"entities": mobs, "player": entities.find(player),
+		"ground": loot, "log": lines,
+	}
+
+func apply_dict(d: Dictionary) -> bool:
+	if int(d.get("version", 0)) != SAVE_VERSION:
+		return false
+
+	rng.seed = str(d.get("seed", "0")).to_int()
+	rng.state = str(d.get("state", "0")).to_int()
+	depth = int(d.get("depth", 1))
+	turns = int(d.get("turns", 0))
+	ascending = d.get("ascending", false)
+	won = d.get("won", false)
+	game_over = d.get("game_over", false)
+	torch_lit = d.get("torch_lit", true)
+	death_cause = d.get("cause", "")
+
+	map = DungeonMap.new(int(d.get("w", MAP_W)), int(d.get("h", MAP_H)))
+	map.tiles = Marshalls.base64_to_raw(d.get("tiles", ""))
+	map.material = Marshalls.base64_to_raw(d.get("material", ""))
+	map.explored = Marshalls.base64_to_raw(d.get("explored", ""))
+	light_map = LightMap.new(map.width, map.height)
+	var buf := PackedByteArray()
+	buf.resize(map.width * map.height)
+	_fov_buffer = buf
+
+	var st: Array = d.get("stairs", [0, 0])
+	stairs = Vector2i(int(st[0]), int(st[1]))
+
+	brazier_charge.clear()
+	var charges: Dictionary = d.get("braziers", {})
+	for key in charges:
+		var parts: PackedStringArray = String(key).split(",")
+		if parts.size() == 2:
+			brazier_charge[Vector2i(parts[0].to_int(), parts[1].to_int())] = int(charges[key])
+
+	cave_regions.clear()
+	for r in d.get("caves", []):
+		cave_regions.append(Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])))
+	room_rects.clear()
+	for r in d.get("rooms", []):
+		room_rects.append(Rect2i(int(r[0]), int(r[1]), int(r[2]), int(r[3])))
+
+	entities = []
+	for entry in d.get("entities", []):
+		entities.append(Entity.from_dict(entry))
+	var pi := int(d.get("player", 0))
+	if pi < 0 or pi >= entities.size():
+		return false
+	player = entities[pi]
+	# Derived, never stored: the torch is rebuilt from the saved torch_lit.
+	player.light = LightSource.new(player.x, player.y, TORCH_RADIUS,
+		Color(1.00, 0.72, 0.36), Color(0.30, 0.34, 0.55), 1.0, true)
+
+	ground = []
+	for entry in d.get("ground", []):
+		var it := Item.from_dict(entry)
+		if it != null:
+			ground.append(it)
+
+	msg_log = MessageLog.new()
+	for entry in d.get("log", []):
+		var c: Array = entry.get("c", [1, 1, 1])
+		msg_log.entries.append({"text": entry.get("t", ""),
+			"count": int(entry.get("n", 1)),
+			"color": Color(float(c[0]), float(c[1]), float(c[2]))})
+
+	events = []
+	_travel.clear()
+	pathfinder = Pathfinder.new(map)
+	_gather_lights()
+	update_vision()
+	return true
+
+# --------------------------------------------------------------- morgue ----
+
+func morgue_line() -> String:
+	var when := Time.get_datetime_string_from_system(false, true)
+	var fate := ""
+	if won:
+		fate = "escaped the dungeon with the Amulet of the Deep"
+	elif death_cause != "":
+		fate = "%s on depth %d" % [death_cause, depth]
+	else:
+		fate = "left the dungeon on depth %d" % depth
+	var carried := "with the Amulet" if _carrying_amulet() else "empty-handed"
+	return "%s  level %d  %s, %s, after %d turns" \
+		% [when, player.level, fate, carried, turns]
+
+func _carrying_amulet() -> bool:
+	for it in player.inventory:
+		if it.kind == Item.Kind.AMULET:
+			return true
+	return false
+
+func write_morgue() -> void:
+	var f := FileAccess.open(MORGUE_PATH, FileAccess.READ_WRITE)
+	if f == null:
+		f = FileAccess.open(MORGUE_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.seek_end()
+	f.store_line(morgue_line())
+	f.close()
 
 func _run_world() -> void:
 	for _guard in 500:
@@ -1337,6 +1527,8 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	if not defender.alive:
 		if defender.is_player:
 			game_over = true
+			death_cause = "killed by a %s" % attacker.name
+			write_morgue()
 			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
 		else:
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))

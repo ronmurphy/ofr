@@ -115,6 +115,72 @@ func is_equipped(item) -> bool:
 			return true
 	return false
 
+# ------------------------------------------------------------ persistence ---
+
+## Equipped gear is stored as indices into `inventory`, because the two hold
+## the SAME objects -- writing them out twice would restore a monster wearing a
+## copy of its own armour, and dropping it would leave a duplicate behind.
+func to_dict() -> Dictionary:
+	var pack := []
+	for it in inventory:
+		pack.append(it.to_dict())
+	var worn := {}
+	for slot in equipped:
+		var idx := inventory.find(equipped[slot])
+		if idx >= 0:
+			worn[str(slot)] = idx
+	return {
+		"name": name, "app": String(appearance), "x": x, "y": y,
+		"blocks": blocks, "is_player": is_player, "faction": faction,
+		"hp": hp, "max_hp": max_hp, "power": power, "defense": defense,
+		"speed": speed, "energy": energy, "threat": threat,
+		"level": level, "xp": xp, "ai": String(ai),
+		"attack_range": attack_range, "flee_below": flee_below,
+		"fleeing": fleeing, "regen": regen, "alertness": alertness,
+		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
+		"lost_turns": lost_turns, "calm_turns": calm_turns, "alive": alive,
+		"inventory": pack, "equipped": worn,
+	}
+
+static func from_dict(d: Dictionary) -> Entity:
+	var e := Entity.new(d.get("name", "thing"),
+		StringName(d.get("app", "unknown")), int(d.get("x", 0)), int(d.get("y", 0)))
+	e.blocks = d.get("blocks", true)
+	e.is_player = d.get("is_player", false)
+	e.faction = int(d.get("faction", Faction.MONSTER))
+	e.hp = int(d.get("hp", 1))
+	e.max_hp = int(d.get("max_hp", 1))
+	e.power = int(d.get("power", 1))
+	e.defense = int(d.get("defense", 0))
+	e.speed = int(d.get("speed", 100))
+	e.energy = int(d.get("energy", 0))
+	e.threat = int(d.get("threat", 0))
+	e.level = int(d.get("level", 1))
+	e.xp = int(d.get("xp", 0))
+	e.ai = StringName(d.get("ai", "none"))
+	e.attack_range = int(d.get("attack_range", 1))
+	e.flee_below = float(d.get("flee_below", 0.0))
+	e.fleeing = d.get("fleeing", false)
+	e.regen = int(d.get("regen", 0))
+	e.alertness = int(d.get("alertness", Alert.ASLEEP))
+	e.notice_range = int(d.get("notice_range", 8))
+	var seen: Array = d.get("last_seen", [-1, -1])
+	e.last_seen = Vector2i(int(seen[0]), int(seen[1]))
+	e.lost_turns = int(d.get("lost_turns", 0))
+	e.calm_turns = int(d.get("calm_turns", 0))
+	e.alive = d.get("alive", true)
+
+	for entry in d.get("inventory", []):
+		var it := Item.from_dict(entry)
+		if it != null:
+			e.inventory.append(it)
+	var worn: Dictionary = d.get("equipped", {})
+	for slot_key in worn:
+		var idx := int(worn[slot_key])
+		if idx >= 0 and idx < e.inventory.size():
+			e.equipped[int(slot_key)] = e.inventory[idx]
+	return e
+
 func distance_to(other: Entity) -> float:
 	return Vector2(x - other.x, y - other.y).length()
 
