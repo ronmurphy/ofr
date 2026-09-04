@@ -1,0 +1,15 @@
+name: encounter room
+weight: 8
+min_depth: 1
+max_depth: 10
+rotate: yes
+terrain: fixed
+LAYOUT
+#########
+#?.,....#
+#,m...,.#
+#...,..m#
+####+####
+#,,#.#,m#
+#,,+.+..#
+####+####

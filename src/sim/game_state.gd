@@ -140,6 +140,9 @@ var cave_regions: Array[Rect2i] = []
 var room_rects: Array[Rect2i] = []
 ## Where the hand-authored rooms landed, kept for tests and later features.
 var vault_rects: Array[Rect2i] = []
+## Parallel to vault_rects. Several vaults share a bounding box, so a size
+## cannot identify one.
+var vault_names: Array[String] = []
 
 var torch_lit := true
 var depth: int = 1
@@ -345,8 +348,10 @@ func build_level() -> void:
 		_populate_cave(region)
 	_place_vault_contents(gen)
 	vault_rects.clear()
+	vault_names.clear()
 	for spot in gen.vault_spots:
 		vault_rects.append(spot["rect"])
+		vault_names.append(spot["vault"].name)
 
 	pathfinder = Pathfinder.new(map)
 	update_vision()
