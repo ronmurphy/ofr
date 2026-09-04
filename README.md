@@ -154,6 +154,25 @@ nothing is gained by it, and a misclick should cost nothing.
 Monsters roll melee weapons only. A goblin handed a bow would carry reach its
 `pack` behaviour never uses, which reads as a bug rather than a surprise.
 
+## Throwing
+
+Daggers and swords can be **hurled**; bows, armour and potions cannot, and
+light things fly further (dagger 5, short sword 3, war axe 2).
+
+`f` does whatever your hands allow. **Holding a launcher, it shoots. Holding
+anything else, it opens the pack filtered to what can be thrown** -- pick one
+and the normal targeting cursor appears. That second path is D&D's off-hand
+action: your main hand is busy, so you reach for something else.
+
+A thrown weapon **lands where it struck** and can be picked up again, so
+throwing is a positioning decision rather than a consumable. It deals its own
+bonus plus half your base power, which makes it clearly weaker than a bow --
+reach should not be free twice.
+
+This also closes a loop the inventory opened. Spare daggers used to be dead
+weight; forging gave them one use and throwing gives them a second, and the two
+compete. **Forge the spare into a better blade, or keep it to throw?**
+
 ## Combat feedback
 
 A shot **resolves instantly in game time**, exactly as Angband and DCSS do it.

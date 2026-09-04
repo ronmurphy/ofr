@@ -535,22 +535,24 @@ func take_events() -> Array:
 
 ## Everything the player could shoot right now, nearest first. Drives target
 ## cycling, so the list the cursor walks is exactly the list of legal shots.
-func firing_targets() -> Array:
+func firing_targets(reach: int = -1) -> Array:
 	var out := []
-	if player.total_range() <= 1:
+	var r := player.total_range() if reach < 0 else reach
+	if r <= 1:
 		return out
 	for e in entities:
 		if e.is_player or not e.alive:
 			continue
-		if can_fire_at(Vector2i(e.x, e.y)):
+		if can_reach(Vector2i(e.x, e.y), r):
 			out.append(e)
 	out.sort_custom(func(a, b):
 		return Los.steps(player.x, player.y, a.x, a.y) \
 			< Los.steps(player.x, player.y, b.x, b.y))
 	return out
 
-func can_fire_at(cell: Vector2i) -> bool:
-	var reach := player.total_range()
+## One reach test for shooting and throwing alike -- they differ only in how
+## far the thing goes.
+func can_reach(cell: Vector2i, reach: int) -> bool:
 	if reach <= 1:
 		return false
 	if not map.is_visible(cell.x, cell.y):
@@ -558,6 +560,9 @@ func can_fire_at(cell: Vector2i) -> bool:
 	if Los.steps(player.x, player.y, cell.x, cell.y) > reach:
 		return false
 	return Los.clear(map, player.x, player.y, cell.x, cell.y)
+
+func can_fire_at(cell: Vector2i) -> bool:
+	return can_reach(cell, player.total_range())
 
 func player_fire(cell: Vector2i) -> bool:
 	if game_over:
@@ -578,6 +583,53 @@ func player_fire(cell: Vector2i) -> bool:
 
 	_travel.clear()
 	_attack(player, target, true)
+	_end_player_turn()
+	return true
+
+## Everything in the pack that could be hurled.
+func throwables() -> Array:
+	var out := []
+	for it in player.inventory:
+		if it.is_throwable():
+			out.append(it)
+	return out
+
+## Hurling something. Weaker than a bow on purpose -- reach should not be free
+## twice -- and the weapon lands where it hit, so throwing is a positioning
+## decision rather than a consumable.
+func player_throw(index: int, cell: Vector2i) -> bool:
+	if game_over or index < 0 or index >= player.inventory.size():
+		return false
+	var item: Item = player.inventory[index]
+	if not item.is_throwable():
+		msg_log.add("You cannot throw the %s." % item.name, Color(0.7, 0.6, 0.4))
+		return false
+	if not can_reach(cell, item.throw_range):
+		msg_log.add("You cannot reach there with the %s." % item.name,
+			Color(0.7, 0.6, 0.4))
+		return false
+
+	var target := entity_at(cell.x, cell.y)
+	if target == null or target.is_player:
+		msg_log.add("There is nothing there to throw at.", Color(0.7, 0.6, 0.4))
+		return false
+
+	_travel.clear()
+	if player.is_equipped(item):
+		player.equipped.erase(item.slot)
+	player.inventory.remove_at(index)
+	item.letter = ""
+
+	# Half your own strength behind it, plus whatever the thing is worth.
+	var throw_power := item.power_bonus + int(player.power / 2)
+	msg_log.add("You hurl the %s." % item.display_name(), Color(0.85, 0.88, 0.68))
+	_attack(player, target, true, throw_power)
+
+	# It lands where it struck, whether or not that killed anything.
+	item.x = cell.x
+	item.y = cell.y
+	ground.append(item)
+
 	_end_player_turn()
 	return true
 
@@ -1232,9 +1284,19 @@ func _step_away(actor: Entity) -> bool:
 	actor.y = best.y
 	return true
 
-func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
-	var raw := attacker.total_power() - defender.total_defense() + rng.randi_range(-1, 1)
-	var least := int(ceil(float(attacker.total_power()) * DAMAGE_FLOOR_FRACTION))
+func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
+		power_override: int = -1) -> void:
+	var atk := attacker.total_power() if power_override < 0 else power_override
+
+	# Swinging a bow is not fighting. Without this an archer has no reason to
+	# fear being adjacent, and the whole peek-and-duck loop has no stakes: you
+	# could stand toe to toe with a launcher in hand and lose almost nothing.
+	var clumsy := power_override < 0 and not ranged and attacker.total_range() > 1
+	if clumsy:
+		atk = maxi(1, int(attacker.power / 2))
+
+	var raw := atk - defender.total_defense() + rng.randi_range(-1, 1)
+	var least := int(ceil(float(atk) * DAMAGE_FLOOR_FRACTION))
 	var dmg := maxi(maxi(1, least), raw)
 	defender.take_damage(dmg)
 
@@ -1261,6 +1323,9 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 		if ranged:
 			msg_log.add("You shoot the %s for %d." % [defender.name, dmg],
 				Color(0.85, 0.88, 0.68))
+		elif clumsy:
+			msg_log.add("You club at the %s for %d -- a poor weapon up close."
+				% [defender.name, dmg], Color(0.85, 0.75, 0.55))
 		else:
 			msg_log.add("You hit the %s for %d." % [defender.name, dmg],
 				Color(0.80, 0.85, 0.70))

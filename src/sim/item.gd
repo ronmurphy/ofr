@@ -27,6 +27,9 @@ var defense_bonus: int = 0
 ## at every tier the ranged option is about two points weaker than the melee
 ## one, and that gap is the price of never being adjacent.
 var range_bonus: int = 1
+## How far this can be hurled. Zero means it cannot be -- a bow or a breastplate
+## is not a missile. Light things fly further.
+var throw_range: int = 0
 ## What this item rolled as. Upgrades are capped relative to this, so a dagger
 ## can never become a war axe -- merging improves an item, it does not replace
 ## the reason to find better ones.
@@ -65,15 +68,15 @@ const CATALOGUE := {
 
 	&"dagger": {
 		"name": "dagger", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 2, "min_depth": 1, "weight": 7,
+		"slot": Slot.WEAPON, "power": 2, "throw": 5, "min_depth": 1, "weight": 7,
 	},
 	&"short_sword": {
 		"name": "short sword", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 4, "min_depth": 2, "weight": 5,
+		"slot": Slot.WEAPON, "power": 4, "throw": 3, "min_depth": 2, "weight": 5,
 	},
 	&"war_axe": {
 		"name": "war axe", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 7, "min_depth": 4, "weight": 3,
+		"slot": Slot.WEAPON, "power": 7, "throw": 2, "min_depth": 4, "weight": 3,
 	},
 	&"sling": {
 		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
@@ -115,6 +118,7 @@ static func make(item_id: StringName) -> Item:
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
 	it.range_bonus = data.get("range", 1)
+	it.throw_range = data.get("throw", 0)
 	it.base_power_bonus = it.power_bonus
 	it.base_defense_bonus = it.defense_bonus
 	return it
@@ -137,6 +141,9 @@ func upgrade() -> void:
 func display_name() -> String:
 	var up := upgrade_level()
 	return name if up == 0 else "%s +%d" % [name, up]
+
+func is_throwable() -> bool:
+	return throw_range > 0
 
 func is_equipment() -> bool:
 	return slot != Slot.NONE

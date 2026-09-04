@@ -61,6 +61,8 @@ func _initialize() -> void:
 	_test_monsters_carry_gear()
 	_test_the_amulet_and_the_ascent()
 	_test_player_ranged_attacks()
+	_test_throwing()
+	_test_launchers_are_poor_clubs()
 	_report_encounter_curve()
 
 	print("")
@@ -944,6 +946,118 @@ func _test_player_ranged_attacks() -> void:
 	check("a war axe has no reach", gs.player.total_range() == 1)
 	check("and the launcher trades damage for it",
 		bow.power_bonus < axe.power_bonus)
+
+func _test_throwing() -> void:
+	check("daggers can be thrown", Item.make(&"dagger").is_throwable())
+	check("so can a short sword", Item.make(&"short_sword").is_throwable())
+	check("but not a bow", not Item.make(&"short_bow").is_throwable())
+	check("nor armour", not Item.make(&"chain_mail").is_throwable())
+	check("nor a potion", not Item.make(&"potion_healing").is_throwable())
+	check("light things fly further than heavy ones",
+		Item.make(&"dagger").throw_range > Item.make(&"war_axe").throw_range)
+
+	var gs := _arena(31, 11)
+	gs.player.x = 4
+	gs.player.y = 5
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+	gs.player.power = 10
+	gs.map.set_all_visible()
+
+	var mark := _spawn(gs, "goblin", 8, 5)
+	mark.max_hp = 500
+	mark.hp = 500
+
+	var blade := Item.make(&"dagger")
+	gs.give_item(blade)
+	check("the pack offers it", gs.throwables().size() == 1)
+
+	# Out of reach, and behind cover, both refused.
+	check("beyond its reach is refused", not gs.player_throw(0, Vector2i(25, 5)))
+	gs.map.set_tile(6, 5, Tiles.PILLAR)
+	check("cover refuses it too", not gs.player_throw(0, Vector2i(8, 5)))
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	check("empty floor is refused", not gs.player_throw(0, Vector2i(7, 5)))
+	check("and none of that cost the dagger", gs.player.inventory.size() == 1)
+
+	var hp_before := mark.hp
+	check("the throw lands", gs.player_throw(0, Vector2i(8, 5)))
+	check("it wounds the target", mark.hp < hp_before)
+	check("the dagger leaves the pack", gs.player.inventory.is_empty())
+	check("and lands at the target's feet",
+		gs.items_at(8, 5).size() == 1 and gs.items_at(8, 5)[0] == blade)
+	check("so it can be recovered", blade.letter == "")
+
+	# Reach should not be free twice: a thrown blade is weaker than a bow shot.
+	var thrown := blade.power_bonus + int(gs.player.power / 2)
+	var bow := Item.make(&"short_bow")
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	check("a thrown dagger hits softer than a bow (%d vs %d)"
+		% [thrown, gs.player.total_power()], thrown < gs.player.total_power())
+
+	# Throwing what you are holding works, and disarms you.
+	var spare := Item.make(&"dagger")
+	gs.give_item(spare)
+	gs.player.equipped[Item.Slot.WEAPON] = spare
+	check("you may hurl your own weapon",
+		gs.player_throw(gs.player.inventory.find(spare), Vector2i(8, 5)))
+	check("which leaves you holding nothing",
+		not gs.player.equipped.has(Item.Slot.WEAPON))
+
+## An archer must fear being adjacent, or peek-and-duck has no stakes.
+func _test_launchers_are_poor_clubs() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.power = 12
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+	gs.map.set_all_visible()
+
+	var dummy := _spawn(gs, "goblin", 6, 4)
+	dummy.max_hp = 100000
+	dummy.hp = 100000
+	dummy.defense = 0
+
+	# Baseline: a proper weapon in hand.
+	gs.player.equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+	var with_sword := 0
+	for _i in 40:
+		var b := dummy.hp
+		gs._attack(gs.player, dummy)
+		with_sword = maxi(with_sword, b - dummy.hp)
+
+	gs.player.equipped[Item.Slot.WEAPON] = Item.make(&"short_bow")
+	var with_bow := 0
+	for _i in 40:
+		var b := dummy.hp
+		gs._attack(gs.player, dummy)
+		with_bow = maxi(with_bow, b - dummy.hp)
+
+	check("clubbing with a bow is far worse than a sword (%d vs %d)"
+		% [with_bow, with_sword], with_bow * 2 < with_sword)
+
+	# But shooting with it is not penalised.
+	var shot := 0
+	for _i in 40:
+		var b := dummy.hp
+		gs._attack(gs.player, dummy, true)
+		shot = maxi(shot, b - dummy.hp)
+	# Not compared against the sword: a launcher is meant to hit slightly
+	# softer than melee, since it buys reach. The point is only that firing it
+	# carries no clumsiness penalty.
+	check("shooting the same bow carries no penalty (%d vs %d clubbing)"
+		% [shot, with_bow], shot > with_bow * 2)
+	check("and still lands a little under a sword (%d vs %d)"
+		% [shot, with_sword], shot < with_sword)
+
+	# And a thrown weapon is not treated as a clumsy swing either.
+	var hurled := 0
+	for _i in 20:
+		var b := dummy.hp
+		gs._attack(gs.player, dummy, true, 8)
+		hurled = maxi(hurled, b - dummy.hp)
+	check("an explicit throw keeps its own power", hurled > with_bow)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

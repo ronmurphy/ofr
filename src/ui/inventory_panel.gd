@@ -11,6 +11,7 @@ extends Control
 signal use_requested(index: int)
 signal drop_requested(index: int)
 signal merge_requested(index: int)
+signal throw_requested(index: int)
 signal close_requested()
 
 enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS }
@@ -36,6 +37,9 @@ const GROUPS := [
 
 var state: GameState
 var filter: int = Filter.ALL
+## Off-hand mode: the pack opens filtered to what can be hurled, and a choice
+## here hands straight to the targeting cursor.
+var throw_mode := false
 var _hover_index := -1
 
 const PANEL_W := 620.0
@@ -53,7 +57,15 @@ func _ready() -> void:
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
+func open_for_throw() -> void:
+	throw_mode = true
+	visible = true
+	filter = Filter.ALL
+	_hover_index = -1
+	queue_redraw()
+
 func open() -> void:
+	throw_mode = false
 	visible = true
 	# Reset to ALL on open. A sticky filter means reopening later and finding
 	# your potions "missing", which is a worse bug than an extra keystroke.
@@ -63,6 +75,7 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	throw_mode = false
 	_hover_index = -1
 
 func cycle_filter(step: int = 1) -> void:
@@ -111,7 +124,13 @@ func _build_rows() -> Array:
 		return rows
 	var entries := []
 	for i in state.player.inventory.size():
-		entries.append({"item": state.player.inventory[i], "index": i})
+		var it: Item = state.player.inventory[i]
+		if throw_mode and not it.is_throwable():
+			continue
+		entries.append({"item": it, "index": i})
+
+	if throw_mode:
+		return _sorted(entries)
 
 	if filter != Filter.ALL:
 		for e in _sorted(entries.filter(func(e): return _matches(e["item"], filter))):
@@ -135,6 +154,11 @@ func _build_rows() -> Array:
 
 # ----------------------------------------------------------------- layout ---
 
+## The filter chips are hidden when picking something to throw, so the space
+## they would have taken is given back.
+func _top_offset() -> float:
+	return TOP - 30.0 if throw_mode else TOP
+
 func _content_height() -> float:
 	var h := 0.0
 	for r in _build_rows():
@@ -144,14 +168,14 @@ func _content_height() -> float:
 func _panel_rect() -> Rect2:
 	# Sized to its contents, so a pack holding two things is not a mostly
 	# empty box.
-	var h := clampf(TOP + _content_height() + BOTTOM, 240.0, size.y - 60.0)
+	var h := clampf(_top_offset() + _content_height() + BOTTOM, 240.0, size.y - 60.0)
 	return Rect2((Vector2(size.x - PANEL_W, size.y - h) * 0.5).floor(),
 		Vector2(PANEL_W, h))
 
 func _row_rects() -> Array:
 	var p := _panel_rect()
 	var out := []
-	var y := p.position.y + TOP
+	var y := p.position.y + _top_offset()
 	for r in _build_rows():
 		var h: float = HEAD_H if r.has("header") else ROW_H
 		out.append({"row": r, "rect": Rect2(p.position.x + PAD, y, PANEL_W - PAD * 2.0, h)})
@@ -200,6 +224,11 @@ func _gui_input(event: InputEvent) -> void:
 		if not _panel_rect().has_point(click.position):
 			close_requested.emit()
 		return
+	if throw_mode:
+		if click.button_index == MOUSE_BUTTON_LEFT:
+			throw_requested.emit(hit)
+		return
+
 	if click.button_index == MOUSE_BUTTON_LEFT:
 		if click.shift_pressed:
 			merge_requested.emit(hit)
@@ -228,21 +257,24 @@ func _draw() -> void:
 	draw_rect(p, Palette.UI_FRAME, false, 1.0)
 
 	var asc := font.get_ascent(font_size)
-	draw_string(font_bold, p.position + Vector2(PAD, PAD + asc), "INVENTORY",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.STAIRS)
+	draw_string(font_bold, p.position + Vector2(PAD, PAD + asc),
+		"THROW WHAT?" if throw_mode else "INVENTORY",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
+		Palette.AIM_OK if throw_mode else Palette.STAIRS)
 	# On the title's baseline and right-aligned, so it cannot collide with the
 	# filter chips on the line below.
 	draw_string(font, p.position + Vector2(PAD, PAD + asc),
 		"%d / %d carried" % [state.player.inventory.size(), Entity.INVENTORY_MAX],
 		HORIZONTAL_ALIGNMENT_RIGHT, PANEL_W - PAD * 2.0, font_size, Palette.UI_DIM)
 
-	for chip in _chip_rects():
-		_draw_chip(chip)
+	if not throw_mode:
+		for chip in _chip_rects():
+			_draw_chip(chip)
 
 	var rows := _row_rects()
 	if rows.is_empty():
-		draw_string(font, Vector2(p.position.x + PAD, p.position.y + TOP + asc),
-			"(nothing here)", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+		draw_string(font, Vector2(p.position.x + PAD, p.position.y + _top_offset() + asc),
+			"(nothing to throw)" if throw_mode else "(nothing here)", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	for entry in rows:
 		if entry["row"].has("header"):
 			_draw_header(entry["rect"], entry["row"]["header"])
@@ -252,7 +284,9 @@ func _draw() -> void:
 	# The forge line only appears where forging is possible, so it teaches the
 	# mechanic exactly when it is relevant instead of being permanent clutter.
 	var hint := "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
-	if state.can_forge_here():
+	if throw_mode:
+		hint = "pick something to hurl  ·  click or press its letter  ·  esc cancel"
+	elif state.can_forge_here():
 		hint = "shift+click a ● item to FORGE it with a spare  ·  click use  ·  esc"
 	var hs := font_size - 2
 	while hs > 9 and font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x \

@@ -30,6 +30,7 @@ const KEYS := [
 	["i", "inventory"],
 	["t", "torch"],
 	["f / right-click", "shoot"],
+	["f (no bow)", "throw"],
 	["click", "travel"],
 ]
 
@@ -123,7 +124,13 @@ func _draw() -> void:
 	y += LINE
 	_stat_row(y, "defense", str(p.total_defense()), p.total_defense() != p.defense)
 	y += LINE
-	_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
+	# Reach is shown on the weapon line, so it reads as a property a weapon can
+	# have rather than something only monsters get.
+	var reach := p.total_range()
+	if reach > 1:
+		_stat_row(y, "weapon", "%s  r%d" % [_slot_name(p, Item.Slot.WEAPON), reach], true)
+	else:
+		_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
 	y += LINE
 	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
 	y += LINE
@@ -148,7 +155,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 11.0
+	y = size.y - PAD - LINE * 12.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:

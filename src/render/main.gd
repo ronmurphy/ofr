@@ -33,6 +33,8 @@ var _aiming := false
 var _aim_at := Vector2i.ZERO
 var _aim_targets: Array = []
 var _aim_index := 0
+## Set when the cursor is aiming a thrown object rather than a launcher.
+var _throw_index := -1
 
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
@@ -57,6 +59,7 @@ func _ready() -> void:
 	inventory.use_requested.connect(_use_item)
 	inventory.drop_requested.connect(_drop_item)
 	inventory.merge_requested.connect(_merge_item)
+	inventory.throw_requested.connect(_on_throw_chosen)
 	inventory.close_requested.connect(_close_inventory)
 	_refresh()
 
@@ -86,6 +89,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	# The inventory is modal and swallows everything else while it is up.
 	if inventory.visible:
+		if inventory.throw_mode:
+			if key == KEY_ESCAPE or key == KEY_F:
+				_close_inventory()
+			else:
+				var chosen: int = inventory.letter_to_index(key)
+				if chosen >= 0:
+					_on_throw_chosen(chosen)
+			return
 		if key == KEY_TAB:
 			inventory.cycle_filter(-1 if key_event.shift_pressed else 1)
 		elif key == KEY_ESCAPE or key == KEY_I:
@@ -118,7 +129,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if key == KEY_F:
-		_begin_aim()
+		# A launcher shoots. Anything else means going to the off hand for
+		# something to hurl.
+		if state.player.total_range() > 1:
+			_begin_aim()
+		else:
+			_begin_throw_pick()
 		return
 
 	if key == KEY_X or key == KEY_SEMICOLON:
@@ -221,15 +237,37 @@ func _bind_state(s: GameState) -> void:
 	inventory.state = s
 	_refresh()
 
-func _begin_aim() -> void:
+func _begin_throw_pick() -> void:
 	if state.game_over:
 		return
-	if state.player.total_range() <= 1:
+	if state.throwables().is_empty():
+		state.msg_log.add("You have nothing worth throwing.", Color(0.7, 0.6, 0.4))
+		_refresh()
+		return
+	_end_look()
+	inventory.open_for_throw()
+	_refresh()
+
+func _on_throw_chosen(index: int) -> void:
+	if index < 0 or index >= state.player.inventory.size():
+		return
+	var item: Item = state.player.inventory[index]
+	if not item.is_throwable():
+		return
+	_close_inventory()
+	_throw_index = index
+	_begin_aim(item.throw_range)
+
+func _begin_aim(reach: int = -1) -> void:
+	if state.game_over:
+		return
+	var r := state.player.total_range() if reach < 0 else reach
+	if r <= 1:
 		state.msg_log.add("You have nothing to shoot with.", Color(0.7, 0.6, 0.4))
 		_refresh()
 		return
 	_end_look()
-	_aim_targets = state.firing_targets()
+	_aim_targets = state.firing_targets(r)
 	_aiming = true
 	_aim_index = 0
 	# Opens on the nearest legal target, so the common case needs no cursor
@@ -246,6 +284,7 @@ func _end_aim() -> void:
 		return
 	_aiming = false
 	_aim_targets = []
+	_throw_index = -1
 	grid.aim_cursor = Vector2i(-1, -1)
 	grid.aim_line = []
 	sidebar.aiming = false
@@ -261,12 +300,21 @@ func _cycle_target(step: int) -> void:
 
 func _update_aim() -> void:
 	grid.aim_cursor = _aim_at
-	grid.aim_valid = state.can_fire_at(_aim_at)
+	if _throw_index >= 0 and _throw_index < state.player.inventory.size():
+		var held: Item = state.player.inventory[_throw_index]
+		grid.aim_valid = state.can_reach(_aim_at, held.throw_range)
+	else:
+		grid.aim_valid = state.can_fire_at(_aim_at)
 	grid.aim_line = Los.path(state.player.x, state.player.y, _aim_at.x, _aim_at.y)
 	_refresh()
 
 func _fire_at_cursor() -> void:
-	if state.player_fire(_aim_at):
+	var done := false
+	if _throw_index >= 0:
+		done = state.player_throw(_throw_index, _aim_at)
+	else:
+		done = state.player_fire(_aim_at)
+	if done:
 		_end_aim()
 	else:
 		_refresh()

@@ -332,6 +332,18 @@ func _run() -> void:
 	await _shot("21_aim_blocked.png")
 	_scene._end_aim()
 
+	# The off-hand: a melee weapon in hand, so f opens the pack instead.
+	aim.map.set_tile(10, 7, Tiles.FLOOR)
+	aim.player.equipped[Item.Slot.WEAPON] = Item.make(&"war_axe")
+	for want in [&"dagger", &"dagger", &"short_sword", &"potion_healing"]:
+		aim.give_item(Item.make(want))
+	aim.update_vision()
+	_scene._begin_throw_pick()
+	for _i in 2:
+		await process_frame
+	await _shot("22_throw_pick.png")
+	_scene._close_inventory()
+
 	# The amulet, and the moment the run turns around.
 	var relic_run := GameState.new(8800)
 	relic_run.new_game()
