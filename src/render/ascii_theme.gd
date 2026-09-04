@@ -12,6 +12,7 @@ const TABLE := {
 	&"door_closed": {"ch": "+",      "fg": Palette.DOOR,     "bg": Color("1c1712")},
 	&"door_open":   {"ch": "'",      "fg": Palette.DOOR,     "bg": Color("14120f")},
 	&"stairs_down": {"ch": ">",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
+	&"stairs_up":   {"ch": "<",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
 	&"brazier":     {"ch": "Ω",      "fg": Palette.BRAZIER,  "bg": Color("241408")},
 	&"void":        {"ch": " ",      "fg": Palette.BG,       "bg": Palette.BG},
 	&"cave_floor":  {"ch": "·", "fg": Palette.CAVE_FLOOR, "bg": Color("1c1814")},
@@ -23,6 +24,7 @@ const TABLE := {
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},
 	&"scroll":      {"ch": "?", "fg": Palette.SCROLL},
+	&"amulet":      {"ch": "\"", "fg": Palette.AMULET},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
 	&"armour":      {"ch": "[", "fg": Palette.ARMOUR},
 

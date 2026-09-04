@@ -7,7 +7,7 @@ extends RefCounted
 ## already exist on Entity. No stat system is needed to make a sword work, and
 ## adding one now would be inventing a dependency that isn't there.
 
-enum Kind { POTION, SCROLL, WEAPON, ARMOR }
+enum Kind { POTION, SCROLL, WEAPON, ARMOR, AMULET }
 enum Slot { NONE = -1, WEAPON, ARMOR }
 
 var id: StringName
@@ -40,6 +40,12 @@ var x: int
 var y: int
 
 const CATALOGUE := {
+	## Never rolled -- placed by hand at the bottom of the dungeon.
+	&"amulet": {
+		"name": "Amulet of the Deep", "app": &"amulet", "kind": Kind.AMULET,
+		"min_depth": 999, "weight": 0,
+	},
+
 	&"potion_healing": {
 		"name": "potion of healing", "app": &"potion", "kind": Kind.POTION,
 		"effect": &"heal", "magnitude": 12, "min_depth": 1, "weight": 12,
@@ -124,6 +130,7 @@ func verb() -> String:
 		Kind.SCROLL: return "read"
 		Kind.WEAPON: return "wield"
 		Kind.ARMOR:  return "wear"
+		Kind.AMULET: return "carry"
 	return "use"
 
 ## Past-tense marker shown against an equipped item.
@@ -137,6 +144,26 @@ func bonus_text() -> String:
 	if defense_bonus != 0:
 		return "+%d defense" % defense_bonus
 	return ""
+
+## Weighted pick from the equipment only, for one slot. Used to arm monsters,
+## which must not be handed a potion.
+static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: int) -> Item:
+	var pool := []
+	var total := 0
+	for key in CATALOGUE:
+		var data: Dictionary = CATALOGUE[key]
+		if data["min_depth"] > depth or data.get("slot", Slot.NONE) != want_slot:
+			continue
+		total += data["weight"]
+		pool.append({"id": key, "weight": data["weight"]})
+	if pool.is_empty():
+		return null
+	var pick := rng.randi_range(1, total)
+	for entry in pool:
+		pick -= entry["weight"]
+		if pick <= 0:
+			return make(entry["id"])
+	return make(pool[-1]["id"])
 
 ## Weighted pick from everything legal at this depth.
 static func roll(rng: RandomNumberGenerator, depth: int) -> Item:

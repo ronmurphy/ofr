@@ -96,6 +96,23 @@ disengaging a real decision -- wound one, run, come back and it is whole again,
 so you either commit to the kill or you wasted the damage. The look panel marks
 regenerating monsters with a `*`.
 
+Humanoids can **carry gear** -- a goblin in leather, an orc with a short sword
+-- drawn from the same catalogue the player loots, gated by the same depth
+rules. Animals and constructs never do.
+
+Two things keep that honest:
+
+- **Gear is paid for in threat.** A monster's `threat` rises by what it is
+  carrying, and it is only armed if the room's remaining ceiling can afford it.
+  Without that, a room of armed orcs would quietly cost more than its ceiling
+  claimed and the survivability guarantee would be a lie.
+- **Drops are a coin flip, not a certainty** (`LOOT_DROP_CHANCE`). Guaranteed
+  drops would flood the floor, and with forging in the game that compounds --
+  three daggers make a +2 dagger.
+
+The look panel lists what a monster is carrying, so a fight can be assessed
+before it is committed to.
+
 Any monster can also have a **morale** threshold and run when badly hurt --
 except the undead, which never break. A cornered animal with nowhere to run
 fights instead.
@@ -204,6 +221,33 @@ most likely to be noticed. An instant heal would have been free, and a free
 heal is not a decision.
 
 Resting at full health wastes nothing.
+
+## The amulet, and the way out
+
+The dungeon bottoms out at depth 10. There are no stairs down there -- where
+they would have been sits the **Amulet of the Deep**, and taking it turns the
+run around.
+
+The floor regenerates on pickup rather than being restored, and the fiction
+carries that: the artefact was trapped, the depths rearrange behind you, and
+more things are awake than were before. That justifies the new layout *and* the
+heavier population, and it costs nothing -- remembering ten floors would have
+meant serialising them.
+
+**The climb out is harder than the climb down, and it tightens as you near the
+exit:**
+
+    effective_depth = MAX_DEPTH + (MAX_DEPTH - current_floor)
+
+Floor 10 fights at depth 10; floor 1, with daylight in sight, fights at depth
+19. Measured, the room threat ceiling runs 30 -> 40 -> 48 on the way up, against
+12 on floor 1 on the way down -- four times worse in the same place.
+
+Tension should peak at the door, not ease off as you approach it. And because
+you no longer need to explore, only to escape, dousing the torch stops being a
+tactic and becomes the whole game.
+
+`<` climbs. Everything else is unchanged.
 
 ## Experience and levels
 

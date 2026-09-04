@@ -57,11 +57,20 @@ func _initialize() -> void:
 	_test_armour_reduces_but_never_negates()
 	_test_deep_tiers()
 	_test_regeneration()
+	_test_relighting_a_brazier()
+	_test_monsters_carry_gear()
+	_test_the_amulet_and_the_ascent()
 	_report_encounter_curve()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
+
+var _silent_ok := true
+
+func check_silent(condition: bool) -> void:
+	if not condition:
+		_silent_ok = false
 
 func check(name: String, condition: bool, detail: String = "") -> void:
 	if condition:
@@ -199,6 +208,11 @@ func _test_fighting_is_loud() -> void:
 	var distant := _spawn(gs, "orc", 20, 9)
 	for m in [target, neighbour, distant]:
 		m.alertness = Entity.Alert.ASLEEP
+		# Durable enough to survive the blow, or a lucky roll kills the target
+		# and `wake` skips it for being dead -- which made this test depend on
+		# the damage dice.
+		m.max_hp = 500
+		m.hp = 500
 
 	gs._attack(gs.player, target)
 	check("the thing you hit wakes", target.alertness == Entity.Alert.AWAKE)
@@ -425,6 +439,26 @@ func _test_camera_deadzone() -> void:
 	var probe := grid.cell_at(Vector2(5 * 18 + 4, 3 * 18 + 4))
 	check("mouse position accounts for the scroll",
 		probe == Vector2i(grid._origin.x + 5, grid._origin.y + 3), str(probe))
+
+	# Look mode must be able to reach terrain the player is nowhere near --
+	# it inspects what you remember, and most of a 120-wide map is off screen.
+	gs.player.x = 10
+	gs.player.y = 10
+	grid.look_cursor = Vector2i(-1, -1)
+	grid.centre_on_player()
+	var parked: Vector2i = grid._origin
+	grid.look_cursor = Vector2i(110, 55)
+	grid._update_camera()
+	check("the camera follows the look cursor", grid._origin != parked)
+	check("and brings the cursor into view",
+		grid.look_cursor.x - grid._origin.x < 72
+			and grid.look_cursor.y - grid._origin.y < 40,
+		"%s from %s" % [grid.look_cursor, grid._origin])
+
+	grid.look_cursor = Vector2i(-1, -1)
+	grid._update_camera()
+	check("leaving look mode returns the view to the player",
+		gs.player.x - grid._origin.x < 72 and gs.player.x >= grid._origin.x)
 	grid.free()
 
 func _forge_arena() -> GameState:
@@ -680,6 +714,176 @@ func _test_regeneration() -> void:
 	orc.hp = 5
 	gs._take_ai_turn(orc)
 	check("things without regeneration stay wounded", orc.hp == 5)
+
+func _test_relighting_a_brazier() -> void:
+	var gs := _forge_arena()
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs.brazier_charge = {}
+	gs._gather_lights()
+	check("a spent brazier gives no light", gs.static_lights.is_empty())
+	check("and cannot be rested at", not gs.can_forge_here())
+
+	gs.give_item(Item.make(&"scroll_light"))
+	gs.map.reveal_all()
+	check("reading a scroll beside it works", gs.player_use(0))
+	check("the brazier is lit again", gs.map.get_tile(6, 4) == Tiles.BRAZIER)
+	check("with a weaker charge than a fresh one",
+		int(gs.brazier_charge[Vector2i(6, 4)]) == GameState.RELIGHT_CHARGE
+			and GameState.RELIGHT_CHARGE < GameState.BRAZIER_CHARGE)
+	check("and it gives light once more", gs.static_lights.size() == 1)
+	check("the scroll is spent", gs.player.inventory.is_empty())
+
+	# Away from a dead brazier the scroll does what it always did.
+	var open_ground := _arena(31, 13)
+	open_ground.player.x = 15
+	open_ground.player.y = 6
+	open_ground.give_item(Item.make(&"scroll_light"))
+	var explored_before := 0
+	for i in open_ground.map.explored.size():
+		if open_ground.map.explored[i] != 0:
+			explored_before += 1
+	check("reading it elsewhere still reveals", open_ground.player_use(0))
+	var explored_after := 0
+	for i in open_ground.map.explored.size():
+		if open_ground.map.explored[i] != 0:
+			explored_after += 1
+	check("and the map grows", explored_after > explored_before,
+		"%d -> %d" % [explored_before, explored_after])
+
+func _test_monsters_carry_gear() -> void:
+	const ANIMALS := ["giant rat", "cave bat", "harpy", "wyvern", "shadow",
+		"stone golem", "young dragon", "cave troll"]
+	var armed := 0
+	var total := 0
+	var armed_animals := 0
+	var understated := 0
+
+	for d in [1, 3, 5, 8]:
+		for i in 25:
+			var gs := GameState.new(71000 + d * 100 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			for e in gs.entities:
+				if e.is_player:
+					continue
+				total += 1
+				if e.equipped.is_empty():
+					continue
+				armed += 1
+				if ANIMALS.has(e.name):
+					armed_animals += 1
+				# Gear has to be paid for in threat, or the ceiling lies.
+				var base := 0
+				for b in GameState.BESTIARY:
+					if b["name"] == e.name:
+						base = int(b["threat"])
+				if e.threat <= base:
+					understated += 1
+
+	check("some monsters carry gear (%d of %d)" % [armed, total], armed > 0)
+	check("but not all of them", armed < total)
+	check("animals and constructs carry nothing", armed_animals == 0,
+		"%d armed" % armed_animals)
+	check("gear is always paid for in threat", understated == 0,
+		"%d understated" % understated)
+
+	# Gear must actually make the monster harder, not just decorate it.
+	var arena := _arena(21, 9)
+	var orc := _spawn(arena, "orc", 8, 4)
+	var base_power := orc.total_power()
+	var base_def := orc.total_defense()
+	orc.equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+	orc.equipped[Item.Slot.ARMOR] = Item.make(&"chain_mail")
+	check("an armed monster hits harder", orc.total_power() > base_power)
+	check("and takes less", orc.total_defense() > base_def)
+
+	# Loot drops sometimes, and not every time.
+	# One arena reused across the run, so the rng actually advances. Rebuilding
+	# it each pass reseeded from the same value and produced 200 copies of the
+	# same roll.
+	var loot := _arena(21, 9)
+	loot.player.x = 5
+	loot.player.y = 4
+	loot.player.power = 999
+	var drops := 0
+	var kills := 200
+	for i in kills:
+		loot.ground.clear()
+		var victim := _spawn(loot, "orc", 6, 4)
+		victim.hp = 1
+		victim.equipped[Item.Slot.WEAPON] = Item.make(&"dagger")
+		loot._attack(loot.player, victim)
+		drops += loot.ground.size()
+		check_silent(victim.equipped.is_empty())
+		loot.entities.erase(victim)
+	check("gear drops sometimes (%d of %d)" % [drops, kills], drops > 0)
+	check("and not every time", drops < kills)
+	check("a corpse never keeps its equipment", _silent_ok)
+
+func _test_the_amulet_and_the_ascent() -> void:
+	var gs := GameState.new(8800)
+	gs.new_game()
+
+	# Shallow floors have stairs down and no relic.
+	check("depth 1 has a way down",
+		gs.map.get_tile(gs.stairs.x, gs.stairs.y) == Tiles.STAIRS_DOWN)
+	var relics := 0
+	for it in gs.ground:
+		if it.kind == Item.Kind.AMULET:
+			relics += 1
+	check("and no amulet", relics == 0)
+
+	# The bottom has the amulet and no way further down.
+	gs.depth = GameState.MAX_DEPTH
+	gs.build_level()
+	check("the bottom has no stairs down",
+		gs.map.get_tile(gs.stairs.x, gs.stairs.y) != Tiles.STAIRS_DOWN)
+	var found: Item = null
+	for it in gs.ground:
+		if it.kind == Item.Kind.AMULET:
+			found = it
+	check("the amulet waits at the bottom", found != null)
+
+	# Taking it turns the run around.
+	check("not ascending yet", not gs.ascending)
+	gs.player.x = found.x
+	gs.player.y = found.y
+	check("taking the amulet works", gs.player_pickup())
+	check("the run has turned around", gs.ascending)
+	check("the amulet is carried", gs.player.inventory.size() == 1
+		and gs.player.inventory[0].kind == Item.Kind.AMULET)
+	check("the floor now has a way up",
+		gs.map.get_tile(gs.stairs.x, gs.stairs.y) == Tiles.STAIRS_UP)
+
+	# Climbing is harder than descending was, and gets harder as you go.
+	var at_bottom := gs.room_threat_ceiling()
+	gs.depth = 5
+	gs.build_level()
+	var midway := gs.room_threat_ceiling()
+	gs.depth = 1
+	gs.build_level()
+	var at_the_door := gs.room_threat_ceiling()
+	check("the climb tightens as you near the exit (%d -> %d -> %d)"
+		% [at_bottom, midway, at_the_door],
+		at_bottom < midway and midway < at_the_door)
+
+	var descending := GameState.new(8801)
+	descending.new_game()
+	descending.depth = 1
+	descending.build_level()
+	check("floor 1 on the way out is far worse than on the way in (%d vs %d)"
+		% [at_the_door, descending.room_threat_ceiling()],
+		at_the_door > descending.room_threat_ceiling() * 2)
+
+	# And the exit.
+	gs.player.x = gs.stairs.x
+	gs.player.y = gs.stairs.y
+	var xp_before := gs.player.xp
+	check("climbing out of depth 1 works", gs.player_ascend())
+	check("that is the win", gs.won)
+	check("the run is over", gs.game_over)
+	check("and the last floor paid out", gs.player.xp > xp_before)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

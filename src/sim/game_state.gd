@@ -8,6 +8,10 @@ extends RefCounted
 ## combat maths are exactly the things you want to run ten thousand times in a
 ## loop without a window open.
 
+## The bottom of the dungeon. The amulet waits here and there are no stairs
+## down -- the only way on is back the way you came.
+const MAX_DEPTH := 10
+
 const MAP_W := 96
 const MAP_H := 54
 const TORCH_RADIUS := 8
@@ -25,6 +29,19 @@ const BRAZIER_HEAL := 2
 ## hitting harder later. Durability was the other candidate and it fails,
 ## because it punishes using the good item and players simply hoard it.
 const MERGE_COST := 4
+## A scroll of light poured into a dead brazier relights it, but weakly.
+## Deliberately less than a fresh one holds, and deliberately INSTEAD of the
+## scroll's reveal rather than as well as it -- otherwise there is no decision,
+## just a strictly better way to read the scroll.
+const RELIGHT_CHARGE := 6
+
+## How often a slain monster's gear survives the fight.
+##
+## Not 1.0 on purpose. Every kill yielding a usable item would flood the floor,
+## and with forging in the game that compounds -- three daggers make a +2
+## dagger, so guaranteed drops would accelerate a power curve that already
+## outruns monster defense.
+const LOOT_DROP_CHANCE := 0.5
 
 ## Experience.
 ##
@@ -103,6 +120,11 @@ var room_rects: Array[Rect2i] = []
 
 var torch_lit := true
 var depth: int = 1
+## Set the moment the amulet is taken. Everything downstream reads
+## `effective_depth()` rather than `depth`, which is what makes the climb out
+## harder than the climb down.
+var ascending := false
+var won := false
 var turns: int = 0
 var game_over: bool = false
 
@@ -140,18 +162,18 @@ const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
 	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"hunter", "flee": 0.25, "min_depth": 1, "threat": 3},
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "min_depth": 2,
+	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2,
 	 "threat": 6},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
 	 "speed": 170, "ai": &"erratic", "flee": 0.0, "min_depth": 2, "threat": 5},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
-	 "speed": 100, "ai": &"pack", "flee": 0.20, "min_depth": 2, "threat": 5},
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "min_depth": 3, "threat": 8},
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "min_depth": 4, "threat": 10},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10},
 
 	# --- deep tiers -------------------------------------------------------
 	# Power from 7 upward, because below that a levelled character in chain
@@ -159,14 +181,14 @@ const BESTIARY := [
 	# deeper. These also carry the whole ascent, which runs at effective
 	# depths of 10 to 19.
 	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.12, "min_depth": 5, "threat": 14},
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "min_depth": 5, "threat": 14},
 	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
 	 "speed": 160, "ai": &"erratic", "flee": 0.25, "min_depth": 5, "threat": 12},
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "min_depth": 6,
 	 "threat": 16},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
-	 "speed": 100, "ai": &"hunter", "flee": 0.0, "min_depth": 7, "threat": 17},
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
 	 "speed": 140, "ai": &"hunter", "flee": 0.10, "min_depth": 7, "threat": 20},
 	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
@@ -237,7 +259,16 @@ func build_level() -> void:
 	player.y = start.y
 
 	stairs = _open_cell_in(rooms[-1])
-	map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_DOWN)
+	if ascending:
+		map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_UP)
+	elif depth < MAX_DEPTH:
+		map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_DOWN)
+	else:
+		# The bottom. Where the stairs would have been, the amulet.
+		var relic := Item.make(&"amulet")
+		relic.x = stairs.x
+		relic.y = stairs.y
+		ground.append(relic)
 
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
@@ -281,8 +312,18 @@ func _gather_lights() -> void:
 				static_lights.append(LightSource.new(x, y, 6,
 					Color(0.95, 0.55, 0.20), Color(0.35, 0.20, 0.30), 0.85, true))
 
+## How dangerous this floor is, as opposed to which floor it is.
+##
+## Descending they are the same. Climbing out they are not: floor 10 fights at
+## depth 10 and floor 1, with the exit in sight, fights at depth 19. Tension
+## should peak at the door, not ease off as you near it.
+func effective_depth() -> int:
+	if not ascending:
+		return depth
+	return MAX_DEPTH + (MAX_DEPTH - depth)
+
 func room_threat_ceiling() -> int:
-	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * depth
+	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
 
 func cave_threat_ceiling() -> int:
 	return int(round(room_threat_ceiling() * CAVE_THREAT_SCALE))
@@ -292,7 +333,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 		var ix := rng.randi_range(room.position.x, room.end.x - 1)
 		var iy := rng.randi_range(room.position.y, room.end.y - 1)
 		if map.is_walkable(ix, iy) and Vector2i(ix, iy) != stairs and items_at(ix, iy).is_empty():
-			var loot := Item.roll(rng, depth)
+			var loot := Item.roll(rng, effective_depth())
 			if loot != null:
 				loot.x = ix
 				loot.y = iy
@@ -304,7 +345,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 		bonus = 1
 	# The count roll is unchanged -- density is intentional. The ceiling only
 	# stops that count from landing on something unsurvivable.
-	var count := rng.randi_range(0, 2 + depth / 3) + bonus
+	var count := rng.randi_range(0, 2 + effective_depth() / 3) + bonus
 	var spent := 0
 	var ceiling := room_threat_ceiling()
 	for _i in count:
@@ -315,7 +356,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 
 func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
-	var count := rng.randi_range(1, 3 + depth / 3)
+	var count := rng.randi_range(1, 3 + effective_depth() / 3)
 	var spent := 0
 	var ceiling := cave_threat_ceiling()
 	for _i in count:
@@ -346,8 +387,48 @@ func _spawn_in(area: Rect2i, remaining: int) -> int:
 	m.flee_below = pick.get("flee", 0.0)
 	m.regen = pick.get("regen", 0)
 	m.threat = int(pick["threat"])
+	# Gear raises what a monster is actually worth facing, so it must raise the
+	# threat too. Otherwise a room of armed orcs quietly costs more than its
+	# ceiling claims, and the survivability guarantee becomes a lie.
+	m.threat += _arm_monster(m, pick, remaining - m.threat)
 	entities.append(m)
 	return m.threat
+
+## Arms a monster within whatever threat budget is left, returning what the
+## gear cost. Anything it cannot afford, it does not get.
+func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
+	var chance: float = pick.get("gear", 0.0)
+	if chance <= 0.0 or rng.randf() >= chance:
+		return 0
+
+	var spent := 0
+	for slot in [Item.Slot.WEAPON, Item.Slot.ARMOR]:
+		if rng.randf() > 0.65:
+			continue
+		var it := Item.roll_equipment(rng, effective_depth(), slot)
+		if it == null:
+			continue
+		var cost := it.power_bonus + it.defense_bonus
+		if spent + cost > spare:
+			continue
+		m.equipped[slot] = it
+		m.inventory.append(it)
+		spent += cost
+	return spent
+
+## Whatever a corpse leaves behind.
+func _drop_loot(victim: Entity) -> void:
+	for slot in victim.equipped:
+		var it: Item = victim.equipped[slot]
+		if rng.randf() > LOOT_DROP_CHANCE:
+			continue
+		it.x = victim.x
+		it.y = victim.y
+		it.letter = ""
+		ground.append(it)
+		msg_log.add("It drops the %s." % it.display_name(), Color(0.72, 0.78, 0.90))
+	victim.equipped.clear()
+	victim.inventory.clear()
 
 ## Weighted by tier, and filtered to what still fits under the ceiling.
 ##
@@ -360,9 +441,10 @@ func _roll_monster(remaining: int) -> Dictionary:
 	var total := 0.0
 	# Past the deepest tier the fade stops advancing, so the heaviest monsters
 	# stay at full weight instead of everything vanishing.
-	var effective := mini(depth, deepest_tier() + TIER_GRACE)
+	var here := effective_depth()
+	var effective := mini(here, deepest_tier() + TIER_GRACE)
 	for e in BESTIARY:
-		if e["min_depth"] > depth:
+		if e["min_depth"] > here:
 			continue
 		if int(e["threat"]) > remaining:
 			continue
@@ -537,7 +619,10 @@ func xp_for_level(n: int) -> int:
 	return XP_CURVE_A * k * k + XP_CURVE_B * k
 
 func xp_into_level() -> int:
-	return player.xp - xp_for_level(player.level)
+	# Clamped: level only ever rises through award_xp today, but a drain effect
+	# or a loaded save could get here with less xp than the level implies, and
+	# a progress bar should not render backwards.
+	return maxi(0, player.xp - xp_for_level(player.level))
 
 func xp_needed_for_next() -> int:
 	return xp_for_level(player.level + 1) - xp_for_level(player.level)
@@ -565,6 +650,13 @@ func _level_up() -> void:
 func can_forge_here() -> bool:
 	var b := _adjacent_brazier()
 	return b.x >= 0 and int(brazier_charge.get(b, 0)) >= MERGE_COST
+
+## Can this specific item be forged right now? Drives the inventory marker, so
+## the mechanic advertises itself instead of relying on the player guessing
+## which of the two items involved is the one to click.
+func can_forge_item(item: Item) -> bool:
+	return item.is_equipment() and item.can_upgrade() \
+		and _find_duplicate(item) != null and can_forge_here()
 
 ## Merge the item at `index` with an identical one from the pack, at a brazier.
 func player_merge(index: int) -> bool:
@@ -624,6 +716,14 @@ func _find_duplicate(item: Item) -> Item:
 			return other
 	return null
 
+func _adjacent_spent_brazier() -> Vector2i:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			if map.get_tile(c.x, c.y) == Tiles.BRAZIER_SPENT:
+				return c
+	return Vector2i(-1, -1)
+
 ## A lit brazier beside the player with something left in it.
 func _adjacent_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
@@ -659,11 +759,59 @@ func player_pickup() -> bool:
 		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
 		return false
 	var item: Item = here[0]
+	if item.kind == Item.Kind.AMULET:
+		_seize_amulet(item)
+		return true
 	ground.erase(item)
 	give_item(item)
 	msg_log.add("You pick up the %s (%s)." % [item.name, item.letter],
 		Color(0.75, 0.80, 0.90))
 	_end_player_turn()
+	return true
+
+## Taking the amulet turns the run around.
+##
+## The dungeon is regenerated rather than restored, which the fiction covers:
+## the artefact was trapped, and the depths rearrange behind you. That justifies
+## both the new layout and the heavier population, and it costs nothing --
+## remembering ten floors would have meant serialising them.
+func _seize_amulet(relic: Item) -> void:
+	ground.erase(relic)
+	give_item(relic)
+	ascending = true
+
+	msg_log.add("You lift the Amulet of the Deep. The dungeon shudders.",
+		Color(1.00, 0.88, 0.45))
+	msg_log.add("Stone grinds on stone. When it stills, nothing is where you "
+		+ "left it.", Color(0.85, 0.80, 0.70))
+	msg_log.add("More eyes than before catch your torchlight. The way out is "
+		+ "up.", Color(0.95, 0.70, 0.40))
+
+	build_level()
+	update_vision()
+
+## Climbing out. Pays for the floor survived, exactly as descending does.
+func player_ascend() -> bool:
+	if game_over:
+		return false
+	if map.get_tile(player.x, player.y) != Tiles.STAIRS_UP:
+		msg_log.add("There is no way up here.", Color(0.7, 0.6, 0.4))
+		return false
+
+	var earned := room_threat_ceiling() * XP_DEPTH_MULTIPLIER
+	depth -= 1
+	if depth <= 0:
+		won = true
+		game_over = true
+		award_xp(earned)
+		msg_log.add("You climb into daylight, the Amulet of the Deep in hand. "
+			+ "You have escaped. Press R to descend again.",
+			Color(1.00, 0.92, 0.55))
+		return true
+
+	build_level()
+	msg_log.add("You climb to depth %d." % depth, Color(0.85, 0.72, 0.45))
+	award_xp(earned)
 	return true
 
 func player_use(index: int) -> bool:
@@ -733,6 +881,15 @@ func _apply_effect(item: Item) -> bool:
 			return true
 
 		&"light":
+			var dead := _adjacent_spent_brazier()
+			if dead.x >= 0:
+				map.set_tile(dead.x, dead.y, Tiles.BRAZIER)
+				brazier_charge[dead] = RELIGHT_CHARGE
+				_gather_lights()
+				msg_log.add("The scroll's light pours into the dead brazier. "
+					+ "It catches, weakly.", Color(0.98, 0.82, 0.45))
+				return true
+
 			var buf := PackedByteArray()
 			buf.resize(map.width * map.height)
 			Fov.compute(map, player.x, player.y, item.magnitude, buf)
@@ -1061,5 +1218,6 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false) -> void:
 			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
 		else:
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
+			_drop_loot(defender)
 			if attacker.is_player:
 				award_xp(defender.threat)

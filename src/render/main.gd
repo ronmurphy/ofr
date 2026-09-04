@@ -130,8 +130,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_GREATER:
 			if state.player_descend():
 				_refresh()
-		KEY_G, KEY_COMMA:
+		KEY_G:
 			if state.player_pickup():
+				_refresh()
+		KEY_COMMA:
+			# Shift+comma is "<", so the same physical key both picks up and
+			# climbs, exactly as period both waits and descends.
+			if key_event.shift_pressed:
+				if state.player_ascend():
+					_refresh()
+			elif state.player_pickup():
+				_refresh()
+		KEY_LESS:
+			if state.player_ascend():
 				_refresh()
 		KEY_T:
 			if state.player_toggle_torch():
@@ -206,6 +217,7 @@ func _refresh() -> void:
 	# Hand the turn's events to the renderer to animate. The simulation has
 	# already resolved them; this is purely showing the player what happened.
 	grid.play_events(state.take_events())
+	grid.refresh_preview()
 	grid.queue_redraw()
 	sidebar.queue_redraw()
 	log_view.queue_redraw()

@@ -23,6 +23,7 @@ const KEYS := [
 	["arrows / hjklyubn", "move"],
 	[". or 5", "wait / rest"],
 	[">", "descend"],
+	["<", "ascend"],
 	["x", "look"],
 	["g", "pick up"],
 	["i", "inventory"],
@@ -55,7 +56,14 @@ func _draw() -> void:
 
 	_line(font_bold, y, "OFR", Palette.STAIRS)
 	y += LINE
-	_line(font, y, "depth %d    turn %d" % [state.depth, state.turns], Palette.UI_DIM)
+	if state.won:
+		_line(font_bold, y, "ESCAPED  turn %d" % state.turns, Palette.STAIRS)
+	elif state.ascending:
+		_line(font, y, "depth %d  UP    turn %d" % [state.depth, state.turns],
+			Palette.AMULET)
+	else:
+		_line(font, y, "depth %d    turn %d" % [state.depth, state.turns],
+			Palette.UI_DIM)
 	y += LINE
 
 	# Level, with progress toward the next one. The bar matters more than the
@@ -136,7 +144,7 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 9.0
+	y = size.y - PAD - LINE * 10.0
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:
@@ -194,6 +202,12 @@ func _describe() -> Array:
 				if e.regen > 0:
 					tag += " *"
 				out.append(tag)
+				# What it is carrying, so a fight can be assessed before it is
+				# committed to.
+				# One line per piece. Comma-joining them overran the panel and
+				# came out as "short sword, leather ..".
+				for slot in e.equipped:
+					out.append("  " + e.equipped[slot].display_name())
 		for it in state.items_at(hovered.x, hovered.y):
 			out.append(it.name)
 	else:

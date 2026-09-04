@@ -20,6 +20,7 @@ const STAIRS        := Color("d9cf9a")
 ## it is navigation information, not scenery, and hunting for it in the dim
 ## blue of memory is busywork rather than difficulty.
 const STAIRS_KNOWN  := Color("7fe0b0")
+const AMULET        := Color("ffe07a")
 const BRAZIER       := Color("e0913c")
 const BRAZIER_DEAD  := Color("4f4740")
 const PILLAR        := Color("9a9082")

@@ -37,8 +37,18 @@ func _run() -> void:
 
 	# Inventory, stocked so the panel has something to show.
 	for want in [&"potion_healing", &"scroll_light", &"dagger", &"leather_armour",
-			&"scroll_blink", &"chain_mail", &"short_sword", &"potion_healing"]:
+			&"scroll_blink", &"chain_mail", &"short_sword", &"potion_healing",
+			&"dagger", &"leather_armour"]:
 		gs.give_item(Item.make(want))
+	# Stand at a brazier so the forge markers are exercised.
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var c := Vector2i(gs.player.x + d.x, gs.player.y + d.y)
+		if gs.map.get_tile(c.x, c.y) == Tiles.FLOOR:
+			gs.map.set_tile(c.x, c.y, Tiles.BRAZIER)
+			gs.brazier_charge[c] = GameState.BRAZIER_CHARGE
+			gs._gather_lights()
+			gs.update_vision()
+			break
 	# Set directly rather than via player_use, so the shot is not disturbed by
 	# the turns that equipping would cost.
 	gs.player.equipped[Item.Slot.WEAPON] = gs.player.inventory[2]
@@ -179,6 +189,18 @@ func _run() -> void:
 		await process_frame
 	await _shot("12_awareness.png")
 
+	# Arm one of them so the look panel's gear line is exercised.
+	sleepers[0].equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+	sleepers[0].equipped[Item.Slot.ARMOR] = Item.make(&"leather_armour")
+	_scene._toggle_look()
+	_scene._look_at = Vector2i(sleepers[0].x, sleepers[0].y)
+	_scene.grid.look_cursor = _scene._look_at
+	_scene._refresh()
+	for _i in 2:
+		await process_frame
+	await _shot("17_gear.png")
+	_scene._end_look()
+
 	sneak.wake(sleepers[3])
 	_scene._refresh()
 	for _i in 3:
@@ -262,6 +284,31 @@ func _run() -> void:
 			await process_frame
 		await _shot("16_biome_%.1f.png" % boost)
 	_scene.grid.memory_material_boost = 1.8
+
+	# The amulet, and the moment the run turns around.
+	var relic_run := GameState.new(8800)
+	relic_run.new_game()
+	relic_run.depth = GameState.MAX_DEPTH
+	relic_run.build_level()
+	relic_run.player.max_hp = 90
+	relic_run.player.hp = 71
+	relic_run.award_xp(relic_run.xp_for_level(9))
+	for it in relic_run.ground:
+		if it.kind == Item.Kind.AMULET:
+			relic_run.player.x = it.x
+			relic_run.player.y = it.y
+			break
+	relic_run.update_vision()
+	_use(relic_run)
+	for _i in 2:
+		await process_frame
+	await _shot("18_amulet_before.png")
+
+	relic_run.player_pickup()
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("19_amulet_taken.png")
 
 	# Whole-level overview: everything revealed and lit, so generation can be
 	# judged as a layout rather than through a torch-sized hole.

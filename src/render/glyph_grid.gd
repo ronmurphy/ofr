@@ -181,7 +181,13 @@ func centre_on_player() -> void:
 
 func _update_camera() -> void:
 	var vc := viewport_cells()
+	# Look mode drives the camera, not the player. Look already inspects
+	# remembered terrain far outside the torch, so it was never limited to
+	# "what is around you" -- the viewport edge stopping it was an accident of
+	# the camera rather than a rule.
 	var p := Vector2i(state.player.x, state.player.y)
+	if state.map.in_bounds(look_cursor.x, look_cursor.y):
+		p = look_cursor
 
 	# Only move if the player has come inside the margin. Otherwise leave the
 	# view exactly where it was.
@@ -229,6 +235,13 @@ func _update_preview() -> void:
 func hovered_cell() -> Vector2i:
 	return _hover
 
+## Recomputed whenever the world changes, not only when the mouse moves.
+##
+## Without this the dots were stale the moment you touched the keyboard, and
+## survived a descent -- drawing the previous floor's route across the new one.
+func refresh_preview() -> void:
+	_update_preview()
+
 # ----------------------------------------------------------------- drawing ---
 
 func _draw() -> void:
@@ -238,6 +251,7 @@ func _draw() -> void:
 	if map != _last_map:
 		_last_map = map
 		_effects.clear()
+		_preview.clear()
 		# A new level should not inherit the old one's scroll position.
 		centre_on_player()
 	_update_camera()

@@ -253,7 +253,7 @@ func _draw() -> void:
 	# mechanic exactly when it is relevant instead of being permanent clutter.
 	var hint := "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
 	if state.can_forge_here():
-		hint = "shift+click FORGE  ·  click use/equip  ·  right-click drop  ·  esc"
+		hint = "shift+click a ● item to FORGE it with a spare  ·  click use  ·  esc"
 	var hs := font_size - 2
 	while hs > 9 and font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x \
 			> PANEL_W - PAD * 2.0:
@@ -293,6 +293,13 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 		label = Palette.HP_GOOD
 	elif index == _hover_index:
 		label = Color.WHITE
+
+	# A dot marks what can be forged right now, so the player does not have to
+	# work out that the item to click is the one being IMPROVED, not the one
+	# being consumed.
+	if state.can_forge_item(item):
+		draw_string(font, base - Vector2(14.0, 0.0), "●",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.STAIRS)
 
 	var tag := item.letter if item.letter != "" else "-"
 	draw_string(font, base, "%s)" % tag,

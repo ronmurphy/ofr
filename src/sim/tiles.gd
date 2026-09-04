@@ -23,6 +23,7 @@ enum {
 	CAVE_FLOOR,
 	STALAGMITE,
 	BRAZIER_SPENT,
+	STAIRS_UP,
 }
 
 ## walk  = an actor may stand here
@@ -51,6 +52,7 @@ const DATA := {
 	# A brazier you have already burned down. Still an obstacle, no longer a
 	# light, and visibly dead so you can see at a glance which ones are used.
 	BRAZIER_SPENT: {"id": &"brazier_spent", "walk": false, "clear": true},
+	STAIRS_UP:   {"id": &"stairs_up",   "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:
