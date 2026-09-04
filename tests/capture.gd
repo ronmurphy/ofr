@@ -399,6 +399,19 @@ func _run() -> void:
 		print("  shrine seed %d at %s" % [seed_try, cell])
 		break
 
+	# The legend, with a couple of shrines already learned so both states show.
+	var lore := GameState.new(555)
+	lore.new_game()
+	lore.shrine_known[Shrines.QUIET] = true
+	lore.shrine_known[Shrines.EMBERS] = true
+	_use(lore)
+	_scene.legend.open()
+	_scene._refresh()
+	for _i in 3:
+		await process_frame
+	await _shot("26_legend.png")
+	_scene.legend.close()
+
 	# The pause menu.
 	_scene.menu.open()
 	_scene._refresh()

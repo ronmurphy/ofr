@@ -12,6 +12,7 @@ extends Control
 @onready var log_view: MessageView = $Log
 @onready var inventory: InventoryPanel = $Inventory
 @onready var menu: MenuPanel = $Menu
+@onready var legend: LegendPanel = $Legend
 
 var state: GameState
 
@@ -78,7 +79,7 @@ func _ready() -> void:
 	_refresh()
 
 func _process(delta: float) -> void:
-	if menu.visible:
+	if menu.visible or legend.visible:
 		return
 	if _look:
 		sidebar.hovered = _look_at
@@ -102,6 +103,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if key_event == null or not key_event.pressed or key_event.echo:
 		return
 	var key: int = key_event.keycode
+
+	if legend.visible:
+		legend.close()
+		_refresh()
+		return
 
 	if menu.visible:
 		menu.handle_key(key)
@@ -174,6 +180,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	if key == KEY_R:
 		_start_new_run()
+		return
+
+	# Shift+/ on most layouts, plus F1 for anyone who expects help there.
+	if key == KEY_QUESTION or key == KEY_F1 \
+			or (key == KEY_SLASH and key_event.shift_pressed):
+		legend.open()
+		_refresh()
 		return
 
 	if key == KEY_ESCAPE:
@@ -282,6 +295,7 @@ func _bind_state(s: GameState) -> void:
 	log_view.state = s
 	inventory.state = s
 	menu.state = s
+	legend.state = s
 	_refresh()
 
 func _begin_throw_pick() -> void:
@@ -420,3 +434,4 @@ func _refresh() -> void:
 	log_view.queue_redraw()
 	inventory.queue_redraw()
 	menu.queue_redraw()
+	legend.queue_redraw()
