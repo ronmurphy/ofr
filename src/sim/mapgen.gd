@@ -281,21 +281,38 @@ func _scatter_features(map: DungeonMap) -> void:
 					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:
 				map.set_tile(c.x, c.y, Tiles.FUNGUS)
 
+	for _snare in rng.randi_range(0, 3):
+		var t := _open_ground(map)
+		if t.x >= 0:
+			map.set_tile(t.x, t.y, Tiles.TRAP)
+
 	if not allow_pits:
 		return
 	for _hole in rng.randi_range(0, 3):
+		var spot := _open_ground(map)
+		if spot.x >= 0:
+			map.set_tile(spot.x, spot.y, Tiles.PIT)
+
+## A cell with open ground on all eight sides.
+##
+## Both pits and traps are treated as solid by the pathfinder, so one dropped
+## into a corridor severs the route -- the 200-seed connectivity test caught
+## exactly that, three levels in two hundred with unreachable stairs. Out in
+## the open there is always a way past, and a hazard you can see and walk
+## around is a choice rather than a toll.
+func _open_ground(map: DungeonMap) -> Vector2i:
+	for _try in 40:
 		var spot := _random_open(map)
 		if spot.x < 0:
 			continue
-		# Only in plain sight, with open ground all round. A pit tucked into a
-		# doorway would be a trap; one in the middle of a floor is a choice.
 		var clear := true
 		for dy in [-1, 0, 1]:
 			for dx in [-1, 0, 1]:
 				if not map.is_walkable(spot.x + dx, spot.y + dy):
 					clear = false
 		if clear:
-			map.set_tile(spot.x, spot.y, Tiles.PIT)
+			return spot
+	return Vector2i(-1, -1)
 
 func _random_open(map: DungeonMap) -> Vector2i:
 	for _try in 60:

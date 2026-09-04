@@ -29,6 +29,7 @@ enum {
 	BONES,
 	FUNGUS,
 	PIT,
+	TRAP,
 }
 
 ## walk  = an actor may stand here
@@ -70,6 +71,11 @@ const DATA := {
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.
 	PIT:         {"id": &"pit",         "walk": true,  "clear": true},
+	# Visible on purpose. Every death in this game should be one the player
+	# could have avoided, and a hidden trap is the one thing that guarantees
+	# otherwise. You can see it, the pathfinder goes round it, so springing one
+	# is always a choice.
+	TRAP:        {"id": &"trap",        "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:
@@ -103,7 +109,7 @@ static func move_cost(t: int) -> float:
 ## Ground a route should never be planned through, even though a determined
 ## player may still step there.
 static func is_avoided(t: int) -> bool:
-	return t == PIT
+	return t == PIT or t == TRAP
 
 ## How far the noise of crossing this carries. Zero for anything quiet.
 static func noise_radius(t: int) -> int:

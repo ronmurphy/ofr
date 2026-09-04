@@ -24,6 +24,7 @@ const TABLE := {
 	&"bones":       {"ch": ",",      "fg": Palette.BONES,    "bg": Color("1d1c19")},
 	&"fungus":      {"ch": "*",      "fg": Palette.FUNGUS,   "bg": Color("14201b")},
 	&"pit":         {"ch": " ",      "fg": Palette.PIT_RIM,  "bg": Color("000000")},
+	&"trap":        {"ch": "^",      "fg": Palette.TRAP,     "bg": Color("2a1714")},
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
 	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
 

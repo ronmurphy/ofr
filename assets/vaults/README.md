@@ -29,25 +29,45 @@ wall, so keep comments up top.
 | `weight` | relative chance of being picked against other eligible vaults |
 | `min_depth` / `max_depth` | tier gating, same idea as monsters and items |
 | `rotate` | `yes` to allow 90° rotations and mirroring, `no` if it only reads correctly one way up |
+| `terrain` | `fixed` (default) or `random` -- see below |
+
+### terrain: fixed or random
+
+By default a vault is **exactly what you drew**. The generator's terrain pass
+skips it entirely, so a crypt you designed dry stays dry and a flooded one
+stays flooded. That is the point of authoring it by hand.
+
+Set `terrain: random` to opt back in, and the generator will lay water, mud,
+bones or rubble over your plain floor the way it does anywhere else. Useful for
+something like a ruined guardhouse, where you care about the walls and the
+monsters but are happy for the ground to vary between runs. Anything you place
+explicitly is never overwritten either way.
 
 ## Legend
 
 Terrain:
 
-| char | tile |
-|---|---|
-| `#` | masonry wall |
-| `.` | floor |
-| `,` | cave floor |
-| `+` | closed door |
-| `'` | open door |
-| `O` | pillar (blocks movement **and** sight) |
-| `^` | stalagmite |
-| `~` | water |
-| `%` | rubble |
-| `*` | brazier (lit, rest at it) |
-| `>` | stairs down |
-| (space) | **not part of the vault** -- leaves whatever was already there |
+| char | tile | notes |
+|---|---|---|
+| `#` | masonry wall | |
+| `.` | floor | |
+| `_` | cave floor | |
+| `+` | closed door | |
+| `'` | open door | |
+| `O` | pillar | blocks movement **and** sight |
+| `^` | stalagmite | same, but natural |
+| `~` | water | slow to cross |
+| `=` | mud | slower still; heavy things suffer worst |
+| `%` | rubble | slightly slow |
+| `,` | bones | slow, **loud**, and crumbles once crossed |
+| `*` | fungus | glows faintly |
+| `&` | brazier | lit; rest or forge at it |
+| `A` | shrine | an altar; its kind is rolled per level |
+| `X` | pit | walkable, but drops you a floor |
+| `t` | trap | visible; springs once, hurts, and is gone |
+| `>` | stairs down | |
+| `<` | stairs up | |
+| (space) | **not part of the vault** | leaves whatever was already there |
 
 Contents:
 
@@ -59,6 +79,7 @@ Contents:
 | `!` | a potion |
 | `)` | a weapon |
 | `[` | armour |
+| `}` | a launcher -- sling or bow |
 
 Everything is optional. A vault made only of terrain is perfectly good -- an
 interesting shape is content.
@@ -78,6 +99,17 @@ interesting shape is content.
 - **Watch the threat.** `m` and `M` count against a vault threat ceiling, so an
   over-stuffed vault will simply drop the monsters it cannot afford. Better to
   place two deliberate ones than eight hopeful ones.
+- **Terrain is a composition tool.** A colonnade with a pool between the
+  columns, or a bone-strewn approach to a shrine that cannot be crossed
+  quietly, says more than a room full of monsters does. `,` in front of `A` is
+  a whole encounter on its own.
+- **`X` is a shortcut, not a trap.** Pits are walkable and the pathfinder
+  routes around them, so falling is always deliberate. A pit behind the loot
+  is an escape route with a price.
+- **`t` is a toll, not an ambush.** Traps are visible and routed around too, so
+  the interesting placement is somewhere the player *wants* to go -- across the
+  short way, or between them and the prize. A trap nobody has a reason to step
+  on is scenery.
 
 ## Status
 

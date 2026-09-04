@@ -75,6 +75,7 @@ func _initialize() -> void:
 	_test_bones_are_loud()
 	_test_pits()
 	_test_fungus_glows()
+	_test_traps()
 	_report_encounter_curve()
 
 	print("")
@@ -1556,6 +1557,64 @@ func _test_motion_tweening() -> void:
 	grid.sync_motion()
 	check("the dead are dropped", not grid._motion.has(mob))
 	grid.free()
+
+func _test_traps() -> void:
+	check("a trap can be stepped on", Tiles.is_walkable(Tiles.TRAP))
+	check("but is never routed through", Tiles.is_avoided(Tiles.TRAP))
+	check("and it is plainly visible", Tiles.is_transparent(Tiles.TRAP))
+
+	var gs := _arena(31, 13)
+	gs.player.x = 5
+	gs.player.y = 6
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	gs.map.set_tile(6, 6, Tiles.TRAP)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs.map.reveal_all()
+
+	var route := gs.pathfinder.path(Vector2i(5, 6), Vector2i(8, 6))
+	check("travel goes around a trap", not route.has(Vector2i(6, 6)), str(route))
+
+	# Something asleep nearby, to prove springing one is loud.
+	var dozing := _spawn(gs, "orc", 9, 6)
+	dozing.alertness = Entity.Alert.ASLEEP
+
+	var hp_before := gs.player.hp
+	check("stepping on it works", gs.player_move(1, 0))
+	check("it hurts", gs.player.hp < hp_before)
+	check("you end up standing on the square",
+		gs.player.x == 6 and gs.player.y == 6)
+	check("and it has sprung for good", gs.map.get_tile(6, 6) != Tiles.TRAP)
+	check("springing one is loud", dozing.alertness == Entity.Alert.AWAKE)
+
+	# Crossing again is free.
+	var hp_now := gs.player.hp
+	gs.player_move(-1, 0)
+	gs.player_move(1, 0)
+	check("a sprung trap is spent", gs.player.hp == hp_now)
+
+	# It can kill, and the run ends properly.
+	var doomed := _arena(21, 9)
+	doomed.player.x = 5
+	doomed.player.y = 4
+	doomed.player.max_hp = 60
+	doomed.player.hp = 1
+	doomed.map.set_tile(6, 4, Tiles.TRAP)
+	doomed.player_move(1, 0)
+	check("a trap can finish you", doomed.game_over)
+	check("and the morgue knows what did it",
+		doomed.death_cause.contains("trap"), doomed.death_cause)
+
+	# They generate.
+	var seen := 0
+	for i in 30:
+		var level := GameState.new(93000 + i)
+		level.new_game()
+		for y in level.map.height:
+			for x in level.map.width:
+				if level.map.get_tile(x, y) == Tiles.TRAP:
+					seen += 1
+	check("levels have traps on them (%d / 30)" % seen, seen > 0)
 
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)

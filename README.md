@@ -472,11 +472,19 @@ Three features scattered on top of the ground pass:
   dangerous to cross quietly.
 - **Fungus** glows faintly -- light you did not have to carry and cannot put
   out. Useful, and it also means standing in it makes you visible.
+- **Traps** spring once, hurt, make noise and are gone. **Visible**, like pits
+  -- every death in this game should be one the player could have avoided, and
+  a hidden trap is the one thing that guarantees otherwise.
 - **Pits** drop you to the next floor for some damage. They are walkable so
   falling in is always a choice, but the **pathfinder treats them as solid**,
   so neither auto-travel nor a pursuing monster can ever put you down one. You
   never land in another pit, and none generate on the bottom floor or during
   the climb out.
+
+Both pits and traps are placed **only where all eight neighbours are open**.
+The pathfinder treats them as solid, so one dropped into a corridor severs the
+route -- the 200-seed connectivity test caught precisely that, three levels in
+two hundred with unreachable stairs.
 
 ## Level generation
 

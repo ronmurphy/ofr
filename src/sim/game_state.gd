@@ -783,6 +783,11 @@ func player_move(dx: int, dy: int) -> bool:
 	if map.get_tile(nx, ny) == Tiles.PIT:
 		return _fall_into_pit()
 
+	if map.get_tile(nx, ny) == Tiles.TRAP:
+		_spring_trap(nx, ny)
+		if not player.alive:
+			return true
+
 	var cost := move_cost_for(player, nx, ny)
 	player.x = nx
 	player.y = ny
@@ -938,6 +943,24 @@ func _fall_into_pit() -> bool:
 	msg_log.add("You land hard on depth %d. (-%d hp)" % [depth, hurt],
 		Color(0.90, 0.60, 0.45))
 	return true
+
+## Springs once and is gone. A trap corridor can be cleared at a price, which
+## makes it a toll rather than a permanent wall.
+func _spring_trap(x: int, y: int) -> void:
+	map.set_tile(x, y,
+		Tiles.CAVE_FLOOR if map.material_at(x, y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	var hurt := rng.randi_range(2, 4 + depth / 2)
+	player.take_damage(hurt)
+	msg_log.add("The mechanism snaps shut. (-%d hp)" % hurt, Color(0.92, 0.48, 0.40))
+	events.append({"kind": &"melee", "from": Vector2i(x, y), "to": Vector2i(x, y),
+		"amount": hurt, "on_player": true})
+	# Springing one is loud.
+	_make_noise(Vector2i(x, y), 5)
+	if not player.alive:
+		game_over = true
+		death_cause = "caught in a trap"
+		write_morgue()
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
 ## it is the counterpart to light, and the second thing that can give you away.

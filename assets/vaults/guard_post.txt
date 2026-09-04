@@ -3,12 +3,13 @@ weight: 12
 min_depth: 1
 max_depth: 6
 rotate: yes
+terrain: random
 LAYOUT
 #########
 #m..#..m#
 #...#...#
 ##+###+##
 #.......#
-#.*...[.#
+#.&...[.#
 #.......#
 ####+####
