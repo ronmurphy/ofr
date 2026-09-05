@@ -741,6 +741,78 @@ A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
 
+## Three connectivity bugs, found from one screenshot
+
+Reported from play: *a brazier in the shrine is blocking the entrance*, plus a
+sense that some corridors were arriving at odd angles. That turned out to be
+three separate faults, and the second two had been there far longer than the
+first.
+
+### 1. Decoration standing in a doorway
+
+`_try_place` only checked that it was painting over plain floor. The comment
+above it claimed that meant it "can never plug a doorway", and that was simply
+wrong: it stops a brazier landing *on* a door, but nothing stopped one landing
+on the floor tile just inside one. `_decorate_shrine` was the worst offender --
+it puts braziers two cells either side of the room centre, which in a six-wide
+room is the tile in front of the west door.
+
+**16 plugged doorways in 480 levels, every one with a solid decoration beside
+it. Zero after.** Solid decorations now refuse any cell that is the only link
+between separate patches of open ground, counted by walking the eight
+neighbours as a ring. Only braziers were affected -- 6.81 per level to 6.14.
+Pillars, shrines and stalagmites were never in bottlenecks to begin with.
+
+That also explains the odd corridors. The plugged door severed a region,
+`_ensure_connected` rescued the level by carving a fresh passage in from
+somewhere else, and the result was a blocked door *plus* a corridor arriving
+from nowhere.
+
+### 2. The connectivity check disagreed with the pathfinder
+
+`_walkable_regions` flood-filled through diagonals. The pathfinder runs
+`DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES` and will not cut the corner between two
+solid cells. So a room joined to the level by nothing but a diagonal squeeze
+counted as connected, `_ensure_connected` saw one region and did nothing, and
+the player could not walk through.
+
+Four-way flooding is exactly right rather than merely conservative: any
+diagonal step the pathfinder allows needs both adjacent orthogonals open, and
+that is an orthogonal route already.
+
+This is the same function that was fixed once before for having the wrong rule
+about which *tiles* count. This time it had the wrong rule about which *moves*
+do.
+
+### 3. Corridors could not reach a vault
+
+`_carve_h` and `_carve_v` skip `protected` cells so that an authored vault
+arrives on the map as it was drawn. But that refusal is silent, and it is
+silent in precisely the case where it matters: when the region being connected
+*to* is the vault. The corridor stopped at the vault's edge and the vault
+stayed an island.
+
+**Five shrines in 250 stood in rooms with no way in** -- the whole vault was
+unreachable, not just the shrine. The stairs were always fine, which is why the
+200-seed completability test never caught it.
+
+`_ensure_connected` now notices when a carve changed nothing and retries
+allowed through vault ground. A vault with one unplanned doorway is a far
+better outcome than a vault nobody can enter.
+
+### The rule that came out of it
+
+**`_ensure_connected` must be the last pass that can affect walkability.**
+`_seal_blind_doors` used to run after it, which meant sealing a vault's one
+live door produced an island nothing checked again. `_naturalise_cave_walls`
+still runs afterwards, and that is fine -- it only turns `WALL` into `ROCK`,
+and both are solid.
+
+Result: **160 of 160 levels are now a single connected region**, and every
+shrine on every one of them can be reached. Before, 25 of 160 had a stranded
+region averaging 66 cells -- a whole room each. The encounter curve is
+unchanged.
+
 ## Level generation
 
 A pipeline of passes in `mapgen.gd`:

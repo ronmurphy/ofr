@@ -88,6 +88,7 @@ func _initialize() -> void:
 	_test_a_death_is_announced()
 	_test_panels_do_not_overflow()
 	_test_symbol_theme()
+	_test_no_decoration_plugs_a_way()
 	_report_encounter_curve()
 
 	print("")
@@ -2686,3 +2687,69 @@ func _test_symbol_theme() -> void:
 	RenderTheme.set_mode(RenderTheme.Mode.ASCII)
 	check("and the ascii one when not",
 		RenderTheme.active().appearance(&"water")["ch"] == "~")
+
+
+## Reported from play: a brazier standing in a shrine's doorway.
+##
+## The level was still completable, which is why nothing caught it --
+## _ensure_connected runs after decoration and had quietly rescued it by
+## carving a passage in from another angle. So the visible symptom was not a
+## sealed room, it was a blocked door PLUS a corridor arriving from nowhere,
+## and that is a much easier thing to look at and not name.
+##
+## 16 plugged doorways in 480 levels before the fix, every one of them with a
+## solid decoration beside it. Zero after.
+##
+## Note what is NOT asserted here: that nothing solid ever stands in a local
+## bottleneck. That was the first version of this test and it was wrong -- a
+## pillar in the middle of a 2x2 cluster of pillars trips a local ring test
+## while the room routes around it perfectly well. The ring test is a good
+## placement GUARD, because refusing to place a decoration costs nothing, but
+## it is not a property the finished map has to satisfy.
+func _test_no_decoration_plugs_a_way() -> void:
+	var plugged: Array = []
+	var stranded: Array = []
+	var levels := 0
+	var shrines := 0
+	for seed_v in range(1, 41):
+		for depth in [1, 4, 7, 10]:
+			var gs := GameState.new(seed_v)
+			# new_game() first: build_level() places the player, so calling it
+			# on a bare GameState aborts halfway through with a null player and
+			# quietly hands back a half-finished level.
+			gs.new_game()
+			if depth > 1:
+				gs.depth = depth
+				gs.build_level()
+			levels += 1
+			var m := gs.map
+			var from := Vector2i(gs.player.x, gs.player.y)
+			for y in m.height:
+				for x in m.width:
+					var t := m.get_tile(x, y)
+					if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+						# A door sits in a wall, so it must have open ground on
+						# both sides of one axis. One way out means it leads
+						# nowhere, and a door you cannot pass is either a lie or
+						# a room you got into some other way.
+						var ways := 0
+						for d in [Vector2i(0, -1), Vector2i(0, 1),
+								Vector2i(1, 0), Vector2i(-1, 0)]:
+							if m.is_walkable(x + d.x, y + d.y) \
+									and not Tiles.is_avoided(m.get_tile(x + d.x, y + d.y)):
+								ways += 1
+						if ways <= 1 and plugged.size() < 5:
+							plugged.append("seed %d d%d (%d,%d)" % [seed_v, depth, x, y])
+					elif t == Tiles.SHRINE:
+						# The worse version of the same bug, and the one that
+						# would actually cost someone a run: a shrine walled off
+						# behind its own decoration.
+						shrines += 1
+						var here := Vector2i(x, y)
+						var route := gs.pathfinder.path(from, here)
+						if route.is_empty() and from != here and stranded.size() < 5:
+							stranded.append("seed %d d%d (%d,%d)" % [seed_v, depth, x, y])
+
+	check("no door leads nowhere (%d levels)" % levels, plugged.is_empty(), str(plugged))
+	check("every shrine can be reached (%d shrines)" % shrines,
+		stranded.is_empty(), str(stranded))

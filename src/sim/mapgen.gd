@@ -73,8 +73,19 @@ func generate(map: DungeonMap) -> void:
 	_decorate(map)
 	_lay_terrain(map)
 	_scatter_features(map)
-	_ensure_connected(map)
+	# Sealing runs BEFORE the connectivity net, not after.
+	#
+	# It was the other way round, and _seal_blind_doors is the only pass after
+	# decoration that changes what is walkable -- so a vault whose one live
+	# door got sealed became an island that nothing checked again. That is how
+	# five shrines in two hundred and fifty ended up standing in rooms with no
+	# way in: the whole vault was unreachable, not just the shrine.
+	#
+	# The rule this encodes: _ensure_connected must be the LAST pass that can
+	# affect walkability. _naturalise_cave_walls after it is fine because it
+	# only turns WALL into ROCK, and both are solid.
 	_seal_blind_doors(map)
+	_ensure_connected(map)
 	_naturalise_cave_walls(map)
 	_paint_materials(map)
 
@@ -131,24 +142,36 @@ func _connect_rooms(map: DungeonMap) -> void:
 	for i in range(1, rooms.size()):
 		_carve_corridor(map, rooms[i - 1].get_center(), rooms[i].get_center())
 
-func _carve_corridor(map: DungeonMap, a: Vector2i, b: Vector2i) -> void:
+## `force` carves through authored vault ground as well.
+##
+## Normally corridors refuse to touch a vault, which is the whole point of
+## `protected` -- an authored room should arrive on the map as it was drawn.
+## But that refusal is silent, and it is silent in exactly the case where it
+## matters: when the region being connected TO is the vault. The corridor then
+## stops at the vault's edge and the vault stays an island. Five shrines in
+## two hundred and fifty stood in rooms with no way in for this reason.
+##
+## So the last-resort pass is allowed to break the rule. A vault with one
+## unplanned doorway is a far better outcome than a vault nobody can enter.
+func _carve_corridor(map: DungeonMap, a: Vector2i, b: Vector2i,
+		force: bool = false) -> void:
 	if rng.randf() < 0.5:
-		_carve_h(map, a.x, b.x, a.y)
-		_carve_v(map, a.y, b.y, b.x)
+		_carve_h(map, a.x, b.x, a.y, force)
+		_carve_v(map, a.y, b.y, b.x, force)
 	else:
-		_carve_v(map, a.y, b.y, a.x)
-		_carve_h(map, a.x, b.x, b.y)
+		_carve_v(map, a.y, b.y, a.x, force)
+		_carve_h(map, a.x, b.x, b.y, force)
 
-func _carve_h(map: DungeonMap, x1: int, x2: int, y: int) -> void:
+func _carve_h(map: DungeonMap, x1: int, x2: int, y: int, force: bool = false) -> void:
 	for x in range(mini(x1, x2), maxi(x1, x2) + 1):
-		if protected.has(Vector2i(x, y)):
+		if not force and protected.has(Vector2i(x, y)):
 			continue
 		if not Tiles.is_open_floor(map.get_tile(x, y)):
 			map.set_tile(x, y, Tiles.FLOOR)
 
-func _carve_v(map: DungeonMap, y1: int, y2: int, x: int) -> void:
+func _carve_v(map: DungeonMap, y1: int, y2: int, x: int, force: bool = false) -> void:
 	for y in range(mini(y1, y2), maxi(y1, y2) + 1):
-		if protected.has(Vector2i(x, y)):
+		if not force and protected.has(Vector2i(x, y)):
 			continue
 		if not Tiles.is_open_floor(map.get_tile(x, y)):
 			map.set_tile(x, y, Tiles.FLOOR)
@@ -322,10 +345,16 @@ func _seal_blind_doors(map: DungeonMap) -> void:
 ## that corridors were counting on, and the alternative is discovering it in a
 ## seed nobody ever plays.
 func _ensure_connected(map: DungeonMap) -> void:
+	# Tracked so a carve that changed nothing can be retried without the
+	# protection rule. Without this the loop cheerfully carves the same
+	# ineffective corridor eight times and gives up.
+	var last_count := -1
 	for _attempt in 8:
 		var regions := _walkable_regions(map)
 		if regions.size() <= 1:
 			return
+		var stalled := regions.size() == last_count
+		last_count = regions.size()
 		var main: Array = regions[0]
 		var other: Array = regions[1]
 		var from: Vector2i = main[0]
@@ -340,7 +369,7 @@ func _ensure_connected(map: DungeonMap) -> void:
 					best = d
 					from = a
 					to = b
-		_carve_corridor(map, from, to)
+		_carve_corridor(map, from, to, stalled)
 
 func _routable(map: DungeonMap, x: int, y: int) -> bool:
 	return map.is_walkable(x, y) and not Tiles.is_avoided(map.get_tile(x, y))
@@ -373,13 +402,30 @@ func _walkable_regions(map: DungeonMap) -> Array:
 			while not stack.is_empty():
 				var cur: Vector2i = stack.pop_back()
 				region.append(cur)
-				for dy in [-1, 0, 1]:
-					for dx in [-1, 0, 1]:
-						var n := cur + Vector2i(dx, dy)
-						if seen.has(n) or not _routable(map, n.x, n.y):
-							continue
-						seen[n] = true
-						stack.append(n)
+				# Orthogonal only, and that is the whole point.
+				#
+				# This used to spread diagonally as well, which quietly made
+				# this function disagree with the pathfinder. The pathfinder
+				# runs DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES: it will not cut the
+				# corner between two solid cells. So a room joined to the rest
+				# of the level by nothing but a diagonal squeeze counted as
+				# connected here, _ensure_connected saw one region and did
+				# nothing, and the player could not walk through it.
+				#
+				# Four-way is exactly right rather than merely conservative:
+				# any diagonal step the pathfinder allows needs both adjacent
+				# orthogonals open, and that is an orthogonal route already.
+				#
+				# Same mistake as the last bug in this function, one level
+				# down. That one had the wrong rule for which TILES count;
+				# this one had the wrong rule for which MOVES do.
+				for d: Vector2i in [Vector2i(0, -1), Vector2i(0, 1),
+						Vector2i(-1, 0), Vector2i(1, 0)]:
+					var n := cur + d
+					if seen.has(n) or not _routable(map, n.x, n.y):
+						continue
+					seen[n] = true
+					stack.append(n)
 			regions.append(region)
 	regions.sort_custom(func(a, b): return a.size() > b.size())
 	return regions
@@ -727,9 +773,58 @@ func _decorate_plain(map: DungeonMap, room: Rect2i) -> void:
 		var by := rng.randi_range(room.position.y + 1, room.end.y - 2)
 		_try_place(map, bx, by, Tiles.BRAZIER)
 
-## Decoration only ever paints over plain floor, so it can never bury the
-## stairs, plug a doorway, or overwrite a corridor.
+## The eight neighbours in ring order, so a walk around them is a walk around
+## the cell. Order matters: consecutive entries must be adjacent.
+const RING := [
+	Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
+	Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0),
+]
+
+## Decoration only ever paints over plain floor -- and, when what it is placing
+## is solid, only where that cannot cut a route.
+##
+## The floor check on its own was not enough, though the old comment here
+## claimed it was. It stops a brazier landing ON a door, a corridor or the
+## stairs, but nothing stopped one landing on the floor tile just INSIDE a
+## doorway, which plugs the door exactly as well. _decorate_shrine was the
+## worst offender: it puts braziers two cells either side of the room centre,
+## and in a six-wide room that is the tile in front of the west door.
+##
+## The symptom was not an unreachable room, because _ensure_connected runs
+## afterwards and rescued the level by carving a fresh passage somewhere else.
+## The symptom was a room with a blocked door AND a corridor arriving at an odd
+## angle -- which is exactly what turned up in play.
 func _try_place(map: DungeonMap, x: int, y: int, tile: int) -> void:
 	if map.get_tile(x, y) != Tiles.FLOOR:
 		return
+	if not Tiles.is_walkable(tile) and _is_a_narrows(map, x, y):
+		return
 	map.set_tile(x, y, tile)
+
+## Is this cell the only link between separate patches of open ground?
+##
+## Walks the eight neighbours as a ring and counts the runs of open ground that
+## touch this cell. One run means it sits at the edge of open space and can be
+## filled safely -- against a wall, in a corner, out in the middle of a floor.
+## Two or more means it is a bridge between them: a doorway, a corridor, the
+## mouth of an alcove.
+##
+## Cheaper and more general than a rule about doors, and it catches the cases a
+## door rule would miss -- the one-cell gap between two pillars, the neck of a
+## cave passage. It is deliberately conservative: it only ever refuses to place
+## a decoration, which costs nothing.
+func _is_a_narrows(map: DungeonMap, x: int, y: int) -> bool:
+	var open: Array[bool] = []
+	var any_closed := false
+	for d in RING:
+		var routable := _routable(map, x + d.x, y + d.y)
+		open.append(routable)
+		any_closed = any_closed or not routable
+	# Open on all eight sides: nothing to cut.
+	if not any_closed:
+		return false
+	var runs := 0
+	for i in RING.size():
+		if open[i] and not open[(i + RING.size() - 1) % RING.size()]:
+			runs += 1
+	return runs > 1
