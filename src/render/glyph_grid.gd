@@ -157,6 +157,13 @@ func play_events(evts: Array) -> void:
 				"colour": Palette.ALERT, "size": font_size + 3})
 			continue
 
+		# Everything else on the queue is for the ears. The same list feeds
+		# SoundDeck, and most of what is on it -- noise carrying through
+		# stone, a change of footing, crossing the health line -- has no
+		# picture to draw by definition.
+		if e["kind"] != &"melee" and e["kind"] != &"ranged":
+			continue
+
 		var hostile: bool = e["on_player"]
 		var delay := 0.0
 

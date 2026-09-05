@@ -33,6 +33,7 @@ const KEYS := [
 	["f (no bow)", "throw"],
 	["p", "pray at a shrine"],
 	["?", "legend"],
+	["m  - +", "sound"],
 	["esc", "menu"],
 	["click", "travel"],
 ]
@@ -173,7 +174,11 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	y = size.y - PAD - LINE * 15.0
+	# Derived from the list, not a hand-counted constant. Adding "m - + sound"
+	# to KEYS pushed the last row's baseline exactly onto the frame with the
+	# old literal 15.0 -- the fourth time something in this panel has overrun
+	# its edge because a number had to be kept in step with a list by hand.
+	y = size.y - PAD - LINE * float(KEYS.size() + 1)
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
 	for row in KEYS:

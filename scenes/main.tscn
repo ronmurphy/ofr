@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://bofr0main0scene"]
+[gd_scene load_steps=9 format=3 uid="uid://bofr0main0scene"]
 
 [ext_resource type="Script" path="res://src/render/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/render/glyph_grid.gd" id="2_grid"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://src/ui/inventory_panel.gd" id="5_inv"]
 [ext_resource type="Script" path="res://src/ui/menu_panel.gd" id="6_menu"]
 [ext_resource type="Script" path="res://src/ui/legend_panel.gd" id="7_leg"]
+[ext_resource type="Script" path="res://src/audio/sound_deck.gd" id="8_snd"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -65,3 +66,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 0
 script = ExtResource("7_leg")
+
+[node name="Sound" type="Node" parent="."]
+script = ExtResource("8_snd")

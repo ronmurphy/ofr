@@ -101,6 +101,7 @@ const LEVEL_HP := 5
 ## it immunity, and it makes the armour curve smooth instead of cliff-edged. It
 ## barely touches the early game: nothing changes at depths 1-3.
 const DAMAGE_FLOOR_FRACTION := 0.25
+const HP_WARN_FRACTION := 0.30
 
 ## The threat ceiling.
 ##
@@ -185,6 +186,10 @@ var _last_move_cost := Scheduler.ACTION_COST
 ## announced. The energy cost was working perfectly and was completely
 ## invisible -- one keypress still looked like one turn.
 var _last_footing := Tiles.FLOOR
+## Latched, so crossing the health line warns once on the way down rather than
+## every turn spent under it. A warning that repeats is a warning that gets
+## tuned out, which is the opposite of the point.
+var _hp_warned := false
 ## Read once and shared by every level, since the files never change mid-run.
 static var _vault_library: Array[Vault] = []
 
@@ -901,6 +906,7 @@ func player_pray() -> bool:
 	shrine_known[kind] = true
 	msg_log.add("You lay a hand on the %s." % Shrines.NAMES[kind],
 		shrine_hue(kind))
+	events.append({"kind": &"pray", "to": here})
 	_invoke_shrine(kind)
 	_end_player_turn()
 	return true
@@ -1001,6 +1007,7 @@ func _fall_into_pit() -> bool:
 	if not player.alive:
 		game_over = true
 		death_cause = "broken by a fall"
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 		write_morgue()
 		return true
 
@@ -1019,6 +1026,7 @@ func _spring_trap(x: int, y: int) -> void:
 	var hurt := rng.randi_range(2, 4 + depth / 2)
 	player.take_damage(hurt)
 	msg_log.add("The mechanism snaps shut. (-%d hp)" % hurt, Color(0.92, 0.48, 0.40))
+	events.append({"kind": &"trap", "to": Vector2i(x, y)})
 	events.append({"kind": &"melee", "from": Vector2i(x, y), "to": Vector2i(x, y),
 		"amount": hurt, "on_player": true})
 	# Springing one is loud.
@@ -1026,6 +1034,7 @@ func _spring_trap(x: int, y: int) -> void:
 	if not player.alive:
 		game_over = true
 		death_cause = "caught in a trap"
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 		write_morgue()
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
@@ -1033,6 +1042,10 @@ func _spring_trap(x: int, y: int) -> void:
 func _make_noise(at: Vector2i, radius: int) -> void:
 	if radius <= 0:
 		return
+	# Emitted whether or not anything was actually roused. What the player
+	# needs to know is that they were LOUD; whether the room happened to be
+	# empty is a separate fact, and the message log already carries it.
+	events.append({"kind": &"noise", "to": at, "radius": radius})
 	var roused := 0
 	for e in entities:
 		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
@@ -1059,6 +1072,8 @@ func _note_footing() -> void:
 	_last_footing = here
 
 	if now_hard and not was_hard:
+		events.append({"kind": &"footing", "to": Vector2i(player.x, player.y),
+			"tile": here})
 		match here:
 			Tiles.MUD:
 				msg_log.add("You sink to the ankle. Every step will cost you.",
@@ -1180,6 +1195,7 @@ func player_merge(index: int) -> bool:
 	brazier_charge[brazier] = int(brazier_charge[brazier]) - MERGE_COST
 	msg_log.add("You work the metal together over the flame. (%s)" % item.display_name(),
 		Color(0.85, 0.88, 0.70))
+	events.append({"kind": &"forge", "to": brazier})
 	if int(brazier_charge[brazier]) <= 0:
 		brazier_charge.erase(brazier)
 		map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_SPENT)
@@ -1467,6 +1483,20 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	update_vision()
 	_run_world()
 	update_vision()
+	_check_health_warning()
+
+## Matches the fraction at which the sidebar bar starts to throb. The bar is
+## the better instrument -- it is continuous, and it is always there -- but it
+## sits at the edge of vision while you are reading the map, which is exactly
+## how the slinger got its kill in an open cave.
+func _check_health_warning() -> void:
+	if not player.alive:
+		_hp_warned = true
+		return
+	var low := float(player.hp) / float(player.max_hp) < HP_WARN_FRACTION
+	if low and not _hp_warned:
+		events.append({"kind": &"lowhp", "to": Vector2i(player.x, player.y)})
+	_hp_warned = low
 
 # ----------------------------------------------------------- world turn ----
 
@@ -1950,10 +1980,13 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		if defender.is_player:
 			game_over = true
 			death_cause = "killed by a %s" % attacker.name
+			events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 			write_morgue()
 			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
 		else:
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
+			events.append({"kind": &"kill",
+				"to": Vector2i(defender.x, defender.y)})
 			_drop_loot(defender)
 			if attacker.is_player:
 				award_xp(defender.threat)

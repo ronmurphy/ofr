@@ -13,6 +13,7 @@ extends Control
 @onready var inventory: InventoryPanel = $Inventory
 @onready var menu: MenuPanel = $Menu
 @onready var legend: LegendPanel = $Legend
+@onready var sound: SoundDeck = $Sound
 
 var state: GameState
 
@@ -178,6 +179,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_refresh()
 		return
 
+	if key == KEY_M:
+		state.msg_log.add(sound.toggle_mute(), Color(0.70, 0.74, 0.80))
+		_refresh()
+		return
+
+	if key == KEY_MINUS or key == KEY_KP_SUBTRACT:
+		state.msg_log.add(sound.nudge_volume(-0.1), Color(0.70, 0.74, 0.80))
+		_refresh()
+		return
+
+	if key == KEY_EQUAL or key == KEY_KP_ADD:
+		state.msg_log.add(sound.nudge_volume(0.1), Color(0.70, 0.74, 0.80))
+		_refresh()
+		return
+
 	if key == KEY_R:
 		_start_new_run()
 		return
@@ -282,6 +298,7 @@ func _start_new_run() -> void:
 	_end_aim()
 	_close_inventory()
 	menu.close()
+	sound.stop_all()
 	# Abandoning forfeits the slot, or the old run could be resumed later.
 	GameState.clear_suspend()
 	var fresh := GameState.new()
@@ -427,7 +444,12 @@ func _refresh() -> void:
 	# instantly, so a held key never queues up a backlog of animation.
 	grid.settle_motion()
 	grid.sync_motion()
-	grid.play_events(state.take_events())
+	# One queue, two consumers. The renderer ignores what has no picture and
+	# the deck ignores what has no sound, which is why neither has to know the
+	# other exists.
+	var evts := state.take_events()
+	grid.play_events(evts)
+	sound.play_events(evts)
 	grid.refresh_preview()
 	grid.queue_redraw()
 	sidebar.queue_redraw()

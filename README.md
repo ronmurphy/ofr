@@ -37,6 +37,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
     godot --headless --script res://tests/run_tests.gd   # simulation tests
     godot --headless --script res://tests/xp_curve.gd    # power vs threat curve
     godot --script res://tests/capture.gd -- /tmp/shots  # screenshots
+    godot --headless --script res://tests/audition.gd -- /tmp/wav  # every sound as .wav
 
 ## Controls
 
@@ -51,6 +52,8 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `tab` | inside the inventory: cycle the category filter (`shift+tab` backwards) |
 | left click | travel to a seen cell, stopping if anything comes into view |
 | hover | inspect a cell; the route there is previewed as dots |
+| `?` or `F1` | legend: every glyph in the game, generated from the tables |
+| `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
 | `R` | new game |
 
 ## Items
@@ -232,6 +235,76 @@ never give away an archer's position.
 
 The effect system is deliberately generic -- a damage number and an overhead
 `!` or `zzZ` are the same thing, a marker that appears above a cell and fades.
+
+## Sound
+
+There are no audio files. Every sound is **synthesized at startup** from a
+table of oscillators in `src/audio/synth.gd`, and `src/audio/sound_deck.gd`
+plays them off the same event queue the renderer animates from.
+
+Three reasons for generating rather than recording:
+
+1. The screen is a font and a colour table. A recorded door hinge would be the
+   only literal thing in the game, and it would sound like it wandered in from
+   somewhere else. A square wave belongs next to a `@`.
+2. A voice is a Dictionary, so sound is tuned in a text editor beside the tile
+   table and the bestiary. The whole game stays editable the same way.
+3. Nothing to license, nothing to ship, nothing to load.
+
+The synthesis is primitive on purpose -- oscillator, one-pole lowpass,
+sample-and-hold, exponential decay, and that is the whole toolkit. It is
+enough, because the ear needs far less than people assume to tell a snapping
+mechanism from a breaking bone.
+
+### The rule
+
+**Sound only where it carries information the eye can miss.**
+
+There is no footstep, no swing, no door, no staircase, no pickup. All of those
+are fully visible the instant they happen, and a turn-based game where every
+keypress chirps is a game people play muted within ten minutes. What is left is
+the short list of things the game otherwise only says in the message log --
+which is precisely where players stop looking:
+
+| | |
+|---|---|
+| the noise you make | invisible by design; bones carry seven cells, through stone |
+| something noticing you | pairs with the `!` |
+| damage, a kill, your death | the health bar is at the edge of vision |
+| a trap springing | happens *to* you, with no warning frame |
+| a change of footing | the mud slowdown was completely unreadable |
+| crossing 30% health | once, on the way down -- a warning that repeats is one that gets ignored |
+| a shrine, a forging | rare, and confirmable no other way |
+
+Adding to that list is easy and should be resisted.
+
+### Details that matter
+
+- **Repeats collapse.** Six goblins noticing you at once is one alarm. Played
+  straight, six overlapping copies of a 100ms blip is not six alarms, it is a
+  click.
+- **An arrow's thud waits for the arrow.** The impact sound is held back by the
+  same `28ms per cell` the projectile animation uses. Without that, a shot
+  across a room is heard before it lands, which reads as a bug even to someone
+  who could not say why.
+- **Loudness normalisation, not peak.** `gain` in the catalogue is a statement
+  of intent, and it has no business being at the mercy of the filter chain. The
+  first draft played the voices as summed and the mud squelch came out five
+  times quieter than the thud beside it, purely because mud needs a heavy
+  lowpass and a lowpass throws away energy. Sounds are now normalised to a
+  reference RMS measured over the first 250ms -- roughly the ear's integration
+  window, without which a 60ms click and a 1.3s fall are compared on completely
+  different terms.
+- **Noise is seeded per voice**, so a sound renders identically every launch.
+  Unseeded noise is the `Array.shuffle()` bug one layer down, and far harder to
+  notice, because nobody diffs a waveform.
+- **Settings outlive the run.** Someone who turns the sound off wants it off
+  tomorrow, and the suspend slot is destroyed on load -- so it is the wrong
+  place to keep anything a player expects to persist.
+
+The decision of what to play is `SoundDeck.choose()`, which touches no node, no
+bank and no audio server. That is what lets the mapping be tested headless with
+the rest of the game.
 
 ## Sleep, awareness, and the torch
 

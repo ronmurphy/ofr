@@ -79,6 +79,13 @@ func _initialize() -> void:
 	_test_traps()
 	_test_vaults_load()
 	_test_vaults_are_placed_intact()
+	_test_every_sound_renders()
+	_test_sound_is_deterministic()
+	_test_sounds_map_to_real_voices()
+	_test_noise_raises_a_sound_event()
+	_test_footing_change_is_audible()
+	_test_low_health_warns_once()
+	_test_a_death_is_announced()
 	_report_encounter_curve()
 
 	print("")
@@ -2320,3 +2327,216 @@ func _test_doors_block_sight_until_opened() -> void:
 	m.set_tile(5, 1, Tiles.DOOR_OPEN)
 	Fov.compute(m, 1, 1, 10, buf)
 	check("open door lets sight through", buf[m.idx(8, 1)] == 1)
+
+
+# ---------------------------------------------------------------- sound ----
+#
+# Sound is generated, not recorded, so it can be tested like any other
+# computed thing: assert that every voice produces audio, that it produces the
+# SAME audio every run, and that the simulation raises the events the deck
+# listens for. None of this needs an audio device, which is the whole reason
+# the synthesis and the event mapping are separable from the node that plays.
+
+func _peak(stream: AudioStreamWAV) -> float:
+	var loudest := 0.0
+	var d := stream.data
+	for i in range(0, d.size(), 2):
+		loudest = maxf(loudest, absf(float(d.decode_s16(i)) / 32768.0))
+	return loudest
+
+func _test_every_sound_renders() -> void:
+	var quiet: Array = []
+	var stuck: Array = []
+	var clipped: Array = []
+	for id in Synth.SOUNDS:
+		var stream: AudioStreamWAV = Synth.render(Synth.SOUNDS[id])
+		if stream.data.size() < 64:
+			stuck.append(id)
+			continue
+		var peak := _peak(stream)
+		# A voice with a typo in its envelope renders silence and is otherwise
+		# indistinguishable from a working one until someone plays the game.
+		if peak < 0.05:
+			quiet.append(id)
+		# Loud is intended; pinned to the rail for the whole sound is not.
+		if peak >= 0.999:
+			clipped.append(id)
+
+	check("every sound renders samples", stuck.is_empty(), str(stuck))
+	check("no sound renders silent", quiet.is_empty(), str(quiet))
+	check("no sound renders clipped", clipped.is_empty(), str(clipped))
+	check("the bank holds every sound",
+		Synth.bank().size() == Synth.SOUNDS.size())
+
+## Noise seeded from the global rng would render differently every launch --
+## the same trap that made every seeded level unreproducible, one layer down,
+## and far harder to notice because nobody diffs a waveform.
+func _test_sound_is_deterministic() -> void:
+	var a := Synth.render(Synth.SOUNDS[&"crunch"])
+	var b := Synth.render(Synth.SOUNDS[&"crunch"])
+	check("the same voice renders identically twice", a.data == b.data)
+
+func _test_sounds_map_to_real_voices() -> void:
+	var deck := SoundDeck.new()
+	var evts := [
+		{"kind": &"notice", "to": Vector2i(3, 3)},
+		{"kind": &"levelup", "to": Vector2i(3, 3)},
+		{"kind": &"noise", "to": Vector2i(3, 3), "radius": 7},
+		{"kind": &"trap", "to": Vector2i(3, 3)},
+		{"kind": &"pray", "to": Vector2i(3, 3)},
+		{"kind": &"forge", "to": Vector2i(3, 3)},
+		{"kind": &"kill", "to": Vector2i(3, 3)},
+		{"kind": &"death", "to": Vector2i(3, 3)},
+		{"kind": &"lowhp", "to": Vector2i(3, 3)},
+		{"kind": &"footing", "to": Vector2i(3, 3), "tile": Tiles.WATER},
+		{"kind": &"melee", "from": Vector2i(2, 3), "to": Vector2i(3, 3),
+			"amount": 3, "on_player": true},
+		{"kind": &"ranged", "from": Vector2i(9, 3), "to": Vector2i(3, 3),
+			"amount": 3, "on_player": true},
+	]
+	var picked := deck.choose(evts)
+	var missing: Array = []
+	for id in picked["now"]:
+		if not Synth.SOUNDS.has(id):
+			missing.append(id)
+	for id in picked["later"]:
+		if not Synth.SOUNDS.has(id):
+			missing.append(id)
+	check("every event maps to a voice that exists", missing.is_empty(), str(missing))
+	check("each footing kind has its own voice",
+		deck._footing_sound(Tiles.WATER) != deck._footing_sound(Tiles.MUD)
+		and deck._footing_sound(Tiles.MUD) != deck._footing_sound(Tiles.RUBBLE))
+	# Bones already speak through the noise event; hearing the crunch twice
+	# would be worse than not hearing it at all.
+	check("bones do not double up", deck._footing_sound(Tiles.BONES) == &"")
+
+	# Six things noticing at once is one alarm, not six.
+	var swarm: Array = []
+	for i in 6:
+		swarm.append({"kind": &"notice", "to": Vector2i(i, 3)})
+	check("repeats collapse into one sound",
+		int(deck.choose(swarm)["now"].size()) == 1)
+
+	# The thud has to wait for the arrow, or it arrives before it.
+	var shot := deck.choose([{"kind": &"ranged", "from": Vector2i(0, 3),
+		"to": Vector2i(8, 3), "amount": 4, "on_player": true}])
+	check("a shot is heard at once", shot["now"].has(&"shot"))
+	check("its impact is held back until the arrow lands",
+		shot["later"].has(&"hurt") and float(shot["later"][&"hurt"]) > 0.1)
+	deck.free()
+
+## The noise mechanic is the reason there is sound in this game at all: bones
+## wake things seven cells away, through stone, and until now that was a line
+## of text and nothing else.
+func _test_noise_raises_a_sound_event() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.map.set_tile(6, 4, Tiles.BONES)
+	gs.take_events()
+	gs.player_move(1, 0)
+
+	var loud := false
+	var radius := 0
+	for e in gs.take_events():
+		if e["kind"] == &"noise":
+			loud = true
+			radius = int(e["radius"])
+	check("stepping on bones raises a noise event", loud)
+	check("it carries how far the noise reached", radius == 7, str(radius))
+
+	# Quiet ground raises nothing, or the sound would be a footstep -- and a
+	# footstep on every keypress is why people play roguelikes muted.
+	gs.take_events()
+	gs.player_move(1, 0)
+	var quiet := true
+	for e in gs.take_events():
+		if e["kind"] == &"noise":
+			quiet = false
+	check("ordinary floor makes no sound", quiet)
+
+func _test_footing_change_is_audible() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	for x in range(6, 10):
+		gs.map.set_tile(x, 4, Tiles.WATER)
+	gs.take_events()
+
+	gs.player_move(1, 0)
+	var entered := 0
+	for e in gs.take_events():
+		if e["kind"] == &"footing" and int(e["tile"]) == Tiles.WATER:
+			entered += 1
+	check("wading in is heard once", entered == 1, str(entered))
+
+	# Fires on the boundary, not per step, or it is a footstep by another name.
+	gs.player_move(1, 0)
+	var again := 0
+	for e in gs.take_events():
+		if e["kind"] == &"footing":
+			again += 1
+	check("crossing more of it is silent", again == 0, str(again))
+
+func _test_low_health_warns_once() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.max_hp = 100
+	gs.player.hp = 100
+	gs.player_wait()
+	gs.take_events()
+
+	gs.player.hp = 20
+	gs.player_wait()
+	var warned := 0
+	for e in gs.take_events():
+		if e["kind"] == &"lowhp":
+			warned += 1
+	check("crossing the health line warns", warned == 1, str(warned))
+
+	gs.player.hp = 15
+	gs.player_wait()
+	var nagged := 0
+	for e in gs.take_events():
+		if e["kind"] == &"lowhp":
+			nagged += 1
+	check("staying under it does not nag", nagged == 0, str(nagged))
+
+	# Healing back over the line re-arms it, so the next slide down is heard.
+	gs.player.hp = 100
+	gs.player_wait()
+	gs.take_events()
+	gs.player.hp = 10
+	gs.player_wait()
+	var rearmed := 0
+	for e in gs.take_events():
+		if e["kind"] == &"lowhp":
+			rearmed += 1
+	check("recovering re-arms the warning", rearmed == 1, str(rearmed))
+
+func _test_a_death_is_announced() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	var kobold := _spawn(gs, "kobold", 6, 4)
+	kobold.hp = 1
+	gs.take_events()
+	gs._attack(gs.player, kobold)
+	var killed := false
+	for e in gs.take_events():
+		if e["kind"] == &"kill":
+			killed = true
+	check("killing something is heard", killed)
+
+	gs.player.max_hp = 4
+	gs.player.hp = 1
+	gs.player.defense = 0
+	var brute := _spawn(gs, "ogre", 6, 4)
+	gs.take_events()
+	gs._attack(brute, gs.player)
+	var died := false
+	for e in gs.take_events():
+		if e["kind"] == &"death":
+			died = true
+	check("your own death is heard", died, "player alive: %s" % gs.player.alive)
