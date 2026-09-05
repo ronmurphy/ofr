@@ -128,7 +128,9 @@ func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 	return y + LINE
 
 func _look(id: StringName) -> Dictionary:
-	return AsciiTheme.TABLE.get(id, {"ch": "?", "fg": Palette.UI_TEXT})
+	# The active theme, not the ASCII table: a legend that keeps showing
+	# letters while the map shows symbols is worse than no legend.
+	return RenderTheme.active().appearance(id)
 
 func _terrain_column(x: float, y: float, w: float) -> void:
 	y = _heading(x, y, "GROUND AND FEATURES")
@@ -181,6 +183,8 @@ func _item_column(x: float, y: float, w: float) -> void:
 	# one mechanic built on not knowing.
 	for kind in Shrines.COUNT:
 		var known: bool = state.shrine_known.has(kind)
-		y = _entry(x, y, w, "∩", state.shrine_hue(kind),
+		# The theme's shrine glyph, not a literal -- the colour is per-shrine but
+		# the shape has to follow the view mode like everything else.
+		y = _entry(x, y, w, String(_look(&"shrine")["ch"]), state.shrine_hue(kind),
 			Shrines.NAMES[kind] if known else "not yet used",
 			"" if known else "?")

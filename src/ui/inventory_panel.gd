@@ -318,8 +318,7 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	if index == _hover_index:
 		draw_rect(r, Color(Palette.CURSOR, 0.13), true)
 
-	var app: Dictionary = AsciiTheme.TABLE.get(item.appearance,
-		{"ch": "?", "fg": Palette.UI_TEXT})
+	var app: Dictionary = RenderTheme.active().appearance(item.appearance)
 	var base := r.position + Vector2(0, font.get_ascent(font_size) + 2.0)
 	var equipped: bool = state.player.is_equipped(item)
 	var label := Palette.UI_TEXT

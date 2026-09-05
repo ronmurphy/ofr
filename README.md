@@ -38,6 +38,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
     godot --headless --script res://tests/xp_curve.gd    # power vs threat curve
     godot --script res://tests/capture.gd -- /tmp/shots  # screenshots
     godot --headless --script res://tests/audition.gd -- /tmp/wav  # every sound as .wav
+    tools/build_web.sh                                  # web export, zipped for itch.io
 
 ## Controls
 
@@ -54,6 +55,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | hover | inspect a cell; the route there is previewed as dots |
 | `?` or `F1` | legend: every glyph in the game, generated from the tables |
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
+| `v` | cycle the view: letters or symbols |
 | `R` | new game |
 
 ## Items
@@ -305,6 +307,139 @@ Adding to that list is easy and should be resisted.
 The decision of what to play is `SoundDeck.choose()`, which touches no node, no
 bank and no audio server. That is what lets the mapping be tested headless with
 the rest of the game.
+
+## View modes
+
+`v` cycles how the dungeon is drawn. Two modes today:
+
+| | |
+|---|---|
+| **letters** | `+ ' ~ , * Ω` and `! ? ) } [ "` -- the original |
+| **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` |
+
+Terrain and items change. **Creatures never do**, in either mode, and that is
+the whole design of it.
+
+Letters are a taxonomy: `k` is a kobold, `K` is the one that shoots back, `g`
+goblin, `G` stone golem. Case and letter carry family and rank for free, across
+a bestiary that will keep growing. Symbols carry none of that, and a newcomer
+who has never played a roguelike gets no benefit from `k` either -- so creatures
+are the half of this problem that wants real pictures, and real pictures mean
+an icon font, which is a desktop-sized download. They wait.
+
+The setting persists in `user://settings.cfg`, and the grid, the legend and the
+inventory all read one static, because three panels that disagree about the
+mode would be worse than having no mode.
+
+### The trap this walked into
+
+The first version of `SymbolTheme` used a shrine gate, a skull, an alembic and
+crossed swords. Every one looked right in a terminal. **None of them are in the
+font.**
+
+A terminal silently substitutes a system font for a glyph it cannot find, and
+so does a desktop Godot build. A *web* build has no system font to fall back
+on, so all four would have shipped as empty boxes to anyone playing in a
+browser -- and the desktop build would have looked fine the whole time.
+
+What JetBrains Mono actually carries outside ASCII is 43 geometric shapes, 32
+block elements, 128 box-drawing pieces, 119 maths operators and 115 technical
+symbols -- and in the *pictorial* blocks, exactly **5** miscellaneous symbols
+and **12** dingbats. No animals at all. So this mode is abstract-but-evocative,
+not pictorial, and it never could have been anything else.
+
+`_test_symbol_theme` now checks every character with `Font.has_char` against
+the font the game ships, and checks that none is wider than a cell. Measure the
+font, never the terminal.
+
+### Widths
+
+Glyphs are centred **per character**, cached in `GlyphGrid._dx`. That used to
+be one number measured from `"M"` and reused, which is correct only while every
+glyph is the same width -- and in this font they are not. It is the same lesson
+as the dashed walls: one measurement cannot stand in for all of them.
+
+## The web build
+
+One codebase, one scene, one simulation. There is no fork and no `#ifdef` --
+`src/platform.gd` is the only file that knows it might be in a browser, and it
+knows about exactly three things.
+
+    tools/build_web.sh          # exports and zips for itch.io
+
+### What differs, and why
+
+**1. A browser tab cannot be quit.** `get_tree().quit()` in a browser stops the
+main loop and leaves a dead canvas sitting in the page, which looks exactly
+like a crash. So the pause menu says *save for later* rather than *save and
+quit*, and tells you it is safe to close the tab yourself.
+
+**2. Ctrl+W is one keystroke from destroying a run**, and the canvas is not
+allowed to capture it. So the build asks the browser to confirm before the page
+goes away -- but only when the run has moved past the last save, which is the
+same "unsaved changes" rule every text editor uses. Nagging someone on the way
+out of a run that is already written is how a warning gets trained away.
+
+**3. Closing a tab is an accident in a way that closing an application is
+not.** The suspend slot is written when the page is hidden.
+
+Point 3 changes a design decision, so be clear about what it does *not* change:
+still one slot, still destroyed the moment it is loaded, still no way to roll
+back a bad fight. All it does is stop a browser being able to take a run away
+in a way the desktop build never could.
+
+That hooks `visibilitychange`, not `beforeunload`. Writes to `user://` land in
+IndexedDB and flush asynchronously; beforeunload gives that no time to finish,
+while hiding a tab happens long before the page is torn down. It is the
+difference between a save that is written and a save that was started.
+
+### Verified in an actual browser
+
+Headless Edge over the DevTools protocol, not by reasoning about it:
+
+- the engine boots, takes keyboard input and renders identically to desktop
+- the pause menu shows the web wording
+- the unload guard arms on a live run, releases when you save, and re-arms on
+  the next turn
+- **a run survives a full page reload** -- "You take up where you left off",
+  and the slot is still destroyed on load
+
+### Letterboxing
+
+`window/stretch/aspect` is `keep`, not `expand`. The grid, sidebar and log sit
+at hand-measured offsets for a 1600x900 surface, so a viewport of another shape
+has to be letterboxed rather than handed extra logical space the layout will
+not fill. This matters most in a browser, where the canvas is whatever shape
+the page gives it.
+
+### Uploading to itch.io
+
+Upload `build/ofr-web.zip`, tick **"This file will be played in the browser"**,
+and set the embed to **1600 x 900** with the fullscreen button enabled.
+
+Leave **SharedArrayBuffer support unticked**. It adds cross-origin isolation
+headers, which this build does not need -- the export has `thread_support`
+off precisely so it runs without them.
+
+`index.html` must be at the *root* of the zip, not inside a folder. That single
+mistake is what makes an upload land on a blank page; `build_web.sh` flattens
+the archive so it cannot happen.
+
+### Recreating the export preset
+
+`export_presets.cfg` is gitignored, because export configs can carry keystore
+paths and passwords. On a fresh clone, add a **Web** preset with:
+
+| | |
+|---|---|
+| `variant/thread_support` | `false` -- no COOP/COEP headers needed, so it works on itch as-is |
+| `html/canvas_resize_policy` | `2` (adaptive) |
+| `html/focus_canvas_on_start` | `true` -- otherwise the first keypress goes to the page |
+| `vram_texture_compression/for_desktop` | `true` |
+
+Web export templates for the *exact* engine version are needed
+(`Editor -> Manage Export Templates`); 4.7 templates will not satisfy a 4.7.2
+editor, and the error names the path it wanted.
 
 ## Sleep, awareness, and the torch
 

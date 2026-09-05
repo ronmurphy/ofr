@@ -34,6 +34,7 @@ const KEYS := [
 	["p", "pray at a shrine"],
 	["?", "legend"],
 	["m  - +", "sound"],
+	["v", "letters / symbols"],
 	["esc", "menu"],
 	["click", "travel"],
 ]

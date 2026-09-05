@@ -86,6 +86,8 @@ func _initialize() -> void:
 	_test_footing_change_is_audible()
 	_test_low_health_warns_once()
 	_test_a_death_is_announced()
+	_test_panels_do_not_overflow()
+	_test_symbol_theme()
 	_report_encounter_curve()
 
 	print("")
@@ -2540,3 +2542,147 @@ func _test_a_death_is_announced() -> void:
 		if e["kind"] == &"death":
 			died = true
 	check("your own death is heard", died, "player alive: %s" % gs.player.alive)
+
+
+# ------------------------------------------------------------- panel fit ----
+#
+# Five separate times a string has run through the edge of a panel: the
+# inventory footer, the footing row, the torch row, the KEYS block, and the web
+# build's pause-menu note. Every one was found by looking at a picture, and the
+# last needed a screenshot of a browser to find at all.
+#
+# Panel widths are read out of the scene file rather than restated here, so the
+# check cannot quietly drift away from what is actually on screen.
+
+func _scene_widths() -> Dictionary:
+	var text := FileAccess.get_file_as_string("res://scenes/main.tscn")
+	var out := {}
+	var name := ""
+	var left := 0.0
+	for raw in text.split("\n"):
+		var line := raw.strip_edges()
+		if line.begins_with("[node name="):
+			name = line.split('"')[1]
+		elif line.begins_with("offset_left"):
+			left = float(line.split("=")[1])
+		elif line.begins_with("offset_right") and name != "":
+			out[name] = float(line.split("=")[1]) - left
+	return out
+
+func _test_panels_do_not_overflow() -> void:
+	var font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var widths := _scene_widths()
+
+	# The pause menu sizes itself, so its limit comes from its own constant.
+	var menu_limit := MenuPanel.PANEL.x - MenuPanel.PAD * 2.0
+	for note in [MenuPanel.NOTE_DESKTOP, MenuPanel.NOTE_WEB]:
+		var w := font.get_string_size(note, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			MenuPanel.font_size_default() - 4).x
+		check("menu note fits the panel (%d chars)" % note.length(),
+			w <= menu_limit, "%.0f > %.0f px -- %s" % [w, menu_limit, note])
+
+	# The sidebar draws the key left and the action right-aligned against the
+	# same edge, so the failure is two strings meeting in the middle.
+	var side_limit: float = float(widths.get("Sidebar", 256.0)) - Sidebar.PAD * 2.0
+	var worst := ""
+	var worst_w := 0.0
+	for row in Sidebar.KEYS:
+		var a := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		var b := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		if a + b > worst_w:
+			worst_w = a + b
+			worst = "%s / %s" % [row[0], row[1]]
+	# A gap, not a touch: two strings that exactly meet read as one word.
+	check("no key row collides with its action",
+		worst_w + 8.0 <= side_limit,
+		"%.0f + gap > %.0f px -- %s" % [worst_w, side_limit, worst])
+
+	# The KEYS block is anchored to the bottom of the panel by its own length,
+	# which is the fix that stopped the last recurrence.
+	var keys_h := Sidebar.LINE * float(Sidebar.KEYS.size() + 1) + Sidebar.PAD
+	var side_h: float = 736.0 - 16.0
+	check("the keys block fits above the frame edge", keys_h < side_h,
+		"%.0f >= %.0f px" % [keys_h, side_h])
+
+
+# ---------------------------------------------------------- symbol theme ----
+#
+# The whole premise of this mode is that the characters are already in the font
+# we ship. That premise is checkable, and it is exactly the sort of thing that
+# rots silently: a symbol that is absent renders as a blank or a tofu box, and
+# nothing anywhere raises an error.
+
+func _test_symbol_theme() -> void:
+	var font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var grid := GlyphGrid.new()
+	var cell := float(grid.cell_size)
+	grid.free()
+
+	var missing: Array = []
+	var too_wide: Array = []
+	var unknown: Array = []
+	for id in SymbolTheme.OVERRIDES:
+		# A typo here would create an override that silently never fires.
+		if not AsciiTheme.TABLE.has(id):
+			unknown.append(id)
+			continue
+		var ch: String = SymbolTheme.OVERRIDES[id]["ch"]
+		if not font.has_char(ch.unicode_at(0)):
+			missing.append("%s (%s)" % [id, ch])
+		# Not every symbol in this font is single width -- the shrine gate is
+		# 16px and the shield 12px against a 10px reference. Anything wider
+		# than the cell bleeds into its neighbour.
+		var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		if w > cell:
+			too_wide.append("%s (%s, %.0fpx > %.0fpx)" % [id, ch, w, cell])
+
+	check("every override names a real appearance id", unknown.is_empty(), str(unknown))
+	check("every symbol exists in the font we ship", missing.is_empty(), str(missing))
+	check("no symbol is wider than its cell", too_wide.is_empty(), str(too_wide))
+
+	# Terrain and items change; creatures do not. That split is the mode, so it
+	# is worth asserting rather than trusting.
+	var ascii_theme := AsciiTheme.new()
+	var symbols := SymbolTheme.new()
+	check("terrain changes between modes",
+		ascii_theme.appearance(&"water")["ch"] != symbols.appearance(&"water")["ch"])
+	check("items change between modes",
+		ascii_theme.appearance(&"potion")["ch"] != symbols.appearance(&"potion")["ch"])
+
+	var drifted: Array = []
+	for e in GameState.BESTIARY:
+		var id: StringName = e["app"]
+		if ascii_theme.appearance(id)["ch"] != symbols.appearance(id)["ch"]:
+			drifted.append(id)
+	check("every creature keeps its letter", drifted.is_empty(), str(drifted))
+
+	# Colour is the ASCII table's business in both modes: this changes the
+	# shape of the dungeon, not its palette.
+	check("symbols inherit the ascii colour",
+		symbols.appearance(&"water")["fg"] == ascii_theme.appearance(&"water")["fg"])
+	check("symbols keep the background too",
+		symbols.appearance(&"brazier")["bg"] == ascii_theme.appearance(&"brazier")["bg"])
+
+	# An id with no override must still come back whole, or the inventory and
+	# legend get a fallback question mark instead of an item.
+	check("un-overridden ids pass straight through",
+		symbols.appearance(&"goblin")["ch"] == "g")
+
+	# Cycling wraps rather than running off the end of the enum.
+	var was := RenderTheme.mode()
+	var seen := {}
+	for i in RenderTheme.mode_count() + 1:
+		seen[RenderTheme.mode()] = true
+		RenderTheme.cycle()
+	check("cycling visits every mode and wraps",
+		seen.size() == RenderTheme.mode_count(),
+		"%d of %d" % [seen.size(), RenderTheme.mode_count()])
+	RenderTheme.set_mode(was)
+
+	# All three panels must agree, which is the only reason the mode is static.
+	RenderTheme.set_mode(RenderTheme.Mode.SYMBOLS)
+	check("the active theme is the symbol one when selected",
+		RenderTheme.active().appearance(&"water")["ch"] == "≈")
+	RenderTheme.set_mode(RenderTheme.Mode.ASCII)
+	check("and the ascii one when not",
+		RenderTheme.active().appearance(&"water")["ch"] == "~")

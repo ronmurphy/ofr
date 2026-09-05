@@ -17,6 +17,17 @@ extends Control
 
 var state: GameState
 
+## Held for the life of the scene on purpose. This is a JavaScriptObject, and
+## one that goes out of scope is collected -- after which the browser's
+## listener fires into nothing. The failure is completely silent and shows up
+## only as a run that was not saved.
+var _page_hidden_cb: Variant = null
+## The turn the suspend slot was last written at, or -1 for never. The browser
+## is only asked to confirm leaving when the run has actually moved past what
+## is saved -- the same "unsaved changes" rule every editor uses, rather than
+## nagging on the way out of a run that is already safely written.
+var _saved_at_turn := -1
+
 ## Milliseconds between steps of a mouse-driven walk. Fast enough not to
 ## annoy, slow enough that you can see where you went and react.
 const TRAVEL_STEP := 0.045
@@ -77,7 +88,22 @@ func _ready() -> void:
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
 	inventory.close_requested.connect(_close_inventory)
+
+	# In a browser, closing the tab is an accident in a way that closing an
+	# application is not. Ask before it happens, and write the slot when the
+	# page goes away regardless.
+	RenderTheme.load_settings()
+	Platform.guard_against_leaving(true)
+	_page_hidden_cb = Platform.on_page_hidden(_on_page_hidden)
 	_refresh()
+
+## Still one slot, still destroyed on load. All this does is stop a browser
+## being able to take a run away in a way the desktop build never could.
+func _on_page_hidden() -> void:
+	if state == null or state.game_over:
+		return
+	state.save_suspend()
+	_saved_at_turn = state.turns
 
 func _process(delta: float) -> void:
 	if menu.visible or legend.visible:
@@ -181,6 +207,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	if key == KEY_M:
 		state.msg_log.add(sound.toggle_mute(), Color(0.70, 0.74, 0.80))
+		_refresh()
+		return
+
+	# Letters or symbols. Live, mid-run, with no reload -- the point is to be
+	# able to flip back and forth and decide which one you can read faster.
+	if key == KEY_V:
+		state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
+		grid.forget_metrics()
 		_refresh()
 		return
 
@@ -291,6 +325,15 @@ func _save_and_quit() -> void:
 		GameState.clear_suspend()
 	else:
 		state.save_suspend()
+	_saved_at_turn = state.turns
+	if not Platform.can_quit():
+		# Quitting inside a browser stops the main loop and leaves a dead
+		# canvas in the page, which looks like a crash. Say the run is safe and
+		# let the player close the tab themselves.
+		state.msg_log.add("Saved. Close the tab whenever you like -- it will "
+			+ "be here.", Color(0.80, 0.85, 0.95))
+		_close_menu()
+		return
 	get_tree().quit()
 
 func _start_new_run() -> void:
@@ -299,6 +342,7 @@ func _start_new_run() -> void:
 	_close_inventory()
 	menu.close()
 	sound.stop_all()
+	_saved_at_turn = -1
 	# Abandoning forfeits the slot, or the old run could be resumed later.
 	GameState.clear_suspend()
 	var fresh := GameState.new()
@@ -438,6 +482,17 @@ func _drop_item(index: int) -> void:
 	_refresh()
 
 func _refresh() -> void:
+	# Ask the browser to confirm only when there is something to lose: a live
+	# run that has moved past the last save. Cheap to call every refresh -- it
+	# only reaches the browser when the answer actually changes.
+	#
+	# The first version armed this from `not game_over` alone, which re-armed
+	# the guard on the very next redraw after a deliberate save and made the
+	# browser nag about a run it had just been told was safe.
+	if state != null:
+		Platform.guard_against_leaving(
+			not state.game_over and state.turns != _saved_at_turn)
+
 	# Hand the turn's events to the renderer to animate. The simulation has
 	# already resolved them; this is purely showing the player what happened.
 	# Settle first, then start the new step. Anything still sliding finishes

@@ -12,23 +12,47 @@ signal new_run_requested()
 @export var font_bold: Font
 @export var font_size: int = 17
 
+## The exported default, reachable without a node. The overflow test needs the
+## size the panel actually draws at, and an @export is not a constant.
+static func font_size_default() -> int:
+	return 17
+
 var state: GameState
 
 const PANEL := Vector2(460.0, 250.0)
 const PAD := 26.0
 const ROW_H := 34.0
 
-const OPTIONS := [
+const OPTIONS_DESKTOP := [
 	["c", "continue", "resume"],
 	["s", "save and quit", "save"],
 	["n", "abandon this run", "new"],
 ]
+
+## A browser tab has no quit, so the menu does not pretend otherwise. The run
+## is written when the page is hidden anyway; this is the deliberate version of
+## the same thing, for someone who wants to be told it worked.
+const OPTIONS_WEB := [
+	["c", "continue", "resume"],
+	["s", "save for later", "save"],
+	["n", "abandon this run", "new"],
+]
+
+var OPTIONS: Array = OPTIONS_DESKTOP
+
+## Named constants so the overflow test can measure them. The web line was six
+## characters too long and ran through the panel edge; it was caught only
+## because a screenshot of the browser build happened to be taken.
+const NOTE_DESKTOP := "saving quits to the desktop; resuming deletes it"
+const NOTE_WEB := "leaving the page saves your run; resuming deletes it"
 
 var _hover := -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
+	if Platform.is_web():
+		OPTIONS = OPTIONS_WEB
 	if font == null:
 		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
 	if font_bold == null:
@@ -97,8 +121,8 @@ func _draw() -> void:
 	var asc := font.get_ascent(font_size)
 	draw_string(font_bold, p.position + Vector2(PAD, PAD + asc), "PAUSED",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.STAIRS)
-	draw_string(font, p.position + Vector2(PAD, PAD + 26.0 + asc),
-		"saving quits to the desktop; resuming deletes the save",
+	var note := NOTE_WEB if Platform.is_web() else NOTE_DESKTOP
+	draw_string(font, p.position + Vector2(PAD, PAD + 26.0 + asc), note,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
 
 	for i in OPTIONS.size():

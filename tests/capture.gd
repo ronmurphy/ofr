@@ -15,7 +15,29 @@ func _initialize() -> void:
 		_out = args[0]
 	_run()
 
+## Instantiating the real scene runs main._ready, which LOADS AND DELETES the
+## suspend slot -- the game's whole save. A screenshot tool must not be able to
+## destroy someone's run, so the file is taken out of the way first and put
+## back afterwards.
+var _slot_backup := PackedByteArray()
+var _had_slot := false
+
+func _hide_suspend() -> void:
+	_had_slot = FileAccess.file_exists(GameState.SUSPEND_PATH)
+	if _had_slot:
+		_slot_backup = FileAccess.get_file_as_bytes(GameState.SUSPEND_PATH)
+		DirAccess.remove_absolute(GameState.SUSPEND_PATH)
+
+func _restore_suspend() -> void:
+	if not _had_slot:
+		return
+	var f := FileAccess.open(GameState.SUSPEND_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_buffer(_slot_backup)
+		f.close()
+
 func _run() -> void:
+	_hide_suspend()
 	_scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_scene)
 	for _i in 20:
@@ -463,6 +485,27 @@ func _run() -> void:
 		_scene._refresh()
 		await _shot("09_layout_%d.png" % seed_value)
 
+	# The same floor in both view modes, so the two can be held side by side.
+	RenderTheme.set_mode(RenderTheme.Mode.ASCII)
+	_scene.grid.forget_metrics()
+	_scene._refresh()
+	await _shot("27_view_letters.png")
+	RenderTheme.set_mode(RenderTheme.Mode.SYMBOLS)
+	_scene.grid.forget_metrics()
+	_scene._refresh()
+	await _shot("28_view_symbols.png")
+	# The legend is the whole glyph set on one screen, so it is the shot worth
+	# holding the two modes against each other.
+	_scene.legend.open()
+	_scene._refresh()
+	await _shot("29_legend_symbols.png")
+	RenderTheme.set_mode(RenderTheme.Mode.ASCII)
+	_scene.grid.forget_metrics()
+	_scene._refresh()
+	await _shot("30_legend_letters.png")
+	_scene.legend.close()
+
+	_restore_suspend()
 	quit()
 
 func _use(gs: GameState) -> void:

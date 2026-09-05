@@ -11,6 +11,7 @@ export_presets.cfg
 
 # Platform build output.
 /android/
+/build/
 
 # OS noise.
 .DS_Store

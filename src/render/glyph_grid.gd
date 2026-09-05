@@ -40,7 +40,20 @@ enum WallStyle {
 @export var memory_material_boost: float = 1.8
 
 var state: GameState
-var render_theme: RenderTheme = AsciiTheme.new()
+## Read fresh on every draw rather than held, so cycling the view mode reaches
+## the grid, the legend and the inventory in the same frame.
+var render_theme: RenderTheme:
+	get: return RenderTheme.active()
+
+## Horizontal offset per character, cached.
+##
+## This used to be one number measured from "M" and reused for everything,
+## which is correct only while every glyph is the same width. It is not: in
+## this very font the shrine gate is 16px and the shield 12px against a 10px
+## reference, so a single offset puts them off-centre and pushes the widest of
+## them into the neighbouring cell. Same lesson as the dashed walls -- one
+## measurement cannot stand in for all of them.
+var _dx_cache := {}
 
 # Wall connection bits: N=1 S=2 W=4 E=8
 const BOX := {
@@ -109,6 +122,22 @@ func _measure_font() -> void:
 	var descent := font.get_descent(font_size)
 	_glyph_dx = (cell_size - advance) * 0.5
 	_glyph_baseline = (cell_size - (ascent + descent)) * 0.5 + ascent
+	_dx_cache.clear()
+
+## Drops the width cache. Called when the view mode changes, since a whole new
+## set of characters is about to be drawn.
+func forget_metrics() -> void:
+	_dx_cache.clear()
+
+## Centres a character in its cell by its own width. Cached: this is called
+## once per visible cell per frame, and measuring text is not free.
+func _dx(ch: String) -> float:
+	if _dx_cache.has(ch):
+		return _dx_cache[ch]
+	var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var dx := (cell_size - w) * 0.5
+	_dx_cache[ch] = dx
+	return dx
 
 func _process(delta: float) -> void:
 	for e in _motion:
@@ -484,7 +513,7 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 
 	draw_rect(Rect2(origin, cell), bg, true)
 	if ch != " ":
-		draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), ch, font_size, fg)
+		draw_char(font, origin + Vector2(_dx(ch), _glyph_baseline), ch, font_size, fg)
 
 ## Walls are drawn from their connection mask rather than from a font glyph.
 ##
@@ -500,7 +529,7 @@ func _draw_wall(origin: Vector2, mask: int, fg: Color, bg: Color) -> void:
 		return
 	if wall_style == WallStyle.GLYPH:
 		draw_rect(Rect2(origin, cell), bg, true)
-		draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), BOX[mask], font_size, fg)
+		draw_char(font, origin + Vector2(_dx(BOX[mask]), _glyph_baseline), BOX[mask], font_size, fg)
 		return
 
 	draw_rect(Rect2(origin, cell), bg, true)
@@ -649,7 +678,7 @@ func _draw_glyph(id: StringName, cell: Vector2) -> void:
 	# loses to readability every time in a game you play by reading.
 	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()
 	var origin := _screen_f(cell)
-	draw_char(font, origin + Vector2(_glyph_dx, _glyph_baseline), app["ch"], font_size, fg)
+	draw_char(font, origin + Vector2(_dx(app["ch"]), _glyph_baseline), app["ch"], font_size, fg)
 
 func _draw_preview() -> void:
 	if _preview.is_empty() or state.game_over:
