@@ -39,6 +39,9 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
     godot --script res://tests/capture.gd -- /tmp/shots  # screenshots
     godot --headless --script res://tests/audition.gd -- /tmp/wav  # every sound as .wav
     tools/build_web.sh                                  # web export, zipped for itch.io
+    python3 tools/web_smoke.py /tmp/shots               # drive the web build in a real browser
+    tools/check_user_files.sh                           # prove no tool writes to a player's files
+    python3 tools/fetch_web_templates.py <dir>          # web export templates, 88MB not 1.28GB
 
 ## Controls
 
@@ -397,7 +400,10 @@ difference between a save that is written and a save that was started.
 
 ### Verified in an actual browser
 
-Headless Edge over the DevTools protocol, not by reasoning about it:
+`tools/web_smoke.py` drives a headless Chromium-family browser over the
+DevTools protocol -- `tools/cdp.py` is a hand-written client, because no
+websocket library was installed and one page of RFC 6455 is cheaper than a
+dependency. Nine checks, none of which can be found by reading code:
 
 - the engine boots, takes keyboard input and renders identically to desktop
 - the pause menu shows the web wording

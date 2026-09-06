@@ -13,6 +13,10 @@ export_presets.cfg
 /android/
 /build/
 
+# Python bytecode from the tools in tools/.
+__pycache__/
+*.pyc
+
 # OS noise.
 .DS_Store
 Thumbs.db
