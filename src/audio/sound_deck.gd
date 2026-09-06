@@ -92,10 +92,16 @@ func choose(evts: Array) -> Dictionary:
 			&"levelup":
 				_loudest(now, &"levelup", 1.0)
 			&"noise":
-				# Louder the further it carries. Bones reach seven cells and
-				# are the loudest thing you can do by accident.
-				var r := float(e.get("radius", 1))
-				_loudest(now, &"crunch", clampf(r / 7.0, 0.35, 1.0))
+				# Only footfalls get the crunch. Combat raises noise through the
+				# same system now -- a bowshot calls things towards where the
+				# bow was -- but it already has its own sounds, and hearing bone
+				# splinter every time an arrow leaves the string would be a lie
+				# about what just happened.
+				if e.get("cause", &"step") == &"step":
+					# Louder the further it carries. Bones reach seven cells and
+					# are the loudest thing you can do by accident.
+					var r := float(e.get("radius", 1))
+					_loudest(now, &"crunch", clampf(r / 7.0, 0.35, 1.0))
 			&"trap":
 				_loudest(now, &"trap", 1.0)
 			&"pray":

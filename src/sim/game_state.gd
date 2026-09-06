@@ -58,6 +58,10 @@ const DOUSED_RADIUS := 3
 
 ## Resting at a brazier. Each one holds a fixed pool, spent two points at a
 ## time, and then goes out for good.
+## How far a blow or a bowshot carries. Four, matching the radius the old
+## wake-the-defender's-neighbours rule used, so melee sounds exactly as loud as
+## it always did.
+const COMBAT_NOISE := 4
 const BRAZIER_CHARGE := 10
 const BRAZIER_HEAL := 2
 ## Merging two identical items costs brazier charge, which is the same finite
@@ -1184,13 +1188,13 @@ func _spring_trap(x: int, y: int) -> void:
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
 ## it is the counterpart to light, and the second thing that can give you away.
-func _make_noise(at: Vector2i, radius: int) -> void:
+func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void:
 	if radius <= 0:
 		return
 	# Emitted whether or not anything was actually roused. What the player
 	# needs to know is that they were LOUD; whether the room happened to be
 	# empty is a separate fact, and the message log already carries it.
-	events.append({"kind": &"noise", "to": at, "radius": radius})
+	events.append({"kind": &"noise", "to": at, "radius": radius, "cause": cause})
 	var roused := 0
 	for e in entities:
 		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
@@ -1402,6 +1406,8 @@ func player_pickup() -> bool:
 	_travel.clear()
 	var here := items_at(player.x, player.y)
 	if here.is_empty():
+		if map.get_tile(player.x, player.y) == Tiles.FUNGUS:
+			return _eat_fungus()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
@@ -1440,6 +1446,27 @@ func _seize_amulet(relic: Item) -> void:
 	update_vision()
 
 ## Climbing out. Pays for the floor survived, exactly as descending does.
+## A mouthful of glowing fungus. One point, and the patch goes dark.
+##
+## Deliberately not worth a detour: at one hit point a turn it is slower than
+## resting at a brazier, and a floor only grows a dozen or so of them. What it
+## is worth is being taken on the way past -- and it costs the light, which is
+## the actual decision. A cave lit by fungus is a cave you can see across.
+func _eat_fungus() -> bool:
+	if player.hp >= player.max_hp:
+		msg_log.add("You are whole. The fungus can keep its light.",
+			Color(0.7, 0.6, 0.4))
+		return false
+	player.hp += 1
+	map.set_tile(player.x, player.y,
+		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	_gather_lights()
+	msg_log.add("You eat the fungus. It is bitter, and the glow goes out. (+1 hp)",
+		Color(0.62, 0.85, 0.68))
+	_end_player_turn()
+	return true
+
 func player_ascend() -> bool:
 	if game_over:
 		return false
@@ -2166,11 +2193,23 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	else:
 		wake(defender)
 
-	# Fighting is loud. Noise carries through stone, so this deliberately
-	# ignores line of sight.
-	for e in entities:
-		if e.alive and not e.is_player and Los.steps(e.x, e.y, defender.x, defender.y) <= 4:
-			wake(e)
+	# Fighting is loud, and it is loud at BOTH ends.
+	#
+	# This used to wake things within four cells of the defender and nothing
+	# else, which left one hole big enough to win the game through: a bowshot
+	# was silent where the bow was. An archer's corner was permanently quiet,
+	# so shoot-and-retreat cost turns and nothing else -- and eight of fifteen
+	# monsters are slower than the player and can never close, so those turns
+	# were free. A first-time tester found the loop in one sitting.
+	#
+	# Routing it through _make_noise rather than waking things directly also
+	# means combat obeys the same rule bones do: it carries through stone, and
+	# it reaches exactly as far as the radius says.
+	_make_noise(Vector2i(defender.x, defender.y), COMBAT_NOISE, &"combat")
+	if ranged:
+		# A loosed arrow is heard where it was loosed. Twenty-six shots at a
+		# stone golem is twenty-six calls for company.
+		_make_noise(Vector2i(attacker.x, attacker.y), COMBAT_NOISE, &"combat")
 
 	if attacker.is_player:
 		if ranged:

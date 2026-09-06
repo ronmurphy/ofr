@@ -743,6 +743,60 @@ A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
 
+## Fighting is loud at both ends
+
+A first-time tester played for two to three hours and found the dominant
+strategy in one sitting: *shoot, retreat, shoot, retreat, blink away, come
+back*. He was right to use it. The numbers:
+
+- player reach **8**; longest monster reach **6**; only **2 of 15** monsters
+  have any reach at all
+- player speed **100**, and **8 of 15 monsters are 100 or slower** -- so a
+  retreating archer loses no ground to them
+- the stone golem, at speed **70**, can *never* reach a retreating player in
+  open ground. Neither can the ogre, the troll or the skeleton
+
+Every slow bruiser -- the creatures whose whole design is "you must deal with
+this" -- was the one you never had to deal with.
+
+### The hole
+
+`Fighting is loud` woke everything within four cells of the **defender**, and
+nothing else. So a bowshot was silent *where the bow was*. An archer's corner
+was permanently quiet, and shoot-and-retreat cost turns and nothing else --
+with nothing in the game charging for turns.
+
+Combat noise now goes through `_make_noise`, the same system bones use, and
+fires at **both ends of a ranged attack**: where the arrow lands, and where it
+was loosed. Twenty-six shots at a golem is twenty-six calls for company.
+
+The noise event carries a `cause`, so the sound deck can tell a bone crunch
+from a bowstring -- combat already has its own sounds, and hearing bone
+splinter every time an arrow left the string would be a lie about what
+happened.
+
+### Honest about how far it goes
+
+Measured in a controlled arena -- ten shots at a golem, sleepers at 3, 5, 7 and
+9 cells from the player -- **only the sleeper at 3 woke.** `COMBAT_NOISE` is 4,
+so it wakes the room you are standing in and no more.
+
+That is a real cost in a dungeon and none at all in an empty cave, so it is a
+partial answer, not a closed door. The knob is the radius, and it is worth
+noting that bones carry **7** for a footstep while a pitched battle carries 4.
+Ammunition is the next lever if this is not enough; it taxes exactly the
+exploit and leaves sneaking, fleeing and melee untouched.
+
+## Fungus is food, barely
+
+One hit point, and the patch goes dark.
+
+Not worth a detour by design: a point a turn is half the rate of resting at a
+brazier, and a floor grows only a dozen or so. What it is worth is being taken
+on the way past. The cost is the light -- a cave lit by fungus is a cave you
+can see across -- which is the actual decision, and it gives an existing thing
+a second use rather than adding a hunger clock to justify one.
+
 ## Two bugs about touching things you should not
 
 ### An inventory letter you could never press

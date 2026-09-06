@@ -103,6 +103,7 @@ func _initialize() -> void:
 	_test_inventory_letters_dodge_the_keys()
 	_test_no_key_steals_an_inventory_letter()
 	_test_an_older_save_still_loads()
+	_test_fungus_is_a_mouthful()
 	_report_encounter_curve()
 
 	GameState.clear_scratch_files()
@@ -1812,9 +1813,11 @@ func _test_combat_events_are_recorded() -> void:
 
 	var kobold := _spawn(gs, "kobold", 4, 4)
 	gs._attack(kobold, gs.player)
-	var evts := gs.take_events()
+	# Filtered by kind rather than counted. Combat raises noise through the
+	# same queue now, and a test that asserts "exactly one event" breaks every
+	# time anything is added beside it -- which says nothing about the blow.
+	var evts := _of_kind(gs.take_events(), &"melee")
 	check("a melee hit records one event", evts.size() == 1, str(evts.size()))
-	check("it is tagged melee", evts.size() > 0 and evts[0]["kind"] == &"melee")
 	check("it is tagged as landing on the player",
 		evts.size() > 0 and evts[0]["on_player"])
 	check("it carries the damage dealt", evts.size() > 0 and evts[0]["amount"] > 0)
@@ -1822,10 +1825,39 @@ func _test_combat_events_are_recorded() -> void:
 
 	var archer := _spawn(gs, "kobold slinger", 9, 4)
 	gs._attack(archer, gs.player, true)
-	var shots := gs.take_events()
-	check("a shot is tagged ranged", shots.size() == 1 and shots[0]["kind"] == &"ranged")
+	var fired := gs.take_events()
+	var shots := _of_kind(fired, &"ranged")
+	check("a shot is tagged ranged", shots.size() == 1, str(shots.size()))
 	check("a shot records where it was fired from",
 		shots.size() > 0 and shots[0]["from"] == Vector2i(9, 4))
+
+	# The hole that shoot-and-retreat was played through: a bowshot used to be
+	# silent where the bow was, so an archer's corner was permanently quiet.
+	var heard := _of_kind(fired, &"noise")
+	var at_target := false
+	var at_shooter := false
+	for n in heard:
+		if n["to"] == Vector2i(3, 4):
+			at_target = true
+		if n["to"] == Vector2i(9, 4):
+			at_shooter = true
+	check("a shot is heard where it lands", at_target)
+	check("and where it was loosed from", at_shooter)
+
+	# Melee is heard once, at the point of contact.
+	gs.take_events()
+	gs._attack(kobold, gs.player)
+	var swing := _of_kind(gs.take_events(), &"noise")
+	check("a melee swing is heard too", swing.size() >= 1, str(swing.size()))
+
+## Events of one kind, so a test can assert about a blow without caring what
+## else the same turn put on the queue.
+func _of_kind(evts: Array, kind: StringName) -> Array:
+	var out := []
+	for e in evts:
+		if e["kind"] == kind:
+			out.append(e)
+	return out
 
 func _test_damage_cancels_travel() -> void:
 	var gs := _arena(25, 11)
@@ -3258,3 +3290,48 @@ func _test_an_older_save_still_loads() -> void:
 		and not letters.contains(" "))
 	check("an unforged potion still heals 12",
 		back.player.inventory[2].effective_magnitude() == 12)
+
+
+## Fungus is food, barely.
+##
+## One hit point, and the patch goes dark. Deliberately not worth a detour: at
+## a point a turn it is half the rate of resting at a brazier, and a floor only
+## grows a dozen or so. What it is worth is being taken on the way past -- and
+## the cost is the light, which is the actual decision.
+func _test_fungus_is_a_mouthful() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.map.set_tile(5, 4, Tiles.FUNGUS)
+	gs.player.max_hp = 30
+	gs.player.hp = 20
+	var lights_before := gs.static_lights.size()
+	check("fungus glows before you eat it", Tiles.is_luminous(Tiles.FUNGUS))
+	check("eating it works", gs.player_pickup())
+	check("for exactly one point", gs.player.hp == 21, str(gs.player.hp))
+	check("the patch is gone", gs.map.get_tile(5, 4) != Tiles.FUNGUS)
+	check("and took its light with it",
+		gs.static_lights.size() <= lights_before, str(gs.static_lights.size()))
+
+	# Not at full health -- the light is worth more than nothing.
+	var whole := _arena(21, 9)
+	whole.player.x = 5
+	whole.player.y = 4
+	whole.map.set_tile(5, 4, Tiles.FUNGUS)
+	whole.player.max_hp = 30
+	whole.player.hp = 30
+	check("a whole player leaves it be", not whole.player_pickup())
+	check("so the glow stays", whole.map.get_tile(5, 4) == Tiles.FUNGUS)
+
+	# An item on the same cell still takes priority.
+	var both := _arena(21, 9)
+	both.player.x = 5
+	both.player.y = 4
+	both.map.set_tile(5, 4, Tiles.FUNGUS)
+	both.player.hp = 1
+	var loot := Item.make(&"dagger")
+	loot.x = 5
+	loot.y = 4
+	both.ground.append(loot)
+	check("an item underfoot is picked up first", both.player_pickup())
+	check("and the fungus is untouched", both.map.get_tile(5, 4) == Tiles.FUNGUS)
