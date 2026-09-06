@@ -90,6 +90,7 @@ func _initialize() -> void:
 	_test_symbol_theme()
 	_test_no_decoration_plugs_a_way()
 	_test_corners_stop_everyone_equally()
+	_test_nothing_rests_on_a_hazard()
 	_report_encounter_curve()
 
 	print("")
@@ -380,6 +381,31 @@ func _test_threat_ceiling_holds() -> void:
 
 	check("no room exceeds its threat ceiling (%d rooms, depths 1-8)" % rooms_checked,
 		breaches == 0, "%d breaches, worst %d over" % [breaches, worst_over])
+
+	# Caves were never checked. They carry their own, higher ceiling -- wilder
+	# and unlit is worth a little more danger -- and an unchecked budget is not
+	# a budget.
+	var cave_breaches := 0
+	var caves_checked := 0
+	var cave_worst := 0
+	for d in range(1, 9):
+		for i in 25:
+			var gs := GameState.new(21000 + d * 100 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			var ceiling := gs.cave_threat_ceiling()
+			for region in gs.cave_regions:
+				caves_checked += 1
+				var sum := 0
+				for e in gs.entities:
+					if not e.is_player and region.has_point(Vector2i(e.x, e.y)):
+						sum += e.threat
+				if sum > ceiling:
+					cave_breaches += 1
+					cave_worst = maxi(cave_worst, sum - ceiling)
+	check("no cave exceeds its threat ceiling (%d caves, depths 1-8)" % caves_checked,
+		cave_breaches == 0, "%d breaches, worst %d over" % [cave_breaches, cave_worst])
 
 func _test_tiers_fade_with_depth() -> void:
 	var shallow_orcs := 0
@@ -1205,19 +1231,31 @@ func _shrine_arena(kind: int) -> GameState:
 	gs.map.set_all_visible()
 	return gs
 
+## 200 seeds rather than 40, because 40 was not enough to tell a regression
+## from a coin toss.
+##
+## The true rate is about 95%, and this asserted 36 of 40 -- so roughly one
+## reshuffle of the generator in six failed it by chance. It duly did, after a
+## change to vault corridors that turned out to have moved the rate from 94.8%
+## to 95.2%. Measuring 400 seeds either side is what showed that; the sample
+## was the bug, not the dungeon.
 func _test_shrines_appear() -> void:
 	var with_shrine := 0
 	var total := 0
-	for i in 40:
+	var runs := 200
+	for i in runs:
 		var gs := GameState.new(77000 + i)
 		gs.new_game()
 		if gs.shrine_at.size() > 0:
 			with_shrine += 1
 		total += gs.shrine_at.size()
-	check("most floors hold a shrine (%d/40)" % with_shrine, with_shrine >= 36,
+	check("most floors hold a shrine (%d/%d)" % [with_shrine, runs],
+		with_shrine >= int(runs * 0.90),
 		"%d" % with_shrine)
-	check("one or two of them, not a dozen (%.1f avg)" % (float(total) / 40.0),
-		float(total) / 40.0 <= 2.5, "%.2f" % (float(total) / 40.0))
+	# Was also dividing by a hard-coded 40 while the loop count moved.
+	var avg := float(total) / float(runs)
+	check("one or two of them, not a dozen (%.2f avg)" % avg,
+		avg <= 2.5, "%.2f" % avg)
 	check("a shrine can be stood on", Tiles.is_walkable(Tiles.SHRINE))
 
 func _test_shrine_effects() -> void:
@@ -2845,3 +2883,54 @@ func _test_corners_stop_everyone_equally() -> void:
 	var before := foe.hp
 	gs2.player_move(1, -1)
 	check("so a diagonal attack through a corner still lands", foe.hp < before)
+
+
+## Reported from play: a dagger lying on a pit tile.
+##
+## That is not a hazard, it is a hazard BAITED. You cross the room to pick the
+## thing up, step onto the hole, and lose a floor -- which is exactly what
+## happened, on depth 4, in a run that then ended on depth 5.
+##
+## The cause was `is_walkable` standing in for "somewhere a thing can sit".
+## Pits and traps are walkable by necessity: you could never step into one
+## otherwise. `_open_cell_in` already knew this and had a comment explaining
+## it; the loot roll, the spawner and the vault placer did not.
+func _test_nothing_rests_on_a_hazard() -> void:
+	var baited: Array = []
+	var stuck: Array = []
+	var levels := 0
+	var items := 0
+	var monsters := 0
+
+	for seed_v in range(1, 41):
+		for depth in [1, 4, 7, 10]:
+			var gs := GameState.new(seed_v)
+			gs.new_game()
+			if depth > 1:
+				gs.depth = depth
+				gs.build_level()
+			levels += 1
+			for it in gs.ground:
+				items += 1
+				if Tiles.is_avoided(gs.map.get_tile(it.x, it.y)) and baited.size() < 5:
+					baited.append("%s seed %d d%d (%d,%d)"
+						% [it.name, seed_v, depth, it.x, it.y])
+			for e in gs.entities:
+				if e.is_player:
+					continue
+				monsters += 1
+				# A monster on a pit is frozen for the rest of the run: the
+				# pathfinder treats avoided ground as solid, so it cannot plan
+				# a single step off the tile it woke up on.
+				if Tiles.is_avoided(gs.map.get_tile(e.x, e.y)) and stuck.size() < 5:
+					stuck.append("%s seed %d d%d (%d,%d)"
+						% [e.name, seed_v, depth, e.x, e.y])
+			# The player never starts on one either.
+			var under := gs.map.get_tile(gs.player.x, gs.player.y)
+			if Tiles.is_avoided(under) and baited.size() < 5:
+				baited.append("PLAYER seed %d d%d" % [seed_v, depth])
+
+	check("no item lies on a pit or trap (%d items, %d levels)" % [items, levels],
+		baited.is_empty(), str(baited))
+	check("nothing stands on one either (%d monsters)" % monsters,
+		stuck.is_empty(), str(stuck))

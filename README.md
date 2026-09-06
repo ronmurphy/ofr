@@ -799,6 +799,62 @@ reference and started being wallpaper. It now shows six keys plus `?`, and the
 legend carries the full list -- generated from the same table, so the short
 version cannot drift from the long one.
 
+## A dagger on a pit tile
+
+Reported from play, and it cost the run it happened in: an item lying on a
+hole in the floor. That is not a hazard, it is a hazard **baited** -- you cross
+the room to pick the thing up, step onto the pit, and lose a floor.
+
+The cause was `is_walkable` standing in for "somewhere a thing can sit". Pits
+and traps are walkable *by necessity*: you could never step into one otherwise.
+`_open_cell_in` already knew that and carried a comment explaining it. The loot
+roll, the monster spawner and the vault content placer did not.
+
+`_can_rest_on` is now the one rule, and it covers a second bug nobody had
+noticed: **a monster standing on a pit is frozen for the rest of the run.** The
+pathfinder treats avoided ground as solid, so it cannot plan a single step off
+the tile it woke up on.
+
+Vault loot is nudged to a neighbouring cell rather than dropped, since the
+author placed it before the terrain pass existed. Asserted across 160 levels,
+1108 items and 2950 monsters.
+
+## Corridors that miss the door
+
+Reported as a hunch -- *the odd alignments came in with vaults, not with the
+camera* -- and the hunch was right.
+
+`_connect_vaults` aims a corridor at one of the vault's own doors. But it
+carves an **L**, and `_carve_h`/`_carve_v` silently skip protected vault ground.
+When the first leg of the L crossed the vault, the corridor came out with a
+hole punched in its middle and never landed. The connectivity net then rescued
+the level by forcing a passage through the vault wall somewhere else entirely
+-- which is exactly the "corridor arriving at an odd angle" that got noticed.
+
+Choosing the L ordering that keeps the path out of the vault took **vaults with
+a punched wall from 18.5% to 7.9%** over 432 placed vaults. Pairing every door
+against every room and taking the shortest run took it to 7.6%.
+
+One idea measured and thrown away: walking the corridor a few cells straight
+out of the door before turning, on the theory that it would stop a leg running
+along the wall. It came out *worse*, 8.1%, because the extra length simply
+meets other geometry. The comment recording that is in the source, so nobody
+tries it twice.
+
+### Both threat ceilings are checked now
+
+Rooms were asserted against `room_threat_ceiling()`; **caves never were**, and
+they carry their own higher budget. An unchecked budget is not a budget. Now
+2549 rooms and 260 caves across depths 1-8.
+
+### A test that was a coin toss
+
+`_test_shrines_appear` asserted 36 of 40 floors against a true rate of ~95%,
+so roughly one reshuffle of the generator in six failed it by chance. It duly
+did. Measuring 400 seeds either side of the change showed the rate had moved
+from 94.8% to **95.2%** -- the sample was the bug, not the dungeon. It runs 200
+seeds now.
+
 ## Three connectivity bugs, found from one screenshot
 
 Reported from play: *a brazier in the shrine is blocking the entrance*, plus a

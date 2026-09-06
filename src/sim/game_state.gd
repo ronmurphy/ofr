@@ -363,6 +363,21 @@ func build_level() -> void:
 
 ## Decoration can now put a pillar or a brazier on a room's exact centre, so
 ## neither the player nor the stairs can simply be dropped there any more.
+## Somewhere a thing can be left lying, or something can stand.
+##
+## Walkable is not enough, and this is the second time that has bitten.
+## Pits and traps are both walkable -- they have to be, or you could never
+## step into one -- so `is_walkable` alone happily puts a dagger on a hole in
+## the floor. That is not a hazard, it is a hazard BAITED: you cross the room
+## to pick the thing up and lose a floor doing it. Reported from play, and it
+## cost the run it happened in.
+##
+## The same rule keeps monsters off them. A monster standing on a pit is stuck
+## there forever, because the pathfinder treats avoided ground as solid and so
+## cannot plan a single step out of it.
+func _can_rest_on(x: int, y: int) -> bool:
+	return map.is_walkable(x, y) and not Tiles.is_avoided(map.get_tile(x, y))
+
 func _open_cell_in(room: Rect2i) -> Vector2i:
 	var c := room.get_center()
 	var best := c
@@ -480,7 +495,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 	if rng.randf() < 0.55:
 		var ix := rng.randi_range(room.position.x, room.end.x - 1)
 		var iy := rng.randi_range(room.position.y, room.end.y - 1)
-		if map.is_walkable(ix, iy) and Vector2i(ix, iy) != stairs and items_at(ix, iy).is_empty():
+		if _can_rest_on(ix, iy) and Vector2i(ix, iy) != stairs and items_at(ix, iy).is_empty():
 			var loot := Item.roll(rng, effective_depth())
 			if loot != null:
 				loot.x = ix
@@ -522,7 +537,7 @@ func _spawn_in(area: Rect2i, remaining: int) -> int:
 func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
 	var mx := at.x
 	var my := at.y
-	if not map.is_walkable(mx, my) or entity_at(mx, my) != null:
+	if not _can_rest_on(mx, my) or entity_at(mx, my) != null:
 		return 0
 	if Vector2i(mx, my) == stairs or Vector2i(mx, my) == Vector2i(player.x, player.y):
 		return 0
@@ -577,12 +592,21 @@ func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
 
 ## Whatever a corpse leaves behind.
 func _drop_loot(victim: Entity) -> void:
+	# Where it fell, unless where it fell is a hole. Nothing can spawn on a
+	# hazard any more, but a monster can be pushed or blinked onto one later.
+	var at := Vector2i(victim.x, victim.y)
+	if not _can_rest_on(at.x, at.y):
+		at = _nearest_restable(at)
+		if at.x < 0:
+			victim.equipped.clear()
+			victim.inventory.clear()
+			return
 	for slot in victim.equipped:
 		var it: Item = victim.equipped[slot]
 		if rng.randf() > LOOT_DROP_CHANCE:
 			continue
-		it.x = victim.x
-		it.y = victim.y
+		it.x = at.x
+		it.y = at.y
 		it.letter = ""
 		ground.append(it)
 		msg_log.add("It drops the %s." % it.display_name(), Color(0.72, 0.78, 0.90))
@@ -622,12 +646,34 @@ func _place_vault_contents(gen: MapGen) -> void:
 			"}":
 				_drop_item_at(_roll_launcher(), at)
 
+## Vault loot goes where the author put it -- unless a later pass turned that
+## cell into a hazard, in which case it is nudged to a neighbour rather than
+## dropped down a hole.
 func _drop_item_at(it: Item, at: Vector2i) -> void:
 	if it == null:
 		return
-	it.x = at.x
-	it.y = at.y
+	var where := at
+	if not _can_rest_on(where.x, where.y):
+		where = _nearest_restable(at)
+		if where.x < 0:
+			return
+	it.x = where.x
+	it.y = where.y
 	ground.append(it)
+
+## The closest cell something can safely sit on, searched outward. Returns
+## (-1, -1) when there is nowhere, which is possible in a tightly authored
+## vault and means the item is simply not placed.
+func _nearest_restable(at: Vector2i) -> Vector2i:
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var c := at + Vector2i(dx, dy)
+				if _can_rest_on(c.x, c.y) and items_at(c.x, c.y).is_empty():
+					return c
+	return Vector2i(-1, -1)
 
 func _roll_launcher() -> Item:
 	var pool := []
