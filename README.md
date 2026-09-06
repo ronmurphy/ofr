@@ -44,7 +44,8 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 
 | | |
 |---|---|
-| arrows, `hjklyubn`, numpad | move (8-way); move into something to attack it |
+| `hjklyubn`, numpad | move in **eight** directions; move into something to attack it |
+| arrow keys | move in **four** directions only -- they have no diagonals |
 | `.` or numpad `5` | wait a turn |
 | `>` | descend, when standing on stairs |
 | `x` or `;` | look mode: drive a cursor with the movement keys, `esc` to exit |
@@ -740,6 +741,63 @@ reachable at all) and carving between any regions it finds separated.
 A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
+
+## Diagonals
+
+Reported by the person who built the game, after playing it for a week: he did
+not know he could move diagonally.
+
+He uses a keyboard with no number pad and had been playing on the arrow keys,
+which are orthogonal only, while every monster on the floor moved and struck in
+eight directions. The sidebar said `arrows / hjklyubn  move`, which reads as
+though the two are the same thing. They are not, and nothing anywhere said so.
+
+Worth being blunt about the consequence: **every difficulty judgement made
+before this was made by a player with four directions against enemies with
+eight.** "I have never made it past floor 3" may be substantially this.
+
+The fix is a picture rather than a sentence, in the `?` legend:
+
+        y k u     7 8 9
+         \|/       \|/
+        h-@-l     4-@-6
+         /|\       /|\
+        b j n     1 2 3
+        the arrow keys give you four directions, not eight
+
+### The corner rule
+
+Chasing that down turned up a second thing. **Four pieces of code moved
+something, and only one obeyed the corner rule.**
+
+Hunting monsters route through `AStarGrid2D` with
+`DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES`, so they never cut between two solid
+cells. The player, a fleeing monster and an erratic one all moved directly and
+checked only whether the destination was walkable -- so all three could slip
+through a wall joint that a hunter had to walk six turns around. A monster
+could be shaken off by stepping through a gap it was not allowed to follow you
+into.
+
+That was not a designed advantage, it was two code paths disagreeing. The
+comment in `pathfinder.gd` even claimed the opposite was happening -- that the
+rule existed to stop monsters using gaps the player could not.
+
+`GameState.can_step` is now the single rule, and a test walks **31,880
+diagonals across eight dungeons** asserting it agrees with the pathfinder
+everywhere. The one deliberate disagreement is pits and traps: they are
+walkable but the pathfinder treats them as solid, so auto-travel routes around
+rather than dropping you down a hole. Stepping into a pit stays a decision the
+player is allowed to make.
+
+**Reach is untouched.** Attacks stay eight-way for everyone, including around a
+corner. Only the *step* is something walls get a say in.
+
+### Where reference material lives
+
+The sidebar had grown a sixteen-row key block that had stopped being a
+reference and started being wallpaper. It now shows six keys plus `?`, and the
+legend carries the full list -- generated from the same table, so the short
+version cannot drift from the long one.
 
 ## Three connectivity bugs, found from one screenshot
 

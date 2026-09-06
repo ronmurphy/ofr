@@ -20,24 +20,39 @@ var _hit_at := -10.0
 const PAD := 14.0
 const LINE := 21.0
 
+## The canonical key table. The third column marks the handful worth keeping
+## permanently on screen -- the legend draws all of them, this panel draws only
+## those, because a sixteen-row block at the bottom of the sidebar had stopped
+## being a reference and started being wallpaper.
+##
+## One list rather than two, so the short version cannot drift from the long
+## one as keys are added.
 const KEYS := [
-	["arrows / hjklyubn", "move"],
-	[". or 5", "wait / rest"],
-	[">", "descend"],
-	["<", "ascend"],
-	["x", "look"],
-	["g", "pick up"],
-	["i", "inventory"],
-	["t", "torch"],
-	["f / right-click", "shoot"],
-	["f (no bow)", "throw"],
-	["p", "pray at a shrine"],
-	["?", "legend"],
-	["m  - +", "sound"],
-	["v", "letters / symbols"],
-	["esc", "menu"],
-	["click", "travel"],
+	["arrows / hjklyubn", "move", true],
+	[". or 5", "wait / rest", true],
+	[">", "descend", false],
+	["<", "ascend", false],
+	["x", "look", true],
+	["g", "pick up", true],
+	["i", "inventory", true],
+	["t", "torch", false],
+	["f / right-click", "shoot", true],
+	["f (no bow)", "throw", false],
+	["p", "pray at a shrine", false],
+	["m  - +", "sound", false],
+	["v", "letters / symbols", false],
+	["esc", "menu", false],
+	["click", "travel", false],
 ]
+
+## What the sidebar itself shows: the essentials, plus the way to everything.
+static func essential_keys() -> Array:
+	var out := []
+	for row in KEYS:
+		if row[2]:
+			out.append(row)
+	out.append(["?", "all keys", true])
+	return out
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -175,14 +190,15 @@ func _draw() -> void:
 		_line(font, y, _fit(text), Palette.UI_TEXT)
 		y += LINE
 
-	# Derived from the list, not a hand-counted constant. Adding "m - + sound"
-	# to KEYS pushed the last row's baseline exactly onto the frame with the
-	# old literal 15.0 -- the fourth time something in this panel has overrun
-	# its edge because a number had to be kept in step with a list by hand.
-	y = size.y - PAD - LINE * float(KEYS.size() + 1)
+	# Derived from the list, not a hand-counted constant. Adding a row to KEYS
+	# once pushed the last baseline exactly onto the frame with a hard-coded
+	# number -- the fourth time something in this panel had overrun its edge
+	# because a count had to be kept in step with a list by hand.
+	var shown := essential_keys()
+	y = size.y - PAD - LINE * float(shown.size() + 1)
 	_line(font_bold, y, "KEYS", Palette.UI_DIM)
 	y += LINE
-	for row in KEYS:
+	for row in shown:
 		_key_row(y, row[0], row[1])
 		y += LINE
 

@@ -438,6 +438,30 @@ func item_can_upgrade(item: Item) -> bool:
 	return item.is_equipment() and item.upgrade_level() < upgrade_cap()
 
 ## What a step onto this cell costs, for this actor.
+## Whether a step from (fx, fy) to (nx, ny) is legal.
+##
+## The corner rule: a diagonal step needs BOTH of the orthogonal cells beside
+## it open. This is exactly what AStarGrid2D enforces with
+## DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES, and the point of putting it here is that
+## there were four ways to move and only one of them obeyed it.
+##
+## Hunting monsters route through the pathfinder, so they always did. The
+## player, a fleeing monster and an erratic one all moved directly and checked
+## only whether the destination was walkable -- so all three could slip through
+## the joint between two walls that a hunter had to walk around. Six turns
+## around, one turn through: a monster could be shaken off by stepping through
+## a gap it was not allowed to follow you into.
+##
+## Attacks are deliberately NOT subject to this. Reach stays eight-way for
+## everyone, which is what players expect and is symmetric. It is only the step
+## that the walls get a say in.
+func can_step(fx: int, fy: int, nx: int, ny: int) -> bool:
+	if not map.is_walkable(nx, ny):
+		return false
+	if nx == fx or ny == fy:
+		return true
+	return map.is_walkable(nx, fy) and map.is_walkable(fx, ny)
+
 func move_cost_for(actor: Entity, x: int, y: int) -> int:
 	if actor.flying:
 		return Scheduler.ACTION_COST
@@ -848,7 +872,7 @@ func player_move(dx: int, dy: int) -> bool:
 		_end_player_turn()
 		return true
 
-	if not map.is_walkable(nx, ny):
+	if not can_step(player.x, player.y, nx, ny):
 		return false
 
 	if map.get_tile(nx, ny) == Tiles.PIT:
@@ -1893,7 +1917,7 @@ func _step_random(actor: Entity) -> void:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if map.is_walkable(nx, ny) and entity_at(nx, ny) == null:
+			if can_step(actor.x, actor.y, nx, ny) and entity_at(nx, ny) == null:
 				opts.append(Vector2i(nx, ny))
 	if opts.is_empty():
 		return
@@ -1913,7 +1937,7 @@ func _step_away(actor: Entity) -> bool:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if not map.is_walkable(nx, ny) or entity_at(nx, ny) != null:
+			if not can_step(actor.x, actor.y, nx, ny) or entity_at(nx, ny) != null:
 				continue
 			var d := Los.steps(nx, ny, player.x, player.y)
 			if d > best_d:

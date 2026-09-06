@@ -78,7 +78,8 @@ func _draw() -> void:
 
 	# Sized to its contents rather than to the screen: a panel with two thirds
 	# of it empty reads as unfinished.
-	var tallest := maxi(maxi(_terrain_lines(), _creature_lines()), _item_lines())
+	var tallest := maxi(maxi(_terrain_lines(), _creature_lines()),
+		maxi(_item_lines(), _control_lines()))
 	var wanted := PAD * 2.0 + 34.0 + float(tallest) * LINE + 10.0
 	var h := minf(wanted, size.y - 48.0)
 	var panel := Rect2(Vector2(24.0, (size.y - h) * 0.5), Vector2(size.x - 48.0, h))
@@ -92,11 +93,12 @@ func _draw() -> void:
 		"esc or click to close", HORIZONTAL_ALIGNMENT_RIGHT,
 		panel.size.x - PAD * 2.0, font_size, Palette.UI_DIM)
 
-	var col_w := (panel.size.x - PAD * 2.0) / 3.0
+	var col_w := (panel.size.x - PAD * 2.0) / 4.0
 	var top := panel.position.y + PAD + 34.0
 	_terrain_column(panel.position.x + PAD, top, col_w)
 	_creature_column(panel.position.x + PAD + col_w, top, col_w)
 	_item_column(panel.position.x + PAD + col_w * 2.0, top, col_w)
+	_control_column(panel.position.x + PAD + col_w * 3.0, top, col_w)
 
 ## Line counts, so the panel can be sized before anything is drawn.
 func _terrain_lines() -> int:
@@ -107,6 +109,9 @@ func _creature_lines() -> int:
 
 func _item_lines() -> int:
 	return 1 + 6 + 1 + 1 + Shrines.COUNT
+
+func _control_lines() -> int:
+	return 1 + MOVE_ART.size() + 2 + 1 + 1 + Sidebar.KEYS.size()
 
 func _heading(x: float, y: float, text: String) -> float:
 	draw_string(font_bold, Vector2(x, y + font.get_ascent(font_size)), text,
@@ -126,6 +131,49 @@ func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 			HORIZONTAL_ALIGNMENT_RIGHT, w - NAME_X - 12.0, font_size - 2,
 			Palette.UI_DIM)
 	return y + LINE
+
+## The eight-way movement scheme, drawn rather than described.
+##
+## This exists because the person who built the game did not know he could move
+## diagonally. He was playing on a keyboard with no number pad, using the arrow
+## keys -- which are orthogonal only -- while every monster on the floor moved
+## and struck in eight directions. The sidebar said "arrows / hjklyubn  move",
+## which reads as though the two are the same thing.
+##
+## A picture says in one glance what that line failed to say at all.
+const MOVE_ART := [
+	" y k u     7 8 9",
+	"  \\|/       \\|/",
+	" h-@-l     4-@-6",
+	"  /|\\       /|\\",
+	" b j n     1 2 3",
+]
+
+## A line of the movement diagram: monospace art, with no glyph/name split.
+func _art(x: float, y: float, text: String, tint: Color) -> float:
+	draw_string(font, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
+	return y + LINE
+
+func _control_column(x: float, y: float, w: float) -> void:
+	y = _heading(x, y, "MOVEMENT")
+	for line in MOVE_ART:
+		y = _art(x, y, line, Palette.UI_TEXT)
+	# The one sentence this whole column exists to deliver.
+	y = _art(x, y, "the arrow keys give you", Palette.AMULET)
+	y = _art(x, y, "four directions, not eight", Palette.AMULET)
+
+	y += LINE * 0.6
+	y = _heading(x, y, "KEYS")
+	# Straight from the sidebar's table, so the two can never disagree about
+	# what a key does.
+	for row in Sidebar.KEYS:
+		var base := y + font.get_ascent(font_size)
+		draw_string(font, Vector2(x + GLYPH_X, base), row[0],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 1, Palette.UI_DIM)
+		draw_string(font, Vector2(x + GLYPH_X, base), row[1],
+			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1, Palette.UI_TEXT)
+		y += LINE
 
 func _look(id: StringName) -> Dictionary:
 	# The active theme, not the ASCII table: a legend that keeps showing
@@ -185,6 +233,8 @@ func _item_column(x: float, y: float, w: float) -> void:
 		var known: bool = state.shrine_known.has(kind)
 		# The theme's shrine glyph, not a literal -- the colour is per-shrine but
 		# the shape has to follow the view mode like everything else.
+		# No trailing "?" any more. With four columns it ended up hard against
+		# the key list and read as though it belonged to those rows instead --
+		# and "not yet used" already says the same thing in words.
 		y = _entry(x, y, w, String(_look(&"shrine")["ch"]), state.shrine_hue(kind),
-			Shrines.NAMES[kind] if known else "not yet used",
-			"" if known else "?")
+			Shrines.NAMES[kind] if known else "not yet used")

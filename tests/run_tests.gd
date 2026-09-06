@@ -89,6 +89,7 @@ func _initialize() -> void:
 	_test_panels_do_not_overflow()
 	_test_symbol_theme()
 	_test_no_decoration_plugs_a_way()
+	_test_corners_stop_everyone_equally()
 	_report_encounter_curve()
 
 	print("")
@@ -2587,7 +2588,7 @@ func _test_panels_do_not_overflow() -> void:
 	var side_limit: float = float(widths.get("Sidebar", 256.0)) - Sidebar.PAD * 2.0
 	var worst := ""
 	var worst_w := 0.0
-	for row in Sidebar.KEYS:
+	for row in Sidebar.essential_keys():
 		var a := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 		var b := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 		if a + b > worst_w:
@@ -2600,7 +2601,7 @@ func _test_panels_do_not_overflow() -> void:
 
 	# The KEYS block is anchored to the bottom of the panel by its own length,
 	# which is the fix that stopped the last recurrence.
-	var keys_h := Sidebar.LINE * float(Sidebar.KEYS.size() + 1) + Sidebar.PAD
+	var keys_h := Sidebar.LINE * float(Sidebar.essential_keys().size() + 1) + Sidebar.PAD
 	var side_h: float = 736.0 - 16.0
 	check("the keys block fits above the frame edge", keys_h < side_h,
 		"%.0f >= %.0f px" % [keys_h, side_h])
@@ -2753,3 +2754,94 @@ func _test_no_decoration_plugs_a_way() -> void:
 	check("no door leads nowhere (%d levels)" % levels, plugged.is_empty(), str(plugged))
 	check("every shrine can be reached (%d shrines)" % shrines,
 		stranded.is_empty(), str(stranded))
+
+
+## Reported by the person who built the game: he had never moved diagonally.
+##
+## He plays on a keyboard with no number pad, using the arrow keys, which are
+## orthogonal only -- while every monster on the floor moved and struck in
+## eight directions. That is the reason the legend now draws the movement
+## scheme instead of describing it.
+##
+## Chasing it down turned up a second thing. Four pieces of code moved something
+## and only ONE obeyed the corner rule: hunting monsters route through
+## AStarGrid2D, which refuses to cut between two solid cells. The player, a
+## fleeing monster and an erratic one all moved directly and checked only
+## whether the destination was walkable. So three of the four could slip through
+## a wall joint that a hunter had to walk six turns around.
+func _test_corners_stop_everyone_equally() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	# A hard corner: both cells between (5,5) and (6,4) are wall.
+	gs.map.set_tile(6, 5, Tiles.WALL)
+	gs.map.set_tile(5, 4, Tiles.WALL)
+	gs.pathfinder = Pathfinder.new(gs.map)
+
+	check("a diagonal step through a hard corner is refused",
+		not gs.can_step(5, 5, 6, 4))
+	check("the player cannot take it either",
+		not gs.player_move(1, -1))
+	check("and has not moved", gs.player.x == 5 and gs.player.y == 5)
+
+	# One wall is enough to make it a corner; neither alone is.
+	gs.map.set_tile(5, 4, Tiles.FLOOR)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	check("one wall beside a diagonal still blocks it",
+		not gs.can_step(5, 5, 6, 4))
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	check("an open diagonal is fine", gs.can_step(5, 5, 6, 4))
+	check("so are all four orthogonals",
+		gs.can_step(5, 5, 6, 5) and gs.can_step(5, 5, 4, 5)
+		and gs.can_step(5, 5, 5, 4) and gs.can_step(5, 5, 5, 6))
+
+	# The rule must agree with the pathfinder, or monsters and the player are
+	# playing on two different maps again.
+	var mismatch := 0
+	var checked := 0
+	for seed_v in range(1, 9):
+		var g := GameState.new(seed_v)
+		g.new_game()
+		for y in range(1, g.map.height - 1):
+			for x in range(1, g.map.width - 1):
+				# The pathfinder cannot start from a cell it treats as solid
+				# either, so an avoided origin is not a fair comparison for the
+				# same reason an avoided destination is not.
+				if not g.map.is_walkable(x, y) \
+						or Tiles.is_avoided(g.map.get_tile(x, y)):
+					continue
+				for d: Vector2i in [Vector2i(1, 1), Vector2i(-1, 1),
+						Vector2i(1, -1), Vector2i(-1, -1)]:
+					var to := Vector2i(x + d.x, y + d.y)
+					if not g.map.is_walkable(to.x, to.y):
+						continue
+					# Pits and traps are walkable but the pathfinder treats them
+					# as solid, so auto-travel routes around rather than
+					# dropping you down a hole. That disagreement is deliberate
+					# -- stepping into a pit is a decision the player is allowed
+					# to make -- so those cells are not a fair comparison.
+					if Tiles.is_avoided(g.map.get_tile(to.x, to.y)) \
+							or Tiles.is_avoided(g.map.get_tile(to.x, y)) \
+							or Tiles.is_avoided(g.map.get_tile(x, to.y)):
+						continue
+					checked += 1
+					var mine := g.can_step(x, y, to.x, to.y)
+					# One step from the pathfinder means it took the diagonal.
+					var theirs := g.pathfinder.path(Vector2i(x, y), to).size() == 1
+					if mine != theirs:
+						mismatch += 1
+	check("the step rule matches the pathfinder (%d diagonals)" % checked,
+		mismatch == 0, "%d disagreements" % mismatch)
+
+	# Reach is deliberately untouched: eight-way for everyone.
+	var gs2 := _arena(21, 11)
+	gs2.player.x = 5
+	gs2.player.y = 5
+	gs2.map.set_tile(6, 5, Tiles.WALL)
+	gs2.map.set_tile(5, 4, Tiles.WALL)
+	var foe := _spawn(gs2, "kobold", 6, 4)
+	check("but reach is still eight-way", foe.is_adjacent(gs2.player))
+	var before := foe.hp
+	gs2.player_move(1, -1)
+	check("so a diagonal attack through a corner still lands", foe.hp < before)
