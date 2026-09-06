@@ -41,6 +41,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
     tools/build_web.sh                                  # web export, zipped for itch.io
     python3 tools/web_smoke.py /tmp/shots               # drive the web build in a real browser
     tools/check_user_files.sh                           # prove no tool writes to a player's files
+    python3 tools/check_palette.py                      # can you tell two creatures apart by colour alone
     python3 tools/fetch_web_templates.py <dir>          # web export templates, 88MB not 1.28GB
 
 ## Controls
