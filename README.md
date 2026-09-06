@@ -56,6 +56,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | hover | inspect a cell; the route there is previewed as dots |
 | `?` or `F1` | legend: every glyph in the game, generated from the tables |
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
+| `w` | swap between your best launcher and your best blade (costs a turn) |
 | `v` | cycle the view: letters or symbols |
 | `R` | new game |
 
@@ -741,6 +742,55 @@ reachable at all) and carving between any regions it finds separated.
 A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
+
+## The offhand, and swapping reach for blade
+
+Both of these answer one measured fact. Toe to toe with a young dragon, the
+same character wins **100% of the time holding a war axe and 0% holding a war
+bow** -- swinging a launcher halves your base power, so every blow lands at the
+damage floor. In the run that prompted this, the axe was in the pack the whole
+time and nothing on screen said so.
+
+### `w` -- swap reach for blade
+
+One key, between the best launcher you carry and the best blade. It costs a
+turn, like any change of equipment. Free, and you could shoot, swap and strike
+in a single turn, which would undo the entire reason an archer fears being
+closed with.
+
+### The sidebar was lying
+
+`power` alone is not true with a launcher in hand, so it now reads
+`15  melee 4` when one is equipped. The number that decides a melee exchange
+belongs beside the number that decides a shot.
+
+### Shields
+
+A third equipment slot, and **a launcher claims it**: bows and slings are two
+handed. That turns "bow or blade" from a damage question into a posture.
+
+    buckler        +1 defense    depth 1+
+    kite shield    +2 defense    depth 3+
+    tower shield   +3 defense    depth 6+
+
+The values are derived rather than chosen. Damage never falls below a quarter
+of the attacker's power, so defense buys **nothing** past the point where an
+enemy already hits the floor -- and those points are known:
+
+| | defense that floors it | | |
+|---|---|---|---|
+| cave troll | 7 | shadow | 10 |
+| wight, stone golem | 8 | young dragon | **11** |
+| wyvern | 9 | | |
+
+Base defense is 4 by level 9 and plate mail is 5, so a well-equipped character
+already sits at nine. That makes the ladder read cleanly: a **buckler floors
+the shadow**, a **kite shield floors the young dragon**, and a **tower shield**
+buys one point of margin past everything in the game. Anything larger would do
+literally nothing, which is why the shields are small.
+
+Reach was already paid for in damage -- at every tier the ranged option is
+about two points weaker than the melee one. Now it is paid for in defense too.
 
 ## Forging consumables
 

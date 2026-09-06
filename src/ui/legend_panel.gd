@@ -108,7 +108,7 @@ func _creature_lines() -> int:
 	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 3
 
 func _item_lines() -> int:
-	return 1 + 6 + 1 + 1 + Shrines.COUNT
+	return 1 + 7 + 1 + 1 + Shrines.COUNT
 
 func _control_lines() -> int:
 	return 1 + MOVE_ART.size() + 2 + 1 + 1 + Sidebar.KEYS.size()
@@ -220,7 +220,8 @@ func _item_column(x: float, y: float, w: float) -> void:
 	y = _heading(x, y, "WHAT YOU CAN CARRY")
 	for pair in [[&"potion", "potions"], [&"scroll", "scrolls"],
 			[&"weapon", "melee weapons"], [&"launcher", "slings and bows"],
-			[&"armour", "armour"], [&"amulet", "the Amulet of the Deep"]]:
+			[&"armour", "armour"], [&"shield", "shields, not with a bow"],
+			[&"amulet", "the Amulet of the Deep"]]:
 		var art := _look(pair[0])
 		y = _entry(x, y, w, art["ch"], art["fg"], pair[1], "")
 

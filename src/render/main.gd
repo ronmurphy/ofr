@@ -228,6 +228,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_refresh()
 		return
 
+	# Reach or blade, in one key. The trap it answers: a war bow in hand loses
+	# to a young dragon every time, a war axe wins every time, and the axe was
+	# in the pack.
+	if key == KEY_W:
+		if state.player_swap_weapon():
+			_refresh()
+		else:
+			_refresh()
+		return
+
 	if key == KEY_R:
 		_start_new_run()
 		return

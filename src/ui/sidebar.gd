@@ -37,6 +37,7 @@ const KEYS := [
 	["i", "inventory", true],
 	["t", "torch", false],
 	["f / right-click", "shoot", true],
+	["w", "swap reach / blade", true],
 	["f (no bow)", "throw", false],
 	["p", "pray at a shrine", false],
 	["m  - +", "sound", false],
@@ -140,7 +141,16 @@ func _draw() -> void:
 
 	# Totals, not base values -- what the player needs is the number that
 	# actually goes into the damage roll.
-	_stat_row(y, "power", str(p.total_power()), p.total_power() != p.power)
+	# With a launcher in hand, `power` alone is a lie. Swinging a bow halves
+	# your BASE power and the blow lands at the damage floor -- which is how a
+	# character reading "power 15" loses to a young dragon every single time
+	# while a war axe wins every single time. The number that decides a melee
+	# exchange belongs on screen next to the one that decides a shot.
+	if p.total_range() > 1:
+		_stat_row(y, "power", "%d  melee %d"
+			% [p.total_power(), maxi(1, int(p.power / 2))], true)
+	else:
+		_stat_row(y, "power", str(p.total_power()), p.total_power() != p.power)
 	y += LINE
 	_stat_row(y, "defense", str(p.total_defense()), p.total_defense() != p.defense)
 	y += LINE
@@ -153,6 +163,11 @@ func _draw() -> void:
 		_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
 	y += LINE
 	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
+	y += LINE
+	# Shown even when empty, so the slot's existence is discoverable without
+	# having to find a shield first.
+	_stat_row(y, "offhand", _slot_name(p, Item.Slot.OFFHAND),
+		p.equipped.has(Item.Slot.OFFHAND))
 	y += LINE
 	# Footing, because the energy cost of mud was working perfectly and was
 	# entirely invisible: one keypress still looked like one turn.

@@ -55,6 +55,7 @@ const OVERRIDES := {
 	&"weapon":   {"ch": "†"},
 	&"launcher": {"ch": "➜"},
 	&"armour":   {"ch": "◫"},
+	&"shield":   {"ch": "▽"},
 }
 
 func appearance(id: StringName) -> Dictionary:

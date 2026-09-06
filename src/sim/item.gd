@@ -8,7 +8,9 @@ extends RefCounted
 ## adding one now would be inventing a dependency that isn't there.
 
 enum Kind { POTION, SCROLL, WEAPON, ARMOR, AMULET }
-enum Slot { NONE = -1, WEAPON, ARMOR }
+## OFFHAND is the shield hand. A launcher claims it -- see is_two_handed --
+## which is what turns "bow or blade" from a damage question into a posture.
+enum Slot { NONE = -1, WEAPON, ARMOR, OFFHAND }
 
 var id: StringName
 var name: String
@@ -105,6 +107,36 @@ const CATALOGUE := {
 		"slot": Slot.WEAPON, "power": 5, "range": 8, "min_depth": 6, "weight": 3,
 	},
 
+	## Shields. Kind.ARMOR so the inventory filter and the "wear" verb both find
+	## them; Slot.OFFHAND so they sit beside a weapon rather than instead of
+	## armour.
+	##
+	## The values are derived, not chosen. Damage never falls below a quarter of
+	## the attacker's power, so defense buys nothing past the point where an
+	## enemy is already hitting the floor -- and those points are known:
+	##
+	##     cave troll  def 7      shadow        def 10
+	##     wight       def 8      young dragon  def 11
+	##     wyvern      def 9
+	##
+	## Base defense is 4 by level 9 and plate mail is 5, so nine is where a
+	## well-equipped character already sits. That makes the ladder read cleanly:
+	## a buckler floors the shadow, a kite shield floors the young dragon, and a
+	## tower shield buys one point of margin past everything in the game. Any
+	## larger and the extra would do literally nothing.
+	&"buckler": {
+		"name": "buckler", "app": &"shield", "kind": Kind.ARMOR,
+		"slot": Slot.OFFHAND, "defense": 1, "min_depth": 1, "weight": 6,
+	},
+	&"kite_shield": {
+		"name": "kite shield", "app": &"shield", "kind": Kind.ARMOR,
+		"slot": Slot.OFFHAND, "defense": 2, "min_depth": 3, "weight": 4,
+	},
+	&"tower_shield": {
+		"name": "tower shield", "app": &"shield", "kind": Kind.ARMOR,
+		"slot": Slot.OFFHAND, "defense": 3, "min_depth": 6, "weight": 2,
+	},
+
 	&"leather_armour": {
 		"name": "leather armour", "app": &"armour", "kind": Kind.ARMOR,
 		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7,
@@ -178,13 +210,23 @@ func is_throwable() -> bool:
 func is_equipment() -> bool:
 	return slot != Slot.NONE
 
+## A launcher needs both hands, so it cannot be carried with a shield.
+##
+## This is the whole point of the offhand slot. Reach was already paid for in
+## damage -- at every tier the ranged option is about two points weaker than
+## the melee one -- and now it is paid for in defense as well. "Bow or blade"
+## stops being a damage question and becomes a posture: strike first from
+## eight cells, or be harder to kill up close.
+func is_two_handed() -> bool:
+	return is_equipment() and range_bonus > 1
+
 ## What the item does when clicked, for messages and the inventory hint.
 func verb() -> String:
 	match kind:
 		Kind.POTION: return "drink"
 		Kind.SCROLL: return "read"
 		Kind.WEAPON: return "wield"
-		Kind.ARMOR:  return "wear"
+		Kind.ARMOR:  return "raise" if slot == Slot.OFFHAND else "wear"
 		Kind.AMULET: return "carry"
 	return "use"
 

@@ -92,6 +92,7 @@ func _initialize() -> void:
 	_test_corners_stop_everyone_equally()
 	_test_nothing_rests_on_a_hazard()
 	_test_consumables_forge()
+	_test_offhand_and_swap()
 	_report_encounter_curve()
 
 	print("")
@@ -3017,3 +3018,89 @@ func _test_consumables_forge() -> void:
 		"pow": 0, "def": 0}
 	check("and an older save still loads as a plain one",
 		Item.from_dict(older).effective_magnitude() == 12)
+
+
+## Shields, and the swap between reach and blade.
+##
+## Both exist because of one measured fact: toe to toe with a young dragon the
+## same character wins 100% of the time holding a war axe and 0% holding a war
+## bow, because swinging a launcher halves your power and every blow lands at
+## the damage floor. The axe was in the pack the whole time and nothing on
+## screen said so.
+func _test_offhand_and_swap() -> void:
+	# The shield values are derived from where each monster stops being able to
+	# hit harder, so those thresholds are worth pinning down.
+	var floors := {}
+	for e in GameState.BESTIARY:
+		var atk := int(e["power"])
+		floors[String(e["name"])] = atk + 1 - int(ceil(float(atk)
+			* GameState.DAMAGE_FLOOR_FRACTION))
+	check("a buckler floors the shadow at base 4 plus plate",
+		4 + 5 + 1 >= int(floors["shadow"]), str(floors["shadow"]))
+	check("a kite shield floors the young dragon",
+		4 + 5 + 2 >= int(floors["young dragon"]), str(floors["young dragon"]))
+	check("a tower shield buys margin past everything",
+		4 + 5 + 3 > int(floors["young dragon"]))
+
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.defense = 4
+	var plate := Item.make(&"plate_mail")
+	var kite := Item.make(&"kite_shield")
+	var axe := Item.make(&"war_axe")
+	var bow := Item.make(&"war_bow")
+	for it in [plate, kite, axe, bow]:
+		gs.give_item(it)
+
+	gs.player_use(gs.player.inventory.find(plate))
+	gs.player_use(gs.player.inventory.find(kite))
+	check("a shield sits beside armour, not instead of it",
+		gs.player.is_equipped(plate) and gs.player.is_equipped(kite))
+	check("and both count toward defense (%d)" % gs.player.total_defense(),
+		gs.player.total_defense() == 4 + 5 + 2, str(gs.player.total_defense()))
+
+	# A launcher needs both hands.
+	gs.player_use(gs.player.inventory.find(bow))
+	check("taking up a bow puts the shield away",
+		gs.player.is_equipped(bow) and not gs.player.is_equipped(kite))
+	check("armour is untouched by that", gs.player.is_equipped(plate))
+	check("and defense drops back (%d)" % gs.player.total_defense(),
+		gs.player.total_defense() == 4 + 5)
+
+	# And the rule holds in reverse.
+	gs.player_use(gs.player.inventory.find(kite))
+	check("raising a shield puts the bow on your back",
+		gs.player.is_equipped(kite) and not gs.player.is_equipped(bow))
+
+	# A one-handed weapon coexists with a shield.
+	gs.player_use(gs.player.inventory.find(axe))
+	check("but a blade and a shield go together",
+		gs.player.is_equipped(axe) and gs.player.is_equipped(kite))
+
+	# The swap key.
+	var before := gs.turns
+	check("swapping from blade reaches for the bow", gs.player_swap_weapon())
+	check("the bow is now in hand", gs.player.is_equipped(bow))
+	check("which also cost the shield", not gs.player.is_equipped(kite))
+	check("and it cost a turn", gs.turns > before)
+	check("swapping back reaches for the blade", gs.player_swap_weapon())
+	check("the axe is in hand again", gs.player.is_equipped(axe))
+
+	# Nothing to swap to is refused rather than silently doing nothing.
+	var bare := _arena(21, 9)
+	bare.player.x = 5
+	bare.player.y = 4
+	bare.give_item(Item.make(&"war_axe"))
+	bare.player_use(0)
+	check("with no launcher carried, the swap is refused",
+		not bare.player_swap_weapon())
+
+	# Shields are forgeable like any other gear, and stack with the body.
+	var forge := _forge_arena()
+	forge.give_item(Item.make(&"buckler"))
+	forge.give_item(Item.make(&"buckler"))
+	check("a shield can be worked at a brazier", forge.player_merge(0))
+	check("gaining a point of defense",
+		forge.player.inventory[0].defense_bonus == 2,
+		str(forge.player.inventory[0].defense_bonus))

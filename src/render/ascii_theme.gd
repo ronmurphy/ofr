@@ -35,6 +35,9 @@ const TABLE := {
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
 	&"launcher":    {"ch": "}", "fg": Palette.LAUNCHER},
 	&"armour":      {"ch": "[", "fg": Palette.ARMOUR},
+	## Shields get their own glyph rather than sharing the armour "[", so a
+	## shield on the floor can be told from a breastplate without inspecting it.
+	&"shield":      {"ch": "(", "fg": Palette.ARMOUR},
 
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},

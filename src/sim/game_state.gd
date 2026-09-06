@@ -1423,6 +1423,63 @@ func _toggle_equip(item: Item) -> void:
 	else:
 		msg_log.add("You swap the %s for the %s." % [previous.name, item.name],
 			Color(0.80, 0.85, 0.95))
+	_free_the_other_hand(item)
+
+## A launcher needs both hands, so a bow and a shield cannot be carried at once.
+## Whichever was picked up last wins, and the other is put away rather than
+## silently ignored -- an equipment rule the player cannot see is a rule they
+## will think is a bug.
+func _free_the_other_hand(item: Item) -> void:
+	var displaced: Item = null
+	if item.is_two_handed():
+		displaced = player.equipped.get(Item.Slot.OFFHAND, null)
+		if displaced != null:
+			player.equipped.erase(Item.Slot.OFFHAND)
+	elif item.slot == Item.Slot.OFFHAND:
+		var held: Item = player.equipped.get(Item.Slot.WEAPON, null)
+		if held != null and held.is_two_handed():
+			displaced = held
+			player.equipped.erase(Item.Slot.WEAPON)
+	if displaced != null:
+		msg_log.add("You need both hands for that. The %s goes on your back."
+			% displaced.name, Color(0.85, 0.80, 0.62))
+
+## Swap between reach and blade: the best launcher you carry, and the best
+## melee weapon you carry.
+##
+## This exists because of a measured trap. Toe to toe with a young dragon, the
+## same character wins 100% of the time with a war axe and 0% with a war bow --
+## swinging a launcher halves your power, so every blow lands at the damage
+## floor. The axe was in the pack the whole time. One key turns that from a
+## menu dive into a reflex.
+##
+## It costs a turn, like any other change of equipment. Free, and you could
+## shoot, swap and strike in one turn, which would undo the whole reason an
+## archer fears being closed with.
+func player_swap_weapon() -> bool:
+	if game_over:
+		return false
+	var held: Item = player.equipped.get(Item.Slot.WEAPON, null)
+	var want_reach := held == null or not held.is_two_handed()
+	var best: Item = null
+	for it in player.inventory:
+		if it.slot != Item.Slot.WEAPON or it == held:
+			continue
+		if it.is_two_handed() != want_reach:
+			continue
+		# Reach for a launcher, raw power for a blade.
+		if best == null \
+				or (want_reach and it.range_bonus > best.range_bonus) \
+				or (not want_reach and it.power_bonus > best.power_bonus):
+			best = it
+	if best == null:
+		msg_log.add("You have nothing to swap to." if want_reach
+			else "You have no blade to fall back on.", Color(0.7, 0.6, 0.4))
+		return false
+	_travel.clear()
+	_toggle_equip(best)
+	_end_player_turn()
+	return true
 
 func player_drop(index: int) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
