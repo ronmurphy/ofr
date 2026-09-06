@@ -20,12 +20,6 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 window/size/viewport_width=1600
 window/size/viewport_height=900
 window/stretch/mode="canvas_items"
-; "keep", not "expand": the sidebar, log and grid sit at hand-measured
-; offsets for a 1600x900 surface, so a taller or wider viewport must be
-; letterboxed rather than handed extra logical space the layout will not
-; fill. This matters most in a browser, where the canvas is whatever
-; shape the page gives it.
-window/stretch/aspect="keep"
 
 [rendering]
 
