@@ -9,10 +9,16 @@ extends SceneTree
 ## between. Re-run it after touching XP_CURVE_A/B, XP_DEPTH_MULTIPLIER, the
 ## threat ceiling, or the bestiary.
 
+## Simulated characters die, and a death writes a line to the morgue. Without
+## this the measurement tool would fill the player's own death log with runs
+## nobody played.
+const SCRATCH := "xp_curve"
+
 const RUNS := 20
 const MAX_DEPTH := 10
 
 func _initialize() -> void:
+	GameState.use_scratch_files(SCRATCH)
 	print("")
 	print("  level thresholds:")
 	var probe := GameState.new(1)

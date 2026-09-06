@@ -743,6 +743,63 @@ A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
 
+## Two bugs about touching things you should not
+
+### An inventory letter you could never press
+
+Reported from play, and it cost a run's last potion. The pack assigned it the
+letter `i` -- and `i` closes the inventory. Every press shut the panel instead
+of drinking it. `shift+i` did not merge it either, because the close check runs
+first. The item was unreachable from the keyboard entirely.
+
+`f` was broken the same way inside the throw picker.
+
+The fix is that the pool never offers those letters: `LETTERS` is now
+`abcdeghjklmnopqrstuvwxyz`, 24 for a pack of 20. Reordering the key handling
+would have been worse -- `i` would then close the panel only when nothing
+happened to be lettered `i`, which is a rule nobody can hold in their head.
+
+A run suspended before this can still be carrying the stuck item, so loading
+one re-letters anything unreachable.
+
+`_test_no_key_steals_an_inventory_letter` **reads main.gd**, pulls every
+single-letter `KEY_*` handled while the inventory is open, and fails if one is
+not reserved. Verified by planting a bogus `KEY_Q` handler and watching it
+fail. Asserting the current list by hand would only have restated the bug.
+
+### The test suite was writing to the player's own files
+
+Worse, and found while chasing the first one.
+
+`SUSPEND_PATH` and `MORGUE_PATH` were constants, and the tests use them for
+real: `_test_suspend_round_trip` calls `clear_suspend()` and `save_suspend()`,
+and every death test appends a line to the morgue. So **each run of the suite
+deleted whatever run the player had suspended**, and filled their death log
+with fictional deaths. One player's morgue held 869 entries of which 868 were
+test output. A suspended run in progress was lost this way.
+
+Both are now `static var`, pointed somewhere harmless by the harnesses before
+anything runs, and cleaned up afterwards. `capture.gd` does the same, and keeps
+its backup-and-restore as well.
+
+It was three tools, not two: `audition.gd` instantiates the real scene as well
+and had the same hazard, unnoticed for a week. So the safe thing is now one
+named call rather than two assignments --
+
+    GameState.use_scratch_files("tests")   # at the top of every headless tool
+    GameState.clear_scratch_files()        # at the end
+
+-- because two assignments are two things to forget, and three tools forgot
+them independently.
+
+**Any tool under `tests/` that touches a GameState must call it.** Verified by
+planting a `suspend.save`, running every tool in the directory, and checking
+the file's checksum afterwards: untouched, morgue untouched, no scratch files
+left behind.
+
+The general shape: **a dev tool must not be able to write to a path the player
+owns.**
+
 ## The offhand, and swapping reach for blade
 
 Both of these answer one measured fact. Toe to toe with a young dragon, the

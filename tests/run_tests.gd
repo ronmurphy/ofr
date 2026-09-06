@@ -10,6 +10,13 @@ var _passed := 0
 var _failed := 0
 
 func _initialize() -> void:
+	# Point the save and the death log somewhere harmless BEFORE anything runs.
+	#
+	# This suite writes real files: the suspend tests call clear_suspend() and
+	# save_suspend(), and every death test appends a line to the morgue. While
+	# those paths were constants it did that to the player's own files, and it
+	# deleted a suspended run that was actually being played.
+	GameState.use_scratch_files("tests")
 	print("")
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
@@ -93,7 +100,12 @@ func _initialize() -> void:
 	_test_nothing_rests_on_a_hazard()
 	_test_consumables_forge()
 	_test_offhand_and_swap()
+	_test_inventory_letters_dodge_the_keys()
+	_test_no_key_steals_an_inventory_letter()
+	_test_an_older_save_still_loads()
 	_report_encounter_curve()
+
+	GameState.clear_scratch_files()
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -3104,3 +3116,145 @@ func _test_offhand_and_swap() -> void:
 	check("gaining a point of defense",
 		forge.player.inventory[0].defense_bonus == 2,
 		str(forge.player.inventory[0].defense_bonus))
+
+
+## Reported from play, and it cost a run's last potion.
+##
+## The pack assigned that potion the letter "i", and "i" closes the inventory.
+## Every press shut the panel instead of drinking it, shift+i did not merge it
+## either because the close check runs first, and there was no way to reach the
+## item from the keyboard at all.
+func _test_inventory_letters_dodge_the_keys() -> void:
+	for i in GameState.RESERVED_LETTERS.length():
+		var ch := GameState.RESERVED_LETTERS[i]
+		check("the pool never offers \"%s\"" % ch,
+			not GameState.LETTERS.contains(ch))
+	check("and is still long enough for a full pack (%d for %d)"
+		% [GameState.LETTERS.length(), Entity.INVENTORY_MAX],
+		GameState.LETTERS.length() >= Entity.INVENTORY_MAX)
+
+	# Fill a pack and check nothing unreachable comes out of it.
+	var gs := _arena(21, 9)
+	var handed := 0
+	for i in Entity.INVENTORY_MAX:
+		if gs.give_item(Item.make(&"potion_healing")):
+			handed += 1
+	var bad: Array = []
+	var seen := {}
+	for it in gs.player.inventory:
+		if it.letter == "" or GameState.RESERVED_LETTERS.contains(it.letter):
+			bad.append(it.letter)
+		if seen.has(it.letter):
+			bad.append("duplicate " + it.letter)
+		seen[it.letter] = true
+	check("a full pack is all reachable (%d items)" % handed, bad.is_empty(), str(bad))
+
+	# A run suspended before this was fixed can be carrying the stuck item, and
+	# reloading is the moment to put it right.
+	var stuck := _arena(21, 9)
+	stuck.give_item(Item.make(&"potion_healing"))
+	stuck.player.inventory[0].letter = "i"
+	stuck.give_item(Item.make(&"scroll_light"))
+	stuck.player.inventory[1].letter = ""
+	stuck._relabel_unreachable_items()
+	check("an old save's unreachable item is re-lettered",
+		stuck.player.inventory[0].letter != "i"
+		and not GameState.RESERVED_LETTERS.contains(stuck.player.inventory[0].letter),
+		stuck.player.inventory[0].letter)
+	check("and a blank one is given a letter too",
+		stuck.player.inventory[1].letter != "", stuck.player.inventory[1].letter)
+	check("without colliding",
+		stuck.player.inventory[0].letter != stuck.player.inventory[1].letter)
+
+## Reads main.gd and fails if a letter key is handled while the inventory is
+## open without being reserved.
+##
+## The point is that the next key added there cannot quietly steal a letter the
+## way "i" did. Asserting the current list by hand would only restate the bug.
+func _test_no_key_steals_an_inventory_letter() -> void:
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var start := src.find("if inventory.visible:")
+	# The open handler sits just past the block and is not part of it.
+	var stop := src.find("if key == KEY_I:", start)
+	check("the inventory key block was found", start >= 0 and stop > start)
+	if start < 0 or stop <= start:
+		return
+	var block := src.substr(start, stop - start)
+
+	var re := RegEx.new()
+	# A single capital after KEY_, with nothing wordlike after it -- so KEY_I
+	# and KEY_F match while KEY_TAB and KEY_ESCAPE do not.
+	re.compile("KEY_([A-Z])\\b")
+	var unguarded: Array = []
+	for m in re.search_all(block):
+		var ch: String = m.get_string(1).to_lower()
+		if not GameState.RESERVED_LETTERS.contains(ch):
+			unguarded.append(ch)
+	check("every letter key the inventory answers to is reserved",
+		unguarded.is_empty(), str(unguarded))
+
+
+## A save written by an older build must still load.
+##
+## This matters more than it used to: there is a build live on itch.io, and
+## someone's suspended run was written by it. Loading a save DESTROYS it by
+## design, so there is no way for a player to test the upgrade safely -- which
+## makes it this suite's job instead.
+func _test_an_older_save_still_loads() -> void:
+	var gs := GameState.new(2468)
+	gs.new_game()
+	gs.depth = 9
+	gs.ascending = true
+	gs.build_level()
+	gs.player.level = 9
+	for want in [&"war_bow", &"plate_mail", &"potion_healing",
+			&"potion_healing", &"scroll_light"]:
+		gs.give_item(Item.make(want))
+	gs.player.equipped[Item.Slot.WEAPON] = gs.player.inventory[0]
+	gs.player.equipped[Item.Slot.ARMOR] = gs.player.inventory[1]
+	check("a save can be written", gs.save_suspend())
+
+	# Age it to what the older build produced: no forging field on consumables,
+	# and an item on a letter that build was still handing out.
+	var raw := FileAccess.get_file_as_string(GameState.SUSPEND_PATH)
+	var text := Marshalls.base64_to_utf8(raw)
+	var was_b64 := text != ""
+	if not was_b64:
+		text = raw
+	var json := JSON.new()
+	check("and read back as json", json.parse(text) == OK)
+	var data: Dictionary = json.data
+	var pl: Dictionary = (data["entities"] as Array)[int(data["player"])]
+	var pack: Array = pl["inventory"]
+	var stripped := 0
+	var stuck := false
+	for i in pack.size():
+		var entry: Dictionary = pack[i]
+		if entry.erase("boost"):
+			stripped += 1
+		if not stuck and String(entry.get("id", "")) == "potion_healing":
+			entry["letter"] = "i"
+			stuck = true
+	check("the aged save lost its forging fields (%d)" % stripped, stripped > 0)
+
+	var aged := JSON.stringify(data)
+	var f := FileAccess.open(GameState.SUSPEND_PATH, FileAccess.WRITE)
+	f.store_string(Marshalls.utf8_to_base64(aged) if was_b64 else aged)
+	f.close()
+
+	var back := GameState.load_suspend()
+	check("the current build loads it", back != null)
+	if back == null:
+		return
+	check("with the run intact", back.depth == 9 and back.ascending
+		and back.player.level == 9 and back.player.inventory.size() == 5)
+	check("equipment still worn", back.player.equipped.has(Item.Slot.WEAPON)
+		and back.player.equipped.has(Item.Slot.ARMOR))
+	var letters := ""
+	for it in back.player.inventory:
+		letters += it.letter
+	check("and the unreachable letter repaired (%s)" % letters,
+		not letters.contains("i") and not letters.contains("f")
+		and not letters.contains(" "))
+	check("an unforged potion still heals 12",
+		back.player.inventory[2].effective_magnitude() == 12)

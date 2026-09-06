@@ -15,8 +15,38 @@ const MAX_DEPTH := 10
 ## A single suspend slot, destroyed the moment it is loaded. That deletion is
 ## the entire anti-scum mechanism: there is never a point at which a save from
 ## *before* something went wrong still exists.
-const SUSPEND_PATH := "user://suspend.save"
-const MORGUE_PATH := "user://morgue.txt"
+## Where the run is written. A `static var`, not a const, so a test suite or a
+## screenshot tool can point it somewhere harmless.
+##
+## It was a const, and the cost of that was a real one: `_test_suspend_round_trip`
+## calls clear_suspend() and save_suspend() against whatever this names, so
+## every run of the suite deleted the player's actual suspended game. It ran
+## dozens of times before anyone noticed, and a run in progress was lost.
+##
+## Nothing under src/ ever changes these. Only the harnesses do, at startup.
+static var SUSPEND_PATH := "user://suspend.save"
+## Same reasoning as SUSPEND_PATH. The death tests append real lines to this,
+## and 868 of the 869 entries in one player's morgue turned out to be test
+## output rather than deaths they had actually died.
+static var MORGUE_PATH := "user://morgue.txt"
+
+## Points both files somewhere the player does not own.
+##
+## Every headless tool in tests/ must call this before it touches a GameState.
+## Three of them had to learn that separately -- the test suite deleted the
+## suspend slot on every run, the screenshot tool ate it by instantiating the
+## real scene, and the sound audition tool did the same and went unnoticed for
+## a week. One named call is harder to forget than two assignments, and it puts
+## the reason in one place.
+static func use_scratch_files(tag: String) -> void:
+	SUSPEND_PATH = "user://scratch_%s_suspend.save" % tag
+	MORGUE_PATH = "user://scratch_%s_morgue.txt" % tag
+
+## Removes whatever use_scratch_files created.
+static func clear_scratch_files() -> void:
+	for path in [SUSPEND_PATH, MORGUE_PATH]:
+		if path.contains("scratch_") and FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
 const SAVE_VERSION := 1
 
 const MAP_W := 96
@@ -713,7 +743,25 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 			return p["entry"]
 	return pool[-1]["entry"]
 
-const LETTERS := "abcdefghijklmnopqrstuvwxyz"
+## Letters the inventory panel must never hand out, because the panel itself
+## answers to them while it is open:
+##
+##   i   closes the inventory
+##   f   closes it again, out of the throw picker
+##
+## Reported from play, and it cost a run's last potion: the pack assigned it
+## the letter "i", and every press of that key shut the panel instead of
+## drinking it. There was no way to reach the item at all -- shift+i did not
+## merge it either, because the close check runs first.
+##
+## Fixing the key order instead would be worse: "i" would then close the panel
+## only when nothing happened to be lettered "i", which is a rule nobody can
+## hold in their head. Better that the pool never offers the letter.
+##
+## `_test_inventory_letters_dodge_the_keys` reads main.gd and fails if a key
+## is ever handled inside the inventory block without being listed here.
+const RESERVED_LETTERS := "if"
+const LETTERS := "abcdeghjklmnopqrstuvwxyz"
 
 ## Adds an item to the pack with a stable letter.
 ##
@@ -727,13 +775,40 @@ func give_item(item: Item) -> bool:
 	var used := {}
 	for it in player.inventory:
 		used[it.letter] = true
-	for i in Entity.INVENTORY_MAX:
+	# The whole pool, not the first INVENTORY_MAX of it. Iterating to the pack
+	# size only worked while the pool was the alphabet and comfortably longer.
+	for i in LETTERS.length():
 		var ch := LETTERS[i]
 		if not used.has(ch):
 			item.letter = ch
 			break
 	player.inventory.append(item)
 	return true
+
+## Re-letters anything a suspended run is carrying under a key that cannot be
+## pressed.
+##
+## Saves written before "i" and "f" were reserved can hold an item nobody can
+## reach, and reloading is exactly the moment to put that right -- the run in
+## which this was found had its last potion stuck that way. Also catches
+## duplicates and blanks, which nothing produced but nothing prevented either.
+func _relabel_unreachable_items() -> void:
+	var seen := {}
+	var stuck: Array[Item] = []
+	for it in player.inventory:
+		if it.letter == "" or RESERVED_LETTERS.contains(it.letter) \
+				or seen.has(it.letter):
+			stuck.append(it)
+			it.letter = ""
+		else:
+			seen[it.letter] = true
+	for it in stuck:
+		for i in LETTERS.length():
+			var ch := LETTERS[i]
+			if not seen.has(ch):
+				it.letter = ch
+				seen[ch] = true
+				break
 
 func items_at(x: int, y: int) -> Array:
 	var out := []
@@ -1801,6 +1876,7 @@ func apply_dict(d: Dictionary) -> bool:
 			"count": int(entry.get("n", 1)),
 			"color": Color(float(c[0]), float(c[1]), float(c[2]))})
 
+	_relabel_unreachable_items()
 	events = []
 	_travel.clear()
 	pathfinder = Pathfinder.new(map)

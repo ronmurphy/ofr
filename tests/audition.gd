@@ -11,6 +11,10 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0] if args.size() > 0 else "/tmp"
 
+	# Instantiating the real scene runs main._ready, which LOADS AND DELETES the
+	# suspend slot. This tool did that to the player's own save for a week
+	# before anyone noticed.
+	GameState.use_scratch_files("audition")
 	var scene: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	for _i in 10:
@@ -44,6 +48,7 @@ func _initialize() -> void:
 		deck.play(id)
 		await process_frame
 	await process_frame
+	GameState.clear_scratch_files()
 	print("")
 	print("  all %d played through the deck without fault" % ids.size())
 	quit(0)

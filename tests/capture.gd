@@ -37,6 +37,10 @@ func _restore_suspend() -> void:
 		f.close()
 
 func _run() -> void:
+	# Belt and braces. Instantiating the real scene runs main._ready, which
+	# loads and DELETES the suspend slot, so the path is pointed somewhere
+	# harmless first and the real file is backed up as well.
+	GameState.use_scratch_files("capture")
 	_hide_suspend()
 	_scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_scene)
