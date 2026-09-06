@@ -91,6 +91,7 @@ func _initialize() -> void:
 	_test_no_decoration_plugs_a_way()
 	_test_corners_stop_everyone_equally()
 	_test_nothing_rests_on_a_hazard()
+	_test_consumables_forge()
 	_report_encounter_curve()
 
 	print("")
@@ -576,10 +577,14 @@ func _test_forging() -> void:
 	lone.give_item(Item.make(&"dagger"))
 	check("a single item has nothing to merge with", not lone.player_merge(0))
 
-	var potions := _forge_arena()
-	potions.give_item(Item.make(&"potion_healing"))
-	potions.give_item(Item.make(&"potion_healing"))
-	check("consumables cannot be forged", not potions.player_merge(0))
+	# Consumables used to be refused outright. Potions and light scrolls are
+	# now forgeable, because a hoard of twelve-point heals is dead weight by
+	# depth ten -- see _test_consumables_forge. Anything the catalogue gives no
+	# forge bonus to is still refused.
+	var blink := _forge_arena()
+	blink.give_item(Item.make(&"scroll_blink"))
+	blink.give_item(Item.make(&"scroll_blink"))
+	check("a consumable with no forge value is refused", not blink.player_merge(0))
 
 	# Forging away something you are wearing must take it off first.
 	var worn := _forge_arena()
@@ -2934,3 +2939,81 @@ func _test_nothing_rests_on_a_hazard() -> void:
 		baited.is_empty(), str(baited))
 	check("nothing stands on one either (%d monsters)" % monsters,
 		stuck.is_empty(), str(stuck))
+
+
+## Potions and scrolls of light can be worked at a brazier.
+##
+## The problem this answers, measured before it was built: a potion heals a
+## flat 12, which is 40% of your health at level 1 and 17% at level 9. Healing
+## decays exactly as danger rises, so potions stop being worth the turn they
+## cost and pile up unused -- six of them, in the run that prompted this.
+##
+## A merge is worth two thirds of the copy it eats: 12 -> 20 -> 28, and 6 -> 10
+## -> 14 for the relight a scroll gives a dead brazier. You give up raw healing
+## and get back a turn and an inventory slot. Free would remove the decision;
+## much less would make it a trap.
+func _test_consumables_forge() -> void:
+	var gs := _forge_arena()
+	gs.give_item(Item.make(&"potion_healing"))
+	gs.give_item(Item.make(&"potion_healing"))
+	gs.give_item(Item.make(&"potion_healing"))
+	check("a potion can be worked at a brazier", gs.player_merge(0))
+	var pot: Item = gs.player.inventory[0]
+	check("it eats one of its own kind", gs.player.inventory.size() == 2,
+		str(gs.player.inventory.size()))
+	check("and heals two thirds more (%d)" % pot.effective_magnitude(),
+		pot.effective_magnitude() == 20, str(pot.effective_magnitude()))
+	check("it is named for what it now is", pot.display_name().ends_with("+1"))
+
+	check("a second forging stacks", gs.player_merge(0))
+	check("to 28", gs.player.inventory[0].effective_magnitude() == 28,
+		str(gs.player.inventory[0].effective_magnitude()))
+
+	# The cap is the same one gear answers to, so the Shrine of the Anvil
+	# raises it for potions as well.
+	var capped := _forge_arena()
+	# Deep coals: the default brazier holds 10 and each forging costs 4, so
+	# without this the third merge would fail for want of heat rather than for
+	# hitting the cap, and the test would pass for the wrong reason.
+	capped.brazier_charge = {Vector2i(6, 4): 100}
+	for i in 5:
+		capped.give_item(Item.make(&"potion_healing"))
+	capped.player_merge(0)
+	capped.player_merge(0)
+	check("stops at the forge cap", not capped.player_merge(0))
+	capped.forge_cap_bonus = 1
+	check("unless the anvil raised it", capped.player_merge(0))
+	check("reaching 36", capped.player.inventory[0].effective_magnitude() == 36,
+		str(capped.player.inventory[0].effective_magnitude()))
+
+	# Drinking one actually restores the forged amount.
+	var drink := _forge_arena()
+	drink.give_item(Item.make(&"potion_healing"))
+	drink.give_item(Item.make(&"potion_healing"))
+	drink.player_merge(0)
+	drink.player.max_hp = 90
+	drink.player.hp = 10
+	drink.player_use(0)
+	check("a forged potion heals what it says (%d)" % drink.player.hp,
+		drink.player.hp == 30, str(drink.player.hp))
+
+	# And a worked scroll carries more fire into a dead brazier.
+	var scroll := _forge_arena()
+	scroll.give_item(Item.make(&"scroll_light"))
+	scroll.give_item(Item.make(&"scroll_light"))
+	check("a scroll of light can be worked", scroll.player_merge(0))
+	check("its relight is worth 10 rather than 6",
+		GameState.RELIGHT_CHARGE + scroll.player.inventory[0].upgrade_level()
+			* scroll.player.inventory[0].forge_bonus == 10)
+
+	# Forging a potion spends brazier charge, which does not come back. If the
+	# potion reverted on resume the charge would be gone for nothing.
+	var kept := Item.from_dict(pot.to_dict())
+	check("a forged potion survives a suspend",
+		kept.effective_magnitude() == pot.effective_magnitude(),
+		"%d vs %d" % [kept.effective_magnitude(), pot.effective_magnitude()])
+	# Saves written before consumables could be forged carry no such field.
+	var older := {"id": "potion_healing", "letter": "a", "x": 0, "y": 0,
+		"pow": 0, "def": 0}
+	check("and an older save still loads as a plain one",
+		Item.from_dict(older).effective_magnitude() == 12)

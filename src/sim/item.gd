@@ -19,6 +19,18 @@ var slot: int = Slot.NONE
 # Consumable fields
 var effect: StringName = &""
 var magnitude: int = 0
+## How much one forging adds to `magnitude`. Zero means this cannot be worked
+## at a brazier at all, which is how the catalogue says "not forgeable" without
+## anything having to name items by id.
+##
+## Set to two thirds of the base value, so a merge is worth two thirds of the
+## second copy it eats. That is the whole balance of it: you give up raw
+## healing and get back a turn and an inventory slot. Free would remove the
+## decision; much less would make it a trap.
+var forge_bonus: int = 0
+## Forgings applied to a consumable. Equipment carries the same information in
+## its power and defense bonuses, so this stays zero there.
+var boosts: int = 0
 
 # Equipment fields
 var power_bonus: int = 0
@@ -55,11 +67,13 @@ const CATALOGUE := {
 
 	&"potion_healing": {
 		"name": "potion of healing", "app": &"potion", "kind": Kind.POTION,
-		"effect": &"heal", "magnitude": 12, "min_depth": 1, "weight": 12,
+		"effect": &"heal", "magnitude": 12, "forge": 8,
+		"min_depth": 1, "weight": 12,
 	},
 	&"scroll_light": {
 		"name": "scroll of light", "app": &"scroll", "kind": Kind.SCROLL,
-		"effect": &"light", "magnitude": 16, "min_depth": 1, "weight": 6,
+		"effect": &"light", "magnitude": 16, "forge": 4,
+		"min_depth": 1, "weight": 6,
 	},
 	&"scroll_blink": {
 		"name": "scroll of blink", "app": &"scroll", "kind": Kind.SCROLL,
@@ -115,6 +129,7 @@ static func make(item_id: StringName) -> Item:
 	it.slot = data.get("slot", Slot.NONE)
 	it.effect = data.get("effect", &"")
 	it.magnitude = data.get("magnitude", 0)
+	it.forge_bonus = data.get("forge", 0)
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
 	it.range_bonus = data.get("range", 1)
@@ -124,18 +139,33 @@ static func make(item_id: StringName) -> Item:
 	return it
 
 ## How many times this item has been merged.
+## One expression for both: equipment carries its level in the stat bonuses it
+## has gained, a consumable in `boosts`, and the other term is always zero.
 func upgrade_level() -> int:
-	return (power_bonus - base_power_bonus) + (defense_bonus - base_defense_bonus)
+	return (power_bonus - base_power_bonus) \
+		+ (defense_bonus - base_defense_bonus) + boosts
 
 func can_upgrade() -> bool:
-	return is_equipment() and upgrade_level() < MAX_UPGRADES
+	return can_be_forged() and upgrade_level() < MAX_UPGRADES
 
-## Applies one merge. Weapons gain power, armour gains defense.
+## Anything the brazier can work: gear, and any consumable the catalogue gave a
+## forge bonus to.
+func can_be_forged() -> bool:
+	return is_equipment() or forge_bonus > 0
+
+## Applies one merge. Weapons gain power, armour gains defense, and a
+## consumable gains potency.
 func upgrade() -> void:
-	if kind == Kind.WEAPON:
+	if not is_equipment():
+		boosts += 1
+	elif kind == Kind.WEAPON:
 		power_bonus += 1
 	else:
 		defense_bonus += 1
+
+## What the effect is actually worth, after forging.
+func effective_magnitude() -> int:
+	return magnitude + boosts * forge_bonus
 
 ## Name as the player should see it, carrying any upgrades.
 func display_name() -> String:
@@ -181,6 +211,11 @@ func to_dict() -> Dictionary:
 	return {
 		"id": String(id), "letter": letter, "x": x, "y": y,
 		"pow": power_bonus, "def": defense_bonus,
+		# Forgings on a consumable live nowhere else. Without this a suspended
+		# run gives back plain potions, and the brazier charge that made them
+		# is gone. `forge_bonus` itself is not saved: it comes from the
+		# catalogue, so it rebuilds itself on load.
+		"boost": boosts,
 	}
 
 static func from_dict(d: Dictionary) -> Item:
@@ -193,6 +228,9 @@ static func from_dict(d: Dictionary) -> Item:
 	it.y = int(d.get("y", 0))
 	it.power_bonus = int(d.get("pow", it.power_bonus))
 	it.defense_bonus = int(d.get("def", it.defense_bonus))
+	# Absent in saves written before consumables could be forged, and zero is
+	# exactly right for those.
+	it.boosts = int(d.get("boost", 0))
 	return it
 
 ## Weighted pick from the equipment only, for one slot. Used to arm monsters,

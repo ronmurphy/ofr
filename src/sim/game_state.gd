@@ -450,7 +450,7 @@ func upgrade_cap() -> int:
 	return Item.MAX_UPGRADES + forge_cap_bonus
 
 func item_can_upgrade(item: Item) -> bool:
-	return item.is_equipment() and item.upgrade_level() < upgrade_cap()
+	return item.can_be_forged() and item.upgrade_level() < upgrade_cap()
 
 ## What a step onto this cell costs, for this actor.
 ## Whether a step from (fx, fy) to (nx, ny) is legal.
@@ -1233,8 +1233,8 @@ func player_merge(index: int) -> bool:
 		return false
 	var item: Item = player.inventory[index]
 
-	if not item.is_equipment():
-		msg_log.add("Only weapons and armour can be worked.", Color(0.7, 0.6, 0.4))
+	if not item.can_be_forged():
+		msg_log.add("The flame has nothing to take hold of.", Color(0.7, 0.6, 0.4))
 		return false
 	if not item_can_upgrade(item):
 		msg_log.add("The %s cannot take another edge." % item.display_name(),
@@ -1263,8 +1263,12 @@ func player_merge(index: int) -> bool:
 
 	item.upgrade()
 	brazier_charge[brazier] = int(brazier_charge[brazier]) - MERGE_COST
-	msg_log.add("You work the metal together over the flame. (%s)" % item.display_name(),
-		Color(0.85, 0.88, 0.70))
+	if item.is_equipment():
+		msg_log.add("You work the metal together over the flame. (%s)"
+			% item.display_name(), Color(0.85, 0.88, 0.70))
+	else:
+		msg_log.add("You boil the two down to one, and it thickens. (%s)"
+			% item.display_name(), Color(0.85, 0.88, 0.70))
 	events.append({"kind": &"forge", "to": brazier})
 	if int(brazier_charge[brazier]) <= 0:
 		brazier_charge.erase(brazier)
@@ -1445,9 +1449,9 @@ func _apply_effect(item: Item) -> bool:
 			if player.hp >= player.max_hp:
 				msg_log.add("You are already whole.", Color(0.7, 0.6, 0.4))
 				return false
-			var healed := mini(item.magnitude, player.max_hp - player.hp)
+			var healed := mini(item.effective_magnitude(), player.max_hp - player.hp)
 			player.hp += healed
-			msg_log.add("You drink the %s. %d hp restored." % [item.name, healed],
+			msg_log.add("You drink the %s. %d hp restored." % [item.display_name(), healed],
 				Color(0.55, 0.85, 0.55))
 			return true
 
@@ -1455,7 +1459,11 @@ func _apply_effect(item: Item) -> bool:
 			var dead := _adjacent_spent_brazier()
 			if dead.x >= 0:
 				map.set_tile(dead.x, dead.y, Tiles.BRAZIER)
-				brazier_charge[dead] = RELIGHT_CHARGE
+				# A worked scroll carries more fire into the dead coals. The
+				# charge IS hit points -- resting takes two off it and gives
+				# two back -- so this is the same currency a potion trades in.
+				brazier_charge[dead] = RELIGHT_CHARGE \
+					+ item.upgrade_level() * item.forge_bonus
 				_gather_lights()
 				msg_log.add("The scroll's light pours into the dead brazier. "
 					+ "It catches, weakly.", Color(0.98, 0.82, 0.45))
@@ -1463,7 +1471,7 @@ func _apply_effect(item: Item) -> bool:
 
 			var buf := PackedByteArray()
 			buf.resize(map.width * map.height)
-			Fov.compute(map, player.x, player.y, item.magnitude, buf)
+			Fov.compute(map, player.x, player.y, item.effective_magnitude(), buf)
 			var revealed := 0
 			for i in buf.size():
 				if buf[i] != 0 and map.explored[i] == 0:

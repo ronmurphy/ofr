@@ -742,6 +742,66 @@ A safety net rather than a plan. Vaults and caverns both claim ground that
 corridors were counting on, and the alternative is discovering that in a seed
 nobody ever plays.
 
+## Forging consumables
+
+A potion of healing restores a flat 12. Measured against the level curve:
+
+| level | max hp | potion is worth |
+|---|---|---|
+| 1 | 30 | **40%** of your health |
+| 5 | 50 | 24% |
+| 9 | 70 | **17%** |
+
+Healing decays exactly as danger rises, so by the deep floors a potion stops
+being worth the turn it costs -- and they pile up unused. The run that prompted
+this reached depth 10 carrying **six potions and five scrolls in 17 of 20
+slots**, using the pack as a medicine chest and stepping over floor loot to
+keep the room.
+
+So potions and scrolls of light can now be worked at a brazier, like gear:
+
+    potion of healing   12 -> 20 -> 28    (36 with the Shrine of the Anvil)
+    scroll of light      6 -> 10 -> 14    (18 likewise)
+
+**A merge is worth two thirds of the copy it eats.** That ratio is the whole
+balance of it. Each merge consumes one duplicate, so `+2` costs three potions:
+36 points of healing drunk separately, 28 in one draught. You give up raw
+healing and get back a turn and two inventory slots.
+
+Free would remove the decision -- doubling, which is what D&D does for its
+potion tiers, makes merging strictly correct and so not a choice at all. Much
+less makes it a trap: a turn at depth 10 costs about 5 hp of incoming damage,
+so at `+6` per step the trade came out slightly negative.
+
+There is a second cost that is easy to miss and worth keeping: **overhealing is
+wasted.** A 28-point potion drunk at 20 hp missing gives back 20. The bigger
+the potion, the more precisely it has to be timed.
+
+### What a scroll of light is actually worth
+
+Brazier charge *is* hit points -- resting takes two off it and gives two back:
+
+- a fresh brazier holds **10 charge = 10 hp**
+- a scroll relights a dead one to **6**
+- forging costs **4**
+
+So a scroll-relit brazier is **one forging, or three turns of healing, not
+both**. That tension was found in play rather than designed, and it is the
+reason the relight stays weak: the message says the brazier "catches, weakly",
+and the number agrees with the fiction.
+
+### Implementation
+
+`forge_bonus` in the catalogue is how an item says it can be worked at all --
+zero means no, which is why a scroll of blink is still refused without anything
+naming it by id. Consumables count their forgings in `boosts`, since equipment
+carries the same information in the stat bonuses it has gained;
+`upgrade_level()` sums both terms and one of them is always zero.
+
+`boosts` is saved. Forging spends brazier charge that does not come back, so a
+potion that reverted on resume would have cost heat for nothing. Saves written
+before this default to zero, which is correct for them.
+
 ## Diagonals
 
 Reported by the person who built the game, after playing it for a week: he did

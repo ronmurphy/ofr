@@ -15,8 +15,12 @@ zipfile="$root/build/ofr-web.zip"
 mkdir -p "$out" "$root/build"
 rm -f "$out"/index.* "$zipfile"
 
+# --path, not cd: Godot locates the project from the working directory, so
+# without this the script only worked when it happened to be run from the
+# project root. Running it as ./tools/build_web.sh from anywhere else failed
+# with "Please provide a valid project path when exporting".
 echo "==> exporting to $out"
-godot --headless --export-release "Web" "$out/index.html"
+godot --headless --path "$root" --export-release "Web" "$out/index.html"
 
 # The engine is ~40MB raw and ~10MB gzipped. itch serves it compressed, so the
 # number that matters to a player on a phone tether is the second one.
