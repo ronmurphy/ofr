@@ -83,3 +83,17 @@ const HIT_FLASH     := Color("ff9d6b")
 
 const CURSOR        := Color("7fd4ff")
 const PATH_HINT     := Color("3f6f8c")
+
+## Wounded creatures, drawn as a wash beneath them so their own colour is left
+## alone. Tinting the creature was measured and rejected: it collapsed the
+## palette built to keep creatures that share a figure apart.
+const BLOODIED := Color("d98032")
+const CRITICAL := Color("d43b2f")
+## Opacity of the wash drawn UNDER a hurt creature. Not a tint on the creature
+## itself -- see GlyphGrid._draw_wound for why that was measured and rejected.
+const BLOODIED_WASH := 0.30
+const CRITICAL_WASH := 0.52
+
+## A creature that has given up and is running. Cool rather than hot, because
+## it is the one alertness state that means you are winning.
+const FLEEING := Color("6fb3c4")

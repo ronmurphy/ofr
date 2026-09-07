@@ -920,6 +920,112 @@ left behind.
 The general shape: **a dev tool must not be able to write to a path the player
 owns.**
 
+## Three readings that were missing
+
+### Bloodied
+
+D&D's word, and D&D's threshold: at or below half. A second step at a quarter,
+because by then the question has changed from *can I win this* to *can I finish
+it before it finishes me*.
+
+**Drawn as a wash under the creature, not a tint on it.** Tinting was built
+first and measured, and it fails: pulling every wounded thing toward the same
+red collapses the palette that exists to keep creatures apart. At a mix strong
+enough to read, a critical wyvern and a critical dragon came out **deltaE 15.5
+under deuteranopia** -- one creature. Half the tint kept them separable but
+made bloodied and critical look alike, which is the same failure wearing the
+other hat.
+
+A wash underneath is a channel of its own, so the two signals cannot interfere:
+they are not competing for the same property. `tools/check_palette.py` records
+why it no longer has to model wounds at all.
+
+The wash is deliberately **not dimmed by the light map**. A monster you can see
+is a monster whose condition you can see.
+
+### Something running away
+
+Asleep had `zzZ`, stirring had `?`, noticed had `!` -- and a creature fleeing
+looked exactly like one hunting you. That is the difference between spending
+three turns chasing and letting it go. It now carries `<<`, in a cool colour
+rather than a hot one, because it is the one alertness state that means you are
+winning.
+
+### Your torch was flickering the whole dungeon
+
+`_flicker` was a single number multiplying every lit cell on screen, so a
+brazier on the far side of the map guttered in perfect time with your torch.
+That reads as the whole screen breathing rather than as flames burning.
+
+Each flickering light now has its own phase, taken from its position, and a
+cell follows whichever one reaches it. Two braziers in a room never gutter
+together, and a cell no flame reaches is perfectly still.
+
+The wrinkle worth recording: `LightMap` lives in `src/sim/` and accumulates
+every source into one colour per cell, so by the time the renderer sees it,
+*whose* light it was is gone. The phase map recovers that on the render side,
+rebuilt once per turn rather than per frame, without the simulation having to
+know that flicker exists.
+
+## Ammunition
+
+A first-time player found **shoot-and-retreat** in his first sitting, and the
+numbers agreed with him. Your reach is 8; the longest monster reach is 6. Eight
+of fifteen monsters are slower than you, so they can never close on someone
+backing away -- the stone golem at speed 70 literally cannot reach you in open
+ground. Twelve free shots at something that cannot touch you is not a fight.
+
+### Noise was tried first, and measured, and it failed
+
+Firing twelve shots at something that cannot catch you:
+
+    radius 4 (the old value)   94% of the time nobody comes
+    radius 6                   79%
+    radius 9                   52%
+
+Even at nine -- louder than a boneyard -- half the time the archer's corner
+stays empty. **Noise wakes things, and the things it wakes are the same slow
+ones that could never reach you.** The exploit is about speed, so awareness was
+never the lever. The radius went to 6 anyway, because a footstep on bones
+carrying 7 while a pitched battle carried 4 was the odder number of the two.
+
+### The count lives on the weapon
+
+    weapon    war bow r8 x20
+
+Not in the pack. Anyone carrying a bow has a quiver, so a quiver does not need
+an inventory slot -- and the count belongs beside the reach, because they are
+read together: *how far can I hit, and how many times.*
+
+| | | |
+|---|---|---|
+| sling | **30** stones | knapped from rubble, **one a tile** |
+| short bow | **16** arrows | gathered off the floor |
+| war bow | **20** arrows | gathered off the floor |
+
+**One stone a tile, so every shot costs a turn owed somewhere.** It gave two or
+three at first, which worked out at under half a turn per stone -- thirty of
+them was three or four fights before anyone had to go looking. The pouch still
+holds thirty, so a rubble field is worth stopping for rather than something you
+top up in a single action.
+
+### The two families now differ in kind, not just in numbers
+
+**Arrows survive and land where they hit.** That is the whole mechanism:
+retreating means backing away from your own ammunition, so kiting something
+across a room costs you either the arrows or the ground you just gave up. Noise
+could never do that.
+
+**Stones do not survive** -- nobody would cross a room for a slung pebble --
+but rubble makes more. Rubble was pure cost before, slow ground that did
+nothing else; now it is a supply, and taking it destroys it exactly as crossing
+bones destroys them. Note what reloading costs: rubble is slow going, so you
+refill while standing on the one terrain that makes retreating harder.
+
+So the sling is sustainable and feeble, the bow strong and finite. Monsters do
+not track ammunition, deliberately -- a slinger that ran dry would stop being
+the thing that makes archers frightening.
+
 ## The offhand, and swapping reach for blade
 
 Both of these answer one measured fact. Toe to toe with a young dragon, the
@@ -934,6 +1040,16 @@ One key, between the best launcher you carry and the best blade. It costs a
 turn, like any change of equipment. Free, and you could shoot, swap and strike
 in a single turn, which would undo the entire reason an archer fears being
 closed with.
+
+It swaps a **posture**, not a weapon: coming back to a blade also puts the
+shield back on the hand the launcher was using. That was missing at first --
+the offhand rule only ever TOOK a shield away, because a launcher needs both
+hands, and nothing gave it back. Reported from play as *sling, sword, sling,
+and the buckler never comes off the pack again*.
+
+One turn for the pair rather than one each. Charging separately would make the
+key slower than doing it by hand out of the inventory, which defeats having it
+-- and the opposite swap has always given up the shield for free.
 
 ### The sidebar was lying
 
@@ -989,6 +1105,17 @@ So potions and scrolls of light can now be worked at a brazier, like gear:
 
     potion of healing   12 -> 20 -> 28    (36 with the Shrine of the Anvil)
     scroll of light      6 -> 10 -> 14    (18 likewise)
+
+**The donor is always the least upgraded thing that fits.** It used to be the
+first id match in pack order, which quietly destroyed upgrades: with a potion
++1 sitting earlier in the pack, merging two plain potions consumed the **+1**
+as the donor. You finished with one +1 where you started with one, two plain
+potions gone, and nothing on screen explaining where the good one went.
+Reported from play, and it applied to weapons, armour and shields too.
+
+Taking the cheapest donor is always the best outcome available, so there is
+never a reason to choose differently -- a +1 fed by a plain one becomes a +2,
+while a +1 fed by another +1 becomes the same +2 and costs an upgrade to do it.
 
 **A merge is worth two thirds of the copy it eats.** That ratio is the whole
 balance of it. Each merge consumes one duplicate, so `+2` costs three potions:

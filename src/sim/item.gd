@@ -37,6 +37,26 @@ var boosts: int = 0
 # Equipment fields
 var power_bonus: int = 0
 var defense_bonus: int = 0
+## Ammunition, carried by the launcher rather than by the pack.
+##
+## Anyone with a bow has a quiver, so a quiver does not need an inventory slot
+## -- and putting the count on the weapon puts it where the decision is made,
+## beside the reach in the sidebar.
+##
+## `ammo_max` is the real constraint, not scarcity in the world. A floor grows
+## about thirty rubble tiles and each gives two or three stones, so there are
+## sixty to ninety lying around; if a sling could hold them all, nothing would
+## ever tax it. Capacity plus the turns spent reloading is the cost.
+##
+## Stones outnumber arrows on purpose -- a pouch of pebbles against a quiver --
+## which makes the sling the sustainable, feeble option and the bow the strong,
+## finite one. That is a real difference between the two launcher families,
+## which until now differed only in numbers.
+var ammo: int = 0
+var ammo_max: int = 0
+## What this launcher fires, so a sling cannot be loaded with arrows.
+var ammo_kind: StringName = &""
+
 ## Reach, for launchers. They sit in the weapon slot and trade damage for it:
 ## at every tier the ranged option is about two points weaker than the melee
 ## one, and that gap is the price of never being adjacent.
@@ -97,14 +117,17 @@ const CATALOGUE := {
 	&"sling": {
 		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 1, "range": 5, "min_depth": 1, "weight": 5,
+		"ammo_max": 30, "ammo_kind": &"stone",
 	},
 	&"short_bow": {
 		"name": "short bow", "app": &"launcher", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 3, "range": 7, "min_depth": 3, "weight": 4,
+		"ammo_max": 16, "ammo_kind": &"arrow",
 	},
 	&"war_bow": {
 		"name": "war bow", "app": &"launcher", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 5, "range": 8, "min_depth": 6, "weight": 3,
+		"ammo_max": 20, "ammo_kind": &"arrow",
 	},
 
 	## Shields. Kind.ARMOR so the inventory filter and the "wear" verb both find
@@ -137,6 +160,13 @@ const CATALOGUE := {
 		"slot": Slot.OFFHAND, "defense": 3, "min_depth": 6, "weight": 2,
 	},
 
+	## Spent arrows lying on the floor. Never rolled as loot -- they only exist
+	## because you shot them -- so weight is zero and min_depth is out of reach.
+	&"arrows": {
+		"name": "spent arrows", "app": &"ammo", "kind": Kind.SCROLL,
+		"min_depth": 999, "weight": 0,
+	},
+
 	&"leather_armour": {
 		"name": "leather armour", "app": &"armour", "kind": Kind.ARMOR,
 		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7,
@@ -165,6 +195,11 @@ static func make(item_id: StringName) -> Item:
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
 	it.range_bonus = data.get("range", 1)
+	it.ammo_max = data.get("ammo_max", 0)
+	it.ammo_kind = data.get("ammo_kind", &"")
+	# A launcher found on the floor arrives loaded. An empty one would look
+	# broken rather than interesting.
+	it.ammo = it.ammo_max
 	it.throw_range = data.get("throw", 0)
 	it.base_power_bonus = it.power_bonus
 	it.base_defense_bonus = it.defense_bonus
@@ -217,6 +252,10 @@ func is_equipment() -> bool:
 ## the melee one -- and now it is paid for in defense as well. "Bow or blade"
 ## stops being a damage question and becomes a posture: strike first from
 ## eight cells, or be harder to kill up close.
+## A launcher with a quiver, as opposed to a club that happens to have reach.
+func uses_ammo() -> bool:
+	return ammo_max > 0
+
 func is_two_handed() -> bool:
 	return is_equipment() and range_bonus > 1
 
@@ -252,7 +291,7 @@ func bonus_text() -> String:
 func to_dict() -> Dictionary:
 	return {
 		"id": String(id), "letter": letter, "x": x, "y": y,
-		"pow": power_bonus, "def": defense_bonus,
+		"pow": power_bonus, "def": defense_bonus, "ammo": ammo,
 		# Forgings on a consumable live nowhere else. Without this a suspended
 		# run gives back plain potions, and the brazier charge that made them
 		# is gone. `forge_bonus` itself is not saved: it comes from the
@@ -273,6 +312,9 @@ static func from_dict(d: Dictionary) -> Item:
 	# Absent in saves written before consumables could be forged, and zero is
 	# exactly right for those.
 	it.boosts = int(d.get("boost", 0))
+	# Saves written before launchers held ammunition come back loaded rather
+	# than empty: a resumed run should not find its bow inexplicably dry.
+	it.ammo = int(d.get("ammo", it.ammo_max))
 	return it
 
 ## Weighted pick from the equipment only, for one slot. Used to arm monsters,

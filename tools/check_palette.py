@@ -93,6 +93,13 @@ def load_colours():
     return out
 
 
+# Wounds are drawn as a wash UNDER a creature rather than a tint on it, so they
+# do not enter into this at all. That was not the first design: tinting toward a
+# shared red collapsed these pairs -- a critical wyvern and a critical dragon
+# measured deltaE 15.5 under deuteranopia, which is one creature. Keeping the
+# two signals on different properties is what makes them independent.
+
+
 def main():
     colours = load_colours()
     missing = [c for pair in SHARED.values() for c in pair if c not in colours]
@@ -108,17 +115,19 @@ def main():
     for figure, members in SHARED.items():
         for i in range(len(members)):
             for j in range(i + 1, len(members)):
-                a, b = srgb(colours[members[i]]), srgb(colours[members[j]])
-                scores = [("normal", delta_e(a, b))]
-                scores += [(k, delta_e(simulate(a, k), simulate(b, k)))
-                           for k in SIM]
-                worst = min(s for _, s in scores)
-                line = "  %-13s %-8s vs %-8s " % (figure, members[i], members[j])
-                line += "  ".join("%s %5.1f" % (n, s) for n, s in scores)
-                if worst < READABLE:
-                    bad += 1
-                    line += "   <-- TOO CLOSE"
-                print(line)
+                if True:
+                    a, b = srgb(colours[members[i]]), srgb(colours[members[j]])
+                    scores = [("normal", delta_e(a, b))]
+                    scores += [(k, delta_e(simulate(a, k), simulate(b, k)))
+                               for k in SIM]
+                    worst = min(s for _, s in scores)
+                    line = "  %-13s %-8s vs %-8s " % (
+                        figure, members[i], members[j])
+                    line += "  ".join("%s %5.1f" % (n, s) for n, s in scores)
+                    if worst < READABLE:
+                        bad += 1
+                        line += "   <-- TOO CLOSE"
+                    print(line)
     print()
     if bad:
         print("  %d pair(s) indistinguishable. Separate them on LIGHTNESS --" % bad)

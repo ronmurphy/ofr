@@ -101,6 +101,8 @@ func _initialize() -> void:
 	_test_nothing_rests_on_a_hazard()
 	_test_consumables_forge()
 	_test_offhand_and_swap()
+	_test_ammunition()
+	_test_merging_spends_the_cheapest()
 	_test_inventory_letters_dodge_the_keys()
 	_test_no_key_steals_an_inventory_letter()
 	_test_an_older_save_still_loads()
@@ -3123,6 +3125,42 @@ func _test_offhand_and_swap() -> void:
 	check("but a blade and a shield go together",
 		gs.player.is_equipped(axe) and gs.player.is_equipped(kite))
 
+	# Reported from play: sling, sword, sling left the buckler in the pack for
+	# the rest of the run. The offhand rule only ever took a shield away.
+	var posture := _arena(21, 9)
+	posture.player.x = 5
+	posture.player.y = 4
+	var sword := Item.make(&"short_sword")
+	var buckler := Item.make(&"buckler")
+	var sling := Item.make(&"sling")
+	for it in [sword, buckler, sling]:
+		posture.give_item(it)
+	posture.player_use(posture.player.inventory.find(sword))
+	posture.player_use(posture.player.inventory.find(buckler))
+	check("blade and shield to begin with",
+		posture.player.is_equipped(sword) and posture.player.is_equipped(buckler))
+	posture.player_swap_weapon()
+	check("reaching for the sling gives up the shield",
+		posture.player.is_equipped(sling) and not posture.player.is_equipped(buckler))
+	posture.player_swap_weapon()
+	check("and coming back to the blade puts it up again",
+		posture.player.is_equipped(sword) and posture.player.is_equipped(buckler))
+	check("in one turn, not two", posture.turns == 4, str(posture.turns))
+
+	# It picks the best one carried, not the first found.
+	var better := _arena(21, 9)
+	better.player.x = 5
+	better.player.y = 4
+	for want in [&"short_sword", &"buckler", &"tower_shield", &"sling"]:
+		better.give_item(Item.make(want))
+	better.player_use(0)
+	better.player_swap_weapon()
+	better.player_swap_weapon()
+	var raised: Item = better.player.equipped.get(Item.Slot.OFFHAND, null)
+	check("and raises the heaviest shield carried",
+		raised != null and raised.id == &"tower_shield",
+		"none" if raised == null else String(raised.id))
+
 	# The swap key.
 	var before := gs.turns
 	check("swapping from blade reaches for the bow", gs.player_swap_weapon())
@@ -3425,3 +3463,170 @@ func _test_icon_theme() -> void:
 	check("the icon theme is the active one when selected",
 		RenderTheme.active().appearance(&"brazier")["ch"] == an_icon)
 	RenderTheme.set_mode(was)
+
+
+## Ammunition, and the exploit it exists to close.
+##
+## A first-time player found shoot-and-retreat in one sitting, and the numbers
+## agreed with him: reach 8 against a longest monster reach of 6, and eight of
+## fifteen monsters slower than the player, so they can never close on someone
+## backing away. The stone golem at speed 70 literally cannot reach you in open
+## ground.
+##
+## Noise was tried first and measured, because it was the cheap answer. Firing
+## twelve shots at something that cannot catch you drew nobody 94% of the time
+## at the old radius and 52% of the time at a radius larger than a boneyard.
+## Noise wakes things, and the things it wakes are the same slow ones that
+## could not reach you -- so the lever was always wrong. Shots have to cost.
+func _test_ammunition() -> void:
+	var gs := _arena(25, 11)
+	gs.player.x = 4
+	gs.player.y = 5
+	var bow := Item.make(&"war_bow")
+	gs.give_item(bow)
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	check("a bow is found loaded (%d)" % bow.ammo, bow.ammo == bow.ammo_max)
+	check("and its quiver holds twenty", bow.ammo_max == 20, str(bow.ammo_max))
+
+	var mark := _spawn(gs, "kobold", 12, 5)
+	mark.max_hp = 9999
+	mark.hp = 9999
+	var start := bow.ammo
+	gs.player_fire(Vector2i(12, 5))
+	check("firing spends a shot", bow.ammo == start - 1, str(bow.ammo))
+
+	# The spent arrow lands where it hit, which is the point of the whole thing:
+	# retreating means backing away from your own ammunition.
+	var landed := 0
+	for it in gs.items_at(12, 5):
+		if it.id == &"arrows":
+			landed += it.ammo
+	check("and the arrow lands on the target", landed == 1, str(landed))
+
+	# Aim at where it IS each time: a woken monster walks toward you between
+	# shots, and firing at the cell it used to occupy is refused.
+	for i in 40:
+		gs.player_fire(Vector2i(mark.x, mark.y))
+	check("an empty bow stops shooting", bow.ammo == 0, str(bow.ammo))
+	var turns := gs.turns
+	check("and firing it is refused", not gs.player_fire(Vector2i(mark.x, mark.y)))
+	check("without costing a turn", gs.turns == turns)
+
+	# Walk to the biggest pile and gather it back.
+	var pile: Item = null
+	for it in gs.ground:
+		if it.id == &"arrows" and (pile == null or it.ammo > pile.ammo):
+			pile = it
+	check("spent arrows are lying about", pile != null)
+	if pile == null:
+		return
+	gs.entities.erase(mark)
+	gs.player.x = pile.x
+	gs.player.y = pile.y
+	check("gathering spent arrows works", gs.player_pickup())
+	check("the quiver refills", bow.ammo > 0, str(bow.ammo))
+	check("but never past its capacity", bow.ammo <= bow.ammo_max)
+
+	# Rubble is a sling's supply, and taking it destroys the rubble.
+	var sl := _arena(21, 9)
+	sl.player.x = 5
+	sl.player.y = 4
+	var sling := Item.make(&"sling")
+	sl.give_item(sling)
+	sl.player.equipped[Item.Slot.WEAPON] = sling
+	check("a sling holds thirty stones", sling.ammo_max == 30, str(sling.ammo_max))
+	sling.ammo = 0
+	sl.map.set_tile(5, 4, Tiles.RUBBLE)
+	check("knapping rubble gives a stone", sl.player_pickup())
+	check("one per tile, so a shot costs a turn owed", sling.ammo == 1, str(sling.ammo))
+	check("and the rubble is gone", sl.map.get_tile(5, 4) != Tiles.RUBBLE)
+
+	# A sling cannot be loaded with arrows, nor a bow with stones.
+	var mixed := _arena(21, 9)
+	mixed.player.x = 5
+	mixed.player.y = 4
+	var bow2 := Item.make(&"short_bow")
+	mixed.give_item(bow2)
+	mixed.player.equipped[Item.Slot.WEAPON] = bow2
+	mixed.map.set_tile(5, 4, Tiles.RUBBLE)
+	check("a bow gets nothing from rubble", not mixed.player_pickup())
+	check("the rubble survives that", mixed.map.get_tile(5, 4) == Tiles.RUBBLE)
+
+	# Slung stones do not litter the floor; nobody would cross a room for one.
+	var st := _arena(25, 11)
+	st.player.x = 4
+	st.player.y = 5
+	var sling2 := Item.make(&"sling")
+	st.give_item(sling2)
+	st.player.equipped[Item.Slot.WEAPON] = sling2
+	var target2 := _spawn(st, "kobold", 8, 5)
+	target2.max_hp = 9999
+	target2.hp = 9999
+	st.player_fire(Vector2i(8, 5))
+	check("a slung stone leaves nothing behind", st.items_at(8, 5).is_empty())
+
+	# A resumed run keeps its quiver.
+	var kept := Item.from_dict(bow.to_dict())
+	check("ammunition survives a suspend",
+		kept.ammo == bow.ammo, "%d vs %d" % [kept.ammo, bow.ammo])
+	var older := {"id": "war_bow", "letter": "a", "x": 0, "y": 0, "pow": 0, "def": 0}
+	check("and an older save comes back loaded rather than dry",
+		Item.from_dict(older).ammo == 20)
+
+
+## Merging must never eat the better item.
+##
+## Reported from play: with a potion +1 already in the pack, merging two plain
+## potions consumed the +1 as the donor. You finished with one +1 where you
+## started with one, two plain potions gone, and nothing saying where the good
+## one went. The donor was simply the first id match in pack order.
+func _test_merging_spends_the_cheapest() -> void:
+	var gs := _forge_arena()
+	gs.brazier_charge = {Vector2i(6, 4): 100}
+	# The upgraded one FIRST, which is the order that used to lose it.
+	var precious := Item.make(&"potion_healing")
+	precious.upgrade()
+	gs.give_item(precious)
+	var plain_a := Item.make(&"potion_healing")
+	var plain_b := Item.make(&"potion_healing")
+	gs.give_item(plain_a)
+	gs.give_item(plain_b)
+
+	check("merging a plain one keeps the good one",
+		gs.player_merge(gs.player.inventory.find(plain_a)))
+	check("the +1 is still in the pack", gs.player.inventory.has(precious))
+	check("it is still a +1", precious.upgrade_level() == 1,
+		str(precious.upgrade_level()))
+	check("and the plain donor was the one spent",
+		not gs.player.inventory.has(plain_b))
+
+	# Two upgraded potions are a legitimate way to reach +2 when that is all
+	# there is, so the rule is "cheapest", not "never an upgraded one".
+	var pair := _forge_arena()
+	pair.brazier_charge = {Vector2i(6, 4): 100}
+	var one := Item.make(&"potion_healing")
+	var two := Item.make(&"potion_healing")
+	one.upgrade()
+	two.upgrade()
+	pair.give_item(one)
+	pair.give_item(two)
+	check("two +1s can still be combined", pair.player_merge(0))
+	check("into a +2", pair.player.inventory[0].upgrade_level() == 2,
+		str(pair.player.inventory[0].upgrade_level()))
+	check("worth 28 hit points",
+		pair.player.inventory[0].effective_magnitude() == 28,
+		str(pair.player.inventory[0].effective_magnitude()))
+
+	# The same rule protects gear, which nobody had tested either.
+	var gear := _forge_arena()
+	gear.brazier_charge = {Vector2i(6, 4): 100}
+	var sharp := Item.make(&"short_sword")
+	sharp.upgrade()
+	gear.give_item(sharp)
+	var dull_a := Item.make(&"short_sword")
+	var dull_b := Item.make(&"short_sword")
+	gear.give_item(dull_a)
+	gear.give_item(dull_b)
+	gear.player_merge(gear.player.inventory.find(dull_a))
+	check("a sword +1 is not eaten to improve a plain one",
+		gear.player.inventory.has(sharp) and sharp.upgrade_level() == 1)

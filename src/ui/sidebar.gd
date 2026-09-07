@@ -157,7 +157,14 @@ func _draw() -> void:
 	# Reach is shown on the weapon line, so it reads as a property a weapon can
 	# have rather than something only monsters get.
 	var reach := p.total_range()
-	if reach > 1:
+	var held: Item = p.equipped.get(Item.Slot.WEAPON, null)
+	if held != null and held.uses_ammo():
+		# The count belongs beside the reach, because they are read together:
+		# how far can I hit, and how many times. An empty quiver is tinted like
+		# a wound, since it means the next press of `f` does nothing.
+		_stat_row(y, "weapon", "%s r%d x%d"
+			% [held.display_name(), reach, held.ammo], held.ammo > 0)
+	elif reach > 1:
 		_stat_row(y, "weapon", "%s  r%d" % [_slot_name(p, Item.Slot.WEAPON), reach], true)
 	else:
 		_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)

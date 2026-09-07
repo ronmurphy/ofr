@@ -58,10 +58,26 @@ const DOUSED_RADIUS := 3
 
 ## Resting at a brazier. Each one holds a fixed pool, spent two points at a
 ## time, and then goes out for good.
-## How far a blow or a bowshot carries. Four, matching the radius the old
-## wake-the-defender's-neighbours rule used, so melee sounds exactly as loud as
-## it always did.
-const COMBAT_NOISE := 4
+## How far a blow or a bowshot carries.
+##
+## Six, not the four it inherited from the old wake-the-neighbours rule. A
+## footstep on bones carries seven; a pitched battle carrying four was the
+## odder number of the two.
+##
+## What this is NOT is a fix for shoot-and-retreat, and the measurement is
+## worth recording so nobody tries it again. Firing twelve shots at something
+## that cannot catch you draws nobody at all:
+##
+##     radius 4   94% of the time nobody comes
+##     radius 6   79%
+##     radius 9   52%
+##
+## Even at nine -- more than a boneyard -- half the time the archer's corner
+## stays empty. Noise is simply the wrong lever: it wakes things, and the
+## things it wakes are mostly the same slow ones that could never reach you.
+## The exploit is about SPEED, and the answer to it is that shots have to cost
+## something. See the ammunition work.
+const COMBAT_NOISE := 6
 const BRAZIER_CHARGE := 10
 const BRAZIER_HEAL := 2
 ## Merging two identical items costs brazier charge, which is the same finite
@@ -907,15 +923,50 @@ func player_fire(cell: Vector2i) -> bool:
 
 	var target := entity_at(cell.x, cell.y)
 	if target == null or target.is_player:
-		# Refused rather than spent. With no ammunition there is nothing to be
-		# gained by shooting empty floor, so a misclick should cost nothing.
+		# Refused rather than spent: a misclick should cost neither a turn nor
+		# a shot.
 		msg_log.add("There is nothing there to shoot.", Color(0.7, 0.6, 0.4))
 		return false
 
+	var launcher: Item = player.equipped.get(Item.Slot.WEAPON, null)
+	if launcher != null and launcher.uses_ammo() and launcher.ammo <= 0:
+		msg_log.add("The %s is empty." % launcher.name, Color(0.9, 0.6, 0.35))
+		return false
+
 	_travel.clear()
+	if launcher != null and launcher.uses_ammo():
+		launcher.ammo -= 1
+		_spend_shot(launcher, cell)
 	_attack(player, target, true)
 	_end_player_turn()
 	return true
+
+## Where a spent shot ends up.
+##
+## Arrows survive and land at the target, so they can be walked to and
+## gathered. That is the whole point of them: retreating means backing away
+## from your own ammunition, so kiting something across a room costs you either
+## the arrows or the ground you just gave up. Noise could never do that -- it
+## wakes things, and the things it wakes are the slow ones that could not reach
+## you anyway.
+##
+## Stones do not survive. Nobody would cross a room for a slung pebble, and
+## there is rubble everywhere to make more.
+func _spend_shot(launcher: Item, at: Vector2i) -> void:
+	if launcher.ammo_kind != &"arrow":
+		return
+	if not map.is_walkable(at.x, at.y):
+		return
+	# Pile into an arrow already lying there rather than scattering singles.
+	for it in items_at(at.x, at.y):
+		if it.id == &"arrows":
+			it.ammo += 1
+			return
+	var spent := Item.make(&"arrows")
+	spent.ammo = 1
+	spent.x = at.x
+	spent.y = at.y
+	ground.append(spent)
 
 ## Everything in the pack that could be hurled.
 func throwables() -> Array:
@@ -1363,11 +1414,27 @@ func player_merge(index: int) -> bool:
 ## Requiring matched levels was the first version and it made the cost
 ## geometric -- four daggers for a +2 rather than three. The cap already does
 ## the balancing, so the simpler rule wins.
+## The cheapest thing that can feed this one.
+##
+## It used to take the first match in pack order, which quietly destroyed
+## upgrades: with a potion +1 sitting earlier in the list, merging two plain
+## potions consumed the +1 as the donor. You ended up with one +1 where you
+## already had one, two plain potions gone, and nothing on screen explaining
+## where the good one went. Reported from play as "one of them vanishes and the
+## original does not go up".
+##
+## Taking the LEAST upgraded donor is always the best outcome available, so
+## there is never a reason to pick differently: a +1 fed by a plain one becomes
+## a +2, while a +1 fed by another +1 becomes a +2 and costs an upgrade to do
+## it. Same result, higher price.
 func _find_duplicate(item: Item) -> Item:
+	var best: Item = null
 	for other in player.inventory:
-		if other != item and other.id == item.id:
-			return other
-	return null
+		if other == item or other.id != item.id:
+			continue
+		if best == null or other.upgrade_level() < best.upgrade_level():
+			best = other
+	return best
 
 func _adjacent_spent_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
@@ -1405,9 +1472,13 @@ func player_pickup() -> bool:
 		return false
 	_travel.clear()
 	var here := items_at(player.x, player.y)
+	if not here.is_empty() and here[0].id == &"arrows":
+		return _gather_ammo(here[0])
 	if here.is_empty():
 		if map.get_tile(player.x, player.y) == Tiles.FUNGUS:
 			return _eat_fungus()
+		if map.get_tile(player.x, player.y) == Tiles.RUBBLE:
+			return _knap_stones()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
@@ -1464,6 +1535,62 @@ func _eat_fungus() -> bool:
 	_gather_lights()
 	msg_log.add("You eat the fungus. It is bitter, and the glow goes out. (+1 hp)",
 		Color(0.62, 0.85, 0.68))
+	_end_player_turn()
+	return true
+
+## Rubble is a pile of stones, and a sling wants stones.
+##
+## It was pure cost before -- slow ground that did nothing else -- and this
+## makes a nuisance into a supply without adding anything to the floor. Note
+## what it costs: rubble is slow going, so reloading means standing on the one
+## terrain that makes retreating harder, and the pile is destroyed by taking
+## it, exactly as bones are destroyed by crossing them.
+##
+## The world is not the constraint. A floor grows about thirty rubble tiles,
+## so there are sixty to ninety stones lying around; what limits a sling is
+## that it holds ten and every reload is a turn.
+func _knap_stones() -> bool:
+	var sling: Item = player.equipped.get(Item.Slot.WEAPON, null)
+	if sling == null or sling.ammo_kind != &"stone":
+		msg_log.add("Loose stone, and nothing to sling it with.",
+			Color(0.7, 0.6, 0.4))
+		return false
+	if sling.ammo >= sling.ammo_max:
+		msg_log.add("You have all the stones you can carry.", Color(0.7, 0.6, 0.4))
+		return false
+	# One stone a tile, so every shot costs a turn spent on rubble somewhere.
+	#
+	# It gave two or three at first, which worked out at under half a turn per
+	# stone -- thirty of them was three or four fights before anyone had to go
+	# looking. One apiece makes the price legible: a stone slung is a turn owed.
+	# The pouch still holds thirty, so passing a rubble field is worth stopping
+	# for rather than something you top up in one action.
+	var got := mini(1, sling.ammo_max - sling.ammo)
+	sling.ammo += got
+	map.set_tile(player.x, player.y,
+		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	msg_log.add("You work a stone loose from the rubble. (%d/%d)"
+		% [sling.ammo, sling.ammo_max], Color(0.80, 0.78, 0.70))
+	_end_player_turn()
+	return true
+
+## Gathering spent arrows back into the quiver.
+func _gather_ammo(pile: Item) -> bool:
+	var bow: Item = player.equipped.get(Item.Slot.WEAPON, null)
+	if bow == null or bow.ammo_kind != &"arrow":
+		msg_log.add("You have no bow to put them to.", Color(0.7, 0.6, 0.4))
+		return false
+	if bow.ammo >= bow.ammo_max:
+		msg_log.add("Your quiver is full.", Color(0.7, 0.6, 0.4))
+		return false
+	var taken := mini(pile.ammo, bow.ammo_max - bow.ammo)
+	bow.ammo += taken
+	pile.ammo -= taken
+	if pile.ammo <= 0:
+		ground.erase(pile)
+	msg_log.add("You gather %d arrows. (%d/%d)" % [taken, bow.ammo, bow.ammo_max],
+		Color(0.80, 0.85, 0.70))
 	_end_player_turn()
 	return true
 
@@ -1580,8 +1707,38 @@ func player_swap_weapon() -> bool:
 		return false
 	_travel.clear()
 	_toggle_equip(best)
+
+	# Going back to a blade frees the hand the launcher was using, so the
+	# shield goes back on it.
+	#
+	# Reported from play, and it is the gap between what this key was described
+	# as and what it first did. The offhand rule only ever TOOK the shield away
+	# -- a launcher needs both hands -- and nothing ever gave it back, so
+	# sling, sword, sling left the buckler in the pack forever. This is meant
+	# to swap a posture, not a weapon: reach and no shield, or blade and shield.
+	#
+	# One turn for the pair rather than one each. Charging separately would
+	# make the key slower than doing it by hand out of the inventory, which
+	# defeats the point of having it -- and the opposite swap has always given
+	# up the shield for free.
+	if not best.is_two_handed():
+		var shield := _best_offhand()
+		if shield != null and not player.is_equipped(shield):
+			player.equipped[Item.Slot.OFFHAND] = shield
+			msg_log.add("You raise the %s with it." % shield.display_name(),
+				Color(0.80, 0.85, 0.95))
 	_end_player_turn()
 	return true
+
+## The heaviest shield in the pack, upgrades counted.
+func _best_offhand() -> Item:
+	var best: Item = null
+	for it in player.inventory:
+		if it.slot != Item.Slot.OFFHAND:
+			continue
+		if best == null or it.defense_bonus > best.defense_bonus:
+			best = it
+	return best
 
 func player_drop(index: int) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():

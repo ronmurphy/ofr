@@ -112,7 +112,7 @@ func _terrain_lines() -> int:
 	return 1 + TERRAIN_ORDER.size()
 
 func _creature_lines() -> int:
-	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 3
+	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4
 
 func _item_lines() -> int:
 	return 1 + 7 + 1 + 1 + Shrines.COUNT
@@ -226,6 +226,7 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	y = _entry(x, y, w, "z", Palette.SLEEP, "asleep", "")
 	y = _entry(x, y, w, "?", Palette.ALERT, "stirring", "")
 	y = _entry(x, y, w, "!", Palette.ALERT, "it has seen you", "")
+	y = _entry(x, y, w, "<<", Palette.FLEEING, "running from you", "")
 
 func _item_column(x: float, y: float, w: float) -> void:
 	y = _heading(x, y, "WHAT YOU CAN CARRY")

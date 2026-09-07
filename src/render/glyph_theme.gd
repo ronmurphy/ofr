@@ -72,6 +72,7 @@ const OVERRIDES := {
 	&"scroll":   0xF0BC2,   # md-script_text
 	&"weapon":   0xF04E5,   # md-sword
 	&"launcher": 0xF1841,   # md-bow_arrow
+	&"ammo":     0xF1840,   # md-arrow_projectile -- spent arrows on the floor
 	&"armour":   0xF0A7B,   # md-tshirt_crew
 	&"shield":   0xF0498,   # md-shield
 	&"amulet":   0xF0F0B,   # md-necklace

@@ -78,8 +78,23 @@ var _glyph_dx := 0.0
 var _glyph_baseline := 0.0
 ## Torch flicker lives here, in the renderer, NOT in the simulation. The sim
 ## must stay deterministic and turn-driven; flicker is a per-frame visual.
-var _flicker := 1.0
+var _flicker_t := 0.0
+var _flicker_jitter := 0.0
 var _flicker_accum := 0.0
+## Which flickering light owns each cell, as a phase offset. -1 means no
+## flickering source reaches it, so it holds perfectly still.
+##
+## The flicker used to be one number multiplying every lit cell on screen, so a
+## brazier on the far side of the map guttered in perfect time with your torch.
+## That reads as the whole screen breathing rather than as flames burning, and
+## it is why several independent rhythms look so much more alive than one.
+##
+## Rebuilt per refresh rather than per frame: the sources only move when a turn
+## passes. The light map itself lives in src/sim/ and accumulates every source
+## into one colour per cell, so by the time the renderer sees it, whose light it
+## was is gone -- this recovers that without the simulation having to care.
+var _phase := PackedFloat32Array()
+var _phase_w := 0
 
 ## Transient visual effects. Deliberately generic: a floating damage number and
 ## an overhead "!" or "zzZ" are the same thing -- a marker that appears above a
@@ -181,8 +196,10 @@ func _process(delta: float) -> void:
 	var flicker_due := _flicker_accum >= 1.0 / 15.0
 	if flicker_due:
 		_flicker_accum = 0.0
-		var t := Time.get_ticks_msec() / 1000.0
-		_flicker = 1.0 + sin(t * 11.0) * 0.035 + sin(t * 23.7) * 0.022 + randf_range(-0.02, 0.02)
+		# The time and the jitter are shared; the PHASE is not, which is what
+		# stops every flame on the floor moving as one.
+		_flicker_t = Time.get_ticks_msec() / 1000.0
+		_flicker_jitter = randf_range(-0.02, 0.02)
 
 	if animating or flicker_due:
 		queue_redraw()
@@ -348,6 +365,7 @@ func settle_motion() -> void:
 func sync_motion() -> void:
 	if state == null:
 		return
+	_rebuild_phases()
 	var seen := {}
 	for e in state.entities:
 		if not e.alive:
@@ -425,6 +443,7 @@ func _draw() -> void:
 
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
+			_draw_wound(e)
 			_draw_glyph(e.appearance, _visual_cell(e))
 	if state.player.alive:
 		_draw_glyph(state.player.appearance, _visual_cell(state.player))
@@ -485,7 +504,7 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 	var tint := _material_tint(map.material_at(x, y), 1.0)
 
 	if visible_here:
-		var lit: Color = state.light_map.get_light(x, y) * _flicker
+		var lit: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
 		fg = (fg * tint * lit).clamp()
 		bg = (bg * tint * lit).clamp()
 	elif tile == Tiles.STAIRS_DOWN:
@@ -592,6 +611,32 @@ func _is_face_wall(map: DungeonMap, x: int, y: int) -> bool:
 				return true
 	return false
 
+## Blood under a hurt creature, rather than a tint on it.
+##
+## Tinting was tried and measured first, and it does not work: pulling every
+## wounded thing toward the same red collapses the palette that was built to
+## keep them apart. At a mix strong enough to read, a critical wyvern and a
+## critical dragon came out deltaE 15.5 under deuteranopia -- one creature.
+## Half the tint kept them separable but made bloodied and critical look alike,
+## which is the same failure wearing the other hat.
+##
+## A wash underneath is a channel of its own. The creature keeps every bit of
+## its own colour, and the two signals cannot interfere because they are not
+## competing for the same property.
+##
+## Deliberately NOT dimmed by the light map. A monster you can see is a monster
+## whose condition you can see -- realism loses to readability here exactly as
+## it does for the glyph's own brightness floor.
+func _draw_wound(e: Entity) -> void:
+	var w := e.wound()
+	if w == Entity.Wound.WHOLE:
+		return
+	var tone := Palette.CRITICAL if w == Entity.Wound.CRITICAL else Palette.BLOODIED
+	var alpha := Palette.CRITICAL_WASH if w == Entity.Wound.CRITICAL \
+		else Palette.BLOODIED_WASH
+	var at := _screen_f(_visual_cell(e))
+	draw_rect(Rect2(at, Vector2(cell_size, cell_size)), Color(tone, alpha), true)
+
 func _draw_awareness(e: Entity) -> void:
 	var text := ""
 	var colour := Palette.SLEEP
@@ -602,6 +647,12 @@ func _draw_awareness(e: Entity) -> void:
 	elif e.alertness == Entity.Alert.SUSPICIOUS:
 		text = "?"
 		colour = Palette.ALERT
+	elif e.fleeing:
+		# A creature running away looked exactly like one hunting you, which
+		# is the difference between spending three turns chasing and letting
+		# it go. Every other state had a mark; this one was simply missed.
+		text = "<<"
+		colour = Palette.FLEEING
 	else:
 		return
 
@@ -678,6 +729,52 @@ func _tint_keeping_luma(c: Color, tint: Color) -> Color:
 		return c
 	return (out * (before / after)).clamp()
 
+## Assigns every cell the phase of the nearest flickering light that reaches it.
+func _rebuild_phases() -> void:
+	var m := state.map
+	if _phase.size() != m.width * m.height:
+		_phase.resize(m.width * m.height)
+		_phase_w = m.width
+	_phase.fill(-1.0)
+
+	var lights: Array = []
+	if state.player.light != null and state.player.light.flickers:
+		lights.append(state.player.light)
+	for src in state.static_lights:
+		if src.flickers:
+			lights.append(src)
+	if lights.is_empty():
+		return
+
+	for y in m.height:
+		for x in m.width:
+			var best := 1 << 30
+			var phase := -1.0
+			for src in lights:
+				var dx: int = x - src.x
+				var dy: int = y - src.y
+				var d := dx * dx + dy * dy
+				if d > src.radius * src.radius or d >= best:
+					continue
+				best = d
+				# Position, so two braziers in one room never gutter together.
+				phase = float((src.x * 7 + src.y * 13) % 64) * 0.0982
+			_phase[y * _phase_w + x] = phase
+
+## The flicker a particular cell is under, which is its light's, not the
+## screen's. Cells no flame reaches are perfectly steady.
+func _flicker_at(x: int, y: int) -> float:
+	if _phase.is_empty():
+		return 1.0
+	var i := y * _phase_w + x
+	if i < 0 or i >= _phase.size():
+		return 1.0
+	var p := _phase[i]
+	if p < 0.0:
+		return 1.0
+	return 1.0 + sin(_flicker_t * 11.0 + p) * 0.035 \
+		+ sin(_flicker_t * 23.7 + p * 2.0) * 0.022 + _flicker_jitter
+
 ## Cheap deterministic noise in [0,1) from a cell coordinate.
 func _hash01(x: int, y: int) -> float:
 	var h := (x * 73856093) ^ (y * 19349663)
@@ -694,7 +791,7 @@ func _draw_glyph(id: StringName, cell: Vector2) -> void:
 	# glyph mid-stride should not flicker between two rooms' light levels.
 	var x := int(round(cell.x))
 	var y := int(round(cell.y))
-	var lit: Color = state.light_map.get_light(x, y) * _flicker
+	var lit: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
 	# Floor of 0.45 so something standing in gloom is still legible. Realism
 	# loses to readability every time in a game you play by reading.
 	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()

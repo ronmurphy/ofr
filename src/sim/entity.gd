@@ -204,6 +204,18 @@ func distance_to(other: Entity) -> float:
 func steps_to(other: Entity) -> int:
 	return maxi(absi(x - other.x), absi(y - other.y))
 
+## D&D's word for it: at or below half. A second step at a quarter, because by
+## then the question has changed from "can I win this" to "can I finish it
+## before it finishes me".
+enum Wound { WHOLE, BLOODIED, CRITICAL }
+
+func wound() -> int:
+	if hp * 4 <= max_hp:
+		return Wound.CRITICAL
+	if hp * 2 <= max_hp:
+		return Wound.BLOODIED
+	return Wound.WHOLE
+
 func is_adjacent(other: Entity) -> bool:
 	return steps_to(other) == 1
 
