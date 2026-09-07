@@ -37,6 +37,10 @@ const OVERRIDES := {
 	&"shrine":        {"ch": "⌂"},
 	&"brazier":       {"ch": "✶"},
 	&"brazier_spent": {"ch": "✶"},
+	# Same shape as the other two. Which brazier this is has always been told
+	# by colour, and a third symbol would be a third thing to learn for a state
+	# that only ever means "not this one".
+	&"brazier_dead":  {"ch": "✶"},
 
 	# "~" was always a compromise for water. "≈" is the thing itself.
 	&"water":  {"ch": "≈"},

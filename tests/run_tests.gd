@@ -100,6 +100,8 @@ func _initialize() -> void:
 	_test_corners_stop_everyone_equally()
 	_test_nothing_rests_on_a_hazard()
 	_test_consumables_forge()
+	_test_ember_forge()
+	_test_embers_cool_and_refuse_glass()
 	_test_offhand_and_swap()
 	_test_ammunition()
 	_test_merging_spends_the_cheapest()
@@ -3074,6 +3076,135 @@ func _test_consumables_forge() -> void:
 ## bow, because swinging a launcher halves your power and every blow lands at
 ## the damage floor. The axe was in the pack the whole time and nothing on
 ## screen said so.
+## The ember forge.
+##
+## A brazier that has just died will work metal once, loudly, and is then black
+## for good. The clock is the load-bearing part: without it the play is to
+## clear a floor and walk back round it forging at every dead brazier, because
+## noise costs nothing when nothing is alive to hear it.
+func _test_ember_forge() -> void:
+	var gs := _forge_arena()
+	var cell := Vector2i(6, 4)
+	gs.player.max_hp = 40
+	gs.player.hp = 30
+	# Rest it down to nothing: five turns at two hit points a turn.
+	for i in 5:
+		gs.player_wait()
+	check("resting the brazier out spends it",
+		gs.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_SPENT,
+		str(gs.map.get_tile(cell.x, cell.y)))
+	# The window, not the exact number. It died on the turn before this one, so
+	# pinning the arithmetic here would only assert how the turn counter is
+	# bookkept -- which is not what the clock is for.
+	var left := int(gs.ember_until.get(cell, -1)) - gs.turns
+	check("and leaves embers on a clock (%d turns left)" % left,
+		left > 0 and left <= GameState.EMBER_TURNS, str(left))
+
+	var a := Item.make(&"dagger")
+	gs.give_item(a)
+	gs.give_item(Item.make(&"dagger"))
+	check("a dead brazier still offers a forge", gs.can_forge_here())
+	check("and knows it is embers, not flame", gs.forging_in_embers())
+
+	# Something asleep across the room, to prove the noise is real.
+	var sleeper := _spawn(gs, "goblin", 13, 4)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	gs.take_events()
+
+	check("forging in the embers succeeds", gs.player_merge(0))
+	check("the survivor gained its point",
+		a.power_bonus == a.base_power_bonus + 1, str(a.power_bonus))
+	check("it cost no charge, because there was none",
+		not gs.brazier_charge.has(cell))
+	check("the brazier is black afterwards",
+		gs.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_DEAD,
+		str(gs.map.get_tile(cell.x, cell.y)))
+	check("and the clock is gone with it", not gs.ember_until.has(cell))
+
+	var radius := 0
+	for e in gs.take_events():
+		if e["kind"] == &"noise":
+			radius = int(e["radius"])
+	check("hammering is loud (%d)" % radius, radius == GameState.FORGE_NOISE,
+		str(radius))
+	check("loud enough to be heard seven cells off",
+		sleeper.alertness == Entity.Alert.AWAKE)
+
+	# Once only.
+	gs.give_item(Item.make(&"dagger"))
+	gs.give_item(Item.make(&"dagger"))
+	check("a black brazier forges nothing more", not gs.can_forge_here())
+	check("and says so rather than failing silently",
+		not gs.player_merge(gs.player.inventory.size() - 1))
+
+	# Nothing brings it back -- not the scroll, not the shrine. That is the
+	# whole price, and a way round it would make the ember forge free.
+	gs.give_item(Item.make(&"scroll_light"))
+	gs.player_use(gs.player.inventory.size() - 1)
+	check("no scroll of light rekindles it",
+		gs.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_DEAD)
+	gs._invoke_shrine(Shrines.EMBERS)
+	check("nor does the shrine of embers",
+		gs.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_DEAD)
+
+## Embers work metal and nothing else, and they go cold.
+func _test_embers_cool_and_refuse_glass() -> void:
+	var cell := Vector2i(6, 4)
+
+	# Glass. A bed of coals will not hold a decoction at temperature, and the
+	# rule is what stops the ember forge becoming a potion-stacking engine
+	# running on every burnt-out brazier in the dungeon.
+	var glass := _forge_arena()
+	glass.map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
+	glass.brazier_charge.clear()
+	glass.ember_until[cell] = glass.turns + GameState.EMBER_TURNS
+	glass._gather_lights()
+	glass.give_item(Item.make(&"potion_healing"))
+	glass.give_item(Item.make(&"potion_healing"))
+	check("embers will not boil two potions together",
+		not glass.can_forge_item(glass.player.inventory[0]))
+	check("and refuse the merge outright", not glass.player_merge(0))
+	check("the brazier is untouched by the refusal",
+		glass.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_SPENT)
+	# The same coals take iron.
+	glass.give_item(Item.make(&"dagger"))
+	glass.give_item(Item.make(&"dagger"))
+	check("but they take iron", glass.player_merge(2))
+
+	# Cold. The clock is what stops "clear the floor, then walk back round it".
+	var cold := _forge_arena()
+	cold.map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
+	cold.brazier_charge.clear()
+	cold.ember_until[cell] = cold.turns + GameState.EMBER_TURNS
+	cold._gather_lights()
+	cold.give_item(Item.make(&"dagger"))
+	cold.give_item(Item.make(&"dagger"))
+	check("hot embers forge", cold.can_forge_here())
+	cold.turns += GameState.EMBER_TURNS
+	check("cold ones do not", not cold.can_forge_here())
+	check("and the merge is refused", not cold.player_merge(0))
+	check("but a scroll still relights cold ash",
+		cold._adjacent_spent_brazier() == cell)
+
+	# The clock is absolute turns, so it has to survive a suspend intact.
+	var kept := _forge_arena()
+	kept.map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
+	kept.brazier_charge.clear()
+	kept.turns = 400
+	kept.ember_until[cell] = 415
+	var back := GameState.new(1)
+	back.new_game()
+	check("a save round trip keeps the ember clock",
+		back.apply_dict(kept.to_dict()) and int(back.ember_until.get(cell, -1)) == 415,
+		str(back.ember_until))
+	# Saves written before embers existed carry no such key.
+	var older := kept.to_dict()
+	older.erase("embers")
+	var plain := GameState.new(1)
+	plain.new_game()
+	check("and an older save loads with no embers at all",
+		plain.apply_dict(older) and plain.ember_until.is_empty())
+
 func _test_offhand_and_swap() -> void:
 	# The shield values are derived from where each monster stops being able to
 	# hit harder, so those thresholds are worth pinning down.

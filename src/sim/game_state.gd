@@ -92,6 +92,28 @@ const MERGE_COST := 4
 ## just a strictly better way to read the scroll.
 const RELIGHT_CHARGE := 6
 
+## Embers.
+##
+## A brazier that has just gone out will still work metal, once, and then it is
+## black for good. This exists because the ten charges are meant to pose a
+## question -- heal, or forge -- and a player who needs the hit points never
+## gets to answer it. The embers give the answer back without giving back a
+## single hit point.
+##
+## The cost is noise instead of charge, and the twenty turns are what makes the
+## noise a real cost. Without a deadline the play is obvious and free: clear
+## the floor, then walk back round it forging at every dead brazier, because
+## noise prices nothing when nothing is alive to hear it. That is the same hole
+## shoot-and-retreat went through -- see COMBAT_NOISE -- and it is worse on the
+## way DOWN, where a bow clears a floor for almost no hit points at all. Twenty
+## turns is long enough to finish the fight you are in and far too short to
+## clear a level, so the decision has to be taken where it is offered.
+const EMBER_TURNS := 20
+## Louder than a sword blow, because hammering is. Deliberately above bones at
+## seven, so on a floor you were sneaking across this is the loudest thing you
+## can choose to do.
+const FORGE_NOISE := 10
+
 ## A flared torch, in turns. It cannot be smothered while it burns -- that is
 ## the curse half: you see much further, and so does everything else.
 const FLARE_TURNS := 100
@@ -183,6 +205,9 @@ var player: Entity
 var static_lights: Array = []
 ## Cell -> hit points left in that brazier.
 var brazier_charge: Dictionary = {}
+## Cell -> the turn its embers go cold. Only ever holds cells that are
+## BRAZIER_SPENT right now; a relight or an ember forge drops the entry.
+var ember_until: Dictionary = {}
 var stairs: Vector2i
 ## Cave regions carved on this level, kept so tests and later features can
 ## reason about them.
@@ -392,6 +417,7 @@ func build_level() -> void:
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
 	brazier_charge.clear()
+	ember_until.clear()
 	for y in map.height:
 		for x in map.width:
 			if map.get_tile(x, y) == Tiles.BRAZIER:
@@ -1149,6 +1175,7 @@ func _invoke_shrine(kind: int) -> void:
 						continue
 					map.set_tile(x, y, Tiles.BRAZIER)
 					brazier_charge[Vector2i(x, y)] = BRAZIER_CHARGE / 2
+					ember_until.erase(Vector2i(x, y))
 					n += 1
 			_gather_lights()
 			msg_log.add("Cold ash catches. %d braziers burn again." % n,
@@ -1302,10 +1329,7 @@ func player_wait() -> bool:
 		msg_log.add("You warm yourself at the brazier. (+%d)" % healed,
 			Color(0.96, 0.76, 0.44))
 		if int(brazier_charge[brazier]) <= 0:
-			brazier_charge.erase(brazier)
-			map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_SPENT)
-			_gather_lights()
-			msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
+			_gutter(brazier)
 
 	_end_player_turn()
 	return true
@@ -1345,17 +1369,48 @@ func _level_up() -> void:
 	msg_log.add("You reach level %d." % player.level, Color(0.98, 0.90, 0.45))
 	events.append({"kind": &"levelup", "to": Vector2i(player.x, player.y)})
 
-## Is there a lit brazier beside the player with enough heat left to forge?
+## Is there any fire beside the player that could forge SOMETHING?
+##
+## Drives the inventory's forge line, which is why it does not take an item:
+## the line is about the place, not the pack.
 func can_forge_here() -> bool:
 	var b := _adjacent_brazier()
-	return b.x >= 0 and int(brazier_charge.get(b, 0)) >= MERGE_COST
+	if b.x >= 0 and int(brazier_charge.get(b, 0)) >= MERGE_COST:
+		return true
+	return _adjacent_embers().x >= 0
+
+## Whether the fire the player is standing at is a dying one.
+##
+## Only meaningful where can_forge_here() already holds. A live brazier always
+## wins, so this answers "is the only fire here an ember bed".
+func forging_in_embers() -> bool:
+	var b := _adjacent_brazier()
+	if b.x >= 0 and int(brazier_charge.get(b, 0)) >= MERGE_COST:
+		return false
+	return _adjacent_embers().x >= 0
+
+## Where this particular item would be forged, and how. Empty if nowhere.
+##
+## One decision, in one place, so the inventory marker and the merge itself can
+## never disagree about whether a given item is workable here -- which they
+## would the moment embers started refusing potions.
+func _forge_site(item: Item) -> Dictionary:
+	var lit := _adjacent_brazier()
+	if lit.x >= 0 and int(brazier_charge.get(lit, 0)) >= MERGE_COST:
+		return {"cell": lit, "embers": false}
+	if not _ember_forgeable(item):
+		return {}
+	var hot := _adjacent_embers()
+	if hot.x >= 0:
+		return {"cell": hot, "embers": true}
+	return {}
 
 ## Can this specific item be forged right now? Drives the inventory marker, so
 ## the mechanic advertises itself instead of relying on the player guessing
 ## which of the two items involved is the one to click.
 func can_forge_item(item: Item) -> bool:
 	return item_can_upgrade(item) and _find_duplicate(item) != null \
-		and can_forge_here()
+		and not _forge_site(item).is_empty()
 
 ## Merge the item at `index` with an identical one from the pack, at a brazier.
 func player_merge(index: int) -> bool:
@@ -1371,13 +1426,12 @@ func player_merge(index: int) -> bool:
 			Color(0.7, 0.6, 0.4))
 		return false
 
-	var brazier := _adjacent_brazier()
-	if brazier.x < 0:
-		msg_log.add("You need a lit brazier to work metal.", Color(0.7, 0.6, 0.4))
+	var site := _forge_site(item)
+	if site.is_empty():
+		msg_log.add(_no_forge_reason(item), Color(0.7, 0.6, 0.4))
 		return false
-	if int(brazier_charge.get(brazier, 0)) < MERGE_COST:
-		msg_log.add("The brazier has not the heat left.", Color(0.7, 0.6, 0.4))
-		return false
+	var brazier: Vector2i = site["cell"]
+	var embers: bool = site["embers"]
 
 	var donor := _find_duplicate(item)
 	if donor == null:
@@ -1392,22 +1446,49 @@ func player_merge(index: int) -> bool:
 	donor.letter = ""
 
 	item.upgrade()
-	brazier_charge[brazier] = int(brazier_charge[brazier]) - MERGE_COST
-	if item.is_equipment():
-		msg_log.add("You work the metal together over the flame. (%s)"
-			% item.display_name(), Color(0.85, 0.88, 0.70))
-	else:
-		msg_log.add("You boil the two down to one, and it thickens. (%s)"
-			% item.display_name(), Color(0.85, 0.88, 0.70))
 	events.append({"kind": &"forge", "to": brazier})
-	if int(brazier_charge[brazier]) <= 0:
-		brazier_charge.erase(brazier)
-		map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_SPENT)
-		_gather_lights()
-		msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
+
+	if embers:
+		# Costs no charge because there is none left to cost. It is paid for in
+		# noise, and in the brazier itself.
+		map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_DEAD)
+		ember_until.erase(brazier)
+		msg_log.add("You hammer it out in the dying coals. (%s)"
+			% item.display_name(), Color(0.85, 0.88, 0.70))
+		msg_log.add("The brazier goes black. Nothing will kindle it again.",
+			Color(0.45, 0.42, 0.42))
+		_make_noise(brazier, FORGE_NOISE, &"forge")
+	else:
+		brazier_charge[brazier] = int(brazier_charge[brazier]) - MERGE_COST
+		if item.is_equipment():
+			msg_log.add("You work the metal together over the flame. (%s)"
+				% item.display_name(), Color(0.85, 0.88, 0.70))
+		else:
+			msg_log.add("You boil the two down to one, and it thickens. (%s)"
+				% item.display_name(), Color(0.85, 0.88, 0.70))
+		if int(brazier_charge[brazier]) <= 0:
+			_gutter(brazier)
 
 	_end_player_turn()
 	return true
+
+## Why there is no forging this, here. Four different situations that all used
+## to print "you need a lit brazier", which is a lie in three of them.
+func _no_forge_reason(item: Item) -> String:
+	var lit := _adjacent_brazier()
+	if lit.x >= 0:
+		return "The brazier has not the heat left."
+	if _adjacent_embers().x >= 0:
+		return "Embers will work metal. They will not boil the %s." % item.name
+	if _adjacent_spent_brazier().x >= 0:
+		return "The ashes have gone cold. There is no working them."
+	# Adjacent, not underfoot: a brazier of any kind is an obstacle, so the
+	# player is never standing on one to be told about it.
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if map.get_tile(player.x + dx, player.y + dy) == Tiles.BRAZIER_DEAD:
+				return "That one is black through. It will take nothing."
+	return "You need a lit brazier to work metal."
 
 ## Any other item of the same kind, whatever its own upgrade level.
 ##
@@ -1435,6 +1516,53 @@ func _find_duplicate(item: Item) -> Item:
 		if best == null or other.upgrade_level() < best.upgrade_level():
 			best = other
 	return best
+
+## A brazier reaching the end of its charge, from either use of it.
+##
+## One place, because the ember clock has to start no matter which way the fire
+## was spent -- and a player who burned the last four charges on a forge should
+## get the same offer as one who burned them on hit points.
+func _gutter(cell: Vector2i) -> void:
+	brazier_charge.erase(cell)
+	map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
+	ember_until[cell] = turns + EMBER_TURNS
+	_gather_lights()
+	msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
+	# Said only when there is something in the pack it could be said about, in
+	# the same spirit as the inventory's forge line: a hint that fires on all
+	# hundred-odd braziers a run burns through is not a hint, it is wallpaper.
+	# No count and no timer -- that the heat is going is the whole warning.
+	if _has_ember_work():
+		msg_log.add("The embers still hold heat enough to work metal. "
+			+ "They will not hold it long.", Color(0.86, 0.62, 0.34))
+
+## Is the player carrying anything the embers could actually take?
+func _has_ember_work() -> bool:
+	for it in player.inventory:
+		if _ember_forgeable(it) and item_can_upgrade(it) \
+				and _find_duplicate(it) != null:
+			return true
+	return false
+
+## Embers work metal and nothing else.
+##
+## A bed of dying coals will let you hammer an edge back into iron; it will not
+## hold a decoction at temperature. The rule is fiction first, but it earns its
+## keep twice over -- it keeps the ember forge pointed at the one extra +1 it
+## was added for, instead of quietly becoming a potion-stacking engine that
+## runs on every burnt-out brazier in the dungeon.
+func _ember_forgeable(item: Item) -> bool:
+	return item.is_equipment()
+
+## An adjacent brazier that has gone out but is still hot enough to forge in.
+func _adjacent_embers() -> Vector2i:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			if map.get_tile(c.x, c.y) == Tiles.BRAZIER_SPENT \
+					and turns < int(ember_until.get(c, -1)):
+				return c
+	return Vector2i(-1, -1)
 
 func _adjacent_spent_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
@@ -1780,6 +1908,9 @@ func _apply_effect(item: Item) -> bool:
 				# two back -- so this is the same currency a potion trades in.
 				brazier_charge[dead] = RELIGHT_CHARGE \
 					+ item.upgrade_level() * item.forge_bonus
+				# It is a live fire again; the ember clock belongs to the next
+				# time it dies, not to this one.
+				ember_until.erase(dead)
 				_gather_lights()
 				msg_log.add("The scroll's light pours into the dead brazier. "
 					+ "It catches, weakly.", Color(0.98, 0.82, 0.45))
@@ -1948,6 +2079,11 @@ func to_dict() -> Dictionary:
 	var charges := {}
 	for cell in brazier_charge:
 		charges["%d,%d" % [cell.x, cell.y]] = int(brazier_charge[cell])
+	# Absolute turn numbers, not remaining turns, because `turns` is saved
+	# alongside them and the two have to mean the same thing on reload.
+	var embers := {}
+	for cell in ember_until:
+		embers["%d,%d" % [cell.x, cell.y]] = int(ember_until[cell])
 	var caves := []
 	for r in cave_regions:
 		caves.append([r.position.x, r.position.y, r.size.x, r.size.y])
@@ -1973,7 +2109,7 @@ func to_dict() -> Dictionary:
 		"material": Marshalls.raw_to_base64(map.material),
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
-		"braziers": charges, "caves": caves, "rooms": rooms,
+		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
 		"flare": torch_flare,
@@ -2013,6 +2149,13 @@ func apply_dict(d: Dictionary) -> bool:
 		var parts: PackedStringArray = String(key).split(",")
 		if parts.size() == 2:
 			brazier_charge[Vector2i(parts[0].to_int(), parts[1].to_int())] = int(charges[key])
+
+	ember_until.clear()
+	var embers: Dictionary = d.get("embers", {})
+	for key in embers:
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			ember_until[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(embers[key])
 
 	shrine_at.clear()
 	var saved_shrines: Dictionary = d.get("shrines", {})

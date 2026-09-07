@@ -80,6 +80,7 @@ const OVERRIDES := {
 	# --- ground and features ------------------------------------------------
 	&"brazier":       0xF0238,   # md-fire
 	&"brazier_spent": 0xF0238,
+	&"brazier_dead":  0xF0238,
 	# A torii gate, not a cross. The cross read as Christian iconography in a
 	# dungeon, and at cell size it was too close to the sword -- a shrine you
 	# might walk onto looking like a weapon you might pick up.

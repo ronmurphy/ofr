@@ -27,6 +27,7 @@ const TABLE := {
 	&"trap":        {"ch": "^",      "fg": Palette.TRAP,     "bg": Color("2a1714")},
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
 	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
+	&"brazier_dead":  {"ch": "Ω", "fg": Palette.BRAZIER_BLACK, "bg": Color("121013")},
 
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},

@@ -30,6 +30,7 @@ enum {
 	FUNGUS,
 	PIT,
 	TRAP,
+	BRAZIER_DEAD,
 }
 
 ## walk  = an actor may stand here
@@ -76,6 +77,11 @@ const DATA := {
 	# otherwise. You can see it, the pathfinder goes round it, so springing one
 	# is always a choice.
 	TRAP:        {"id": &"trap",        "walk": true,  "clear": true},
+	# Forged in, and finished. Not even the shrine of embers finds anything
+	# left to catch. Appended to the enum rather than filed beside its two
+	# siblings on purpose: tiles are saved as raw bytes, so inserting an id in
+	# the middle would renumber every tile in every existing save.
+	BRAZIER_DEAD: {"id": &"brazier_dead", "walk": false, "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:

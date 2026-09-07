@@ -23,6 +23,15 @@ const STAIRS_KNOWN  := Color("7fe0b0")
 const AMULET        := Color("ffe07a")
 const BRAZIER       := Color("e0913c")
 const BRAZIER_DEAD  := Color("4f4740")
+## Forged in, and finished. Read as a black lump rather than a grey one: the
+## ladder lit -> spent -> black is the whole state of a brazier at a glance,
+## and the last rung has to be obviously the last.
+##
+## Black, but not invisible. The first value was dark enough that the glyph
+## disappeared into the panel in the legend -- and this tile is an OBSTACLE, so
+## a player who cannot see it is a player walking into it. It only has to be
+## unmistakably darker than BRAZIER_DEAD above, which it is.
+const BRAZIER_BLACK := Color("3a3234")
 const PILLAR        := Color("9a9082")
 const RUBBLE        := Color("6b5b47")
 const WATER         := Color("4d7f9e")

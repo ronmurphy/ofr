@@ -35,7 +35,7 @@ const TERRAIN_ORDER := [
 	Tiles.FLOOR, Tiles.CAVE_FLOOR, Tiles.WALL, Tiles.ROCK, Tiles.PILLAR,
 	Tiles.STALAGMITE, Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN, Tiles.WATER,
 	Tiles.MUD, Tiles.RUBBLE, Tiles.BONES, Tiles.FUNGUS, Tiles.BRAZIER,
-	Tiles.BRAZIER_SPENT, Tiles.SHRINE, Tiles.TRAP, Tiles.PIT,
+	Tiles.BRAZIER_SPENT, Tiles.BRAZIER_DEAD, Tiles.SHRINE, Tiles.TRAP, Tiles.PIT,
 	Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
 ]
 
@@ -48,6 +48,10 @@ const NOTES := {
 	Tiles.BONES: "LOUD; crumbles once crossed",
 	Tiles.FUNGUS: "glows faintly",
 	Tiles.BRAZIER: "rest at it, or forge",
+	# Named, not explained. What a spent brazier is still good for is the one
+	# thing in this list worth finding out by standing next to one, so the
+	# legend says only that the third state is the end of the road.
+	Tiles.BRAZIER_DEAD: "cold for good",
 	Tiles.TRAP: "springs once",
 	Tiles.PIT: "drops you a floor",
 	Tiles.TRAP + 1000: "",

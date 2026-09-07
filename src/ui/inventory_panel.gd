@@ -295,6 +295,12 @@ func _draw() -> void:
 		hint = "pick something to hurl  ·  click or press its letter  ·  esc cancel"
 	elif state.can_forge_here():
 		hint = "shift+click a ● item to FORGE it with a spare  ·  click use  ·  esc"
+		# Embers get their own line. The two costs are nothing alike -- one
+		# spends hit points you can see on the bar, the other spends quiet --
+		# and a player who read the first line would otherwise have no reason
+		# to expect the second.
+		if state.forging_in_embers():
+			hint = "shift+click a ● item to FORGE in the embers  ·  loud, and final"
 	var hs := font_size - 2
 	while hs > 9 and font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x \
 			> PANEL_W - PAD * 2.0:
