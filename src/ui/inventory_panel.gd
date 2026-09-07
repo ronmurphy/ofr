@@ -35,6 +35,11 @@ const GROUPS := [
 @export var font_bold: Font
 @export var font_size: int = 16
 
+## The icon subset, for glyphs only. Text keeps the full font: this one
+## carries ascii and the symbols the game draws and nothing else, so a
+## message with an unexpected character in it would come out as tofu.
+@export var icon_font: Font
+
 var state: GameState
 var filter: int = Filter.ALL
 ## Off-hand mode: the pack opens filtered to what can be hurled, and a choice
@@ -54,6 +59,8 @@ func _ready() -> void:
 	visible = false
 	if font == null:
 		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	if icon_font == null:
+		icon_font = load("res://assets/fonts/ofr_icons.ttf")
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
@@ -337,8 +344,10 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	var tag := item.letter if item.letter != "" else "-"
 	draw_string(font, base, "%s)" % tag,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
-	draw_string(font, base + Vector2(34.0, 0.0), app["ch"],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, app["fg"])
+	var glyph_size := GlyphTheme.draw_size(app["ch"], font_size)
+	var glyph_font := icon_font if GlyphTheme.is_icon(app["ch"]) else font
+	draw_string(glyph_font, base + Vector2(34.0, (font_size - glyph_size) * 0.35),
+		app["ch"], HORIZONTAL_ALIGNMENT_LEFT, -1, glyph_size, app["fg"])
 	draw_string(font, base + Vector2(60.0, 0.0), item.display_name(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, label)
 

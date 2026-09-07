@@ -23,11 +23,12 @@ func appearance(id: StringName) -> Dictionary:
 # the question -- the grid, the legend and the inventory -- and a mode they
 # disagree about is worse than no mode at all.
 
-enum Mode { ASCII, SYMBOLS }
+enum Mode { ASCII, SYMBOLS, ICONS }
 
 const MODE_NAMES := {
 	Mode.ASCII: "letters",
 	Mode.SYMBOLS: "symbols",
+	Mode.ICONS: "pictures",
 }
 
 const SETTINGS := "user://settings.cfg"
@@ -37,8 +38,10 @@ static var _instances := {}
 
 static func active() -> RenderTheme:
 	if not _instances.has(_mode):
-		_instances[_mode] = SymbolTheme.new() if _mode == Mode.SYMBOLS \
-			else AsciiTheme.new()
+		match _mode:
+			Mode.ICONS:   _instances[_mode] = GlyphTheme.new()
+			Mode.SYMBOLS: _instances[_mode] = SymbolTheme.new()
+			_:            _instances[_mode] = AsciiTheme.new()
 	return _instances[_mode]
 
 static func mode() -> int:
@@ -46,9 +49,10 @@ static func mode() -> int:
 
 ## How many modes this build offers.
 ##
-## Two for now. A third -- an icon font for creatures -- is a desktop-only
-## download, because the font is several megabytes and the whole point of the
-## symbols mode is that the web build gets pictures for free.
+## All three, everywhere. The icon mode was going to be desktop-only on the
+## assumption that the font cost megabytes. Subsetting it to the thirty glyphs
+## the game actually draws brought it to 18KB -- a fifteenth of the text font
+## already being shipped. The assumption was the only thing in the way.
 static func mode_count() -> int:
 	return Mode.size()
 

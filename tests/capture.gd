@@ -498,9 +498,17 @@ func _run() -> void:
 	_scene.grid.forget_metrics()
 	_scene._refresh()
 	await _shot("28_view_symbols.png")
+	RenderTheme.set_mode(RenderTheme.Mode.ICONS)
+	_scene.grid.forget_metrics()
+	_scene._refresh()
+	await _shot("28b_view_icons.png")
 	# The legend is the whole glyph set on one screen, so it is the shot worth
 	# holding the two modes against each other.
 	_scene.legend.open()
+	_scene._refresh()
+	await _shot("29b_legend_icons.png")
+	RenderTheme.set_mode(RenderTheme.Mode.SYMBOLS)
+	_scene.grid.forget_metrics()
 	_scene._refresh()
 	await _shot("29_legend_symbols.png")
 	RenderTheme.set_mode(RenderTheme.Mode.ASCII)

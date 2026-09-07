@@ -41,7 +41,7 @@ const KEYS := [
 	["f (no bow)", "throw", false],
 	["p", "pray at a shrine", false],
 	["m  - +", "sound", false],
-	["v", "letters / symbols", false],
+	["v", "letters / symbols / pictures", false],
 	["esc", "menu", false],
 	["click", "travel", false],
 ]

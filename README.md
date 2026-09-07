@@ -61,7 +61,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `?` or `F1` | legend: every glyph in the game, generated from the tables |
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
 | `w` | swap between your best launcher and your best blade (costs a turn) |
-| `v` | cycle the view: letters or symbols |
+| `v` | cycle the view: letters, symbols, or pictures |
 | `R` | new game |
 
 ## Items
@@ -316,15 +316,67 @@ the rest of the game.
 
 ## View modes
 
-`v` cycles how the dungeon is drawn. Two modes today:
+`v` cycles how the dungeon is drawn. Three modes:
 
 | | |
 |---|---|
 | **letters** | `+ ' ~ , * Ω` and `! ? ) } [ "` -- the original |
-| **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` |
+| **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` -- no new font needed |
+| **pictures** | icons, from an 18KB font subset |
 
-Terrain and items change. **Creatures never do**, in either mode, and that is
-the whole design of it.
+In **symbols**, terrain and items change and creatures never do -- the font has
+no animals in it at all, so there was nothing to change them to.
+
+**Pictures** is the mode that answers the complaint a first-time player made
+after two hours: *"it's clever, but it's still all text."* He had found the
+legend himself and learned the letters. The objection was not confusion, it was
+that reading and looking are different things.
+
+### Shape carries rank, colour carries family
+
+Which is the architecture the letters already had -- case for rank, letter for
+family -- moved into pictures. Six humanoids share three figures:
+
+    small figure   kobold, goblin     the nuisances
+    adult figure   orc, wight         man-sized
+    heavy figure   ogre, troll        the ones that hurt
+
+One figure in seven colours was measured and rejected. In the shipped palette
+goblin and cave troll were **deltaE 5.4** apart, and under deuteranopia ogre
+and troll were **1.7** -- the same colour. A depth-2 nuisance and a depth-6
+regenerating bruiser would have been one creature on screen, for the roughly 8%
+of men with a red-green deficiency and very nearly for everyone else. The
+letters had been quietly rescuing a palette that had never needed to be
+distinct.
+
+So the colours changed too. `tools/check_palette.py` reads them out of the
+theme and asserts that every pair sharing a figure survives normal vision and
+all three dichromacies. Separate on **lightness** -- red against green is the
+axis that disappears first.
+
+### 18KB, not 2.5MB
+
+This mode was nearly cut on the belief that an icon font costs megabytes on a
+web build. The full JetBrains Mono Nerd Font is 2.5MB and carries twelve
+thousand glyphs; this game draws thirty. Subsetting leaves **18KB, a fifteenth
+of the text font already in the repo**, so pictures ship everywhere rather than
+desktop-only.
+
+Icons are drawn at **1.55x** the text size, on the map and in both panels. A
+letter is designed to sit on a baseline with side bearing and looks right doing
+it; an icon at the same size has the same 10px advance in an 18px cell and none
+of that whitespace is meant to be there. `GlyphTheme.draw_size` is shared
+rather than repeated, because the legend is where the icons are learned and
+tiny ones there defeat the mode more thoroughly than tiny ones on the map.
+
+**You stay `@`.** Everything else becoming a picture is exactly what makes the
+one remaining letter unmistakably you.
+
+Shrines are a **torii gate**. The first pick was a cross, which was both
+Christian iconography in a dungeon and, at cell size, too close to the sword --
+a shrine you might walk onto looking like a weapon you might pick up. A handful
+of alternates for every role are in the font subset already, so changing one's
+mind costs a line in `GlyphTheme.OVERRIDES` rather than a rebuild of the font.
 
 Letters are a taxonomy: `k` is a kobold, `K` is the one that shoots back, `g`
 goblin, `G` stone golem. Case and letter carry family and rank for free, across

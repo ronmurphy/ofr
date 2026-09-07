@@ -112,7 +112,11 @@ const POPUP_LIFE := 0.85
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if font == null:
-		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+		# The icon subset, not the plain text font. It IS JetBrains Mono -- the
+		# Nerd Font is that face patched -- so letters and the extended symbols
+		# render identically, and one font covers all three view modes rather
+		# than the grid having to swap fonts when the mode changes.
+		font = load("res://assets/fonts/ofr_icons.ttf")
 	_measure_font()
 	set_process(true)
 
@@ -129,15 +133,30 @@ func _measure_font() -> void:
 func forget_metrics() -> void:
 	_dx_cache.clear()
 
-## Centres a character in its cell by its own width. Cached: this is called
-## once per visible cell per frame, and measuring text is not free.
-func _dx(ch: String) -> float:
+## The size a character is drawn at, and how far to inset it. Cached together,
+## because both are wanted at the same moment and measuring text is not free.
+##
+## This used to be one offset measured from "M" and reused for everything,
+## which is correct only while every glyph is the same width. It is not: the
+## shrine gate is 16px and the shield 12px against a 10px reference, so a
+## single offset put them off-centre and pushed the widest into the next cell.
+func _metrics(ch: String) -> Vector2:
 	if _dx_cache.has(ch):
 		return _dx_cache[ch]
-	var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var dx := (cell_size - w) * 0.5
-	_dx_cache[ch] = dx
-	return dx
+	var size := GlyphTheme.draw_size(ch, font_size)
+	var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var m := Vector2((cell_size - w) * 0.5, float(size))
+	_dx_cache[ch] = m
+	return m
+
+## Where the glyph's baseline sits. Icons are drawn centred on the cell rather
+## than on a text baseline: they have no notion of x-height or descenders, and
+## sitting them on the letters' baseline hangs them too low.
+func _baseline(ch: String, size: int) -> float:
+	if not GlyphTheme.is_icon(ch):
+		return _glyph_baseline
+	return (cell_size - (font.get_ascent(size) + font.get_descent(size))) * 0.5 \
+		+ font.get_ascent(size)
 
 func _process(delta: float) -> void:
 	for e in _motion:
@@ -513,7 +532,8 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 
 	draw_rect(Rect2(origin, cell), bg, true)
 	if ch != " ":
-		draw_char(font, origin + Vector2(_dx(ch), _glyph_baseline), ch, font_size, fg)
+		var m := _metrics(ch)
+		draw_char(font, origin + Vector2(m.x, _baseline(ch, int(m.y))), ch, int(m.y), fg)
 
 ## Walls are drawn from their connection mask rather than from a font glyph.
 ##
@@ -529,7 +549,8 @@ func _draw_wall(origin: Vector2, mask: int, fg: Color, bg: Color) -> void:
 		return
 	if wall_style == WallStyle.GLYPH:
 		draw_rect(Rect2(origin, cell), bg, true)
-		draw_char(font, origin + Vector2(_dx(BOX[mask]), _glyph_baseline), BOX[mask], font_size, fg)
+		var bm := _metrics(BOX[mask])
+		draw_char(font, origin + Vector2(bm.x, _glyph_baseline), BOX[mask], int(bm.y), fg)
 		return
 
 	draw_rect(Rect2(origin, cell), bg, true)
@@ -678,7 +699,8 @@ func _draw_glyph(id: StringName, cell: Vector2) -> void:
 	# loses to readability every time in a game you play by reading.
 	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()
 	var origin := _screen_f(cell)
-	draw_char(font, origin + Vector2(_dx(app["ch"]), _glyph_baseline), app["ch"], font_size, fg)
+	var am := _metrics(app["ch"])
+	draw_char(font, origin + Vector2(am.x, _baseline(app["ch"], int(am.y))), app["ch"], int(am.y), fg)
 
 func _draw_preview() -> void:
 	if _preview.is_empty() or state.game_over:

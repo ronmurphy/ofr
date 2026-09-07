@@ -41,8 +41,8 @@ const TABLE := {
 
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},
-	&"kobold":      {"ch": "k", "fg": Color("9a7f4e")},
-	&"goblin":      {"ch": "g", "fg": Color("6f9c4e")},
+	&"kobold":      {"ch": "k", "fg": Color("e8d9a0")},
+	&"goblin":      {"ch": "g", "fg": Color("2f6b4f")},
 	&"bat":         {"ch": "b", "fg": Color("8e6fa8")},
 	&"skeleton":    {"ch": "s", "fg": Color("d6d2c4")},
 	&"orc":         {"ch": "o", "fg": Color("b5643c")},
@@ -51,14 +51,14 @@ const TABLE := {
 
 	# Deep tiers. Capitals throughout: in a glance-read game the letter case
 	# should tell you the weight of the thing before the colour does.
-	&"ogre":        {"ch": "O", "fg": Color("8a9a5b")},
-	&"harpy":       {"ch": "H", "fg": Color("a87fb8")},
-	&"troll":       {"ch": "T", "fg": Color("6fa15c")},
+	&"ogre":        {"ch": "O", "fg": Color("9a7fb8")},
+	&"harpy":       {"ch": "H", "fg": Color("d08fc0")},
+	&"troll":       {"ch": "T", "fg": Color("6b4a2a")},
 	&"wight":       {"ch": "w", "fg": Color("b8c4d8")},
 	&"wyvern":      {"ch": "W", "fg": Color("c05a3a")},
 	&"golem":       {"ch": "G", "fg": Color("9aa0a8")},
 	&"shadow":      {"ch": "S", "fg": Color("8a63c4")},
-	&"dragon":      {"ch": "D", "fg": Color("e8a63c")},
+	&"dragon":      {"ch": "D", "fg": Color("e8c33c")},
 }
 
 const FALLBACK := {"ch": "?", "fg": Color.MAGENTA, "bg": Palette.BG}

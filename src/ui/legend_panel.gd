@@ -11,6 +11,11 @@ extends Control
 @export var font_bold: Font
 @export var font_size: int = 14
 
+## The icon subset, for glyphs only. Text keeps the full font: this one
+## carries ascii and the symbols the game draws and nothing else, so a
+## message with an unexpected character in it would come out as tofu.
+@export var icon_font: Font
+
 var state: GameState
 
 const PAD := 24.0
@@ -53,6 +58,8 @@ func _ready() -> void:
 	visible = false
 	if font == null:
 		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	if icon_font == null:
+		icon_font = load("res://assets/fonts/ofr_icons.ttf")
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
@@ -122,8 +129,12 @@ func _heading(x: float, y: float, text: String) -> float:
 func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 		name: String, note: String = "") -> float:
 	var base := y + font.get_ascent(font_size)
-	draw_string(font, Vector2(x + GLYPH_X, base), glyph,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
+	# Icons are drawn larger here for the same reason they are on the map, and
+	# it matters more here: this panel is where they are learned.
+	var gs := GlyphTheme.draw_size(glyph, font_size)
+	var gf := icon_font if GlyphTheme.is_icon(glyph) else font
+	draw_string(gf, Vector2(x + GLYPH_X, base + (font_size - gs) * 0.35), glyph,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
 	draw_string(font, Vector2(x + NAME_X, base), name,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_TEXT)
 	if note != "":

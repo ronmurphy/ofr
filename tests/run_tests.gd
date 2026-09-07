@@ -95,6 +95,7 @@ func _initialize() -> void:
 	_test_a_death_is_announced()
 	_test_panels_do_not_overflow()
 	_test_symbol_theme()
+	_test_icon_theme()
 	_test_no_decoration_plugs_a_way()
 	_test_corners_stop_everyone_equally()
 	_test_nothing_rests_on_a_hazard()
@@ -3335,3 +3336,86 @@ func _test_fungus_is_a_mouthful() -> void:
 	both.ground.append(loot)
 	check("an item underfoot is picked up first", both.player_pickup())
 	check("and the fungus is untouched", both.map.get_tile(5, 4) == Tiles.FUNGUS)
+
+
+## The icon mode.
+##
+## Its premise is that every picture comes from a font the game ships, so the
+## premise is checkable -- and it is exactly the sort of thing that rots
+## silently, because a codepoint the font lacks renders as a blank or a tofu
+## box and raises no error anywhere.
+##
+## The mode nearly did not happen: it was going to be desktop-only because the
+## Nerd Font is 2.5MB. Subsetting it to the thirty glyphs actually drawn made
+## it 18KB, a fifteenth of the text font already in the repo.
+func _test_icon_theme() -> void:
+	var font: Font = load("res://assets/fonts/ofr_icons.ttf")
+	check("the icon font ships", font != null)
+	if font == null:
+		return
+
+	var missing: Array = []
+	var unknown: Array = []
+	for id in GlyphTheme.OVERRIDES:
+		if not AsciiTheme.TABLE.has(id):
+			unknown.append(id)
+			continue
+		if not font.has_char(int(GlyphTheme.OVERRIDES[id])):
+			missing.append("%s U+%X" % [id, int(GlyphTheme.OVERRIDES[id])])
+	check("every override names a real appearance id", unknown.is_empty(), str(unknown))
+	check("every icon exists in the font we ship", missing.is_empty(), str(missing))
+	check("ascii survived the subset", font.has_char(65) and font.has_char(64))
+	check("and so did the symbol mode's characters",
+		font.has_char("≈".unicode_at(0)) and font.has_char("⌂".unicode_at(0)))
+
+	var icons := GlyphTheme.new()
+	var letters := AsciiTheme.new()
+
+	# Shape carries rank: the humanoids deliberately SHARE figures.
+	check("kobold and goblin share the small figure",
+		icons.appearance(&"kobold")["ch"] == icons.appearance(&"goblin")["ch"])
+	check("ogre and troll share the heavy figure",
+		icons.appearance(&"ogre")["ch"] == icons.appearance(&"troll")["ch"])
+	check("but small and heavy are different figures",
+		icons.appearance(&"kobold")["ch"] != icons.appearance(&"ogre")["ch"])
+	check("and the slinger is not just another kobold",
+		icons.appearance(&"slinger")["ch"] != icons.appearance(&"kobold")["ch"])
+
+	# Colour carries family, so a shared figure must never share a colour.
+	for pair in [[&"kobold", &"goblin"], [&"orc", &"wight"],
+			[&"ogre", &"troll"], [&"wyvern", &"dragon"]]:
+		if icons.appearance(pair[0])["ch"] != icons.appearance(pair[1])["ch"]:
+			continue
+		check("%s and %s differ in colour" % [pair[0], pair[1]],
+			icons.appearance(pair[0])["fg"] != icons.appearance(pair[1])["fg"])
+
+	# The player stays a letter on purpose.
+	check("you are still @", icons.appearance(&"player")["ch"] == "@")
+
+	# Icons are drawn larger than letters, everywhere that draws one.
+	var an_icon: String = icons.appearance(&"brazier")["ch"]
+	check("an icon is recognised as one", GlyphTheme.is_icon(an_icon))
+	check("a letter is not", not GlyphTheme.is_icon("k"))
+	check("icons are drawn bigger than the text around them",
+		GlyphTheme.draw_size(an_icon, 16) > 16)
+	check("letters are drawn at the size they are given",
+		GlyphTheme.draw_size("k", 16) == 16)
+
+	# Colour and background still come from the ascii table.
+	check("icons inherit the palette",
+		icons.appearance(&"water")["fg"] == letters.appearance(&"water")["fg"])
+	check("un-overridden ids pass through whole",
+		icons.appearance(&"pillar")["ch"] == letters.appearance(&"pillar")["ch"])
+
+	# Three modes now, and cycling reaches all of them.
+	var was := RenderTheme.mode()
+	check("there are three view modes", RenderTheme.mode_count() == 3)
+	var seen := {}
+	for i in RenderTheme.mode_count() + 1:
+		seen[RenderTheme.mode()] = true
+		RenderTheme.cycle()
+	check("cycling visits every one", seen.size() == 3, str(seen.size()))
+	RenderTheme.set_mode(RenderTheme.Mode.ICONS)
+	check("the icon theme is the active one when selected",
+		RenderTheme.active().appearance(&"brazier")["ch"] == an_icon)
+	RenderTheme.set_mode(was)
