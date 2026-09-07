@@ -54,17 +54,18 @@ const OVERRIDES := {
 	&"bat":      0xF0B5F,   # md-bat
 	&"harpy":    0xF15C6,   # md-bird
 	&"skeleton": 0xF068C,   # md-skull
-	&"shadow":   0xF05F9,   # md-incognito
+	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
 	# Wyvern and dragon share a silhouette and are told apart by colour alone,
 	# which is why check_palette.py checks that pair too.
 	&"wyvern":   0xEEF8,    # fa-dragon
 	&"dragon":   0xEEF8,
 
-	# The player stays "@", and deliberately. Everything else turning into a
-	# picture is exactly what makes the one remaining letter unmistakably you --
-	# and no icon in the set says "me" the way forty years of roguelikes have
-	# made that character say it.
+	# You are an OUTLINE of a person while every humanoid down here is a solid
+	# one. That is the distinction doing the work -- not shape and not colour,
+	# but filled against hollow, which survives both a crowded room and colour
+	# blindness. "@" is one line away if it turns out to be harder to find.
+	&"player":   0xEA67,    # cod-person
 
 	# --- carryables ---------------------------------------------------------
 	&"potion":   0xF0093,   # md-flask
@@ -86,7 +87,9 @@ const OVERRIDES := {
 	&"stairs_up":     0xF12BD,
 	&"door_closed":   0xF081B,
 	&"door_open":     0xF081C,
-	&"water":         0xF058C,   # md-water
+	# A wave, not a droplet. A droplet is a picture of water; a wave is a
+	# picture of water DOING something, and it gives a shader an edge to move.
+	&"water":         0xEF30,    # fa-water
 	&"fungus":        0xF07DF,   # md-mushroom
 	&"trap":          0xF0026,   # md-alert
 	&"bones":         0xF00B9,   # md-bone

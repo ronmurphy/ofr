@@ -3389,8 +3389,14 @@ func _test_icon_theme() -> void:
 		check("%s and %s differ in colour" % [pair[0], pair[1]],
 			icons.appearance(pair[0])["fg"] != icons.appearance(pair[1])["fg"])
 
-	# The player stays a letter on purpose.
-	check("you are still @", icons.appearance(&"player")["ch"] == "@")
+	# You are an outline while every humanoid is solid, so the player must not
+	# share a figure with anything that can kill him.
+	var you: String = icons.appearance(&"player")["ch"]
+	var clashes: Array = []
+	for e in GameState.BESTIARY:
+		if icons.appearance(e["app"])["ch"] == you:
+			clashes.append(e["name"])
+	check("nothing in the bestiary looks like you", clashes.is_empty(), str(clashes))
 
 	# Icons are drawn larger than letters, everywhere that draws one.
 	var an_icon: String = icons.appearance(&"brazier")["ch"]

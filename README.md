@@ -369,8 +369,15 @@ of that whitespace is meant to be there. `GlyphTheme.draw_size` is shared
 rather than repeated, because the legend is where the icons are learned and
 tiny ones there defeat the mode more thoroughly than tiny ones on the map.
 
-**You stay `@`.** Everything else becoming a picture is exactly what makes the
-one remaining letter unmistakably you.
+**You are an outline of a person** while every humanoid down here is a solid
+one. Filled against hollow is the distinction doing the work -- not shape, not
+colour -- and it survives both a crowded room and colour blindness. A test
+asserts nothing in the bestiary shares your figure.
+
+**Water is a wave, not a droplet.** A droplet is a picture of water; a wave is a
+picture of water *doing* something. It also tiles: adjacent cells run into one
+another and read as a surface rather than a grid of separate drops, which is
+what gives a shader an edge to move later.
 
 Shrines are a **torii gate**. The first pick was a cross, which was both
 Christian iconography in a dungeon and, at cell size, too close to the sword --
