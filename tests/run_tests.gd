@@ -94,6 +94,7 @@ func _initialize() -> void:
 	_test_low_health_warns_once()
 	_test_a_death_is_announced()
 	_test_panels_do_not_overflow()
+	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
 	_test_no_decoration_plugs_a_way()
@@ -102,6 +103,7 @@ func _initialize() -> void:
 	_test_consumables_forge()
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
+	_test_ember_heat_reads_the_clock()
 	_test_offhand_and_swap()
 	_test_ammunition()
 	_test_merging_spends_the_cheapest()
@@ -2707,8 +2709,48 @@ func _test_panels_do_not_overflow() -> void:
 # rots silently: a symbol that is absent renders as a blank or a tofu box, and
 # nothing anywhere raises an error.
 
+## Every character every theme can put on the map must be in the font the map
+## is actually drawn with.
+##
+## The distinction is the whole test. _test_symbol_theme below has always
+## checked JetBrainsMono-Regular.ttf -- "the font we ship" -- but the grid
+## draws with ofr_icons.ttf, a pyftsubset of it. Anything present in the first
+## and absent from the second passed the test and rendered as nothing: three
+## braziers and a shrine, drawn as bare coloured squares, for as long as the
+## letters mode has existed. Checking the wrong font is worse than not checking,
+## because it reads as coverage.
+func _test_every_theme_glyph_is_drawable() -> void:
+	var font := GlyphGrid.map_font()
+	var missing: Array = []
+	for pair in [["letters", AsciiTheme.new()], ["symbols", SymbolTheme.new()],
+			["pictures", GlyphTheme.new()]]:
+		var theme: RenderTheme = pair[1]
+		for id in AsciiTheme.TABLE:
+			var ch: String = theme.appearance(id)["ch"]
+			for i in ch.length():
+				var cp := ch.unicode_at(i)
+				if cp == 32:
+					continue
+				if not _renderable(font, cp):
+					missing.append("%s/%s U+%04X %s" % [pair[0], id, cp, ch])
+	check("every glyph in every mode is in the font the map draws with",
+		missing.is_empty(), str(missing))
+
+## Mirrors what drawing does: the face itself, then one level of fallback.
+func _renderable(font: Font, cp: int) -> bool:
+	if font.has_char(cp):
+		return true
+	for fb in font.fallbacks:
+		if fb != null and fb.has_char(cp):
+			return true
+	return false
+
 func _test_symbol_theme() -> void:
-	var font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	# The chain the grid draws with, not the text face. Asserting against
+	# JetBrainsMono-Regular.ttf here is what hid the missing brazier and shrine
+	# glyphs: both are in that file and neither is in the subset the map is
+	# actually drawn from.
+	var font := GlyphGrid.map_font()
 	var grid := GlyphGrid.new()
 	var cell := float(grid.cell_size)
 	grid.free()
@@ -2722,7 +2764,7 @@ func _test_symbol_theme() -> void:
 			unknown.append(id)
 			continue
 		var ch: String = SymbolTheme.OVERRIDES[id]["ch"]
-		if not font.has_char(ch.unicode_at(0)):
+		if not _renderable(font, ch.unicode_at(0)):
 			missing.append("%s (%s)" % [id, ch])
 		# Not every symbol in this font is single width -- the shrine gate is
 		# 16px and the shield 12px against a 10px reference. Anything wider
@@ -3146,6 +3188,54 @@ func _test_ember_forge() -> void:
 	gs._invoke_shrine(Shrines.EMBERS)
 	check("nor does the shrine of embers",
 		gs.map.get_tile(cell.x, cell.y) == Tiles.BRAZIER_DEAD)
+
+## The cooling ramp's one number: how much heat is left, as a fraction.
+##
+## The colour it becomes is the renderer's, but the curve is the sim's, and it
+## is the only thing telling the player how much of the forging decision is
+## left -- there is deliberately no counter on screen.
+func _test_ember_heat_reads_the_clock() -> void:
+	var gs := _forge_arena()
+	var cell := Vector2i(6, 4)
+	check("cold stone has no heat", gs.ember_heat(9, 4) == 0.0)
+	check("nor does a burning brazier", gs.ember_heat(cell.x, cell.y) == 0.0)
+
+	gs.player.max_hp = 40
+	gs.player.hp = 30
+	for i in 5:
+		gs.player_wait()
+	var full := gs.ember_heat(cell.x, cell.y)
+	check("the turn it gutters, the embers are at full heat (%.2f)" % full,
+		full > 0.9, str(full))
+
+	# Monotonic all the way down, which is what makes it readable as a gauge.
+	var last := full
+	var fell := true
+	for i in GameState.EMBER_TURNS:
+		gs.turns += 1
+		var now := gs.ember_heat(cell.x, cell.y)
+		if now > last:
+			fell = false
+		last = now
+	check("and cool without ever rising", fell)
+	check("reaching nothing exactly as the window shuts", last == 0.0, str(last))
+
+	# It must not go negative, or the renderer would ramp back past the coldest
+	# colour into something that reads as heat again.
+	gs.turns += 100
+	check("and stay at nothing afterwards",
+		gs.ember_heat(cell.x, cell.y) == 0.0)
+
+	# A forged brazier is black, not cooling: the entry is gone, not expired.
+	var forged := _forge_arena()
+	forged.map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
+	forged.brazier_charge.clear()
+	forged.ember_until[cell] = forged.turns + GameState.EMBER_TURNS
+	forged.give_item(Item.make(&"dagger"))
+	forged.give_item(Item.make(&"dagger"))
+	forged.player_merge(0)
+	check("a brazier forged in has no heat to draw",
+		forged.ember_heat(cell.x, cell.y) == 0.0)
 
 ## Embers work metal and nothing else, and they go cold.
 func _test_embers_cool_and_refuse_glass() -> void:

@@ -1554,6 +1554,23 @@ func _has_ember_work() -> bool:
 func _ember_forgeable(item: Item) -> bool:
 	return item.is_equipment()
 
+## How much heat is left in the embers at this cell: 1.0 the turn it guttered,
+## falling to 0.0 as they go cold. Zero for anything that is not a dying
+## brazier.
+##
+## Sim-side because the sim owns both halves of the sum, and a query rather
+## than a raw dictionary because what the renderer wants is the FRACTION -- how
+## much of the decision is left -- not the turn number it happens to be stored
+## as. The colour that fraction becomes is the renderer's business entirely.
+func ember_heat(x: int, y: int) -> float:
+	var cell := Vector2i(x, y)
+	if not ember_until.has(cell):
+		return 0.0
+	var left := int(ember_until[cell]) - turns
+	if left <= 0:
+		return 0.0
+	return clampf(float(left) / float(EMBER_TURNS), 0.0, 1.0)
+
 ## An adjacent brazier that has gone out but is still hot enough to forge in.
 func _adjacent_embers() -> Vector2i:
 	for dy in [-1, 0, 1]:

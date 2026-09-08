@@ -127,13 +127,33 @@ const POPUP_LIFE := 0.85
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if font == null:
-		# The icon subset, not the plain text font. It IS JetBrains Mono -- the
-		# Nerd Font is that face patched -- so letters and the extended symbols
-		# render identically, and one font covers all three view modes rather
-		# than the grid having to swap fonts when the mode changes.
-		font = load("res://assets/fonts/ofr_icons.ttf")
+		font = map_font()
 	_measure_font()
 	set_process(true)
+
+## The font the map is drawn with.
+##
+## The icon subset first, with the full text face behind it as a fallback, and
+## the fallback is not decoration. The subset IS JetBrains Mono -- the Nerd Font
+## is that face patched -- so the original reasoning was that one font could
+## cover all three view modes. What that missed is that pyftsubset threw away
+## everything the tool was not told to keep, and the LETTERS theme draws two
+## characters outside ASCII: Omega for all three braziers and the cap for a
+## shrine. Neither survived the subset.
+##
+## The failure was silent and asymmetric, which is what made it survive. On the
+## map those four tiles drew as bare coloured squares -- a brazier you could
+## walk into and not see -- while the legend showed them perfectly, because the
+## legend loads the text face directly. Every visual check therefore agreed the
+## glyphs existed.
+##
+## A fallback fixes the class rather than the two characters, so the next entry
+## added to a theme cannot reintroduce it. _test_every_theme_glyph_is_drawable
+## asserts the whole chain covers every theme.
+static func map_font() -> Font:
+	var icons: FontFile = load("res://assets/fonts/ofr_icons.ttf")
+	icons.fallbacks = [load("res://assets/fonts/JetBrainsMono-Regular.ttf")]
+	return icons
 
 func _measure_font() -> void:
 	var advance := font.get_string_size("M", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
@@ -500,6 +520,34 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		# so it cannot live in a static theme table.
 		if tile == Tiles.SHRINE:
 			fg = state.shrine_hue(int(state.shrine_at.get(Vector2i(x, y), 0)))
+		# Neither can a dying brazier's, for the same reason: it depends on the
+		# turn, not on the tile.
+		#
+		# This is the twenty-turn forging window, drawn instead of counted.
+		# Brad's rule for it was no number on screen -- the player works out
+		# what the fade means by watching one go out -- so the gauge has to BE
+		# the thing rather than label it. Only while the cell is actually in
+		# sight: how hot a brazier still is across the level is not something
+		# memory could honestly know.
+		elif tile == Tiles.BRAZIER_SPENT and visible_here:
+			var heat := state.ember_heat(x, y)
+			if heat > 0.0:
+				# Coals breathe, and stop breathing as they cool -- the pulse
+				# is scaled by the same heat that drives the colour, so the
+				# tile visibly goes still before it goes grey. Phase from the
+				# cell, so two braziers in a room never pulse together.
+				var beat := 1.0 + 0.10 * heat * sin(
+					Time.get_ticks_msec() / 340.0 + _hash01(x, y) * TAU)
+				# Hue alone was not enough. Walking EMBERS -> BRAZIER_DEAD
+				# moves luminance only 0.386 -> 0.283, so the middle third of
+				# the window was a mush of near-identical browns and the gauge
+				# could not be read. The glow adds the brightness the hue shift
+				# does not carry, and it is tied to the same heat, so the tile
+				# dims as well as greys.
+				fg = (fg.lerp(Palette.EMBERS, heat) * (1.0 + EMBER_GLOW * heat)
+					* beat).clamp()
+				bg = bg.lerp(Palette.EMBERS_BG, heat)
+				fg.a = 1.0
 
 	var tint := _material_tint(map.material_at(x, y), 1.0)
 
@@ -776,6 +824,11 @@ func _flicker_at(x: int, y: int) -> float:
 		+ sin(_flicker_t * 23.7 + p * 2.0) * 0.022 + _flicker_jitter
 
 ## Cheap deterministic noise in [0,1) from a cell coordinate.
+## Extra brightness at the hot end of the ember ramp, on top of the colour.
+## Held well under the lit brazier's own brightness -- a spent brazier that
+## looks as alive as a burning one tells the player the opposite of the truth.
+const EMBER_GLOW := 0.18
+
 func _hash01(x: int, y: int) -> float:
 	var h := (x * 73856093) ^ (y * 19349663)
 	return float(absi(h) % 1024) / 1024.0

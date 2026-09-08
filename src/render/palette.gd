@@ -23,6 +23,13 @@ const STAIRS_KNOWN  := Color("7fe0b0")
 const AMULET        := Color("ffe07a")
 const BRAZIER       := Color("e0913c")
 const BRAZIER_DEAD  := Color("4f4740")
+## Coals, not flame. Deliberately darker and redder than BRAZIER above -- the
+## fire is out, and an ember bed that read as bright as a burning one would say
+## the opposite of what it means. The renderer walks from this to BRAZIER_DEAD
+## across the twenty turns the heat lasts, which is the only thing on screen
+## that says how much of that decision is left.
+const EMBERS        := Color("a85423")
+const EMBERS_BG     := Color("2a1712")
 ## Forged in, and finished. Read as a black lump rather than a grey one: the
 ## ladder lit -> spent -> black is the whole state of a brazier at a glance,
 ## and the last rung has to be obviously the last.

@@ -129,6 +129,50 @@ func _run() -> void:
 	_scene._refresh()
 	await _shot("06_glyph_check.png")
 
+	# The ember ramp, shot as the SAME cell at five different clock readings.
+	#
+	# The first version of this was a row of braziers at different heats, which
+	# measured the wrong thing entirely: the row sat across a light gradient,
+	# so the middle brazier looked hottest because it was nearest the lamp. One
+	# cell photographed five times holds lighting, material and position fixed,
+	# and every difference between the shots is the ramp.
+	var br := GameState.new(31337)
+	br.new_game()
+	var bw := 21
+	var bh := 11
+	br.map = DungeonMap.new(bw, bh)
+	for y in range(1, bh - 1):
+		for x in range(1, bw - 1):
+			br.map.set_tile(x, y, Tiles.FLOOR)
+	br.light_map = LightMap.new(bw, bh)
+	br.pathfinder = Pathfinder.new(br.map)
+	br.entities = [br.player]
+	br.ground = []
+	br.static_lights = []
+	var bfov := PackedByteArray()
+	bfov.resize(bw * bh)
+	br._fov_buffer = bfov
+	br.player.x = 9
+	br.player.y = 5
+	br.turns = 100
+	var ember := Vector2i(10, 5)
+	br.map.set_tile(ember.x, ember.y, Tiles.BRAZIER_SPENT)
+	br._gather_lights()
+	_use(br)
+	for left in [20, 15, 10, 5, 0]:
+		br.ember_until[ember] = br.turns + left
+		br.update_vision()
+		_scene._refresh()
+		await _shot("31_embers_%02d_left.png" % left)
+	# And the state the forge leaves behind, which is not on the ramp at all.
+	br.ember_until.erase(ember)
+	br.map.set_tile(ember.x, ember.y, Tiles.BRAZIER_DEAD)
+	br.update_vision()
+	_scene._refresh()
+	await _shot("31_embers_forged.png")
+	_use(gs)
+	_scene._refresh()
+
 	# Combat feedback: stage a shot in an open arena and photograph it both
 	# mid-flight and on impact.
 	var fx := GameState.new(4242)
