@@ -420,8 +420,14 @@ const BESTIARY := [
 	# Faster than the player and it flees, which everywhere else in this file
 	# is the mark of a broken monster -- see the wizard, deliberately slowed for
 	# exactly that reason. It works here only because it has to STOP TO EAT.
-	# Those turns with its head down are the whole window, and they are why a
-	# bow matters: the brown form is not catchable on foot.
+	# Those turns with its head down are the whole window.
+	#
+	# That window makes it catchable ON FOOT, which is better than the design
+	# intended and is worth recording. First play: two melee hits five to
+	# nineteen turns apart, landed by predicting which tile it would break to
+	# next. A bow makes it easy; legs make it a chase you can win by reading
+	# it. "Not catchable without a bow" was the original claim here and play
+	# disproved it.
 	{"name": "rabbit", "app": &"rabbit", "hp": 6, "power": 0, "def": 0,
 	 "speed": 130, "ai": &"forager", "flee": 0.0, "no_fade": true,
 	 "max_per_floor": 2, "weight": 0.35, "min_depth": 1, "threat": 3},

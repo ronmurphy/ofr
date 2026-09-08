@@ -39,6 +39,19 @@ enum WallStyle {
 ## above that trades subtlety for legibility at a glance. Purely taste.
 @export var memory_material_boost: float = 1.8
 
+## Whether the shader is doing the animating. Driven by the player's Effects
+## setting, not set by hand -- see apply_effects_mode().
+var block_anim: bool = false
+## Multiplies every animation amplitude. 1.0 is the tuned value; turn it up to
+## see whether an effect is firing at all.
+@export var anim_strength: float = 1.0
+## Discrete levels the animation snaps between. 0 is a smooth sine; small
+## numbers read as palette cycling, which is the technique the block look
+## actually comes from.
+@export var anim_steps: int = 4
+var _cell_tex: ImageTexture
+var _cell_img: Image
+
 var state: GameState
 ## Read fresh on every draw rather than held, so cycling the view mode reaches
 ## the grid, the legend and the inventory in the same frame.
@@ -440,6 +453,9 @@ func _draw() -> void:
 		centre_on_player()
 	_update_camera()
 
+	if block_anim:
+		_upload_cells()
+
 	draw_rect(Rect2(Vector2.ZERO, size), Palette.BG, true)
 
 	# Only the visible window is drawn. On a large map that is most of the
@@ -536,8 +552,14 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 				# is scaled by the same heat that drives the colour, so the
 				# tile visibly goes still before it goes grey. Phase from the
 				# cell, so two braziers in a room never pulse together.
-				var beat := 1.0 + 0.10 * heat * sin(
-					Time.get_ticks_msec() / 340.0 + _hash01(x, y) * TAU)
+				# Held at rest when the player has asked for no motion. The
+				# COLOUR ramp stays either way -- that is information about how
+				# long the embers have left, not decoration, and turning
+				# effects off must not cost you information.
+				var beat := 1.0
+				if Effects.any():
+					beat += 0.10 * heat * sin(
+						Time.get_ticks_msec() / 340.0 + _hash01(x, y) * TAU)
 				# Hue alone was not enough. Walking EMBERS -> BRAZIER_DEAD
 				# moves luminance only 0.386 -> 0.283, so the middle third of
 				# the window was a mush of near-identical browns and the gauge
@@ -558,7 +580,11 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 	elif tile == Tiles.STAIRS_DOWN:
 		# Exempt from memory dimming, and breathing gently so the eye finds it
 		# on a large map.
-		var pulse := 0.78 + 0.22 * sin(Time.get_ticks_msec() / 620.0)
+		# Still, but not dim: frozen at the top of its breath rather than the
+		# middle, so the stairs stay as findable as they are meant to be.
+		var pulse := 1.0
+		if Effects.any():
+			pulse = 0.78 + 0.22 * sin(Time.get_ticks_msec() / 620.0)
 		fg = Color(Palette.STAIRS_KNOWN.r * pulse, Palette.STAIRS_KNOWN.g * pulse,
 			Palette.STAIRS_KNOWN.b * pulse, 1.0)
 		bg = _remembered(bg)
@@ -690,7 +716,7 @@ func _draw_awareness(e: Entity) -> void:
 	var colour := Palette.SLEEP
 	if e.alertness == Entity.Alert.ASLEEP:
 		# Cycles z / zZ / zzZ so it reads as breathing rather than a label.
-		var phase := int(Time.get_ticks_msec() / 420.0) % 3
+		var phase := int(Time.get_ticks_msec() / 420.0) % 3 if Effects.any() else 1
 		text = ["z", "zZ", "zzZ"][phase]
 	elif e.alertness == Entity.Alert.SUSPICIOUS:
 		text = "?"
@@ -809,9 +835,25 @@ func _rebuild_phases() -> void:
 				phase = float((src.x * 7 + src.y * 13) % 64) * 0.0982
 			_phase[y * _phase_w + x] = phase
 
+## The raw phase for a cell, or -1 where no flickering light reaches. Shared by
+## the CPU path and the shader upload so the two can never disagree about which
+## cells are under a flame.
+func _phase_at(x: int, y: int) -> float:
+	if _phase.is_empty():
+		return -1.0
+	var i := y * _phase_w + x
+	if i < 0 or i >= _phase.size():
+		return -1.0
+	return _phase[i]
+
 ## The flicker a particular cell is under, which is its light's, not the
 ## screen's. Cells no flame reaches are perfectly steady.
 func _flicker_at(x: int, y: int) -> float:
+	# Only the middle setting runs this. On "full" the shader owns firelight --
+	# leaving both would animate every brazier twice -- and on "still" nothing
+	# animates at all, which is the entire point of that setting existing.
+	if not Effects.timers():
+		return 1.0
 	if _phase.is_empty():
 		return 1.0
 	var i := y * _phase_w + x
@@ -828,6 +870,81 @@ func _flicker_at(x: int, y: int) -> float:
 ## Held well under the lit brazier's own brightness -- a spent brazier that
 ## looks as alive as a burning one tells the player the opposite of the truth.
 const EMBER_GLOW := 0.18
+
+## Hand the shader what each cell is, one texel per cell.
+##
+## Rebuilt per redraw rather than diffed: 96x54 is five thousand texels, which
+## is nothing beside the several hundred draw calls the same frame makes -- and
+## it means the texture can never disagree with the map.
+func _upload_cells() -> void:
+	var map := state.map
+	if _cell_img == null or _cell_img.get_width() != map.width \
+			or _cell_img.get_height() != map.height:
+		_cell_img = Image.create(map.width, map.height, false, Image.FORMAT_RGBA8)
+		_cell_tex = ImageTexture.create_from_image(_cell_img)
+	for y in map.height:
+		for x in map.width:
+			# Alpha is VISIBILITY, not opacity. Remembered ground must not
+			# animate: a pool of water you are only remembering should be as
+			# still as the memory of it.
+			var seen := 1.0 if map.is_visible(x, y) else 0.0
+			# Blue carries the FIRELIGHT PHASE, and carrying it is what makes
+			# the shader equal to the timers it replaced.
+			#
+			# The CPU flicker was never about brazier tiles: _rebuild_phases
+			# gives every cell the phase of the nearest flickering light that
+			# reaches it, your torch included, so the whole lit area breathes.
+			# A shader that only knew tile ids could animate the brazier and
+			# nothing else -- which on screen read as the torch flicker simply
+			# disappearing when you switched to "full".
+			#
+			# Zero means no flame reaches here. Everything else is the phase
+			# scaled into the remaining 254 values, so a genuine phase of 0 is
+			# never mistaken for "unlit".
+			var ph := _phase_at(x, y)
+			var blue := 0.0
+			if ph >= 0.0:
+				blue = (floor(ph / TAU * 253.0) + 1.0) / 255.0
+			_cell_img.set_pixel(x, y, Color(
+				float(map.get_tile(x, y)) / 255.0,
+				_hash01(x, y),
+				blue,
+				seen))
+	_cell_tex.update(_cell_img)
+	var m := material as ShaderMaterial
+	if m == null:
+		return
+	m.set_shader_parameter("cell_data", _cell_tex)
+	m.set_shader_parameter("control_origin", global_position)
+	m.set_shader_parameter("camera_cell", _camera_visual)
+	m.set_shader_parameter("cell_size", float(cell_size))
+	m.set_shader_parameter("map_size", Vector2(map.width, map.height))
+	m.set_shader_parameter("t", anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0)
+	m.set_shader_parameter("strength", anim_strength)
+	m.set_shader_parameter("steps", anim_steps)
+
+## Overridable clock, so a screenshot tool can step the animation. Negative
+## means "use the wall clock", which is what play does.
+var anim_time: float = -1.0
+
+## Follow the player's effects setting.
+##
+## The shader material is attached and detached rather than left on with the
+## animation zeroed, so "still" and "simple" cost exactly what they always did
+## -- somebody who turns motion off for accessibility reasons should not still
+## be paying for a shader pass.
+func apply_effects_mode() -> void:
+	block_anim = Effects.shaders()
+	if block_anim:
+		if material == null:
+			var m := ShaderMaterial.new()
+			m.shader = load(ANIM_SHADER)
+			material = m
+	else:
+		material = null
+	queue_redraw()
+
+const ANIM_SHADER := "res://src/render/shaders/block_anim.gdshader"
 
 func _hash01(x: int, y: int) -> float:
 	var h := (x * 73856093) ^ (y * 19349663)

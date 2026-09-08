@@ -211,6 +211,63 @@ func _run() -> void:
 		_use(gs)
 		_scene._refresh()
 
+	# SHADER SPIKE, uncommitted. A purpose-built strip with one of each animated
+	# tile under flat bright light, so the effect can be MEASURED rather than
+	# hunted for on a real floor -- the first attempt at this was judged against
+	# a scene that happened to have almost no lit water in it.
+	var sp := GameState.new(4711)
+	sp.new_game()
+	var spw := 25
+	var sph := 11
+	sp.map = DungeonMap.new(spw, sph)
+	for yy in range(1, sph - 1):
+		for xx in range(1, spw - 1):
+			sp.map.set_tile(xx, yy, Tiles.FLOOR)
+	sp.light_map = LightMap.new(spw, sph)
+	sp.pathfinder = Pathfinder.new(sp.map)
+	sp.entities = [sp.player]
+	sp.ground = []
+	sp.static_lights = []
+	var spbuf := PackedByteArray()
+	spbuf.resize(spw * sph)
+	sp._fov_buffer = spbuf
+	sp.player.x = 12
+	sp.player.y = 8
+	for xx in range(4, 10):
+		sp.map.set_tile(xx, 4, Tiles.WATER)
+	for xx in range(12, 16):
+		sp.map.set_tile(xx, 4, Tiles.FUNGUS)
+	sp.map.set_tile(18, 6, Tiles.BRAZIER)
+	sp.brazier_charge[Vector2i(18, 6)] = GameState.BRAZIER_CHARGE
+	# A spent brazier with embers still hot, and one forged black. Neither is a
+	# light and neither is tile id BRAZIER, so neither should throw sparks --
+	# asserted here rather than assumed.
+	# Clear of the water row at y=4 -- the first placement put them directly
+	# under it and measured the water swell as if it were sparks.
+	sp.map.set_tile(5, 8, Tiles.BRAZIER_SPENT)
+	sp.ember_until[Vector2i(5, 8)] = sp.turns + GameState.EMBER_TURNS
+	sp.map.set_tile(8, 8, Tiles.BRAZIER_DEAD)
+	sp._gather_lights()
+	sp.static_lights.append(LightSource.new(12, 5, 24,
+		Color(0.9, 0.88, 0.85), Color(0.4, 0.4, 0.4), 0.9, false))
+	sp.update_vision()
+	# Through the real setting, not by poking the flag: with Effects still on
+	# "simple" the CPU flicker would run alongside the shader and the
+	# measurement would be of both at once.
+	var fx_was := Effects.mode()
+	Effects.set_mode(Effects.Mode.SHADERS)
+	_use(sp)
+	_scene.grid.apply_effects_mode()
+	for step in 12:
+		_scene.grid.anim_time = float(step) * 0.14
+		_scene._refresh()
+		await _shot("93_strip_%d.png" % step)
+	Effects.set_mode(fx_was)
+	_scene.grid.apply_effects_mode()
+	_scene.grid.anim_time = -1.0
+	_use(gs)
+	_scene._refresh()
+
 	# The end-of-run record, in both the states it has to handle: a run the
 	# recorder watched all the way through, and one carried over from a save
 	# written before the recorder existed, where it has to drop what it never

@@ -105,6 +105,8 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_dead_fires_are_dead()
+	_test_effects_modes()
 	_test_rabbit()
 	_test_banshee()
 	_test_casters()
@@ -3256,6 +3258,93 @@ func _test_ember_forge() -> void:
 ## left -- there is deliberately no counter on screen.
 ## Time, as opposed to keypresses.
 ## Gravestones: the first thing in the game that reads the morgue back.
+## A brazier that has gone out is not a fire, and nothing may treat it as one.
+##
+## The shader throws sparks from cells whose tile is BRAZIER and flickers cells
+## a flickering light reaches. Both routes have to agree that a spent or black
+## brazier is neither -- otherwise a dead fire would go on crackling, which is
+## exactly the thing the ember forge's whole design says it must not do.
+func _test_dead_fires_are_dead() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	gs.map.set_tile(8, 5, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(8, 5)] = GameState.BRAZIER_CHARGE
+	gs.map.set_tile(11, 5, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(11, 5)] = gs.turns + GameState.EMBER_TURNS
+	gs.map.set_tile(14, 5, Tiles.BRAZIER_DEAD)
+	gs._gather_lights()
+
+	var lit_at := {}
+	var flickering := 0
+	for src in gs.static_lights:
+		lit_at[Vector2i(src.x, src.y)] = true
+		if src.flickers:
+			flickering += 1
+	check("a burning brazier is a light", lit_at.has(Vector2i(8, 5)))
+	check("and it flickers", flickering == 1, str(flickering))
+	check("a spent brazier is not a light, hot embers or not",
+		not lit_at.has(Vector2i(11, 5)))
+	check("a black brazier is not a light", not lit_at.has(Vector2i(14, 5)))
+
+	# The three states are three different tiles, which is what lets the shader
+	# tell them apart at all -- it keys sparks on the tile id.
+	check("the three states are three distinct tiles",
+		Tiles.BRAZIER != Tiles.BRAZIER_SPENT
+		and Tiles.BRAZIER_SPENT != Tiles.BRAZIER_DEAD
+		and Tiles.BRAZIER != Tiles.BRAZIER_DEAD)
+
+	# And when the last live one goes out, the floor holds no flame at all.
+	gs.map.set_tile(8, 5, Tiles.BRAZIER_SPENT)
+	gs.brazier_charge.erase(Vector2i(8, 5))
+	gs._gather_lights()
+	var still_burning := 0
+	for src in gs.static_lights:
+		if src.flickers:
+			still_burning += 1
+	check("once the last one gutters, nothing on the floor flickers",
+		still_burning == 0, str(still_burning))
+
+## The effects setting, which exists for accessibility before taste.
+func _test_effects_modes() -> void:
+	var was := Effects.mode()
+
+	check("three settings, not an on/off", Effects.mode_count() == 3,
+		str(Effects.mode_count()))
+	check("it starts on the middle one -- what the game has always done",
+		Effects.Mode.TIMERS == 1)
+
+	Effects.set_mode(Effects.Mode.NONE)
+	check("still: nothing moves", not Effects.any())
+	check("still: no CPU timers", not Effects.timers())
+	check("still: no shader", not Effects.shaders())
+
+	Effects.set_mode(Effects.Mode.TIMERS)
+	check("simple: something moves", Effects.any())
+	check("simple: the CPU timers run", Effects.timers())
+	check("simple: but not the shader", not Effects.shaders())
+
+	Effects.set_mode(Effects.Mode.SHADERS)
+	check("full: the shader runs", Effects.shaders())
+	# The two must never both run: braziers would be animated twice, and the
+	# player could not tell which they were seeing.
+	check("full: and the CPU timers stand down", not Effects.timers())
+
+	# Cycling wraps and names itself.
+	Effects.set_mode(Effects.Mode.SHADERS)
+	var said := Effects.cycle()
+	check("cycling wraps round to still", Effects.mode() == Effects.Mode.NONE,
+		str(Effects.mode()))
+	check("and says which one it landed on", said.contains("still"), said)
+
+	# It survives a restart, like the view mode it sits beside.
+	Effects.set_mode(Effects.Mode.NONE)
+	Effects.load_settings()
+	check("the choice persists", Effects.mode() == Effects.Mode.NONE,
+		str(Effects.mode()))
+
+	Effects.set_mode(was)
+
 ## The rabbit: the only thing in the dungeon that wants what you want.
 func _test_rabbit() -> void:
 	var gs := _arena(31, 11)

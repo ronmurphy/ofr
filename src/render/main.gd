@@ -99,6 +99,11 @@ func _ready() -> void:
 	# application is not. Ask before it happens, and write the slot when the
 	# page goes away regardless.
 	RenderTheme.load_settings()
+	Effects.load_settings()
+	# The setting has to take effect at launch and not only when the key is
+	# pressed, or a player who chose "full" last session opens the game with
+	# the shader detached and no motion at all.
+	grid.apply_effects_mode()
 	Platform.guard_against_leaving(true)
 	_page_hidden_cb = Platform.on_page_hidden(_on_page_hidden)
 	_refresh()
@@ -228,6 +233,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	# Letters or symbols. Live, mid-run, with no reload -- the point is to be
 	# able to flip back and forth and decide which one you can read faster.
+	if key == KEY_E:
+		state.msg_log.add(Effects.cycle(), Color(0.70, 0.74, 0.80))
+		grid.apply_effects_mode()
+		_refresh()
+		return
+
 	if key == KEY_V:
 		state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
 		grid.forget_metrics()

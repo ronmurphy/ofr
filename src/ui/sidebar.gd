@@ -42,6 +42,9 @@ const KEYS := [
 	["p", "pray at a shrine", false],
 	["m  - +", "sound", false],
 	["v", "letters / symbols / pictures", false],
+	# Motion, and it is an accessibility setting before it is a taste one --
+	# effects like these stop some people playing games at all.
+	["e", "still / simple / full", false],
 	["esc", "menu", false],
 	["click", "travel", false],
 ]
