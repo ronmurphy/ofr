@@ -268,6 +268,92 @@ func _run() -> void:
 	_use(gs)
 	_scene._refresh()
 
+	# Do braziers cast shadows? They do -- LightMap runs an FOV pass per source
+	# -- but nobody had ever seen it, which is a different question. A room lit
+	# by one brazier with pillars around it, everything visible so the player's
+	# own torch is not part of the picture.
+	var sh := GameState.new(9182)
+	sh.new_game()
+	var shw := 27
+	var shh := 15
+	sh.map = DungeonMap.new(shw, shh)
+	for yy in range(1, shh - 1):
+		for xx in range(1, shw - 1):
+			sh.map.set_tile(xx, yy, Tiles.FLOOR)
+	sh.light_map = LightMap.new(shw, shh)
+	sh.pathfinder = Pathfinder.new(sh.map)
+	sh.entities = [sh.player]
+	sh.ground = []
+	sh.static_lights = []
+	var shbuf := PackedByteArray()
+	shbuf.resize(shw * shh)
+	sh._fov_buffer = shbuf
+	# Tucked into a corner so its own torch is not the story.
+	sh.player.x = 2
+	sh.player.y = 13
+	sh.map.set_tile(9, 7, Tiles.BRAZIER)
+	sh.brazier_charge[Vector2i(9, 7)] = GameState.BRAZIER_CHARGE
+	for at in [Vector2i(12, 5), Vector2i(12, 7), Vector2i(12, 9),
+			Vector2i(15, 6), Vector2i(15, 8)]:
+		sh.map.set_tile(at.x, at.y, Tiles.PILLAR)
+	sh._gather_lights()
+	sh.light_map.compute(sh.map, sh.static_lights)
+	sh.map.set_all_visible()
+	_use(sh)
+	_scene._refresh()
+	await _shot("94_brazier_shadows.png")
+	_use(gs)
+	_scene._refresh()
+
+	# A noise ring mid-flight, caught at three points in its life. Staged in an
+	# open lit room so the wavefront is not clipped by what can be seen.
+	var nz := GameState.new(5150)
+	nz.new_game()
+	var nw := 29
+	var nh := 17
+	nz.map = DungeonMap.new(nw, nh)
+	for yy in range(1, nh - 1):
+		for xx in range(1, nw - 1):
+			nz.map.set_tile(xx, yy, Tiles.FLOOR)
+	nz.light_map = LightMap.new(nw, nh)
+	nz.pathfinder = Pathfinder.new(nz.map)
+	nz.entities = [nz.player]
+	nz.ground = []
+	nz.static_lights = []
+	var nzbuf := PackedByteArray()
+	nzbuf.resize(nw * nh)
+	nz._fov_buffer = nzbuf
+	nz.player.x = 14
+	nz.player.y = 8
+	nz.static_lights.append(LightSource.new(14, 8, 26,
+		Color(0.85, 0.83, 0.80), Color(0.35, 0.34, 0.33), 0.85, false))
+	nz.light_map.compute(nz.map, nz.static_lights)
+	nz.map.set_all_visible()
+	_use(nz)
+	# Settle first. Binding a state queues its own startup events, and the next
+	# _refresh consumes them -- which on the first pass through the loop below
+	# clobbered the ring before it could be drawn.
+	_scene._refresh()
+	await _shot("95_ring_settle.png")
+	for pair in [["forge", 10], ["combat", 6]]:
+		_scene.grid._effects.clear()
+		_scene.grid.play_events([{"kind": &"noise", "to": Vector2i(14, 8),
+			"radius": int(pair[1]), "cause": StringName(pair[0])}])
+		for step in 3:
+			# Re-issued each time and aged by hand, so the shot catches the
+			# wavefront where this loop says rather than wherever _process has
+			# carried it by the time the frame is forced.
+			_scene.grid._effects.clear()
+			_scene.grid.play_events([{"kind": &"noise", "to": Vector2i(14, 8),
+				"radius": int(pair[1]), "cause": StringName(pair[0])}])
+			if not _scene.grid._effects.is_empty():
+				_scene.grid._effects[0]["t"] = 0.04 + float(step) * 0.15
+			_scene.grid.queue_redraw()
+			await _shot("95_ring_%s_%d.png" % [pair[0], step])
+	_scene.grid._effects.clear()
+	_use(gs)
+	_scene._refresh()
+
 	# The end-of-run record, in both the states it has to handle: a run the
 	# recorder watched all the way through, and one carried over from a save
 	# written before the recorder existed, where it has to drop what it never

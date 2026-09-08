@@ -113,6 +113,9 @@ const EMBER_TURNS := 20
 ## seven, so on a floor you were sneaking across this is the loudest thing you
 ## can choose to do.
 const FORGE_NOISE := 10
+## Shown, not heard: how far the shrine of the vigil's cry is DRAWN. Its actual
+## effect is the whole floor.
+const CLAMOUR_RING := 24
 
 ## A flared torch, in turns. It cannot be smothered while it burns -- that is
 ## the curse half: you see much further, and so does everything else.
@@ -1373,6 +1376,17 @@ func _invoke_shrine(kind: int) -> void:
 					e.last_seen = Vector2i(player.x, player.y)
 					e.lost_turns = 0
 					n += 1
+			# The loudest thing in the game, and until now the only one with no
+			# picture. It does not wake through _make_noise -- it wakes the
+			# whole floor directly, above -- so this is called afterwards purely
+			# to put the wavefront on screen. Everything is already awake by
+			# now, so it rouses nobody and logs nothing.
+			#
+			# The radius is a REPRESENTATION rather than a measurement, and this
+			# is the one ring where that is true. The effect has no radius; it
+			# reaches everything. Twenty-four simply exceeds anything the player
+			# can see at once, so from where they stand it is unbounded.
+			_make_noise(Vector2i(player.x, player.y), CLAMOUR_RING, &"clamour")
 			msg_log.add("Something calls out, and %d things answer." % n,
 				Color(0.95, 0.55, 0.40))
 

@@ -136,6 +136,14 @@ const STEP_TIME := 0.10
 const SHOT_PER_CELL := 0.028
 const FLASH_LIFE := 0.30
 const POPUP_LIFE := 0.85
+## How long a noise ring dwells on each cell it crosses.
+##
+## Per CELL, not per ring, so every wavefront travels at the same speed and a
+## bigger noise takes longer to arrive rather than moving faster. With a fixed
+## lifetime a floor-wide shrine and a footstep on bones crossed their very
+## different distances in the same fraction of a second, which read as the loud
+## one being quicker rather than larger.
+const RING_PER_CELL := 0.045
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -248,6 +256,26 @@ func play_events(evts: Array) -> void:
 				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": font_size})
 			continue
 
+		# Noise, drawn as the wavefront it already was.
+		#
+		# The comment below used to say the rest of the queue "has no picture to
+		# draw by definition". Noise was the exception hiding in that sentence:
+		# the simulation has always known exactly how far a sound carried, and
+		# the player could only ever infer it. Showing it turns a hidden rule
+		# into something you can plan around -- whether to take the shot when
+		# there are two more of them in the next room.
+		if e["kind"] == &"noise":
+			# Motion, so it answers to the accessibility setting. The message
+			# log still reports the same thing in words for anyone playing on
+			# "still", so nothing is only available to people who can take the
+			# movement.
+			if Effects.any():
+				var reach := int(e["radius"])
+				_effects.append({"type": &"ring", "cell": to, "t": 0.0,
+					"radius": reach,
+					"life": maxf(0.12, float(reach) * RING_PER_CELL)})
+			continue
+
 		if e["kind"] == &"notice":
 			# The Metal Gear beat: a big "!" over the head of whatever just
 			# clocked you.
@@ -283,6 +311,7 @@ func play_events(evts: Array) -> void:
 
 func _expired(e: Dictionary) -> bool:
 	match e["type"]:
+		&"ring":  return e["t"] >= float(e.get("life", 0.42))
 		&"shot":  return e["t"] >= e["path"].size() * SHOT_PER_CELL
 		&"flash": return e["t"] >= FLASH_LIFE
 		&"popup": return e["t"] >= POPUP_LIFE
@@ -749,6 +778,44 @@ func _draw_effects() -> void:
 			&"shot":  _draw_shot(e, t)
 			&"flash": _draw_flash(e, t)
 			&"popup": _draw_popup(e, t)
+			&"ring":  _draw_ring(e, t)
+
+## A sound, crossing the floor.
+##
+## Chebyshev distance, not Euclidean, because that is the metric _make_noise
+## itself uses to decide who heard it -- so the ring is not an impression of
+## the noise footprint, it is exactly the footprint. A square wavefront looks
+## odd for about a second and then reads as correct, because it IS what the
+## rule does.
+##
+## Drawn only on cells you can see. A banshee wailing somewhere dark should
+## arrive as an arc sweeping in from the edge of your vision, not as a marker
+## over its head -- the log line for it is deliberately vague and the picture
+## must not be less so.
+func _draw_ring(e: Dictionary, t: float) -> void:
+	var progress := clampf(t / float(e.get("life", 0.42)), 0.0, 1.0)
+	var reach: int = e["radius"]
+	var at: Vector2i = e["cell"]
+	var edge := progress * float(reach)
+	# Louder carries further AND hits harder, so the two scale together.
+	var loud := clampf(float(reach) / 10.0, 0.25, 1.0)
+	# Fades as it goes, like the sound it is standing in for.
+	var alpha := (1.0 - progress) * 0.5 * loud
+	if alpha <= 0.005:
+		return
+
+	var map := state.map
+	var cell := Vector2(cell_size, cell_size)
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var d := float(maxi(absi(dx), absi(dy)))
+			# One cell thick, so the wavefront is a line and not a filled disc.
+			if absf(d - edge) > 0.5:
+				continue
+			var c := Vector2i(at.x + dx, at.y + dy)
+			if not map.in_bounds(c.x, c.y) or not map.is_visible(c.x, c.y):
+				continue
+			draw_rect(Rect2(_screen(c), cell), Color(Palette.NOISE, alpha), true)
 
 func _draw_shot(e: Dictionary, t: float) -> void:
 	var line: Array = e["path"]

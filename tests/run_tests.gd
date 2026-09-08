@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_noise_is_drawn()
 	_test_dead_fires_are_dead()
 	_test_effects_modes()
 	_test_rabbit()
@@ -3304,6 +3305,51 @@ func _test_dead_fires_are_dead() -> void:
 			still_burning += 1
 	check("once the last one gutters, nothing on the floor flickers",
 		still_burning == 0, str(still_burning))
+
+## Noise is drawn as well as heard, so the rules and the picture must agree.
+func _test_noise_is_drawn() -> void:
+	var gs := _arena(31, 15)
+	gs.player.x = 15
+	gs.player.y = 7
+
+	# Every noise the simulation makes carries what the ring needs to draw it.
+	gs.take_events()
+	gs._make_noise(Vector2i(15, 7), GameState.COMBAT_NOISE, &"combat")
+	var found := {}
+	for e in gs.take_events():
+		if e["kind"] == &"noise":
+			found = e
+	check("a noise event carries where it happened", found.has("to"))
+	check("and how far it reached",
+		int(found.get("radius", -1)) == GameState.COMBAT_NOISE,
+		str(found.get("radius", -1)))
+
+	# The shrine of the vigil is the loudest thing in the game and used to make
+	# no sound at all in the event stream -- it wakes the floor directly.
+	var shrine := _arena(31, 15)
+	shrine.player.x = 15
+	shrine.player.y = 7
+	var sleeper := _spawn(shrine, "goblin", 25, 12)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	shrine.take_events()
+	shrine._invoke_shrine(Shrines.VIGIL)
+	var cry := {}
+	for e in shrine.take_events():
+		if e["kind"] == &"noise" and e["cause"] == &"clamour":
+			cry = e
+	check("the vigil shrine now cries out where it can be drawn", not cry.is_empty())
+	check("and it is far louder than a sword blow (%d vs %d)"
+		% [int(cry.get("radius", 0)), GameState.COMBAT_NOISE],
+		int(cry.get("radius", 0)) > GameState.COMBAT_NOISE * 2)
+	check("the shrine still wakes the floor", sleeper.alertness == Entity.Alert.AWAKE)
+
+	# The cry must not double up on the waking the shrine already did, nor add
+	# a second line to the log about it.
+	var quiet := true
+	for entry in shrine.msg_log.entries:
+		if String(entry["text"]).begins_with("The noise carries"):
+			quiet = false
+	check("and says nothing extra about it", quiet)
 
 ## The effects setting, which exists for accessibility before taste.
 func _test_effects_modes() -> void:

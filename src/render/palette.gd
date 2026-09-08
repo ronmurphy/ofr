@@ -42,6 +42,10 @@ const BRAZIER_BLACK := Color("3a3234")
 ## Weathered stone, cooler than the dungeon's masonry so a grave reads as
 ## something placed rather than something built.
 const GRAVE         := Color("8d94a6")
+## A sound crossing the floor. Cool and pale on purpose: it must not be
+## mistaken for firelight, water or blood, all of which already own warm and
+## blue-green, and it is a report rather than a thing in the world.
+const NOISE         := Color("cdd8ee")
 const PILLAR        := Color("9a9082")
 const RUBBLE        := Color("6b5b47")
 const WATER         := Color("4d7f9e")
