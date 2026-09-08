@@ -218,7 +218,14 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	y = _entry(x, y, w, "@", Palette.PLAYER, "you", "")
 	for e in GameState.BESTIARY:
 		var art := _look(e["app"])
+		# `min_depth` is the tier the fade weights it at, which for an
+		# ascent-only thing is NOT where you meet it -- the arch lich sits at
+		# the dragon's tier and is gated separately. Printing "depth 10+" for
+		# something you can only meet climbing out is a straightforwardly false
+		# statement in the one panel that exists to tell the truth.
 		var note := "depth %d+" % int(e["min_depth"])
+		if e.has("ascent_from"):
+			note = "the climb out"
 		if int(e.get("range", 1)) > 1:
 			note = "shoots  " + note
 		elif int(e.get("regen", 0)) > 0:

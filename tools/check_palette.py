@@ -29,7 +29,7 @@ THEME = ROOT / "src" / "render" / "ascii_theme.gd"
 # Creatures that would draw the same figure, so colour does all the work.
 SHARED = {
     "child figure": ["kobold", "goblin"],
-    "adult figure": ["orc", "wight"],
+    "adult figure": ["orc", "wight", "wizard"],
     "heavy figure": ["ogre", "troll"],
     "dragon":       ["wyvern", "dragon"],
 }

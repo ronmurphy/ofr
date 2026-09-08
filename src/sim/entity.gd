@@ -59,6 +59,23 @@ var ai: StringName = &"none"
 ## pillar from decoration into cover.
 var attack_range: int = 1
 
+## How close a ranged attacker lets you get before it gives ground.
+##
+## One for the slinger and the dragon, which stand and shoot until you are
+## actually on top of them. Higher for something that fights at arm's length by
+## choice -- and note that a stand-off is only survivable for the PLAYER if the
+## thing doing it is slower than they are, or it simply never gets caught.
+var standoff: int = 1
+
+## How far this can blink away, and how long before it can do it again. Zero
+## range means it cannot -- only the arch lich does, today.
+##
+## The cooldown is what keeps it a fight rather than a chore: with no cooldown
+## a teleporter can never be cornered, so it does nothing but chip you forever,
+## which is tedious rather than difficult.
+var blink_range: int = 0
+var blink_cool: int = 0
+
 ## Runs once hp falls to this fraction of max. 0.0 never breaks -- undead and
 ## mindless things should not.
 var flee_below: float = 0.0
@@ -146,7 +163,9 @@ func to_dict() -> Dictionary:
 		"hp": hp, "max_hp": max_hp, "power": power, "defense": defense,
 		"speed": speed, "energy": energy, "threat": threat,
 		"level": level, "xp": xp, "ai": String(ai),
-		"attack_range": attack_range, "flee_below": flee_below,
+		"attack_range": attack_range, "standoff": standoff,
+		"blink_range": blink_range, "blink_cool": blink_cool,
+		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
 		"lost_turns": lost_turns, "calm_turns": calm_turns,
@@ -172,6 +191,9 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.xp = int(d.get("xp", 0))
 	e.ai = StringName(d.get("ai", "none"))
 	e.attack_range = int(d.get("attack_range", 1))
+	e.standoff = int(d.get("standoff", 1))
+	e.blink_range = int(d.get("blink_range", 0))
+	e.blink_cool = int(d.get("blink_cool", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)
 	e.regen = int(d.get("regen", 0))

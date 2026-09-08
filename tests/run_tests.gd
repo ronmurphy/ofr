@@ -57,6 +57,7 @@ func _initialize() -> void:
 	_test_brazier_resting()
 	_test_levels_offer_braziers()
 	_test_threat_ceiling_holds()
+	_test_threat_ceiling_holds_on_the_climb()
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
 	_test_motion_tweening()
@@ -104,6 +105,9 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_casters()
+	_test_caster_standoff_and_blink()
+	_test_graves_remember_the_dead()
 	_test_elapsed_is_time_not_keypresses()
 	_test_run_is_recorded()
 	_test_offhand_and_swap()
@@ -379,6 +383,43 @@ func _test_levels_offer_braziers() -> void:
 			with_any += 1
 	check("most levels offer somewhere to rest (%d/%d, %d braziers)"
 		% [with_any, trials, total], with_any > trials * 3 / 4, "%d" % with_any)
+
+## The same guarantee, on the way OUT.
+##
+## The descent has always been checked and the climb never was, which was a
+## survivable gap while the two drew from the same pool. It stopped being one
+## the moment the bestiary gained something worth 32 -- an arch lich is a third
+## of an entire ascent room's ceiling on its own, and a breach here is the kind
+## of unwinnable room the ceiling exists to forbid.
+func _test_threat_ceiling_holds_on_the_climb() -> void:
+	var breaches := 0
+	var worst_over := 0
+	var rooms_checked := 0
+	var liches := 0
+	for d in range(GameState.MAX_DEPTH - 1, 0, -1):
+		for i in 25:
+			var gs := GameState.new(41000 + d * 100 + i)
+			gs.new_game()
+			gs.ascending = true
+			gs.depth = d
+			gs.build_level()
+			var ceiling := gs.room_threat_ceiling()
+			for e in gs.entities:
+				if e.name == "arch lich":
+					liches += 1
+			for room in gs.room_rects:
+				rooms_checked += 1
+				var sum := 0
+				for e in gs.entities:
+					if not e.is_player and room.has_point(Vector2i(e.x, e.y)):
+						sum += e.threat
+				if sum > ceiling:
+					breaches += 1
+					worst_over = maxi(worst_over, sum - ceiling)
+	check("no room on the climb exceeds its ceiling (%d rooms, %d liches met)"
+		% [rooms_checked, liches], breaches == 0,
+		"%d breaches, worst %d over" % [breaches, worst_over])
+	check("and the climb actually fielded some liches", liches > 0, str(liches))
 
 ## The headline guarantee: no room can roll something unsurvivable.
 func _test_threat_ceiling_holds() -> void:
@@ -3222,6 +3263,226 @@ func _test_ember_forge() -> void:
 ## is the only thing telling the player how much of the forging decision is
 ## left -- there is deliberately no counter on screen.
 ## Time, as opposed to keypresses.
+## Gravestones: the first thing in the game that reads the morgue back.
+## The two casters, and the system trap that adding them nearly sprang.
+func _test_casters() -> void:
+	# THE TRAP. deepest_tier() is the largest min_depth in the table and it caps
+	# the tier-fade window for every monster. Giving the arch lich a deep
+	# min_depth to make it "late" would push that cap from 10 to 15 and fade the
+	# dragon, shadow, golem and wight out of the very floors they were written
+	# to carry. This assertion is the guard.
+	check("the deepest tier is still the dragon's",
+		GameState.deepest_tier() == 10, str(GameState.deepest_tier()))
+
+	# The ascent keeps its variety -- the thing the trap would have destroyed.
+	var deep_kinds := {}
+	for i in 40:
+		var gs := GameState.new(31000 + i)
+		gs.new_game()
+		gs.ascending = true
+		gs.depth = 1
+		gs.build_level()
+		for e in gs.entities:
+			if not e.is_player:
+				deep_kinds[e.name] = true
+	check("the last floor of the climb still fields several kinds (%d)"
+		% deep_kinds.size(), deep_kinds.size() >= 4, str(deep_kinds.keys()))
+
+	# The lich is ascent-only, and late.
+	var seen_down := 0
+	for i in 40:
+		var gs := GameState.new(32000 + i)
+		gs.new_game()
+		for d in range(1, GameState.MAX_DEPTH + 1):
+			gs.depth = d
+			gs.build_level()
+			for e in gs.entities:
+				if e.name == "arch lich":
+					seen_down += 1
+	check("no lich on the way down", seen_down == 0, str(seen_down))
+
+	var seen_up := 0
+	var seen_early_up := 0
+	for i in 40:
+		var gs := GameState.new(33000 + i)
+		gs.new_game()
+		gs.ascending = true
+		for d in range(GameState.MAX_DEPTH - 1, 0, -1):
+			gs.depth = d
+			gs.build_level()
+			for e in gs.entities:
+				if e.name == "arch lich":
+					if gs.effective_depth() >= 16:
+						seen_up += 1
+					else:
+						seen_early_up += 1
+	check("liches climb out with you (%d)" % seen_up, seen_up > 0, str(seen_up))
+	check("but never early on the climb", seen_early_up == 0, str(seen_early_up))
+
+	# The wizard is a descent monster, from depth 8.
+	var early := 0
+	for i in 30:
+		var gs := GameState.new(34000 + i)
+		gs.new_game()
+		for d in [1, 4, 7]:
+			gs.depth = d
+			gs.build_level()
+			for e in gs.entities:
+				if e.name == "wizard":
+					early += 1
+	check("no wizard above depth 8", early == 0, str(early))
+
+## How the casters actually fight: they refuse to be reached.
+func _test_caster_standoff_and_blink() -> void:
+	var gs := _arena(31, 11)
+	gs.player.x = 15
+	gs.player.y = 5
+	var wiz := _spawn(gs, "wizard", 18, 5)
+	wiz.alertness = Entity.Alert.AWAKE
+	check("a wizard is slower than you (%d)" % wiz.speed, wiz.speed < 100,
+		str(wiz.speed))
+	check("and keeps its distance", wiz.standoff == 3, str(wiz.standoff))
+
+	# Three cells is inside its comfort, so it gives ground rather than shoots.
+	var before := Los.steps(wiz.x, wiz.y, gs.player.x, gs.player.y)
+	gs._take_ai_turn(wiz)
+	check("inside its stand-off it backs away (%d -> %d)"
+		% [before, Los.steps(wiz.x, wiz.y, gs.player.x, gs.player.y)],
+		Los.steps(wiz.x, wiz.y, gs.player.x, gs.player.y) > before)
+
+	# A slinger's comfort is still one cell -- the new field must not have
+	# quietly changed everything that was already tuned.
+	var sling := _spawn(gs, "kobold slinger", 22, 5)
+	check("a slinger still stands and shoots", sling.standoff == 1,
+		str(sling.standoff))
+
+	# The lich blinks instead of stepping, and only on its cooldown.
+	var lich_arena := _arena(31, 11)
+	lich_arena.player.x = 15
+	lich_arena.player.y = 5
+	var lich := _spawn(lich_arena, "arch lich", 16, 5)
+	lich.alertness = Entity.Alert.AWAKE
+	check("a lich can blink", lich.blink_range > 0, str(lich.blink_range))
+	var was := Vector2i(lich.x, lich.y)
+	lich_arena._take_ai_turn(lich)
+	var moved := Vector2i(lich.x, lich.y)
+	check("cornered, it folds away", moved != was, "%s -> %s" % [was, moved])
+	check("landing out of reach",
+		Los.steps(moved.x, moved.y, 15, 5) > lich.standoff,
+		str(Los.steps(moved.x, moved.y, 15, 5)))
+	check("onto ground it can stand on",
+		Tiles.is_walkable(lich_arena.map.get_tile(moved.x, moved.y)))
+	check("and the cooldown is now running",
+		lich.blink_cool == GameState.BLINK_COOLDOWN, str(lich.blink_cool))
+
+	# It cannot do it again immediately, which is the only reason it can ever
+	# be caught and killed.
+	lich.x = 16
+	lich.y = 5
+	var again := Vector2i(lich.x, lich.y)
+	lich_arena._take_ai_turn(lich)
+	check("it cannot blink again at once",
+		Vector2i(lich.x, lich.y) != again or lich.blink_cool > 0,
+		str(lich.blink_cool))
+	# Wind the cooldown down and it can.
+	lich.blink_cool = 0
+	lich.x = 16
+	lich.y = 5
+	lich_arena._take_ai_turn(lich)
+	check("once the cooldown lapses it goes again",
+		Vector2i(lich.x, lich.y) != Vector2i(16, 5))
+
+	# The fields survive a suspend, or a resumed lich forgets how to escape.
+	var kept := Entity.from_dict(lich.to_dict())
+	check("blink survives a suspend",
+		kept.blink_range == lich.blink_range and kept.standoff == lich.standoff)
+	# Saves written before casters existed carry neither field.
+	var older := {"name": "orc", "app": "orc", "x": 1, "y": 1}
+	check("and an older save defaults to standing its ground",
+		Entity.from_dict(older).standoff == 1
+		and Entity.from_dict(older).blink_range == 0)
+
+func _test_graves_remember_the_dead() -> void:
+	# Parsing, including a line written before the run recorder existed. That
+	# older format is the one line the real morgue actually holds, so it has to
+	# keep working.
+	var old := Morgue.parse(
+		"2026-09-03 23:09:49  level 1  killed by a kobold on depth 1, empty-handed, after 228 turns")
+	check("an older morgue line still parses", not old.is_empty(), str(old))
+	check("its depth is read", int(old.get("depth", -1)) == 1, str(old))
+	check("its level is read", int(old.get("level", -1)) == 1)
+	check("its cause is read", String(old.get("cause", "")) == "killed by a kobold",
+		String(old.get("cause", "")))
+	check("and it claims no kill count it never had", not old.has("slain"))
+
+	var rich := Morgue.parse("2026-09-07 20:56:10  level 19  killed by a wyvern "
+		+ "on depth 7, empty-handed, after 10720 turns; 62 slain, most often cave bat")
+	check("a recorded death carries its tally", int(rich.get("slain", 0)) == 62, str(rich))
+	check("and its nemesis", String(rich.get("nemesis", "")) == "cave bat",
+		String(rich.get("nemesis", "")))
+
+	# An escape leaves no grave -- nobody who walked out is buried down here.
+	check("an escape is not a death", Morgue.parse("2026-09-05 10:00:00  level 19  "
+		+ "escaped the dungeon with the Amulet of the Deep, with the Amulet, "
+		+ "after 9000 turns").is_empty())
+	check("and neither is a blank line", Morgue.parse("").is_empty())
+
+	# A death round-trips through the file the game actually writes.
+	var died := _arena(21, 9)
+	died.depth = 4
+	died.player.name = "you"
+	died.stats = {"kills": {"cave bat": 5, "kobold": 2}}
+	died.player.level = 6
+	died.turns = 400
+	died.death_cause = "killed by an ogre"
+	died.write_morgue()
+	var back := Morgue.records(GameState.MORGUE_PATH)
+	check("the written line reads back", not back.is_empty())
+	if not back.is_empty():
+		var last: Dictionary = back[-1]
+		check("with the depth it died on", int(last.get("depth", -1)) == 4, str(last))
+		check("and the tally it recorded", int(last.get("slain", 0)) == 7, str(last))
+		check("naming what killed most", String(last.get("nemesis", "")) == "cave bat",
+			String(last.get("nemesis", "")))
+
+	# And a floor at that depth buries it.
+	var gs := GameState.new(4242)
+	gs.new_game()
+	gs.depth = 4
+	gs.build_level()
+	check("a floor buries the runs that ended on it", not gs.grave_at.is_empty(),
+		str(gs.grave_at.size()))
+	check("never more than the cap",
+		gs.grave_at.size() <= GameState.MAX_GRAVES, str(gs.grave_at.size()))
+	var on_ground := true
+	for cell in gs.grave_at:
+		if gs.map.get_tile(cell.x, cell.y) != Tiles.GRAVE:
+			on_ground = false
+		# Walkable by design, so a grave can never wall off a route.
+		if not Tiles.is_walkable(gs.map.get_tile(cell.x, cell.y)):
+			on_ground = false
+		if cell == gs.stairs:
+			on_ground = false
+	check("every grave is a walkable grave tile, clear of the stairs", on_ground)
+
+	# A floor nothing died on stays empty.
+	var clean := GameState.new(4242)
+	clean.new_game()
+	clean.depth = 9
+	clean.build_level()
+	check("a floor with no dead has no graves", clean.grave_at.is_empty(),
+		str(clean.grave_at.size()))
+
+	# The stone survives a suspend, or resuming would open the earth.
+	var text := JSON.stringify(gs.to_dict())
+	var loaded := GameState.new(1)
+	loaded.new_game()
+	loaded.apply_dict(JSON.parse_string(text))
+	check("graves survive a suspend", loaded.grave_at.size() == gs.grave_at.size(),
+		"%d vs %d" % [loaded.grave_at.size(), gs.grave_at.size()])
+	check("and an older save simply has none",
+		GameState.new(1).grave_at.is_empty())
+
 func _test_elapsed_is_time_not_keypresses() -> void:
 	var gs := _arena(21, 9)
 	gs.player.x = 5

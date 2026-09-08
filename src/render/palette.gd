@@ -39,6 +39,9 @@ const EMBERS_BG     := Color("2a1712")
 ## a player who cannot see it is a player walking into it. It only has to be
 ## unmistakably darker than BRAZIER_DEAD above, which it is.
 const BRAZIER_BLACK := Color("3a3234")
+## Weathered stone, cooler than the dungeon's masonry so a grave reads as
+## something placed rather than something built.
+const GRAVE         := Color("8d94a6")
 const PILLAR        := Color("9a9082")
 const RUBBLE        := Color("6b5b47")
 const WATER         := Color("4d7f9e")

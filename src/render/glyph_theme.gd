@@ -54,6 +54,13 @@ const OVERRIDES := {
 	&"bat":      0xF0B5F,   # md-bat
 	&"harpy":    0xF15C6,   # md-bird
 	&"skeleton": 0xF068C,   # md-skull
+	# A man, until he is not. The wizard keeps the adult figure because that is
+	# what he still is; the lich gets a silhouette of its own, because the whole
+	# point of the thing is that it stopped being one. A second ghost was the
+	# obvious pick and is the wrong one -- the shadow already owns that shape,
+	# and rank cannot be carried by a silhouette two creatures share.
+	&"wizard":   ADULT_FIGURE,
+	&"lich":     0xEE6F,
 	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
 	# Wyvern and dragon share a silhouette and are told apart by colour alone,
@@ -81,6 +88,7 @@ const OVERRIDES := {
 	&"brazier":       0xF0238,   # md-fire
 	&"brazier_spent": 0xF0238,
 	&"brazier_dead":  0xF0238,
+	&"grave":         0xF0BA2,   # md-grave_stone
 	# A torii gate, not a cross. The cross read as Christian iconography in a
 	# dungeon, and at cell size it was too close to the sword -- a shrine you
 	# might walk onto looking like a weapon you might pick up.

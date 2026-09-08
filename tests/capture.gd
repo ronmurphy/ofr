@@ -41,6 +41,11 @@ func _run() -> void:
 	# loads and DELETES the suspend slot, so the path is pointed somewhere
 	# harmless first and the real file is backed up as well.
 	GameState.use_scratch_files("capture")
+	# Start from a known morgue, not whatever previous capture runs left behind.
+	# The gravestone shot seeds a death and the floor buries it -- without this
+	# the scratch log grows every run, and a fixed-seed shot quietly gains
+	# graves over time, which is the one thing a comparison shot must not do.
+	GameState.clear_scratch_files()
 	_hide_suspend()
 	_scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_scene)
@@ -172,6 +177,39 @@ func _run() -> void:
 	await _shot("31_embers_forged.png")
 	_use(gs)
 	_scene._refresh()
+
+	# A gravestone, with the cursor on it -- the look panel is how you read one,
+	# so a shot of the tile alone would not show the feature at all.
+	# The tool writes to a scratch morgue, never the player's. Plant a death
+	# BEFORE the state that has to find it: the morgue is read once per run, at
+	# the first build_level, so a state created first would cache an empty one.
+	var seed_deaths := GameState.new(1)
+	seed_deaths.new_game()
+	seed_deaths.depth = 3
+	seed_deaths.player.level = 6
+	seed_deaths.turns = 1180
+	seed_deaths.death_cause = "killed by a cave troll"
+	seed_deaths.stats = {"kills": {"cave bat": 9, "goblin": 4}}
+	seed_deaths.write_morgue()
+	var gr := GameState.new(4242)
+	gr.new_game()
+	gr.depth = 3
+	gr.build_level()
+	if not gr.grave_at.is_empty():
+		var stone: Vector2i = gr.grave_at.keys()[0]
+		gr.player.x = stone.x
+		gr.player.y = stone.y + 1
+		gr.update_vision()
+		_use(gr)
+		_scene._toggle_look()
+		_scene._look_at = stone
+		_scene.grid.look_cursor = stone
+		_scene.sidebar.hovered = stone
+		_scene._refresh()
+		await _shot("34_grave.png")
+		_scene._end_look()
+		_use(gs)
+		_scene._refresh()
 
 	# The end-of-run record, in both the states it has to handle: a run the
 	# recorder watched all the way through, and one carried over from a save

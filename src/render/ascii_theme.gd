@@ -28,6 +28,9 @@ const TABLE := {
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},
 	&"brazier_spent": {"ch": "Ω", "fg": Palette.BRAZIER_DEAD, "bg": Color("17161a")},
 	&"brazier_dead":  {"ch": "Ω", "fg": Palette.BRAZIER_BLACK, "bg": Color("121013")},
+	# A headstone shape, and reachable now that the map font falls back to the
+	# full text face -- see GlyphGrid.map_font().
+	&"grave":         {"ch": "Π", "fg": Palette.GRAVE, "bg": Color("15161b")},
 
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},
@@ -61,6 +64,11 @@ const TABLE := {
 	&"golem":       {"ch": "G", "fg": Color("9aa0a8")},
 	&"shadow":      {"ch": "S", "fg": Color("8a63c4")},
 	&"dragon":      {"ch": "D", "fg": Color("e8c33c")},
+	# Lowercase weak, uppercase deadly -- the same rule that makes K a kobold
+	# that shoots back. The lich is the wizard's end state, so they share a
+	# letter and differ in case.
+	&"wizard":      {"ch": "l", "fg": Color("3d6ee8")},
+	&"lich":        {"ch": "L", "fg": Color("7cf0d8")},
 }
 
 const FALLBACK := {"ch": "?", "fg": Color.MAGENTA, "bg": Palette.BG}

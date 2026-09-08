@@ -31,6 +31,7 @@ enum {
 	PIT,
 	TRAP,
 	BRAZIER_DEAD,
+	GRAVE,
 }
 
 ## walk  = an actor may stand here
@@ -82,6 +83,12 @@ const DATA := {
 	# siblings on purpose: tiles are saved as raw bytes, so inserting an id in
 	# the middle would renumber every tile in every existing save.
 	BRAZIER_DEAD: {"id": &"brazier_dead", "walk": false, "clear": true},
+	# Walkable, unlike every other standing feature. A headstone you could not
+	# step onto would be one more thing generation has to prove it never wedged
+	# into a corridor; walkable, it can be dropped anywhere a monster could
+	# stand and cannot block a route by construction. Standing on the grave to
+	# read it is also the better image.
+	GRAVE:       {"id": &"grave",        "walk": true,  "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:

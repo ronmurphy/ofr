@@ -203,6 +203,66 @@ var entities: Array = []
 var ground: Array = []
 var player: Entity
 var static_lights: Array = []
+## The morgue, read once per run rather than once per floor.
+##
+## `build_level` is called for every floor of every run, and the test suite
+## builds thousands of them -- a file read and a regex pass per level would put
+## real time on a suite that already takes minutes. Cached on the instance, not
+## statically, because `use_scratch_files` moves the path underneath the tests.
+var _morgue_cache: Array = []
+var _morgue_read := false
+
+func _morgue() -> Array:
+	if not _morgue_read:
+		_morgue_read = true
+		_morgue_cache = Morgue.records(MORGUE_PATH)
+	return _morgue_cache
+
+## How many of a floor's own dead it will show at once.
+##
+## Capped rather than one stone per record: a player who has died eleven times
+## on depth 1 should meet a reminder, not a cemetery. The floor still draws
+## from all of them, so which graves appear varies by run.
+const MAX_GRAVES := 2
+
+## Bury the runs that ended on this floor.
+##
+## Reads the morgue -- the file that has been written every death since the
+## game existed and never once been read back. Deaths only: someone who walked
+## out into daylight is not buried down here.
+func _place_graves() -> void:
+	var here: Array = []
+	for rec in _morgue():
+		if int(rec.get("depth", -1)) == depth:
+			here.append(rec)
+	if here.is_empty():
+		return
+	# Through the run's own rng, never Array.shuffle() -- a global-rng call in
+	# generation is what made every seeded level unreproducible once before.
+	for i in range(here.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp: Variant = here[i]
+		here[i] = here[j]
+		here[j] = tmp
+
+	var wanted := mini(MAX_GRAVES, here.size())
+	var placed := 0
+	for _try in 200:
+		if placed >= wanted:
+			return
+		var x := rng.randi_range(1, map.width - 2)
+		var y := rng.randi_range(1, map.height - 2)
+		var cell := Vector2i(x, y)
+		# Same rule loot obeys: real standing ground, never a pit or a trap,
+		# and never on top of the stairs or the way out.
+		if not _can_rest_on(x, y) or grave_at.has(cell) or cell == stairs:
+			continue
+		if cell == Vector2i(player.x, player.y):
+			continue
+		map.set_tile(x, y, Tiles.GRAVE)
+		grave_at[cell] = here[placed]
+		placed += 1
+
 ## Cell -> hit points left in that brazier.
 var brazier_charge: Dictionary = {}
 ## Cell -> the turn its embers go cold. Only ever holds cells that are
@@ -232,6 +292,8 @@ var death_cause := ""
 
 ## Cell -> shrine type. Shrines are consumed when used.
 var shrine_at: Dictionary = {}
+## Cell -> the morgue record buried there.
+var grave_at: Dictionary = {}
 ## Shrine type -> hue index, shuffled once per run so the colours have to be
 ## learned again each time.
 var shrine_hues: Array[int] = []
@@ -284,6 +346,9 @@ var _last_footing := Tiles.FLOOR
 ## every turn spent under it. A warning that repeats is a warning that gets
 ## tuned out, which is the opposite of the point.
 var _hp_warned := false
+## The grave last stood on, so pacing back and forth across one does not
+## reprint its epitaph every step.
+var _last_grave := Vector2i(-1, -1)
 ## Read once and shared by every level, since the files never change mid-run.
 static var _vault_library: Array[Vault] = []
 
@@ -344,6 +409,25 @@ const BESTIARY := [
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
 	 "threat": 28},
+
+	# --- the casters ------------------------------------------------------
+	# Frail, long-armed, and unwilling to be reached. Both fight by refusing
+	# the fight, which is the one thing nothing else in the bestiary does.
+	#
+	# The wizard is SLOWER than the player on purpose. A kiter at equal speed
+	# can never be caught and never has to commit, which is precisely the
+	# shoot-and-retreat loop COMBAT_NOISE documents as unfixable by noise --
+	# handed to the dungeon instead of the player. At 90 it loses a step every
+	# time it gives ground, so walking it down works; you simply pay for the
+	# walk.
+	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
+	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
+	 "min_depth": 8, "threat": 22},
+	# Ascent-only, and late on it. `min_depth` stays at the dragon's tier so the
+	# fade window is undisturbed; `ascent_from` does the actual gating.
+	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
+	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
+	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32},
 ]
 
 ## The deepest tier that exists.
@@ -438,11 +522,14 @@ func build_level() -> void:
 	room_rects = gen.rooms.duplicate()
 	brazier_charge.clear()
 	ember_until.clear()
+	grave_at.clear()
+	_last_grave = Vector2i(-1, -1)
 	for y in map.height:
 		for x in map.width:
 			if map.get_tile(x, y) == Tiles.BRAZIER:
 				brazier_charge[Vector2i(x, y)] = BRAZIER_CHARGE
 	_gather_lights()
+	_place_graves()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
 	for region in gen.caves:
@@ -648,6 +735,8 @@ func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
 	m.speed = pick["speed"]
 	m.ai = pick.get("ai", &"hunter")
 	m.attack_range = pick.get("range", 1)
+	m.standoff = pick.get("standoff", 1)
+	m.blink_range = pick.get("blink", 0)
 	m.flee_below = pick.get("flee", 0.0)
 	m.regen = pick.get("regen", 0)
 	m.flying = pick.get("flying", false)
@@ -790,6 +879,17 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 	var effective := mini(here, deepest_tier() + TIER_GRACE)
 	for e in BESTIARY:
 		if e["min_depth"] > here:
+			continue
+		# Ascent-only things, gated separately from the tier ladder.
+		#
+		# The obvious way to say "only near the top of the climb" is a deep
+		# min_depth, and it is a trap: deepest_tier() is the maximum min_depth
+		# in the table and it caps the fade window for EVERYTHING. An entry at
+		# min_depth 15 would push that cap from 10 to 15 and fade the dragon,
+		# the shadow, the golem and the wight out of the very floors they were
+		# written to carry -- an ascent populated by one monster. So the tier
+		# stays shallow and the restriction lives here.
+		if e.has("ascent_from") and (not ascending or here < int(e["ascent_from"])):
 			continue
 		if int(e["threat"]) > remaining:
 			continue
@@ -2050,6 +2150,12 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 		map.set_tile(player.x, player.y,
 			Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 			else Tiles.FLOOR)
+	var stood := Vector2i(player.x, player.y)
+	if grave_at.has(stood) and stood != _last_grave:
+		_last_grave = stood
+		msg_log.add(Morgue.inscription(grave_at[stood]), Color(0.72, 0.74, 0.80))
+	elif not grave_at.has(stood):
+		_last_grave = Vector2i(-1, -1)
 	if torch_flare > 0:
 		torch_flare -= 1
 		if torch_flare == 0:
@@ -2162,7 +2268,8 @@ func to_dict() -> Dictionary:
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
 		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
-		"shrines": _shrines_to_dict(), "hues": shrine_hues,
+		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
+		"hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
 		"flare": torch_flare,
 		"entities": mobs, "player": entities.find(player),
@@ -2222,6 +2329,13 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
+	grave_at.clear()
+	var saved_graves: Dictionary = d.get("graves", {})
+	for key in saved_graves:
+		var g: PackedStringArray = String(key).split(",")
+		if g.size() == 2 and saved_graves[key] is Dictionary:
+			grave_at[Vector2i(g[0].to_int(), g[1].to_int())] = saved_graves[key]
+
 	shrine_hues.clear()
 	for h in d.get("hues", []):
 		shrine_hues.append(int(h))
@@ -2298,12 +2412,35 @@ func morgue_line() -> String:
 	else:
 		fate = "left the dungeon on depth %d" % depth
 	var carried := "with the Amulet" if _carrying_amulet() else "empty-handed"
-	return "%s  level %d  %s, %s, after %d turns" \
+	var line := "%s  level %d  %s, %s, after %d turns" \
 		% [when, player.level, fate, carried, turns]
+	# The run record, appended rather than replacing anything, so the line stays
+	# something you can read and every line already written still parses. This
+	# is what a gravestone has to say beyond "someone died here".
+	var slain := 0
+	var kills: Dictionary = stats.get("kills", {})
+	var nemesis := ""
+	var most := 0
+	for k in kills:
+		slain += int(kills[k])
+		if int(kills[k]) > most:
+			most = int(kills[k])
+			nemesis = String(k)
+	if slain > 0:
+		line += "; %d slain" % slain
+		if nemesis != "":
+			line += ", most often %s" % nemesis
+	return line
 
 ## JSON has no integers -- every number comes back a double, including the ones
 ## inside the nested buckets -- so the whole structure is walked back to ints
 ## rather than leaving "3.0 kills" to surface on the end screen.
+func _graves_to_dict() -> Dictionary:
+	var out := {}
+	for cell in grave_at:
+		out["%d,%d" % [cell.x, cell.y]] = grave_at[cell]
+	return out
+
 func _stats_from(raw: Variant) -> Dictionary:
 	var out := {}
 	if not (raw is Dictionary):
@@ -2468,17 +2605,66 @@ func _ai_erratic(actor: Entity) -> void:
 func _ai_ranged(actor: Entity) -> void:
 	var dist := Los.steps(actor.x, actor.y, player.x, player.y)
 
-	if dist <= 1:
+	if actor.blink_cool > 0:
+		actor.blink_cool -= 1
+
+	# Too close for comfort. A slinger's comfort is one cell; a caster's is
+	# three, and the difference is the whole character of the fight.
+	if dist <= actor.standoff:
+		if actor.blink_range > 0 and actor.blink_cool <= 0 and _blink_away(actor):
+			return
 		if _step_away(actor):
 			return
-		_attack(actor, player)
-		return
+		# Cornered, with nowhere left to give. Now it has to fight, and a
+		# caster in melee is exactly as frail as its hit points suggest.
+		if dist <= 1:
+			_attack(actor, player)
+			return
 
 	if dist <= actor.total_range() and Los.clear(map, actor.x, actor.y, player.x, player.y):
 		_attack(actor, player, true)
 		return
 
 	_step_toward(actor, Vector2i(player.x, player.y))
+
+## How long after a blink before it can blink again.
+##
+## The cooldown is the whole reason the arch lich is a fight rather than a
+## chore. Without it the player can never close, so the lich chips away from
+## range forever and the only counterplay is to walk off the floor. Eight turns
+## buys a window to reach it and land blows -- and costs you the ground you
+## spent getting there when it goes again.
+const BLINK_COOLDOWN := 8
+
+## Somewhere else on the floor, out of arm's reach and preferably out of sight.
+func _blink_away(actor: Entity) -> bool:
+	var spots := []
+	var r := actor.blink_range
+	for y in range(maxi(1, actor.y - r), mini(map.height - 1, actor.y + r + 1)):
+		for x in range(maxi(1, actor.x - r), mini(map.width - 1, actor.x + r + 1)):
+			if not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y)):
+				continue
+			if entity_at(x, y) != null:
+				continue
+			# No point reappearing inside the player's reach.
+			if Los.steps(x, y, player.x, player.y) <= actor.standoff:
+				continue
+			spots.append(Vector2i(x, y))
+	if spots.is_empty():
+		return false
+	var to: Vector2i = spots[rng.randi_range(0, spots.size() - 1)]
+	var from := Vector2i(actor.x, actor.y)
+	actor.x = to.x
+	actor.y = to.y
+	actor.blink_cool = BLINK_COOLDOWN
+	events.append({"kind": &"blink", "from": from, "to": to})
+	# Only remarked on when it happened where you could see it -- otherwise the
+	# message is a free report that something you cannot see just moved.
+	if map.is_visible(from.x, from.y) or map.is_visible(to.x, to.y):
+		msg_log.add("The %s folds out of the air and is elsewhere." % actor.name,
+			Color(0.75, 0.70, 0.95))
+	_last_move_cost = Scheduler.ACTION_COST
+	return true
 
 ## Bold with company, hesitant alone -- so a lone goblin hangs back and a pair
 ## of them commit, which makes thinning a group worth doing.

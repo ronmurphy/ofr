@@ -286,7 +286,12 @@ func _describe() -> Array:
 	else:
 		out.append("(remembered)")
 	var tile := m.get_tile(hovered.x, hovered.y)
-	if tile == Tiles.SHRINE:
+	if tile == Tiles.GRAVE and state.grave_at.has(hovered):
+		# The whole reason the morgue is worth reading back: the cursor is
+		# already how you interrogate anything else on the floor.
+		for line in Morgue.epitaph(state.grave_at[hovered]):
+			out.append(line)
+	elif tile == Tiles.SHRINE:
 		# Named only once its colour has been learned the hard way.
 		out.append(state.shrine_label(int(state.shrine_at.get(hovered, 0))))
 	else:
