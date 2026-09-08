@@ -125,6 +125,18 @@ func _draw() -> void:
 	draw_string(font, p.position + Vector2(PAD, PAD + 26.0 + asc), note,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
 
+	# Time underground, as information rather than pressure.
+	#
+	# It lives here, behind a keypress, precisely so it is not a clock ticking
+	# in the corner of the screen: nothing in OFR is measured against elapsed
+	# time, and a permanent countdown would imply a resource that does not
+	# exist. You look at it when you choose to.
+	if state != null:
+		var line := "%s underground  ·  %d turns" % [
+			Clock.text(state.time_underground()), state.turns]
+		draw_string(font, p.position + Vector2(PAD, PANEL.y - PAD),
+			line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
+
 	for i in OPTIONS.size():
 		var r := _row_rect(i)
 		if i == _hover:

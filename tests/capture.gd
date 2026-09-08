@@ -173,6 +173,53 @@ func _run() -> void:
 	_use(gs)
 	_scene._refresh()
 
+	# The end-of-run record, in both the states it has to handle: a run the
+	# recorder watched all the way through, and one carried over from a save
+	# written before the recorder existed, where it has to drop what it never
+	# counted rather than print zeroes.
+	var fin := GameState.new(77)
+	fin.new_game()
+	fin.depth = 4
+	fin.build_level()
+	fin.player.level = 19
+	fin.player.max_hp = 120
+	fin.player.hp = 36
+	fin.player.power = 12
+	fin.player.defense = 7
+	fin.turns = 10720
+	fin.elapsed = 10720 * Scheduler.ACTION_COST + 41200
+	fin.won = true
+	fin.game_over = true
+	for want in [&"war_bow", &"plate_mail", &"kite_shield"]:
+		var it := Item.make(want)
+		if it != null:
+			fin.give_item(it)
+			fin.player.equipped[it.slot] = it
+	fin.stats = {
+		"deepest": 10, "dealt": 3184, "taken": 2790, "shots": 612,
+		"braziers": 41, "forges": 9, "ember_forges": 3,
+		"kills": {"cave bat": 23, "kobold": 19, "goblin": 14, "orc": 6},
+		"swings": {"war bow +1": 410, "war axe +2": 96, "dagger": 12},
+		"picked": {"arrows": 86, "potion of healing": 21, "dagger": 7},
+	}
+	_use(fin)
+	_scene.summary.state = fin
+	_scene.summary.open()
+	_scene._refresh()
+	await _shot("32_summary.png")
+
+	# The same screen for a run the recorder never saw.
+	fin.stats = {}
+	fin.elapsed_estimated = true
+	fin.won = false
+	fin.death_cause = "killed by a wyvern"
+	fin.depth = 7
+	_scene._refresh()
+	await _shot("33_summary_no_record.png")
+	_scene.summary.close()
+	_use(gs)
+	_scene._refresh()
+
 	# Combat feedback: stage a shot in an open arena and photograph it both
 	# mid-flight and on impact.
 	var fx := GameState.new(4242)

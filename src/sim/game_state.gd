@@ -240,6 +240,25 @@ var shrine_known: Dictionary = {}
 var forge_cap_bonus := 0
 var torch_flare := 0
 var turns: int = 0
+## Energy spent by the player, which is game TIME rather than player actions.
+##
+## `turns` counts keypresses: one step is one turn whether it crossed clean
+## stone or mud that cost double and handed the world two moves against you.
+## Both numbers are true and they are true about different things, so the run
+## keeps both -- turns is the number a speedrunner can optimise directly, this
+## is the one the clock has to be built on. See Clock.
+var elapsed: int = 0
+## True when `elapsed` was reconstructed on load rather than measured, which
+## happens for any save written before the counter existed. The end screen
+## marks that time with a tilde instead of presenting a guess as a measurement.
+var elapsed_estimated: bool = false
+## What the run DID, as opposed to what it ended as.
+##
+## One dictionary rather than a field apiece, because the end screen's rule is
+## to skip whatever it has no data for. A save written before any of this
+## existed loads `{}`, and the screen shows fewer sections instead of a wall of
+## confident zeroes about a run that was never being counted.
+var stats: Dictionary = {}
 var game_over: bool = false
 
 ## Presentation events produced by the turn just resolved.
@@ -414,6 +433,7 @@ func build_level() -> void:
 			if map.get_tile(x, y) == Tiles.SHRINE:
 				shrine_at[Vector2i(x, y)] = rng.randi_range(0, Shrines.COUNT - 1)
 
+	stats["deepest"] = maxi(int(stats.get("deepest", 0)), depth)
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
 	brazier_charge.clear()
@@ -1229,6 +1249,7 @@ func _fall_into_pit() -> bool:
 	_travel.clear()
 	var hurt := rng.randi_range(3, 6 + depth / 2)
 	player.take_damage(hurt)
+	_tally("taken", hurt)
 	msg_log.add("The floor opens. You drop into the dark.", Color(0.85, 0.75, 0.62))
 
 	if not player.alive:
@@ -1252,6 +1273,7 @@ func _spring_trap(x: int, y: int) -> void:
 		else Tiles.FLOOR)
 	var hurt := rng.randi_range(2, 4 + depth / 2)
 	player.take_damage(hurt)
+	_tally("taken", hurt)
 	msg_log.add("The mechanism snaps shut. (-%d hp)" % hurt, Color(0.92, 0.48, 0.40))
 	events.append({"kind": &"trap", "to": Vector2i(x, y)})
 	events.append({"kind": &"melee", "from": Vector2i(x, y), "to": Vector2i(x, y),
@@ -1446,6 +1468,9 @@ func player_merge(index: int) -> bool:
 	donor.letter = ""
 
 	item.upgrade()
+	_tally("forges")
+	if embers:
+		_tally("ember_forges")
 	events.append({"kind": &"forge", "to": brazier})
 
 	if embers:
@@ -1526,6 +1551,7 @@ func _gutter(cell: Vector2i) -> void:
 	brazier_charge.erase(cell)
 	map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
 	ember_until[cell] = turns + EMBER_TURNS
+	_tally("braziers")
 	_gather_lights()
 	msg_log.add("The brazier gutters out.", Color(0.58, 0.55, 0.50))
 	# Said only when there is something in the pack it could be said about, in
@@ -1635,6 +1661,9 @@ func player_pickup() -> bool:
 		return true
 	ground.erase(item)
 	give_item(item)
+	# Counted here rather than in give_item, which the tests and the starting
+	# kit also go through. This is the player deciding to bend down.
+	_tally_in("picked", item.name)
 	msg_log.add("You pick up the %s (%s)." % [item.name, item.letter],
 		Color(0.75, 0.80, 0.90))
 	_end_player_turn()
@@ -2006,6 +2035,10 @@ func step_travel() -> bool:
 func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
+	# The cost was already being computed and thrown away. Difficult ground has
+	# always charged the world for the time it takes; this is the first thing
+	# that charges the record too.
+	elapsed += cost
 	_note_footing()
 	var underfoot := map.get_tile(player.x, player.y)
 	_make_noise(Vector2i(player.x, player.y), Tiles.noise_radius(underfoot))
@@ -2118,7 +2151,9 @@ func to_dict() -> Dictionary:
 		# rng state would quietly lose its low bits -- so a resumed run would
 		# drift away from the one that was saved.
 		"seed": str(rng.seed), "state": str(rng.state),
-		"depth": depth, "turns": turns, "ascending": ascending,
+		"depth": depth, "turns": turns, "elapsed": elapsed,
+		"elapsed_est": elapsed_estimated,
+		"stats": stats, "ascending": ascending,
 		"won": won, "game_over": game_over, "torch_lit": torch_lit,
 		"cause": death_cause,
 		"w": map.width, "h": map.height,
@@ -2141,6 +2176,13 @@ func apply_dict(d: Dictionary) -> bool:
 	rng.seed = str(d.get("seed", "0")).to_int()
 	rng.state = str(d.get("state", "0")).to_int()
 	depth = int(d.get("depth", 1))
+	# Absent from any save written before the run recorder existed, and absent
+	# is the point: `stats` stays empty and the end screen omits what it cannot
+	# honestly report. `elapsed` falls back to the turn count at one round
+	# each, which is the best guess available and never worse than zero.
+	elapsed_estimated = bool(d.get("elapsed_est", not d.has("elapsed")))
+	elapsed = int(d.get("elapsed", int(d.get("turns", 0)) * Scheduler.ACTION_COST))
+	stats = _stats_from(d.get("stats", {}))
 	turns = int(d.get("turns", 0))
 	ascending = d.get("ascending", false)
 	won = d.get("won", false)
@@ -2230,6 +2272,22 @@ func apply_dict(d: Dictionary) -> bool:
 
 # --------------------------------------------------------------- morgue ----
 
+## One counter up. Kept deliberately blunt: every call site is a single line in
+## a path that already exists, which is why the whole recording layer is a
+## handful of lines rather than a subsystem.
+func _tally(key: String, amount: int = 1) -> void:
+	stats[key] = int(stats.get(key, 0)) + amount
+
+## One counter up inside a named bucket -- kills by monster, swings by weapon.
+func _tally_in(bucket: String, key: String, amount: int = 1) -> void:
+	var d: Dictionary = stats.get(bucket, {})
+	d[key] = int(d.get(key, 0)) + amount
+	stats[bucket] = d
+
+## Seconds underground, for the menu and the end screen.
+func time_underground() -> int:
+	return Clock.seconds(elapsed)
+
 func morgue_line() -> String:
 	var when := Time.get_datetime_string_from_system(false, true)
 	var fate := ""
@@ -2242,6 +2300,24 @@ func morgue_line() -> String:
 	var carried := "with the Amulet" if _carrying_amulet() else "empty-handed"
 	return "%s  level %d  %s, %s, after %d turns" \
 		% [when, player.level, fate, carried, turns]
+
+## JSON has no integers -- every number comes back a double, including the ones
+## inside the nested buckets -- so the whole structure is walked back to ints
+## rather than leaving "3.0 kills" to surface on the end screen.
+func _stats_from(raw: Variant) -> Dictionary:
+	var out := {}
+	if not (raw is Dictionary):
+		return out
+	for key in raw:
+		var v: Variant = raw[key]
+		if v is Dictionary:
+			var inner := {}
+			for k in v:
+				inner[String(k)] = int(v[k])
+			out[String(key)] = inner
+		else:
+			out[String(key)] = int(v)
+	return out
 
 func _carrying_amulet() -> bool:
 	for it in player.inventory:
@@ -2497,6 +2573,16 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	var dmg := maxi(maxi(1, least), raw)
 	defender.take_damage(dmg)
 
+	if attacker.is_player:
+		_tally("dealt", dmg)
+		if ranged:
+			_tally("shots")
+		else:
+			var held: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+			_tally_in("swings", held.name if held != null else "bare hands")
+	elif defender.is_player:
+		_tally("taken", dmg)
+
 	events.append({
 		"kind": &"ranged" if ranged else &"melee",
 		"from": Vector2i(attacker.x, attacker.y),
@@ -2557,3 +2643,4 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			_drop_loot(defender)
 			if attacker.is_player:
 				award_xp(defender.threat)
+				_tally_in("kills", defender.name)

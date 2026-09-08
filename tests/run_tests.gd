@@ -104,6 +104,8 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_elapsed_is_time_not_keypresses()
+	_test_run_is_recorded()
 	_test_offhand_and_swap()
 	_test_ammunition()
 	_test_merging_spends_the_cheapest()
@@ -2694,6 +2696,27 @@ func _test_panels_do_not_overflow() -> void:
 		worst_w + 8.0 <= side_limit,
 		"%.0f + gap > %.0f px -- %s" % [worst_w, side_limit, worst])
 
+	# The record's two columns right-align their value against the same edge the
+	# label starts from, so the failure mode is the sidebar's: two strings
+	# meeting in the middle. Its HEIGHT needs no test -- the panel is sized from
+	# its content -- but its width is still fixed.
+	var sum_col: float = (SummaryPanel.PANEL_W - SummaryPanel.PAD * 3.0) * 0.5
+	var sum_worst := ""
+	var sum_w := 0.0
+	for row in [["braziers burned out", "9  (3 in embers)"],
+			["   potion of healing", "9999"], ["time underground", "~2d 7h 33m"],
+			["hit points", "999 / 999"], ["   giant rat", "9999"]]:
+		var a2 := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1,
+			SummaryPanel.font_size_default() - 1).x
+		var b2 := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1,
+			SummaryPanel.font_size_default() - 1).x
+		if a2 + b2 > sum_w:
+			sum_w = a2 + b2
+			sum_worst = "%s / %s" % [row[0], row[1]]
+	check("no record row collides with its value",
+		sum_w + 8.0 <= sum_col,
+		"%.0f + gap > %.0f px -- %s" % [sum_w, sum_col, sum_worst])
+
 	# The KEYS block is anchored to the bottom of the panel by its own length,
 	# which is the fix that stopped the last recurrence.
 	var keys_h := Sidebar.LINE * float(Sidebar.essential_keys().size() + 1) + Sidebar.PAD
@@ -3194,6 +3217,84 @@ func _test_ember_forge() -> void:
 ## The colour it becomes is the renderer's, but the curve is the sim's, and it
 ## is the only thing telling the player how much of the forging decision is
 ## left -- there is deliberately no counter on screen.
+## Time, as opposed to keypresses.
+func _test_elapsed_is_time_not_keypresses() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	for x in range(6, 10):
+		gs.map.set_tile(x, 4, Tiles.MUD)
+	var before_turns := gs.turns
+	var before := gs.elapsed
+	gs.player_move(1, 0)
+	check("a step through mud is one turn", gs.turns - before_turns == 1)
+	check("but costs two units of time (%d)" % (gs.elapsed - before),
+		gs.elapsed - before == Scheduler.ACTION_COST * 2,
+		str(gs.elapsed - before))
+
+	var clean := _arena(21, 9)
+	clean.player.x = 5
+	clean.player.y = 4
+	var was := clean.elapsed
+	clean.player_move(1, 0)
+	check("clean stone costs one", clean.elapsed - was == Scheduler.ACTION_COST)
+
+	# Six seconds a round, out of D&D, and the arithmetic has to survive the
+	# division rather than truncating a mud step down to a clean one.
+	check("ten rounds is a minute",
+		Clock.seconds(Scheduler.ACTION_COST * 10) == 60,
+		str(Clock.seconds(Scheduler.ACTION_COST * 10)))
+	check("Brad's escape reads as 17h 52m",
+		Clock.text(Clock.seconds(10720 * Scheduler.ACTION_COST)) == "17h 52m",
+		Clock.text(Clock.seconds(10720 * Scheduler.ACTION_COST)))
+	check("a long crawl carries days",
+		Clock.text(200000) == "2d 7h 33m", Clock.text(200000))
+	check("and a short one keeps its seconds",
+		Clock.text(126) == "2m 06s", Clock.text(126))
+
+## The recorder, and the rule that the end screen skips what it never counted.
+func _test_run_is_recorded() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.power = 99
+	var rat := _spawn(gs, "giant rat", 6, 4)
+	gs.player_move(1, 0)
+	check("a kill is tallied by name",
+		int(gs.stats.get("kills", {}).get("giant rat", 0)) == 1,
+		str(gs.stats.get("kills", {})))
+	check("damage dealt is tallied", int(gs.stats.get("dealt", 0)) > 0)
+	check("and what was swung with it",
+		gs.stats.get("swings", {}).has("bare hands"), str(gs.stats.get("swings", {})))
+
+	# A save from before any of this existed carries no stats at all, and the
+	# load must leave it that way rather than inventing zeroes.
+	var old := gs.to_dict()
+	old.erase("stats")
+	old.erase("elapsed")
+	old.erase("elapsed_est")
+	var back := GameState.new(1)
+	back.new_game()
+	check("an older save loads with nothing recorded",
+		back.apply_dict(old) and back.stats.is_empty(), str(back.stats))
+	check("and its time is marked as reconstructed", back.elapsed_estimated)
+	check("reconstructed from the turn count rather than zero",
+		back.elapsed == back.turns * Scheduler.ACTION_COST,
+		"%d vs %d" % [back.elapsed, back.turns])
+
+	# A current save round-trips, and JSON's doubles come back as integers --
+	# "3.0 kills" on the end screen is exactly what the normalising is for.
+	var text := JSON.stringify(gs.to_dict())
+	var reloaded := GameState.new(1)
+	reloaded.new_game()
+	reloaded.apply_dict(JSON.parse_string(text))
+	check("a recorded run survives JSON intact",
+		int(reloaded.stats.get("kills", {}).get("giant rat", 0)) == 1,
+		str(reloaded.stats))
+	check("counters come back as integers, not doubles",
+		typeof(reloaded.stats["kills"]["giant rat"]) == TYPE_INT)
+	check("and its time is not marked reconstructed", not reloaded.elapsed_estimated)
+
 func _test_ember_heat_reads_the_clock() -> void:
 	var gs := _forge_arena()
 	var cell := Vector2i(6, 4)

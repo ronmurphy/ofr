@@ -13,6 +13,7 @@ extends Control
 @onready var inventory: InventoryPanel = $Inventory
 @onready var menu: MenuPanel = $Menu
 @onready var legend: LegendPanel = $Legend
+@onready var summary: SummaryPanel = $Summary
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -27,6 +28,10 @@ var _page_hidden_cb: Variant = null
 ## is saved -- the same "unsaved changes" rule every editor uses, rather than
 ## nagging on the way out of a run that is already safely written.
 var _saved_at_turn := -1
+## The record opens once when the run ends, not on every redraw afterwards --
+## otherwise dismissing it would be impossible, since closing it triggers the
+## refresh that would immediately reopen it.
+var _summary_shown := false
 
 ## Milliseconds between steps of a mouse-driven walk. Fast enough not to
 ## annoy, slow enough that you can see where you went and react.
@@ -88,6 +93,7 @@ func _ready() -> void:
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
 	inventory.close_requested.connect(_close_inventory)
+	summary.close_requested.connect(summary.close)
 
 	# In a browser, closing the tab is an accident in a way that closing an
 	# application is not. Ask before it happens, and write the slot when the
@@ -130,6 +136,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if key_event == null or not key_event.pressed or key_event.echo:
 		return
 	var key: int = key_event.keycode
+
+	if summary.visible:
+		# Anything dismisses it except the keys that mean something else here:
+		# R starts the next run, and tab/esc are handled below on the way back.
+		if key == KEY_R:
+			_start_new_run()
+		else:
+			summary.close()
+		_refresh()
+		return
 
 	if legend.visible:
 		legend.close()
@@ -236,6 +252,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_refresh()
 		else:
 			_refresh()
+		return
+
+	# Bringing the record back up. Only meaningful once the run is over, so it
+	# costs nothing during play -- tab is the inventory's filter key and this
+	# branch is unreachable while the inventory is open.
+	if key == KEY_TAB and state.game_over:
+		summary.open()
+		_refresh()
 		return
 
 	if key == KEY_R:
@@ -367,6 +391,11 @@ func _bind_state(s: GameState) -> void:
 	inventory.state = s
 	menu.state = s
 	legend.state = s
+	summary.state = s
+	# A fresh state is a fresh run, so the record of the last one goes away
+	# with it -- and re-arms, so the next ending opens its own.
+	summary.close()
+	_summary_shown = false
 	_refresh()
 
 func _begin_throw_pick() -> void:
@@ -502,6 +531,10 @@ func _refresh() -> void:
 	if state != null:
 		Platform.guard_against_leaving(
 			not state.game_over and state.turns != _saved_at_turn)
+		# The run just ended. Show what it came to, once.
+		if state.game_over and not _summary_shown:
+			_summary_shown = true
+			summary.open()
 
 	# Hand the turn's events to the renderer to animate. The simulation has
 	# already resolved them; this is purely showing the player what happened.
@@ -522,3 +555,4 @@ func _refresh() -> void:
 	inventory.queue_redraw()
 	menu.queue_redraw()
 	legend.queue_redraw()
+	summary.queue_redraw()
