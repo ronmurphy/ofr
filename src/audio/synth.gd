@@ -170,6 +170,32 @@ const SOUNDS := {
 			"curve": 6.0, "attack": 0.02},
 	]},
 
+	# The shrine that calls out. A gong, not a bell, and the difference is
+	# inharmonicity: a bell's partials sit near whole-number ratios and give it
+	# a clear pitch, while a gong's do not, which is why it reads as a slab of
+	# metal rather than a note. Ratios here are 1.73, 2.79 and 4.21 -- close
+	# enough to hear as one object, far enough off to have no key.
+	#
+	# Long, slow to start and slow to die, so it sits under the other sounds
+	# rather than competing with them. It replaces the bell for this shrine
+	# instead of layering over it; both at once was mud.
+	&"gong": {"gain": 0.8, "voices": [
+		{"wave": &"sine", "f0": 116.0, "len": 2.6, "gain": 0.55,
+			"curve": 1.9, "attack": 0.045},
+		{"wave": &"sine", "f0": 201.0, "len": 2.2, "gain": 0.30,
+			"curve": 2.3, "attack": 0.05},
+		{"wave": &"sine", "f0": 324.0, "len": 1.7, "gain": 0.18,
+			"curve": 3.0, "attack": 0.06},
+		{"wave": &"sine", "f0": 488.0, "len": 1.2, "gain": 0.10,
+			"curve": 3.6, "attack": 0.07},
+		# The shimmer that says "struck", sweeping down as it dies.
+		{"wave": &"sine", "f0": 1655.0, "f1": 1560.0, "len": 0.9, "gain": 0.07,
+			"curve": 4.5, "attack": 0.02},
+		# The strike itself, dark and brief.
+		{"wave": &"noise", "f0": 1.0, "len": 0.09, "gain": 0.30,
+			"curve": 9.0, "lp": 0.10},
+	]},
+
 	# An anvil. Two oscillators at a ratio that is deliberately NOT a musical
 	# interval -- inharmonicity is what the ear reads as struck metal.
 	&"forge": {"gain": 0.7, "voices": [

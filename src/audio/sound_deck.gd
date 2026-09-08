@@ -84,6 +84,10 @@ func play_events(evts: Array) -> void:
 func choose(evts: Array) -> Dictionary:
 	var now := {}
 	var later := {}
+	# The shrine of the vigil is the one that calls out, and it should not also
+	# chime. Detected from the noise it makes rather than from a flag on the
+	# pray event, so the simulation never has to name a sound.
+	var called_out := false
 
 	for e in evts:
 		match e["kind"]:
@@ -97,6 +101,8 @@ func choose(evts: Array) -> Dictionary:
 				# bow was -- but it already has its own sounds, and hearing bone
 				# splinter every time an arrow leaves the string would be a lie
 				# about what just happened.
+				if e.get("cause", &"step") == &"clamour":
+					called_out = true
 				if e.get("cause", &"step") == &"step":
 					# Louder the further it carries. Bones reach seven cells and
 					# are the loudest thing you can do by accident.
@@ -126,6 +132,13 @@ func choose(evts: Array) -> Dictionary:
 				var cells := Los.steps(e["from"].x, e["from"].y, e["to"].x, e["to"].y)
 				_loudest(later, &"hurt" if e["on_player"] else &"hit",
 					float(cells) * SHOT_PER_CELL)
+
+	# Swap the chime for the gong. Done here rather than at the call site
+	# because a shrine emits its noise and its prayer as separate events and
+	# only the whole turn's queue knows both happened.
+	if called_out:
+		now.erase(&"pray")
+		_loudest(now, &"gong", 1.0)
 
 	return {"now": now, "later": later}
 

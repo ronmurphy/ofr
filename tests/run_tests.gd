@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_shrine_voices()
 	_test_noise_is_drawn()
 	_test_dead_fires_are_dead()
 	_test_effects_modes()
@@ -3305,6 +3306,43 @@ func _test_dead_fires_are_dead() -> void:
 			still_burning += 1
 	check("once the last one gutters, nothing on the floor flickers",
 		still_burning == 0, str(still_burning))
+
+## The shrine that calls out gets a gong, and only it.
+func _test_shrine_voices() -> void:
+	check("every shrine has a bell", Synth.SOUNDS.has(&"pray"))
+	check("and the loud one has a gong", Synth.SOUNDS.has(&"gong"))
+	check("the gong rings longer than the bell",
+		float(Synth.SOUNDS[&"gong"]["voices"][0]["len"])
+		> float(Synth.SOUNDS[&"pray"]["voices"][0]["len"]))
+	check("and lower",
+		float(Synth.SOUNDS[&"gong"]["voices"][0]["f0"])
+		< float(Synth.SOUNDS[&"pray"]["voices"][0]["f0"]))
+
+	# A bell's partials sit near whole-number ratios and give it a pitch; a
+	# gong's do not, which is the whole difference between the two sounds.
+	var g: Array = Synth.SOUNDS[&"gong"]["voices"]
+	var base := float(g[0]["f0"])
+	var harmonic := 0
+	for i in range(1, 4):
+		var ratio := float(g[i]["f0"]) / base
+		if absf(ratio - roundf(ratio)) < 0.08:
+			harmonic += 1
+	check("the gong's partials are inharmonic (%d of 3 near whole ratios)"
+		% harmonic, harmonic == 0, str(harmonic))
+
+	var deck := SoundDeck.new()
+	var plain: Dictionary = deck.choose([{"kind": &"pray", "to": Vector2i(1, 1)}])["now"]
+	check("an ordinary shrine chimes", plain.has(&"pray"))
+	check("and does not gong", not plain.has(&"gong"))
+
+	var vigil: Dictionary = deck.choose([
+		{"kind": &"pray", "to": Vector2i(1, 1)},
+		{"kind": &"noise", "to": Vector2i(1, 1), "radius": 24, "cause": &"clamour"},
+	])["now"]
+	check("the shrine that calls out gongs", vigil.has(&"gong"))
+	# Both at once was mud -- the gong replaces the chime rather than layering.
+	check("and does not also chime", not vigil.has(&"pray"))
+	deck.free()
 
 ## Noise is drawn as well as heard, so the rules and the picture must agree.
 func _test_noise_is_drawn() -> void:
