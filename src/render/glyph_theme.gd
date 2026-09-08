@@ -61,6 +61,10 @@ const OVERRIDES := {
 	# and rank cannot be carried by a silhouette two creatures share.
 	&"wizard":   ADULT_FIGURE,
 	&"lich":     0xEE6F,
+	# The hollow ghost against the shadow's solid one. Two axes of difference,
+	# fill and colour, for two things that want opposite responses: run from the
+	# shadow, kill the banshee. Colour alone was not enough to stake that on.
+	&"banshee":  0xF165D,
 	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
 	# Wyvern and dragon share a silhouette and are told apart by colour alone,

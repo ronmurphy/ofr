@@ -410,6 +410,27 @@ const BESTIARY := [
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
 	 "threat": 28},
 
+	# A monster whose weapon is the other monsters.
+	#
+	# It never attacks. Its whole threat is the cry, and the cry is aimed at
+	# the thing the player is actually best at: this game is stealth, and a
+	# banshee cannot be hidden from, walled out or outrun. That leaves exactly
+	# one answer -- kill it -- which is why it is frail and why it comes to you.
+	#
+	# It is defined by three exemptions, one from each of the systems the
+	# stealth game rests on: no tier fade, no walls, no line of sight. That
+	# looks like a lot of carve-outs until you notice they are the same
+	# carve-out said three ways.
+	{"name": "banshee", "app": &"banshee", "hp": 8, "power": 0, "def": 0,
+	 "speed": 100, "ai": &"banshee", "flee": 0.0, "flying": true,
+	# Depth 3, not 1, and then forever: `no_fade` and `min_depth` are
+	# independent, so it can start late and still never age out. The first two
+	# floors are where a player learns that dousing the torch works and that
+	# walls are cover -- meeting the thing that ignores both before either has
+	# landed teaches nothing.
+	 "phasing": true, "senses": true, "wail": 9, "no_fade": true,
+	 "max_per_floor": 1, "weight": 0.30, "min_depth": 3, "threat": 8},
+
 	# --- the casters ------------------------------------------------------
 	# Frail, long-armed, and unwilling to be reached. Both fight by refusing
 	# the fight, which is the one thing nothing else in the bestiary does.
@@ -727,27 +748,43 @@ func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
 	var pick := _roll_monster(remaining, tier)
 	if pick.is_empty():
 		return -1
-	var m := Entity.new(pick["name"], pick["app"], mx, my)
-	m.max_hp = pick["hp"]
-	m.hp = pick["hp"]
-	m.power = pick["power"]
-	m.defense = pick["def"]
-	m.speed = pick["speed"]
-	m.ai = pick.get("ai", &"hunter")
-	m.attack_range = pick.get("range", 1)
-	m.standoff = pick.get("standoff", 1)
-	m.blink_range = pick.get("blink", 0)
-	m.flee_below = pick.get("flee", 0.0)
-	m.regen = pick.get("regen", 0)
-	m.flying = pick.get("flying", false)
-	m.heavy = pick.get("heavy", false)
-	m.threat = int(pick["threat"])
+	var m := monster_from(pick, mx, my)
 	# Gear raises what a monster is actually worth facing, so it must raise the
 	# threat too. Otherwise a room of armed orcs quietly costs more than its
 	# ceiling claims, and the survivability guarantee becomes a lie.
 	m.threat += _arm_monster(m, pick, remaining - m.threat)
 	entities.append(m)
 	return m.threat
+
+## A bestiary entry, made flesh.
+##
+## Public and static because the TEST SUITE needs it too, and that is the whole
+## reason it exists as a function. The suite used to build monsters with its own
+## hand-copied version of this list, and three times running a new field was
+## added here and forgotten there -- standoff and blink for the casters, then
+## phasing, senses and the wail for the banshee. Each time the tests reported
+## behaviour the game does not have, which is worse than reporting nothing.
+## One list, two callers, no drift.
+static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
+	var m := Entity.new(entry["name"], entry["app"], x, y)
+	m.max_hp = entry["hp"]
+	m.hp = entry["hp"]
+	m.power = entry["power"]
+	m.defense = entry["def"]
+	m.speed = entry["speed"]
+	m.ai = entry.get("ai", &"hunter")
+	m.attack_range = entry.get("range", 1)
+	m.standoff = entry.get("standoff", 1)
+	m.blink_range = entry.get("blink", 0)
+	m.phasing = entry.get("phasing", false)
+	m.senses = entry.get("senses", false)
+	m.wail_radius = entry.get("wail", 0)
+	m.flee_below = entry.get("flee", 0.0)
+	m.regen = entry.get("regen", 0)
+	m.flying = entry.get("flying", false)
+	m.heavy = entry.get("heavy", false)
+	m.threat = int(entry["threat"])
+	return m
 
 ## Arms a monster within whatever threat budget is left, returning what the
 ## gear cost. Anything it cannot afford, it does not get.
@@ -891,10 +928,38 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 		# stays shallow and the restriction lives here.
 		if e.has("ascent_from") and (not ascending or here < int(e["ascent_from"])):
 			continue
+		# Some things are events, not populations.
+		#
+		# This exists because of what `no_fade` does further down: holding a
+		# weight at 1.0 while every other entry decays toward zero does not
+		# merely keep something available, it makes it dominant. Measured at
+		# depth 10 the uncapped banshee arrived nine to a floor, and nine
+		# alarms wailing in rotation is not a harder dungeon, it is an
+		# unplayable one. Availability and frequency are different questions
+		# and the tier ladder only answers the first.
+		if e.has("max_per_floor"):
+			var already := 0
+			for other in entities:
+				if not other.is_player and other.name == e["name"]:
+					already += 1
+			if already >= int(e["max_per_floor"]):
+				continue
 		if int(e["threat"]) > remaining:
 			continue
 		var band := effective - int(e["min_depth"])
-		var weight := 1.0 - TIER_FADE * float(maxi(0, band - TIER_GRACE))
+		# Most things belong to a tier and age out of the dungeon behind them.
+		# A no-fade entry does not: it is as likely on the last floor as the
+		# first. Without the exemption a min_depth-1 monster is gone by depth 7,
+		# so "haunts every floor" is not something min_depth can express.
+		var weight := 1.0
+		if not e.get("no_fade", false):
+			weight = 1.0 - TIER_FADE * float(maxi(0, band - TIER_GRACE))
+		# A thumb on the scale, for entries whose frequency is a design choice
+		# rather than a consequence of their tier. Capping the banshee at one a
+		# floor stopped the swarm but left it CERTAIN -- present on every floor
+		# from three onward, which makes it furniture. It should be a thing that
+		# happens, not a thing that is always there.
+		weight *= float(e.get("weight", 1.0))
 		if weight <= 0.0:
 			continue
 		total += weight
@@ -2504,6 +2569,7 @@ func _take_ai_turn(actor: Entity) -> int:
 
 	match actor.ai:
 		&"erratic": _ai_erratic(actor)
+		&"banshee": _ai_banshee(actor)
 		&"ranged":  _ai_ranged(actor)
 		&"pack":    _ai_pack(actor)
 		_:          _ai_hunter(actor)
@@ -2547,6 +2613,11 @@ func _update_awareness(actor: Entity) -> void:
 func _notices_player(actor: Entity, d: int) -> bool:
 	if d > actor.notice_range:
 		return false
+	# Something that senses life does not need to see it, and does not care
+	# whether the torch is lit. Both of the player's ways of not being found
+	# are line-of-sight and light, and this is deaf to both.
+	if actor.senses:
+		return true
 	if not Los.clear(map, actor.x, actor.y, player.x, player.y):
 		return false
 	# Anything you are standing next to finds you, however dark it is.
@@ -2701,6 +2772,76 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
+
+## How long between cries.
+##
+## Not every turn. A cry per step wakes a rolling wavefront along the player's
+## whole route and turns the log into wallpaper; on this cadence it is a
+## discrete event you can hear, place, and race -- kill it before the next one.
+const WAIL_EVERY := 3
+
+## Follows, and screams. Never strikes.
+##
+## The absence of an attack is the design, not an oversight: everything it costs
+## you is measured in what else on the floor is now awake, which makes "how many
+## turns can I spare to shut it up" the entire decision.
+func _ai_banshee(actor: Entity) -> void:
+	if actor.wail_cool > 0:
+		actor.wail_cool -= 1
+	elif actor.wail_radius > 0:
+		actor.wail_cool = WAIL_EVERY
+		if map.is_visible(actor.x, actor.y):
+			msg_log.add("The banshee wails.", Color(0.85, 0.88, 0.98))
+		else:
+			msg_log.add("Something wails, somewhere in the dark.",
+				Color(0.72, 0.75, 0.88))
+		_make_noise(Vector2i(actor.x, actor.y), actor.wail_radius, &"wail")
+		return
+
+	# It never closes to strike, so there is no adjacency case -- it simply
+	# keeps station on you, through whatever is in the way.
+	#
+	# Reads the flag rather than assuming it. The first version called the
+	# phasing mover unconditionally, which meant `phasing` was decorative: the
+	# test asserting a banshee phases could fail while the banshee still walked
+	# through walls, because the behaviour was welded to the AI kind. A flag
+	# nothing consults is a lie in the save file.
+	if actor.phasing:
+		_step_phasing(actor, Vector2i(player.x, player.y))
+	else:
+		_step_toward(actor, Vector2i(player.x, player.y))
+
+## A step toward the target that ignores walls entirely.
+##
+## The pathfinder cannot serve here: it routes over walkable ground by
+## definition, and the whole point is that stone is not an obstacle. It may
+## finish its move inside a wall, and that is deliberate -- landing only on open
+## floor would mean it could never cross a wall one cell thick, which is most of
+## them. Sitting in the stone also keeps it killable: `player_move` tests for an
+## entity before it tests the ground, so walking into the wall it occupies is an
+## attack.
+func _step_phasing(actor: Entity, target: Vector2i) -> void:
+	var dx := signi(target.x - actor.x)
+	var dy := signi(target.y - actor.y)
+	if dx == 0 and dy == 0:
+		return
+	# Straight at it, then either axis alone, so a diagonal blocked by another
+	# creature still makes progress.
+	for step: Vector2i in [Vector2i(dx, dy), Vector2i(dx, 0), Vector2i(0, dy)]:
+		if step == Vector2i.ZERO:
+			continue
+		var nx: int = actor.x + step.x
+		var ny: int = actor.y + step.y
+		# The rim of the map is the one thing it will not pass -- outside it
+		# there is nothing to draw and nowhere to come back from.
+		if nx <= 0 or ny <= 0 or nx >= map.width - 1 or ny >= map.height - 1:
+			continue
+		if entity_at(nx, ny) != null:
+			continue
+		actor.x = nx
+		actor.y = ny
+		_last_move_cost = Scheduler.ACTION_COST
+		return
 
 func _step_random(actor: Entity) -> void:
 	var opts: Array[Vector2i] = []

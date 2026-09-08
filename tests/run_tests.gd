@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_banshee()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_graves_remember_the_dead()
@@ -165,27 +166,15 @@ func _arena(w: int, h: int) -> GameState:
 	return gs
 
 func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
+	# Straight through the game's own builder. This used to be a hand-copied
+	# second version of GameState._spawn_at's field list, and it drifted three
+	# separate times -- each time the suite cheerfully asserted behaviour the
+	# real game did not have. A test double that can disagree with the thing it
+	# doubles is worse than no double at all.
 	for e in GameState.BESTIARY:
 		if e["name"] != mname:
 			continue
-		var m := Entity.new(e["name"], e["app"], x, y)
-		m.max_hp = e["hp"]
-		m.hp = e["hp"]
-		m.power = e["power"]
-		m.defense = e["def"]
-		m.speed = e["speed"]
-		m.ai = e.get("ai", &"hunter")
-		m.attack_range = e.get("range", 1)
-		m.standoff = e.get("standoff", 1)
-		m.blink_range = e.get("blink", 0)
-		m.flee_below = e.get("flee", 0.0)
-		# Kept in step with GameState._spawn_in. A test double that quietly
-		# drops fields makes the tests disagree with the game about what a
-		# monster even is.
-		m.regen = e.get("regen", 0)
-		m.threat = int(e["threat"])
-		m.flying = e.get("flying", false)
-		m.heavy = e.get("heavy", false)
+		var m := GameState.monster_from(e, x, y)
 		# Behaviour tests want behaviour, not the awareness gate. Awareness has
 		# its own tests below, which set this back to ASLEEP explicitly.
 		m.alertness = Entity.Alert.AWAKE
@@ -3266,6 +3255,114 @@ func _test_ember_forge() -> void:
 ## left -- there is deliberately no counter on screen.
 ## Time, as opposed to keypresses.
 ## Gravestones: the first thing in the game that reads the morgue back.
+## The banshee: the monster that answers the player's best strategy.
+func _test_banshee() -> void:
+	# The learning floors stay clean, and then it never ages out -- min_depth
+	# and no_fade are independent axes, which is the whole reason it can do
+	# both.
+	var early := 0
+	var late := 0
+	var most := 0
+	for i in 30:
+		var gs := GameState.new(50000 + i)
+		gs.new_game()
+		for d in [1, 2]:
+			gs.depth = d
+			gs.build_level()
+			for e in gs.entities:
+				if e.name == "banshee":
+					early += 1
+		gs.depth = 10
+		gs.build_level()
+		var here := 0
+		for e in gs.entities:
+			if e.name == "banshee":
+				here += 1
+				late += 1
+		most = maxi(most, here)
+	check("no banshee on the two learning floors", early == 0, str(early))
+	check("but it has not faded out by depth 10 (%d)" % late, late > 0)
+	# Uncapped it arrived nine to a floor at depth 10, because holding weight at
+	# 1.0 while everything else decays makes a no-fade entry dominant.
+	check("and never more than one to a floor", most <= 1, str(most))
+
+	# It walks through stone. Nothing else does.
+	var gs2 := _arena(21, 11)
+	gs2.player.x = 4
+	gs2.player.y = 5
+	for y in range(1, 10):
+		gs2.map.set_tile(8, y, Tiles.WALL)
+	var ban := _spawn(gs2, "banshee", 12, 5)
+	ban.alertness = Entity.Alert.AWAKE
+	check("a banshee phases", ban.phasing)
+	check("and senses without seeing", ban.senses)
+	var start_d := Los.steps(ban.x, ban.y, 4, 5)
+	# Enough turns to reach and cross the wall, wails included.
+	for i in 12:
+		gs2._take_ai_turn(ban)
+	check("it closes across a solid wall (%d -> %d)"
+		% [start_d, Los.steps(ban.x, ban.y, 4, 5)],
+		Los.steps(ban.x, ban.y, 4, 5) < start_d)
+
+	# Sensing: no line of sight, no light, still found.
+	var dark := _arena(21, 11)
+	dark.player.x = 4
+	dark.player.y = 5
+	for y in range(1, 10):
+		dark.map.set_tile(8, y, Tiles.WALL)
+	var blind := _spawn(dark, "banshee", 12, 5)
+	blind.alertness = Entity.Alert.ASLEEP
+	check("nothing can see through the wall",
+		not Los.clear(dark.map, blind.x, blind.y, 4, 5))
+	check("but the banshee finds you anyway",
+		dark._notices_player(blind, Los.steps(blind.x, blind.y, 4, 5)))
+	# A wight in the same spot cannot.
+	var wight := _spawn(dark, "wight", 12, 6)
+	check("and an ordinary thing cannot",
+		not dark._notices_player(wight, Los.steps(wight.x, wight.y, 4, 5)))
+
+	# It never strikes, and it does wake the neighbours.
+	var noisy := _arena(31, 11)
+	noisy.player.x = 15
+	noisy.player.y = 5
+	noisy.player.hp = 40
+	noisy.player.max_hp = 40
+	var wailer := _spawn(noisy, "banshee", 16, 5)
+	wailer.alertness = Entity.Alert.AWAKE
+	var sleeper := _spawn(noisy, "goblin", 22, 5)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	noisy.take_events()
+	var wails := 0
+	for i in GameState.WAIL_EVERY * 2:
+		noisy._take_ai_turn(wailer)
+		for ev in noisy.take_events():
+			if ev["kind"] == &"noise" and ev["cause"] == &"wail":
+				wails += 1
+	check("it cries on a cadence rather than every turn (%d in %d turns)"
+		% [wails, GameState.WAIL_EVERY * 2], wails >= 1 and wails <= 3, str(wails))
+	check("and the cry wakes the neighbours",
+		sleeper.alertness == Entity.Alert.AWAKE)
+	check("standing beside you, it never lays a finger on you",
+		noisy.player.hp == 40, str(noisy.player.hp))
+
+	# Killable inside the stone: player_move tests for an entity before it
+	# tests the ground, so walking into the wall it occupies is an attack.
+	var kill := _arena(21, 11)
+	kill.player.x = 5
+	kill.player.y = 5
+	kill.map.set_tile(6, 5, Tiles.WALL)
+	var stuck := _spawn(kill, "banshee", 6, 5)
+	kill.player.power = 99
+	check("it can be struck where it stands, wall or no", kill.player_move(1, 0))
+	check("and it dies like anything else", not stuck.alive)
+
+	# The flags survive a suspend.
+	var kept := Entity.from_dict(wailer.to_dict())
+	check("its nature survives a suspend",
+		kept.phasing and kept.senses and kept.wail_radius == wailer.wail_radius)
+	check("and an older save has none of it",
+		not Entity.from_dict({"name": "orc", "app": "orc", "x": 1, "y": 1}).phasing)
+
 ## The two casters, and the system trap that adding them nearly sprang.
 func _test_casters() -> void:
 	# THE TRAP. deepest_tier() is the largest min_depth in the table and it caps

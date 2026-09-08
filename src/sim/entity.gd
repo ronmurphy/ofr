@@ -76,6 +76,18 @@ var standoff: int = 1
 var blink_range: int = 0
 var blink_cool: int = 0
 
+## Walks through stone. Nothing else does, and it is half of what makes the
+## banshee unanswerable by hiding -- you cannot put a wall between you and it.
+var phasing := false
+## Finds you without seeing you, and without caring how dark it is. The other
+## half: dousing the torch is the game's main defence, and this ignores it.
+var senses := false
+## How far its cry carries, and how long until the next one. Zero radius means
+## it has no cry. The cooldown is what makes it a rhythm you can race rather
+## than a wall of noise.
+var wail_radius: int = 0
+var wail_cool: int = 0
+
 ## Runs once hp falls to this fraction of max. 0.0 never breaks -- undead and
 ## mindless things should not.
 var flee_below: float = 0.0
@@ -165,6 +177,8 @@ func to_dict() -> Dictionary:
 		"level": level, "xp": xp, "ai": String(ai),
 		"attack_range": attack_range, "standoff": standoff,
 		"blink_range": blink_range, "blink_cool": blink_cool,
+		"phasing": phasing, "senses": senses,
+		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -194,6 +208,10 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.standoff = int(d.get("standoff", 1))
 	e.blink_range = int(d.get("blink_range", 0))
 	e.blink_cool = int(d.get("blink_cool", 0))
+	e.phasing = bool(d.get("phasing", false))
+	e.senses = bool(d.get("senses", false))
+	e.wail_radius = int(d.get("wail_radius", 0))
+	e.wail_cool = int(d.get("wail_cool", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)
 	e.regen = int(d.get("regen", 0))

@@ -32,6 +32,10 @@ SHARED = {
     "adult figure": ["orc", "wight", "wizard"],
     "heavy figure": ["ogre", "troll"],
     "dragon":       ["wyvern", "dragon"],
+    # Not literally the same glyph -- one ghost is filled and one is hollow --
+    # but close enough in silhouette that colour is doing real work, and the
+    # two demand opposite responses. Checked as though they shared.
+    "ghost shapes": ["shadow", "banshee"],
 }
 
 READABLE = 25.0  # deltaE below this is hard to tell apart on a dark ground

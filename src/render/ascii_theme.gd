@@ -67,6 +67,9 @@ const TABLE := {
 	# Lowercase weak, uppercase deadly -- the same rule that makes K a kobold
 	# that shoots back. The lich is the wizard's end state, so they share a
 	# letter and differ in case.
+	# h for haunt. The s/S pair that would have said "spirit, and worse spirit"
+	# was spent long ago on skeleton and shadow.
+	&"banshee":     {"ch": "h", "fg": Color("f2f4ff")},
 	&"wizard":      {"ch": "l", "fg": Color("3d6ee8")},
 	&"lich":        {"ch": "L", "fg": Color("7cf0d8")},
 }

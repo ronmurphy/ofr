@@ -230,6 +230,11 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			note = "shoots  " + note
 		elif int(e.get("regen", 0)) > 0:
 			note = "regrows  " + note
+		elif int(e.get("wail", 0)) > 0:
+			# Kept to one word like the others. That the cry wakes the floor is
+			# the thing worth learning by meeting one, and the log says it
+			# plainly the first time it happens.
+			note = "wails  " + note
 		y = _entry(x, y, w, art["ch"], art["fg"], e["name"], note)
 
 	y += LINE * 0.6
