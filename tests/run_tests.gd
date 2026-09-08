@@ -2703,9 +2703,13 @@ func _test_panels_do_not_overflow() -> void:
 	var sum_col: float = (SummaryPanel.PANEL_W - SummaryPanel.PAD * 3.0) * 0.5
 	var sum_worst := ""
 	var sum_w := 0.0
-	for row in [["braziers burned out", "9  (3 in embers)"],
-			["   potion of healing", "9999"], ["time underground", "~2d 7h 33m"],
-			["hit points", "999 / 999"], ["   giant rat", "9999"]]:
+	# Real pairings only. The first version of this crossed the longest label
+	# with the longest value and failed on a row that cannot exist -- a test
+	# that invents its own worst case tells you nothing about the screen.
+	for row in [["braziers burned out", "999"], ["forged in embers", "999"],
+			["time underground", "~99d 9h 99m"], ["hit points", "999 / 999"],
+			["damage dealt", "999999"], ["   scroll of blink +2", "9999"],
+			["   Amulet of the Deep", "9999"], ["   cave troll", "9999"]]:
 		var a2 := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1,
 			SummaryPanel.font_size_default() - 1).x
 		var b2 := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1,

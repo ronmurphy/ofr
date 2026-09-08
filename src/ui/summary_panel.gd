@@ -138,10 +138,12 @@ func _deeds() -> Array:
 	if s.has("braziers"):
 		out.append(["row", "braziers burned out", str(int(s["braziers"]))])
 	if s.has("forges"):
-		var f := "%d" % int(s["forges"])
-		if s.has("ember_forges"):
-			f += "  (%d in embers)" % int(s["ember_forges"])
-		out.append(["row", "things forged", f])
+		out.append(["row", "things forged", str(int(s["forges"]))])
+	# Its own row rather than a parenthetical on the one above. As "9 (3 in
+	# embers)" it was the widest value on the panel by a margin and left no gap
+	# against a long label.
+	if s.has("ember_forges"):
+		out.append(["row", "forged in embers", str(int(s["ember_forges"]))])
 
 	var supers: Array = []
 	for pair in [["kills", "killed most"], ["swings", "swung most"],
