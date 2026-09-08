@@ -176,6 +176,8 @@ func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
 		m.speed = e["speed"]
 		m.ai = e.get("ai", &"hunter")
 		m.attack_range = e.get("range", 1)
+		m.standoff = e.get("standoff", 1)
+		m.blink_range = e.get("blink", 0)
 		m.flee_below = e.get("flee", 0.0)
 		# Kept in step with GameState._spawn_in. A test double that quietly
 		# drops fields makes the tests disagree with the game about what a
@@ -3364,9 +3366,21 @@ func _test_caster_standoff_and_blink() -> void:
 	lich.alertness = Entity.Alert.AWAKE
 	check("a lich can blink", lich.blink_range > 0, str(lich.blink_range))
 	var was := Vector2i(lich.x, lich.y)
+	lich_arena.take_events()
 	lich_arena._take_ai_turn(lich)
 	var moved := Vector2i(lich.x, lich.y)
-	check("cornered, it folds away", moved != was, "%s -> %s" % [was, moved])
+	# A step is not a blink. The first version of this asked only whether the
+	# thing had moved, and passed for weeks' worth of the wrong reason while
+	# blink_range was silently zero and _step_away was doing all the work.
+	var folded := false
+	for ev in lich_arena.take_events():
+		if ev["kind"] == &"blink":
+			folded = true
+	check("cornered, it folds away rather than stepping", folded,
+		"%s -> %s" % [was, moved])
+	check("further than a stride could carry it",
+		Los.steps(was.x, was.y, moved.x, moved.y) > 1,
+		str(Los.steps(was.x, was.y, moved.x, moved.y)))
 	check("landing out of reach",
 		Los.steps(moved.x, moved.y, 15, 5) > lich.standoff,
 		str(Los.steps(moved.x, moved.y, 15, 5)))
@@ -3388,9 +3402,13 @@ func _test_caster_standoff_and_blink() -> void:
 	lich.blink_cool = 0
 	lich.x = 16
 	lich.y = 5
+	lich_arena.take_events()
 	lich_arena._take_ai_turn(lich)
-	check("once the cooldown lapses it goes again",
-		Vector2i(lich.x, lich.y) != Vector2i(16, 5))
+	var again_folded := false
+	for ev in lich_arena.take_events():
+		if ev["kind"] == &"blink":
+			again_folded = true
+	check("once the cooldown lapses it folds again", again_folded)
 
 	# The fields survive a suspend, or a resumed lich forgets how to escape.
 	var kept := Entity.from_dict(lich.to_dict())
