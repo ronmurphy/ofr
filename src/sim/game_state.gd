@@ -410,6 +410,22 @@ const BESTIARY := [
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
 	 "threat": 28},
 
+	# The rabbit, and what it turns into.
+	#
+	# It does not fight you, it OUTBIDS you: it eats the glowing fungus, which
+	# is a hit point and, more to the point, a lamp. Nothing else in the
+	# bestiary competes for a resource, and that is the reason it is here
+	# rather than the joke at the end of it.
+	#
+	# Faster than the player and it flees, which everywhere else in this file
+	# is the mark of a broken monster -- see the wizard, deliberately slowed for
+	# exactly that reason. It works here only because it has to STOP TO EAT.
+	# Those turns with its head down are the whole window, and they are why a
+	# bow matters: the brown form is not catchable on foot.
+	{"name": "rabbit", "app": &"rabbit", "hp": 6, "power": 0, "def": 0,
+	 "speed": 130, "ai": &"forager", "flee": 0.0, "no_fade": true,
+	 "max_per_floor": 2, "weight": 0.35, "min_depth": 1, "threat": 3},
+
 	# A monster whose weapon is the other monsters.
 	#
 	# It never attacks. Its whole threat is the cry, and the cry is aimed at
@@ -814,6 +830,8 @@ func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
 
 ## Whatever a corpse leaves behind.
 func _drop_loot(victim: Entity) -> void:
+	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit":
+		_drop_meat(victim)
 	# Where it fell, unless where it fell is a hole. Nothing can spawn on a
 	# hazard any more, but a monster can be pushed or blinked onto one later.
 	var at := Vector2i(victim.x, victim.y)
@@ -2569,6 +2587,7 @@ func _take_ai_turn(actor: Entity) -> int:
 
 	match actor.ai:
 		&"erratic": _ai_erratic(actor)
+		&"forager": _ai_forager(actor)
 		&"banshee": _ai_banshee(actor)
 		&"ranged":  _ai_ranged(actor)
 		&"pack":    _ai_pack(actor)
@@ -2772,6 +2791,113 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
+
+## Mouthfuls before a rabbit stops being one.
+##
+## Three, not five. A floor grows 5.3 fungus on average (measured), so five
+## meant eating essentially every mushroom on the level and the transformation
+## would almost never have fired. Three makes it a thing that happens.
+const RABBIT_TURNS := 3
+## Turns spent with its head down, unable to react. The window.
+const RABBIT_MEAL := 2
+## How far it will look for a mushroom.
+const RABBIT_NOSE := 14
+
+## Eats the floor out from under you, and runs when looked at.
+##
+## The order matters: fleeing beats feeding. A rabbit that finished its mouthful
+## while you closed would be catchable by walking, which is precisely what the
+## speed is there to prevent.
+func _ai_forager(actor: Entity) -> void:
+	if actor.busy > 0:
+		actor.busy -= 1
+		if actor.busy == 0:
+			_rabbit_swallows(actor)
+		return
+
+	var d := Los.steps(actor.x, actor.y, player.x, player.y)
+	if d <= RABBIT_NOSE and Los.clear(map, actor.x, actor.y, player.x, player.y):
+		if _step_away(actor):
+			return
+
+	# Head down, if it is standing on supper.
+	if map.get_tile(actor.x, actor.y) == Tiles.FUNGUS:
+		actor.busy = RABBIT_MEAL
+		if map.is_visible(actor.x, actor.y):
+			msg_log.add("The rabbit sets to work on the fungus.",
+				Color(0.85, 0.78, 0.55))
+		return
+
+	var supper := _nearest_fungus(actor)
+	if supper.x >= 0:
+		_step_toward(actor, supper)
+	else:
+		_step_random(actor)
+
+func _nearest_fungus(actor: Entity) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := RABBIT_NOSE + 1
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) != Tiles.FUNGUS:
+				continue
+			var d := Los.steps(actor.x, actor.y, x, y)
+			if d < best_d:
+				best_d = d
+				best = Vector2i(x, y)
+	return best
+
+## The mouthful lands: the fungus goes out, and the rabbit is one closer to
+## being a problem.
+func _rabbit_swallows(actor: Entity) -> void:
+	if map.get_tile(actor.x, actor.y) != Tiles.FUNGUS:
+		return
+	map.set_tile(actor.x, actor.y,
+		Tiles.CAVE_FLOOR if map.material_at(actor.x, actor.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	# The same call the player's own mouthful makes. A fungus is a light as
+	# much as it is a hit point, and this is the half that actually stings.
+	_gather_lights()
+	actor.meal += 1
+	if map.is_visible(actor.x, actor.y):
+		msg_log.add("The rabbit swallows it, and the glow goes out.",
+			Color(0.80, 0.72, 0.50))
+	if actor.meal >= RABBIT_TURNS and actor.ai == &"forager":
+		_rabbit_turns(actor)
+
+## What it becomes. Still frail -- it simply stops running.
+func _rabbit_turns(actor: Entity) -> void:
+	actor.name = "killer rabbit"
+	actor.appearance = &"killer_rabbit"
+	actor.ai = &"hunter"
+	actor.power = 9
+	actor.threat = 12
+	actor.flee_below = 0.0
+	msg_log.add("The rabbit straightens up. Something has gone very wrong with it.",
+		Color(0.95, 0.72, 0.72))
+	events.append({"kind": &"notice", "to": Vector2i(actor.x, actor.y)})
+
+## A refund, never a profit.
+##
+## The pitch was 5 hp plus one a mushroom, which inverts the whole monster: a
+## rabbit that ate five would hand back ten, twice what it took, and the best
+## play becomes letting it clear the floor before you shoot it. Worth exactly
+## what it swallowed, the rabbit stays a cost -- you are down the arrow and the
+## turns whatever happens.
+func _drop_meat(victim: Entity) -> void:
+	var meat := Item.make(&"meat")
+	if meat == null:
+		return
+	meat.magnitude = maxi(1, victim.meal)
+	var at := Vector2i(victim.x, victim.y)
+	if not _can_rest_on(at.x, at.y):
+		at = _nearest_restable(at)
+		if at.x < 0:
+			return
+	meat.x = at.x
+	meat.y = at.y
+	meat.letter = ""
+	ground.append(meat)
 
 ## How long between cries.
 ##

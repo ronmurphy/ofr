@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_rabbit()
 	_test_banshee()
 	_test_casters()
 	_test_caster_standoff_and_blink()
@@ -3255,6 +3256,106 @@ func _test_ember_forge() -> void:
 ## left -- there is deliberately no counter on screen.
 ## Time, as opposed to keypresses.
 ## Gravestones: the first thing in the game that reads the morgue back.
+## The rabbit: the only thing in the dungeon that wants what you want.
+func _test_rabbit() -> void:
+	var gs := _arena(31, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	var bun := _spawn(gs, "rabbit", 10, 5)
+	check("a rabbit is faster than you (%d)" % bun.speed, bun.speed > 100)
+	check("and does not fight", bun.power == 0, str(bun.power))
+
+	# Seen, it runs. This is the half that makes a bow the answer.
+	var before := Los.steps(bun.x, bun.y, 5, 5)
+	gs._take_ai_turn(bun)
+	check("in sight of you it bolts (%d -> %d)"
+		% [before, Los.steps(bun.x, bun.y, 5, 5)],
+		Los.steps(bun.x, bun.y, 5, 5) > before)
+
+	# Out of sight, it goes for the mushrooms.
+	var farm := _arena(31, 11)
+	farm.player.x = 28
+	farm.player.y = 9
+	farm.map.set_tile(6, 3, Tiles.FUNGUS)
+	farm._gather_lights()
+	var lit := farm.static_lights.size()
+	check("a fungus is a light source", lit > 0, str(lit))
+	var forager := _spawn(farm, "rabbit", 6, 3)
+	# Standing on supper: it stops, which is the window you get to shoot it.
+	farm._take_ai_turn(forager)
+	check("standing on fungus it puts its head down", forager.busy > 0,
+		str(forager.busy))
+	check("and it is a real pause, not an instant", forager.busy >= 1)
+	for i in GameState.RABBIT_MEAL + 1:
+		farm._take_ai_turn(forager)
+	check("then it swallows", forager.meal == 1, str(forager.meal))
+	check("the fungus is gone",
+		farm.map.get_tile(6, 3) != Tiles.FUNGUS)
+	check("and so is its light -- that is the part that stings",
+		farm.static_lights.size() < lit,
+		"%d -> %d" % [lit, farm.static_lights.size()])
+
+	# Three mouthfuls and it stops running.
+	var fed := _arena(31, 11)
+	fed.player.x = 28
+	fed.player.y = 9
+	var glut := _spawn(fed, "rabbit", 6, 3)
+	for i in GameState.RABBIT_TURNS:
+		fed.map.set_tile(glut.x, glut.y, Tiles.FUNGUS)
+		fed._rabbit_swallows(glut)
+	check("three mouthfuls and it turns (%s)" % glut.name,
+		glut.name == "killer rabbit", glut.name)
+	check("it stops fleeing and starts hunting", glut.ai == &"hunter", str(glut.ai))
+	check("and it can actually hurt you now", glut.power > 0, str(glut.power))
+	check("its picture changes with it", glut.appearance == &"killer_rabbit")
+
+	# The meat is a refund, never a profit. The pitched "5 + 1 each" would have
+	# made feeding it the optimal play.
+	var kill := _arena(21, 11)
+	kill.player.x = 5
+	kill.player.y = 5
+	var fat := _spawn(kill, "rabbit", 6, 5)
+	fat.meal = 3
+	kill.ground = []
+	kill._drop_loot(fat)
+	var meat: Item = null
+	for it in kill.ground:
+		if it.id == &"meat":
+			meat = it
+	check("killing it leaves meat", meat != null)
+	if meat != null:
+		check("worth exactly what it ate, never more (%d for %d)"
+			% [meat.effective_magnitude(), fat.meal],
+			meat.effective_magnitude() == fat.meal,
+			str(meat.effective_magnitude()))
+		# And a rabbit that ate nothing is barely worth the arrow.
+		var lean := _spawn(kill, "rabbit", 7, 5)
+		kill.ground = []
+		kill._drop_loot(lean)
+		for it in kill.ground:
+			if it.id == &"meat":
+				check("an unfed one is worth a single mouthful",
+					it.effective_magnitude() == 1, str(it.effective_magnitude()))
+
+	# It eats, so it must be able to reach food on every floor it appears on.
+	var seen := 0
+	for i in 40:
+		var g := GameState.new(52000 + i)
+		g.new_game()
+		g.depth = 1 + (i % 10)
+		g.build_level()
+		var here := 0
+		for e in g.entities:
+			if e.name == "rabbit":
+				here += 1
+		seen += here
+		check_silent(here <= 2)
+	check("rabbits turn up across the dungeon (%d in 40 floors)" % seen, seen > 0)
+
+	var kept := Entity.from_dict(glut.to_dict())
+	check("a half-fed rabbit survives a suspend",
+		kept.meal == glut.meal and kept.busy == glut.busy)
+
 ## The banshee: the monster that answers the player's best strategy.
 func _test_banshee() -> void:
 	# The learning floors stay clean, and then it never ages out -- min_depth

@@ -87,6 +87,15 @@ const CATALOGUE := {
 		"min_depth": 999, "weight": 0,
 	},
 
+	# What a rabbit leaves. Its magnitude is written at the moment it drops --
+	# exactly the fungus the thing ate -- so the meat is a refund of what was
+	# taken and never a profit on it. See GameState._drop_meat.
+	&"meat": {
+		"name": "haunch of rabbit", "app": &"meat", "kind": Kind.POTION,
+		"effect": &"heal", "magnitude": 1,
+		"min_depth": 999, "weight": 0,
+	},
+
 	&"potion_healing": {
 		"name": "potion of healing", "app": &"potion", "kind": Kind.POTION,
 		"effect": &"heal", "magnitude": 12, "forge": 8,

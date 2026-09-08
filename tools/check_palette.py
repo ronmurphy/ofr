@@ -36,6 +36,8 @@ SHARED = {
     # but close enough in silhouette that colour is doing real work, and the
     # two demand opposite responses. Checked as though they shared.
     "ghost shapes": ["shadow", "banshee"],
+    # Same glyph, and the colour change IS the tell that it transformed.
+    "rabbit":       ["rabbit", "killer_rabbit"],
 }
 
 READABLE = 25.0  # deltaE below this is hard to tell apart on a dark ground

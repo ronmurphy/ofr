@@ -69,6 +69,12 @@ const TABLE := {
 	# letter and differ in case.
 	# h for haunt. The s/S pair that would have said "spirit, and worse spirit"
 	# was spent long ago on skeleton and shadow.
+	# u and U: the case pair says "and then it got worse" without a word, and
+	# the rabbit is the one monster in the game that literally transforms, so it
+	# earns the convention outright.
+	&"rabbit":        {"ch": "u", "fg": Color("e0a05c")},
+	&"killer_rabbit": {"ch": "U", "fg": Color("fff2f2")},
+	&"meat":          {"ch": "%", "fg": Color("c46b5a")},
 	&"banshee":     {"ch": "h", "fg": Color("f2f4ff")},
 	&"wizard":      {"ch": "l", "fg": Color("3d6ee8")},
 	&"lich":        {"ch": "L", "fg": Color("7cf0d8")},

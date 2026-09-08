@@ -88,6 +88,14 @@ var senses := false
 var wail_radius: int = 0
 var wail_cool: int = 0
 
+## Turns this actor is occupied and cannot act. The rabbit's mouthful is the
+## only user today, and it is the whole reason the rabbit is catchable: a thing
+## faster than you that never stops is not a monster, it is scenery.
+var busy: int = 0
+## How much of the floor's fungus this has eaten. Drives both the meat it
+## leaves and, at RABBIT_TURNS, what it becomes.
+var meal: int = 0
+
 ## Runs once hp falls to this fraction of max. 0.0 never breaks -- undead and
 ## mindless things should not.
 var flee_below: float = 0.0
@@ -179,6 +187,7 @@ func to_dict() -> Dictionary:
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
+		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -212,6 +221,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.senses = bool(d.get("senses", false))
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))
+	e.busy = int(d.get("busy", 0))
+	e.meal = int(d.get("meal", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)
 	e.regen = int(d.get("regen", 0))

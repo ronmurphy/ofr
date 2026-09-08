@@ -64,6 +64,13 @@ const OVERRIDES := {
 	# The hollow ghost against the shadow's solid one. Two axes of difference,
 	# fill and colour, for two things that want opposite responses: run from the
 	# shadow, kill the banshee. Colour alone was not enough to stake that on.
+	# The face, not the side profile. The profile faces right, so a rabbit
+	# running left appears to sprint backwards -- and fleeing IS this monster.
+	# At 18px the profile is a brown lump anyway; the ears carry it.
+	&"rabbit":        0xF1A61,   # md-rabbit_variant
+	&"killer_rabbit": 0xF1A61,
+	&"meat":          0xF146A,   # md-food_steak. NOT food_drumstick, which is
+	                             # the "no food" icon and has a slash through it.
 	&"banshee":  0xF165D,
 	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
