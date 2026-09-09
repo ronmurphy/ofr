@@ -489,7 +489,14 @@ func _walkable_regions(map: DungeonMap) -> Array:
 ## Claim one or two rectangles for caverns up front. Rooms then route around
 ## them, which is what makes caves actually appear.
 func _reserve_caves(map: DungeonMap) -> void:
+	# The cave band is mostly cavern; everywhere else a cave is a feature the
+	# floor happens to have. Note what this costs elsewhere: braziers are placed
+	# per ROOM, so trading rooms for caverns trades away healing and light at
+	# the same time. That is the whole reason the band wants its own answer to
+	# the dark -- see the fungus bias below.
 	var wanted := 1 if rng.randf() < 0.62 else 2
+	if Bands.is_caves(depth):
+		wanted = rng.randi_range(6, 7)
 	for _i in wanted:
 		for _try in 40:
 			var w := rng.randi_range(CAVE_MIN.x, CAVE_MAX.x)
@@ -642,11 +649,35 @@ func _ensure_sanctums():
 		archetypes[candidates.pop_back()] = Archetype.SHRINE
 		have += 1
 
+## Somewhere inside a cavern, for things that belong to the dark rather than to
+## the masonry. Empty result if this floor has no caves.
+func _cave_cell() -> Vector2i:
+	if caves.is_empty():
+		return Vector2i(-1, -1)
+	var region: Rect2i = caves[rng.randi_range(0, caves.size() - 1)]
+	return Vector2i(
+		rng.randi_range(region.position.x + 1, maxi(region.position.x + 1, region.end.x - 2)),
+		rng.randi_range(region.position.y + 1, maxi(region.position.y + 1, region.end.y - 2)))
+
 ## Fungus patches and pits: features rather than ground, so they are scattered
 ## rather than rolled per room.
 func _scatter_features(map: DungeonMap) -> void:
-	for _patch in rng.randi_range(1, 3):
-		var seed_cell := _random_open(map)
+	# The cave band gets more fungus, and gets it IN the caves.
+	#
+	# Not decoration. Trading rooms for caverns costs the floor its braziers,
+	# which are placed per room -- so the dark band loses most of its light at
+	# the same time as it loses its healing. Fungus is the answer the terrain
+	# provides: the only light source that grows rather than being built, and
+	# the one the player can choose to eat instead.
+	#
+	# That choice is the point. It has always been worth 1 hp and a glow, and
+	# on these floors the glow is finally worth more than the hit point.
+	var caveish := Bands.is_caves(depth)
+	var patches := rng.randi_range(3, 5) if caveish else rng.randi_range(1, 3)
+	for _patch in patches:
+		var seed_cell := _cave_cell() if caveish else Vector2i(-1, -1)
+		if seed_cell.x < 0:
+			seed_cell = _random_open(map)
 		if seed_cell.x < 0:
 			continue
 		for _cell in rng.randi_range(3, 7):

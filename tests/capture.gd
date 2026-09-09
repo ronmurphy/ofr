@@ -354,6 +354,20 @@ func _run() -> void:
 	_use(gs)
 	_scene._refresh()
 
+	# A cave floor, walked, so the band can be looked at rather than measured.
+	var cv := GameState.new(3141)
+	cv.new_game()
+	cv.depth = 5
+	cv.build_level()
+	cv.player.max_hp = 9999
+	cv.player.hp = 9999
+	_use(cv)
+	_walk_to_stairs(cv)
+	_scene._refresh()
+	await _shot("96_caves.png")
+	_use(gs)
+	_scene._refresh()
+
 	# The end-of-run record, in both the states it has to handle: a run the
 	# recorder watched all the way through, and one carried over from a save
 	# written before the recorder existed, where it has to drop what it never

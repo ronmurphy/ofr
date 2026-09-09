@@ -56,6 +56,27 @@ const TORCH_RADIUS := 8
 ## trade between seeing and being seen is the whole mechanic.
 const DOUSED_RADIUS := 3
 
+## How far a lit torch reaches in the cave band, and in its corrupted twin on
+## the way out.
+##
+## Measured before choosing: the cave band was expected to be punishing and is
+## not. Monsters are populated per ROOM, so trading rooms for caverns removes
+## things to fight at the same rate it removes braziers -- across the climb the
+## cave floors came out no worse than their neighbours and one came out best.
+## The band is poorer and emptier rather than harder, which is what left room
+## for this.
+##
+## Six on the way down: enough to teach that caves are dark. Four on the way
+## back, one above doused, where the flare shrine stops being a curiosity.
+const CAVE_TORCH := 6
+const CORRUPT_TORCH := 4
+
+## The reach of a lit torch on this floor.
+func torch_radius() -> int:
+	if not Bands.is_caves(effective_depth()):
+		return TORCH_RADIUS
+	return CORRUPT_TORCH if Bands.is_corrupted(effective_depth()) else CAVE_TORCH
+
 ## Resting at a brazier. Each one holds a fixed pool, spent two points at a
 ## time, and then goes out for good.
 ## How far a blow or a bowshot carries.
@@ -1084,8 +1105,12 @@ func entity_at(x: int, y: int) -> Entity:
 # ---------------------------------------------------------------- vision ----
 
 func update_vision() -> void:
-	var radius := TORCH_RADIUS if torch_lit else DOUSED_RADIUS
+	var lit_reach := torch_radius()
+	var radius := lit_reach if torch_lit else DOUSED_RADIUS
 	if torch_flare > 0:
+		# The flare burns at full strength wherever you are, which is the point
+		# of it in the dark band: on a cave floor it does not merely double your
+		# sight, it gives you back the reach you lost and then some.
 		radius = TORCH_RADIUS * FLARE_MULTIPLIER
 	Fov.compute(map, player.x, player.y, radius, _fov_buffer)
 	map.visible_now = _fov_buffer.duplicate()
@@ -1099,7 +1124,7 @@ func update_vision() -> void:
 		player.light.color = Color(1.00, 0.94, 0.72)
 		player.light.color_far = Color(0.45, 0.48, 0.62)
 	elif torch_lit:
-		player.light.radius = TORCH_RADIUS
+		player.light.radius = lit_reach
 		player.light.intensity = 1.0
 		player.light.color = Color(1.00, 0.72, 0.36)
 		player.light.color_far = Color(0.30, 0.34, 0.55)
@@ -2897,18 +2922,24 @@ func _rabbit_turns(actor: Entity) -> void:
 		Color(0.95, 0.72, 0.72))
 	events.append({"kind": &"notice", "to": Vector2i(actor.x, actor.y)})
 
-## A refund, never a profit.
+## Half a brazier, and a little more for every mushroom it got to first.
 ##
-## The pitch was 5 hp plus one a mushroom, which inverts the whole monster: a
-## rabbit that ate five would hand back ten, twice what it took, and the best
-## play becomes letting it clear the floor before you shoot it. Worth exactly
-## what it swallowed, the rabbit stays a cost -- you are down the arrow and the
-## turns whatever happens.
+## This was argued the other way first -- worth only what it swallowed, so the
+## rabbit could never be a net gain -- on the reasoning that 5 + 1 each makes
+## letting it eat the optimal play. Play said otherwise and the objection was
+## overweighted: you still have to FIND it again, it is faster than you, the
+## chase is five to twenty turns of noise, and at RABBIT_TURNS mouthfuls it
+## stops running and starts hitting back. Those are the costs the refund
+## argument ignored, and the whole quantity in dispute is a floor's 5.3 fungus.
+##
+## So: a real reward for winning a real hunt.
+const MEAT_BASE := 5
+
 func _drop_meat(victim: Entity) -> void:
 	var meat := Item.make(&"meat")
 	if meat == null:
 		return
-	meat.magnitude = maxi(1, victim.meal)
+	meat.magnitude = MEAT_BASE + victim.meal
 	var at := Vector2i(victim.x, victim.y)
 	if not _can_rest_on(at.x, at.y):
 		at = _nearest_restable(at)

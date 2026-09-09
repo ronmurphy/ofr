@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_ember_forge()
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
+	_test_cave_band()
 	_test_shrine_voices()
 	_test_noise_is_drawn()
 	_test_dead_fires_are_dead()
@@ -2338,6 +2339,34 @@ func _test_map_always_connected() -> void:
 	check("dungeon is always completable (%d seeds)" % trials, bad == 0,
 		"%d unreachable" % bad)
 
+	# Every BAND, not just depth 1.
+	#
+	# The check above only ever called new_game(), which builds the first floor
+	# and nothing else -- so for the life of the project it proved depth 1 was
+	# completable and quietly said nothing about anywhere else. That was
+	# survivable while every floor generated the same way. The cave band ended
+	# that: six or seven cavern regions instead of one is exactly the change
+	# that could strand a staircase, and the old test would not have noticed.
+	var by_band := {}
+	for spec in [[2, false], [5, false], [8, false], [10, false],
+			[5, true], [2, true]]:
+		var depth := int(spec[0])
+		var up: bool = spec[1]
+		var stranded := 0
+		for i in 40:
+			var gs := GameState.new(21000 + depth * 300 + i + (700 if up else 0))
+			gs.new_game()
+			gs.ascending = up
+			gs.depth = depth
+			gs.build_level()
+			var here := Vector2i(gs.player.x, gs.player.y)
+			if gs.pathfinder.path(here, gs.stairs).is_empty() and here != gs.stairs:
+				stranded += 1
+		by_band[Bands.NAMES[Bands.of(depth if not up else GameState.MAX_DEPTH * 2 - depth)]] = stranded
+		if stranded > 0:
+			bad += stranded
+	check("and completable in every band %s" % str(by_band), bad == 0, str(by_band))
+
 func _test_fov_blocked_by_walls() -> void:
 	var m := DungeonMap.new(21, 5)
 	for y in 5:
@@ -3307,6 +3336,81 @@ func _test_dead_fires_are_dead() -> void:
 	check("once the last one gutters, nothing on the floor flickers",
 		still_burning == 0, str(still_burning))
 
+## Floor themes: the cave band, and the rule that the climb mirrors the descent.
+func _test_cave_band() -> void:
+	# The fold is what makes "corrupted, not reversed" free -- descending floor
+	# 5 and climbing floor 5 are effective 5 and 15, and both are caves without
+	# either side knowing which way you are going.
+	for eff in [1, 2, 3]:
+		check_silent(Bands.of(eff) == Bands.UPPER)
+	for eff in [4, 5, 6, 14, 15, 16]:
+		check_silent(Bands.is_caves(eff))
+	for eff in [7, 8, 9, 11, 12, 13]:
+		check_silent(Bands.of(eff) == Bands.FORTRESS)
+	check("the bands fold around the bottom", true)
+	check("depth 10 is its own place", Bands.of(10) == Bands.DEEP)
+	check("and the climb is the corrupted half",
+		Bands.is_corrupted(14) and not Bands.is_corrupted(6))
+
+	# Caves going down, darker caves coming back, ordinary light everywhere else.
+	var gs := GameState.new(4)
+	gs.new_game()
+	gs.depth = 5
+	gs.build_level()
+	check("a cave floor shortens the torch (%d)" % gs.torch_radius(),
+		gs.torch_radius() == GameState.CAVE_TORCH)
+	gs.ascending = true
+	gs.build_level()
+	check("and the corrupted one shortens it further (%d)" % gs.torch_radius(),
+		gs.torch_radius() == GameState.CORRUPT_TORCH)
+	check("which is still more than a doused torch",
+		GameState.CORRUPT_TORCH > GameState.DOUSED_RADIUS)
+	gs.ascending = false
+	gs.depth = 2
+	gs.build_level()
+	check("ordinary floors are unchanged",
+		gs.torch_radius() == GameState.TORCH_RADIUS)
+
+	# The flare is the counterplay, and it must not be shortened with everything
+	# else or the dark band would have no answer.
+	gs.depth = 5
+	gs.build_level()
+	gs.torch_flare = GameState.FLARE_TURNS
+	gs.update_vision()
+	check("a flare beats the dark outright (%d vs %d)"
+		% [gs.player.light.radius, GameState.CAVE_TORCH],
+		gs.player.light.radius > GameState.TORCH_RADIUS,
+		str(gs.player.light.radius))
+
+	# The band trades built ground for cavern, and braziers go with the rooms.
+	# Fungus is what the terrain gives back, and it is a LIGHT as much as it is
+	# a hit point -- which is the whole reason the band can afford to be dark.
+	var cave_fungus := 0
+	var cave_rooms := 0
+	var plain_fungus := 0
+	var plain_rooms := 0
+	for i in 14:
+		var c := GameState.new(6100 + i)
+		c.new_game()
+		c.depth = 5
+		c.build_level()
+		cave_rooms += c.room_rects.size()
+		var p := GameState.new(6200 + i)
+		p.new_game()
+		p.depth = 2
+		p.build_level()
+		plain_rooms += p.room_rects.size()
+		for y in GameState.MAP_H:
+			for x in GameState.MAP_W:
+				if c.map.get_tile(x, y) == Tiles.FUNGUS:
+					cave_fungus += 1
+				if p.map.get_tile(x, y) == Tiles.FUNGUS:
+					plain_fungus += 1
+	check("caves have fewer rooms (%d vs %d)" % [cave_rooms, plain_rooms],
+		cave_rooms < plain_rooms)
+	check("and more fungus to see by (%d vs %d)" % [cave_fungus, plain_fungus],
+		cave_fungus > plain_fungus)
+
 ## The shrine that calls out gets a gong, and only it.
 func _test_shrine_voices() -> void:
 	check("every shrine has a bell", Synth.SOUNDS.has(&"pray"))
@@ -3482,8 +3586,12 @@ func _test_rabbit() -> void:
 	check("and it can actually hurt you now", glut.power > 0, str(glut.power))
 	check("its picture changes with it", glut.appearance == &"killer_rabbit")
 
-	# The meat is a refund, never a profit. The pitched "5 + 1 each" would have
-	# made feeding it the optimal play.
+	# Half a brazier plus a mushroom's worth for each one it got to first.
+	#
+	# This test used to assert the opposite -- that meat could never exceed what
+	# the rabbit ate. That rule came from an argument about incentives which
+	# play overturned: the chase costs turns, noise and risk that the argument
+	# left out. Kept as a test rather than deleted so the number is pinned.
 	var kill := _arena(21, 11)
 	kill.player.x = 5
 	kill.player.y = 5
@@ -3497,18 +3605,22 @@ func _test_rabbit() -> void:
 			meat = it
 	check("killing it leaves meat", meat != null)
 	if meat != null:
-		check("worth exactly what it ate, never more (%d for %d)"
+		check("worth half a brazier plus what it ate (%d for %d)"
 			% [meat.effective_magnitude(), fat.meal],
-			meat.effective_magnitude() == fat.meal,
+			meat.effective_magnitude() == GameState.MEAT_BASE + fat.meal,
 			str(meat.effective_magnitude()))
-		# And a rabbit that ate nothing is barely worth the arrow.
+		check("and that is worth the arrow",
+			meat.effective_magnitude() >= GameState.BRAZIER_CHARGE / 2,
+			str(meat.effective_magnitude()))
+		# An unfed one is still worth killing, just not worth hunting.
 		var lean := _spawn(kill, "rabbit", 7, 5)
 		kill.ground = []
 		kill._drop_loot(lean)
 		for it in kill.ground:
 			if it.id == &"meat":
-				check("an unfed one is worth a single mouthful",
-					it.effective_magnitude() == 1, str(it.effective_magnitude()))
+				check("an unfed one is worth the base alone",
+					it.effective_magnitude() == GameState.MEAT_BASE,
+					str(it.effective_magnitude()))
 
 	# It eats, so it must be able to reach food on every floor it appears on.
 	var seen := 0
