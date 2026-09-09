@@ -106,6 +106,7 @@ func _initialize() -> void:
 	_test_embers_cool_and_refuse_glass()
 	_test_ember_heat_reads_the_clock()
 	_test_cave_band()
+	_test_cave_dwellers()
 	_test_shrine_voices()
 	_test_noise_is_drawn()
 	_test_dead_fires_are_dead()
@@ -3410,6 +3411,95 @@ func _test_cave_band() -> void:
 		cave_rooms < plain_rooms)
 	check("and more fungus to see by (%d vs %d)" % [cave_fungus, plain_fungus],
 		cave_fungus > plain_fungus)
+
+## Caves hold what dens in caves, and the same field does both ends of the band.
+func _test_cave_dwellers() -> void:
+	var shallow_cave := {}
+	var shallow_plain := {}
+	var deep_cave := {}
+	for i in 30:
+		var c := GameState.new(62000 + i)
+		c.new_game()
+		c.depth = 5
+		c.build_level()
+		for e in c.entities:
+			if not e.is_player:
+				shallow_cave[e.name] = int(shallow_cave.get(e.name, 0)) + 1
+		var p := GameState.new(62500 + i)
+		p.new_game()
+		p.depth = 8
+		p.build_level()
+		for e in p.entities:
+			if not e.is_player:
+				shallow_plain[e.name] = int(shallow_plain.get(e.name, 0)) + 1
+		var d := GameState.new(63000 + i)
+		d.new_game()
+		d.ascending = true
+		d.depth = 5
+		d.build_level()
+		for e in d.entities:
+			if not e.is_player:
+				deep_cave[e.name] = int(deep_cave.get(e.name, 0)) + 1
+
+	# ONE multiplier, two very different results, because the depth pool it
+	# multiplies differs: vermin are what is eligible at effective 5, and
+	# dragons are what is eligible at 15.
+	check("caves crawl with bats (%d)" % int(shallow_cave.get("cave bat", 0)),
+		int(shallow_cave.get("cave bat", 0)) > 0)
+	check("and the deep ones hold dragons (%d)"
+		% int(deep_cave.get("young dragon", 0)),
+		int(deep_cave.get("young dragon", 0)) > 0)
+
+	# Built things keep to built places. The slinger is a kobold with a sling,
+	# not a cave dweller, and the wizard belongs to a dungeon.
+	var cave_total := 0
+	for k in shallow_cave:
+		cave_total += int(shallow_cave[k])
+	var plain_total := 0
+	for k in shallow_plain:
+		plain_total += int(shallow_plain[k])
+	var wizard_cave := float(deep_cave.get("wizard", 0))
+	var deep_total := 0
+	for k in deep_cave:
+		deep_total += int(deep_cave[k])
+	check("wizards keep out of caves (%.1f%% vs the floor's mix)"
+		% (100.0 * wizard_cave / maxf(1.0, float(deep_total))),
+		wizard_cave / maxf(1.0, float(deep_total)) < 0.06,
+		str(wizard_cave))
+
+	# Rabbits are commoner where the potions are not, and the cap lifts with
+	# them or the extra weight would only be rolled and refused.
+	check("more rabbits in the corrupted caves (%d) than a plain floor (%d)"
+		% [int(deep_cave.get("rabbit", 0)), int(shallow_plain.get("rabbit", 0))],
+		int(deep_cave.get("rabbit", 0)) > int(shallow_plain.get("rabbit", 0)))
+
+	# And their meat keeps pace with the bar it has to fill.
+	# Arenas, not generated floors. The first version of this dropped a rabbit
+	# at (4,4) on a real map, which was a wall -- _drop_meat found nowhere to
+	# put the haunch and the test read a genuine mechanic as broken.
+	#
+	# effective_depth() reads only `ascending` and `depth`, so the arena's open
+	# floor can be told it is deep without being rebuilt.
+	var shallow := _arena(21, 11)
+	var deep := _arena(21, 11)
+	deep.ascending = true
+	deep.depth = 2
+	var bun_a := _spawn(shallow, "rabbit", 5, 5)
+	var bun_b := _spawn(deep, "rabbit", 5, 5)
+	shallow.ground = []
+	deep.ground = []
+	shallow._drop_loot(bun_a)
+	deep._drop_loot(bun_b)
+	var a_val := 0
+	var b_val := 0
+	for it in shallow.ground:
+		if it.id == &"meat":
+			a_val = it.effective_magnitude()
+	for it in deep.ground:
+		if it.id == &"meat":
+			b_val = it.effective_magnitude()
+	check("meat is worth more the deeper it is found (%d then %d)" % [a_val, b_val],
+		b_val > a_val, "%d vs %d" % [a_val, b_val])
 
 ## The shrine that calls out gets a gong, and only it.
 func _test_shrine_voices() -> void:

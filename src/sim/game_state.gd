@@ -395,20 +395,20 @@ static var _vault_library: Array[Vault] = []
 ## shoots back.
 const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
-	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2},
+	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2, "caves": 1.8},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3},
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2,
-	 "threat": 6},
+	 "threat": 6, "caves": 0.5},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
-	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5},
+	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
-	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5},
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8},
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3},
 
 	# --- deep tiers -------------------------------------------------------
 	# Power from 7 upward, because below that a levelled character in chain
@@ -416,23 +416,23 @@ const BESTIARY := [
 	# deeper. These also carry the whole ascent, which runs at effective
 	# depths of 10 to 19.
 	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14},
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14, "caves": 1.6},
 	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
-	 "speed": 160, "ai": &"erratic", "flee": 0.25, "flying": true, "min_depth": 5, "threat": 12},
+	 "speed": 160, "ai": &"erratic", "flee": 0.25, "flying": true, "min_depth": 5, "threat": 12, "caves": 1.8},
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "heavy": true, "min_depth": 6,
-	 "threat": 16},
+	 "threat": 16, "caves": 2.2},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
-	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17},
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
-	 "speed": 140, "ai": &"hunter", "flee": 0.10, "flying": true, "min_depth": 7, "threat": 20},
+	 "speed": 140, "ai": &"hunter", "flee": 0.10, "flying": true, "min_depth": 7, "threat": 20, "caves": 2.2},
 	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
-	 "speed": 70, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 8, "threat": 20},
+	 "speed": 70, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 8, "threat": 20, "caves": 0.5},
 	{"name": "shadow", "app": &"shadow", "hp": 20, "power": 13, "def": 1,
-	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19},
+	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0},
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
-	 "threat": 28},
+	 "threat": 28, "caves": 2.0},
 
 	# The rabbit, and what it turns into.
 	#
@@ -454,7 +454,21 @@ const BESTIARY := [
 	# disproved it.
 	{"name": "rabbit", "app": &"rabbit", "hp": 6, "power": 0, "def": 0,
 	 "speed": 130, "ai": &"forager", "flee": 0.0, "no_fade": true,
-	 "max_per_floor": 2, "weight": 0.35, "min_depth": 1, "threat": 3},
+	 # Read the COUNT here, not the share. A rabbit is 20% of a cave floor's
+	 # population and 11% of a fortress one, which sounds like a warren and is
+	 # not: cave floors hold about fourteen monsters, so three rabbits is a
+	 # fifth of them by arithmetic alone, and three is the cap we chose.
+	 #
+	 # This was briefly cut to 0.16 on the strength of those percentages, which
+	 # took early floors down to a third of a rabbit each -- and the descent is
+	 # precisely where meat has to teach itself before the climb needs it.
+	 "max_per_floor": 2, "weight": 0.35, "min_depth": 1, "threat": 3,
+	 # Commoner in caves, and the reason is the loot rather than the fiction.
+	 # Trading rooms for caverns costs the band its potions -- they are rolled
+	 # per room like everything else -- and meat is what the terrain offers
+	 # instead. The descent teaches that a haunch is food while it is merely
+	 # convenient; the corrupted climb is where it stops being optional.
+	 "caves": 2.0},
 
 	# A monster whose weapon is the other monsters.
 	#
@@ -489,12 +503,12 @@ const BESTIARY := [
 	# walk.
 	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
 	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
-	 "min_depth": 8, "threat": 22},
+	 "min_depth": 8, "threat": 22, "caves": 0.4},
 	# Ascent-only, and late on it. `min_depth` stays at the dragon's tier so the
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
 	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
-	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32},
+	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6},
 ]
 
 ## The deepest tier that exists.
@@ -990,7 +1004,12 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 			for other in entities:
 				if not other.is_player and other.name == e["name"]:
 					already += 1
-			if already >= int(e["max_per_floor"]):
+			var cap := int(e["max_per_floor"])
+			# The cave band lifts the cap on things that belong there, or the
+			# rabbit's higher weight would just be rolled and refused.
+			if Bands.is_caves(here) and float(e.get("caves", 1.0)) > 1.5:
+				cap += 1
+			if already >= cap:
 				continue
 		if int(e["threat"]) > remaining:
 			continue
@@ -1008,6 +1027,17 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 		# from three onward, which makes it furniture. It should be a thing that
 		# happens, not a thing that is always there.
 		weight *= float(e.get("weight", 1.0))
+
+		# What lives in caves, as opposed to what lives in a dungeon.
+		#
+		# ONE multiplier covers both ends of the band, because the depth pool
+		# already differs enormously between them: at effective 4-6 the things
+		# eligible to be boosted are bats and goblins, and at 14-16 they are
+		# trolls, wyverns and dragons. So the same field produces vermin on the
+		# way down and something much worse on the way back, without a second
+		# table to keep in step with the first.
+		if Bands.is_caves(here):
+			weight *= float(e.get("caves", 1.0))
 		if weight <= 0.0:
 			continue
 		total += weight
@@ -2934,12 +2964,18 @@ func _rabbit_turns(actor: Entity) -> void:
 ##
 ## So: a real reward for winning a real hunt.
 const MEAT_BASE := 5
+## Meat gains a point every three floors, so a haunch stays worth hunting for.
+## Flat, it was a fifth of your hit points on floor four and a twentieth by the
+## climb -- the same reason the healing economy deflates, arriving by the same
+## route. See the attrition survey.
+const MEAT_PER_DEPTH := 3.0
 
 func _drop_meat(victim: Entity) -> void:
 	var meat := Item.make(&"meat")
 	if meat == null:
 		return
-	meat.magnitude = MEAT_BASE + victim.meal
+	meat.magnitude = MEAT_BASE + victim.meal \
+		+ int(floor(float(effective_depth()) / MEAT_PER_DEPTH))
 	var at := Vector2i(victim.x, victim.y)
 	if not _can_rest_on(at.x, at.y):
 		at = _nearest_restable(at)
