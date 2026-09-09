@@ -48,6 +48,7 @@ const OVERRIDES := {
 	&"wight":    ADULT_FIGURE,
 	&"ogre":     HEAVY_FIGURE,
 	&"troll":    HEAVY_FIGURE,
+	&"giant":    HEAVY_FIGURE,
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent
@@ -74,6 +75,7 @@ const OVERRIDES := {
 	&"banshee":  0xF165D,
 	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
+	&"bear":     0xF0A72,   # md-paw
 	# Wyvern and dragon share a silhouette and are told apart by colour alone,
 	# which is why check_palette.py checks that pair too.
 	&"wyvern":   0xEEF8,    # fa-dragon

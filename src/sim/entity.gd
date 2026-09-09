@@ -79,6 +79,12 @@ var blink_cool: int = 0
 ## Walks through stone. Nothing else does, and it is half of what makes the
 ## banshee unanswerable by hiding -- you cannot put a wall between you and it.
 var phasing := false
+## How many cells this creature's melee hit shoves its target back. 0 for
+## everything that fights by standing still and swinging.
+var knockback := 0
+## Follows its own knockback into the ground it just cleared, so the shove buys
+## the target no distance at all. Meaningless without `knockback`.
+var charges := false
 ## Finds you without seeing you, and without caring how dark it is. The other
 ## half: dousing the torch is the game's main defence, and this ignores it.
 var senses := false
@@ -185,7 +191,8 @@ func to_dict() -> Dictionary:
 		"level": level, "xp": xp, "ai": String(ai),
 		"attack_range": attack_range, "standoff": standoff,
 		"blink_range": blink_range, "blink_cool": blink_cool,
-		"phasing": phasing, "senses": senses,
+		"phasing": phasing, "senses": senses, "knockback": knockback,
+		"charges": charges,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
@@ -235,6 +242,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.notice_block = int(d.get("notice_block", 0))
 	e.flying = d.get("flying", false)
 	e.heavy = d.get("heavy", false)
+	e.knockback = int(d.get("knockback", 0))
+	e.charges = d.get("charges", false)
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

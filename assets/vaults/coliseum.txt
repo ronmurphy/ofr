@@ -1,0 +1,17 @@
+name: coliseum
+weight: 8
+min_depth: 7
+max_depth: 13
+rotate: yes
+terrain: fixed
+band: fortress
+LAYOUT
+ OOO+OOO
+OO.....OO
+O.......O
+O.......O
+O.m.....O
+O.......O
+O...M...O
+OO.&.&.OO
+ OOOOOOO

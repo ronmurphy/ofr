@@ -16,8 +16,12 @@ The first palette drafted for the icon mode failed exactly there: kobold gold
 against goblin green measured 46.7 normally and 14.5 under protanopia. Separate
 on LIGHTNESS, not on red-green, and it holds up.
 
-SHARED lists the creatures that would draw the same figure. Edit it when the
-icon mapping changes.
+Groups of creatures that share a figure are READ OUT OF glyph_theme.gd rather
+than listed here. They used to be a hand-kept copy, and a hand-kept copy of
+something the code already knows is a copy that silently falls behind: adding
+the cave giant on the heavy figure put a third creature in that group and this
+check went on reporting "every shared-glyph pair holds up" while never looking
+at it. EXTRA below is only for pairs the theme cannot express.
 """
 import re
 import pathlib
@@ -25,20 +29,60 @@ import sys
 
 ROOT = pathlib.Path(__file__).parent.parent
 THEME = ROOT / "src" / "render" / "ascii_theme.gd"
+GLYPHS = ROOT / "src" / "render" / "glyph_theme.gd"
 
-# Creatures that would draw the same figure, so colour does all the work.
-SHARED = {
-    "child figure": ["kobold", "goblin"],
-    "adult figure": ["orc", "wight", "wizard"],
-    "heavy figure": ["ogre", "troll"],
-    "dragon":       ["wyvern", "dragon"],
-    # Not literally the same glyph -- one ghost is filled and one is hollow --
-    # but close enough in silhouette that colour is doing real work, and the
-    # two demand opposite responses. Checked as though they shared.
+# Pairs that do not literally share a codepoint, so nothing can derive them.
+EXTRA = {
+    # One ghost is filled and one is hollow -- but close enough in silhouette
+    # that colour is doing real work, and the two demand opposite responses.
     "ghost shapes": ["shadow", "banshee"],
-    # Same glyph, and the colour change IS the tell that it transformed.
-    "rabbit":       ["rabbit", "killer_rabbit"],
 }
+
+
+def creatures():
+    """Every appearance the bestiary can put on the map.
+
+    The glyph theme also gives braziers and doors icons, and some of those
+    share one -- so "shares a figure" alone is not the question. The question
+    is whether two CREATURES share one, and the bestiary is what decides what
+    is a creature.
+    """
+    text = (ROOT / "src" / "sim" / "game_state.gd").read_text()
+    found = set(re.findall(r'"app":\s*&"([a-z_]+)"', text))
+    # Not a bestiary entry: the rabbit changes into it mid-fight, and that
+    # colour change is the only warning the player gets.
+    found.add("killer_rabbit")
+    return found
+
+
+def shared_groups():
+    """Creatures drawing the same icon, straight from the glyph theme."""
+    text = GLYPHS.read_text()
+    alive = creatures()
+    # `&"name": CONST,` or `&"name": 0xF1234,`
+    named = dict(re.findall(r'&"([a-z_]+)":\s*([A-Z_]+|0x[0-9A-Fa-f]+)', text))
+    # Resolve `const NAME := 0x...` so two creatures sharing a named constant
+    # and two sharing a literal are recognised as the same figure.
+    consts = dict(re.findall(r'const\s+([A-Z_]+)\s*:=\s*(0x[0-9A-Fa-f]+)', text))
+    by_code = {}
+    for creature, value in named.items():
+        if creature not in alive:
+            continue
+        code = consts.get(value, value).lower()
+        by_code.setdefault(code, []).append(creature)
+
+    groups = {}
+    for code, members in by_code.items():
+        if len(members) < 2:
+            continue
+        members.sort()
+        label = next((k for k, v in consts.items() if v.lower() == code), code)
+        groups[label.lower().replace("_", " ")] = members
+    groups.update(EXTRA)
+    return groups
+
+
+SHARED = shared_groups()
 
 READABLE = 25.0  # deltaE below this is hard to tell apart on a dark ground
 

@@ -1,0 +1,19 @@
+name: guarded-shrine
+weight: 8
+min_depth: 7
+max_depth: 13
+rotate: yes
+terrain: fixed
+band: fortress
+LAYOUT
+    #+#
+   O...O
+  O.....O
+ O.......O
+#...m*m...#
+#...*A*...+
+#...m*m...#
+ O.......O
+  O.....O
+   O...O
+    ###

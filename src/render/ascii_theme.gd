@@ -59,6 +59,15 @@ const TABLE := {
 	&"ogre":        {"ch": "O", "fg": Color("9a7fb8")},
 	&"harpy":       {"ch": "H", "fg": Color("d08fc0")},
 	&"troll":       {"ch": "T", "fg": Color("6b4a2a")},
+	# Warmer and lighter than the troll's brown, which is the only other brown
+	# a monster wears; the two are never worth confusing when one of them moves
+	# you and the other does not.
+	&"bear":        {"ch": "B", "fg": Color("b5763d")},
+	# Cold pale stone. Chosen on LIGHTNESS rather than hue: the first pick was
+	# a mid stone-blue that measured 17.3 against the ogre under deuteranopia,
+	# and the two share the heavy figure, so colour is the only thing telling
+	# them apart in icon mode.
+	&"giant":       {"ch": "C", "fg": Color("c6d8e2")},
 	&"wight":       {"ch": "w", "fg": Color("b8c4d8")},
 	&"wyvern":      {"ch": "W", "fg": Color("c05a3a")},
 	&"golem":       {"ch": "G", "fg": Color("9aa0a8")},

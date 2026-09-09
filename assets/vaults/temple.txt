@@ -1,0 +1,17 @@
+name: temple
+weight: 8
+min_depth: 7
+max_depth: 13
+rotate: yes
+terrain: fixed
+band: fortress
+LAYOUT
+    ###
+   #O&O#
+  #?....#
+ #%......#
+#.......%m#
+#.m%......#
+#O%..%...O#
+ #......%#
+  ###+###

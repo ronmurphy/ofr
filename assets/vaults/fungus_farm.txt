@@ -1,0 +1,16 @@
+name: fungus-farm
+weight: 8
+min_depth: 7
+max_depth: 13
+rotate: yes
+terrain: fixed
+band: fortress
+LAYOUT
+###+###
+#=====#
+#=====#
+#~~~~~#
+#~.*.~#
+#~*.*~#
+#~~~~~#
+#######

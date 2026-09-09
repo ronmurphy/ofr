@@ -55,6 +55,17 @@ groups corrupted rather than replaying the descent backwards:
 | `fortress` | 7-9 | 11-13 |
 | `deep` | 10 | -- |
 
+**Write the descent floors only.** `min_depth` and `max_depth` are matched
+against the *mirrored* depth -- the climb folded back onto the way down -- so a
+room set to 7-9 appears on 11-13 as well, corrupted, without you having to say
+so. Writing `7-13` is harmless but says nothing extra.
+
+This used to be the other way round, and it was a trap: the range was compared
+against the raw depth while the band beside it was folded, so every vault in
+the library stopped at floor 10 and the last six floors of the climb had no
+authored rooms at all. If you want a room on the way down, that is all you have
+to say.
+
 Omit `band` and the vault can turn up anywhere its depth range allows, which is
 right for most of them. Set it when a room only makes sense in one kind of
 place -- a masonry guard post reads as a mistake in a cavern.

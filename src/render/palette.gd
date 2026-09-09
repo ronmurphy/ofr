@@ -102,6 +102,10 @@ const HP_BAD        := Color("bf4b45")
 const SLEEP         := Color("6f7d99")
 const ALERT         := Color("ffcb52")
 const SHOT          := Color("ffd9a0")
+## The chevron a shove throws. Warmer and heavier than NOISE, which is a sound
+## crossing the floor -- this is a blow landing on you, and the two must never
+## be mistaken for one another at a glance.
+const SHOVE         := Color("ff9a5c")
 const HIT_FLASH     := Color("ff9d6b")
 
 const CURSOR        := Color("7fd4ff")

@@ -268,6 +268,60 @@ func _run() -> void:
 	_use(gs)
 	_scene._refresh()
 
+	# The knockback chevron, stepped through its life.
+	#
+	# Shot rather than reasoned about: the whole point of this effect is that
+	# the player did not press anything and needs telling why they moved, and
+	# whether it says that is not something the geometry can prove.
+	var kb := GameState.new(SEED)
+	kb.new_game()
+	for y in range(1, 12):
+		for x in range(1, 24):
+			kb.map.set_tile(x, y, Tiles.FLOOR)
+	kb.map.set_all_visible()
+	kb.player.x = 10
+	kb.player.y = 6
+	kb.player.max_hp = 9999
+	kb.player.hp = 9999
+	kb.entities = [kb.player]
+	kb._gather_lights()
+	kb.static_lights.append(LightSource.new(12, 6, 24,
+		Color(0.9, 0.88, 0.85), Color(0.4, 0.4, 0.4), 0.9, false))
+	kb.update_vision()
+	var kb_bear: Entity = null
+	for entry in GameState.BESTIARY:
+		if entry["name"] == "cave bear":
+			kb_bear = GameState.monster_from(entry, 9, 6)
+	kb_bear.alertness = Entity.Alert.AWAKE
+	kb.entities.append(kb_bear)
+	# Bind and draw ONCE before staging anything.
+	#
+	# _draw clears every effect when it notices a new map, so that descending a
+	# floor cannot carry the previous floor's animations onto the new one. That
+	# is correct for the game and fatal here: binding a fresh GameState and
+	# immediately staging an effect loses it on the very next draw, silently.
+	# Three separate wrong theories were chased before this one -- the effect
+	# was being created correctly every time and wiped by the floor guard.
+	_use(kb)
+	_scene._refresh()
+	for _f in 3:
+		await process_frame
+		RenderingServer.force_draw()
+
+	# Now the shove, on a map the renderer has already settled on.
+	kb.take_events()
+	kb._attack(kb_bear, kb.player)
+	_scene._refresh()
+	# Walk the effect forward by hand rather than waiting on wall-clock time,
+	# so each frame is a known point in its life and the shots are comparable.
+	_scene.grid.hold_effects = true
+	for step in 6:
+		for fx in _scene.grid._effects:
+			fx["t"] = float(step) * 0.16
+		_scene.grid.queue_redraw()
+		await _shot("40_shove_%d.png" % step)
+	_scene.grid.hold_effects = false
+
 	# Do braziers cast shadows? They do -- LightMap runs an FOV pass per source
 	# -- but nobody had ever seen it, which is a different question. A room lit
 	# by one brazier with pillars around it, everything visible so the player's

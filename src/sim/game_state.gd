@@ -440,6 +440,15 @@ const BESTIARY := [
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "heavy": true, "min_depth": 6,
 	 "threat": 16, "caves": 2.2},
+	# The cave band's heavy. Not the hardest thing down there -- what it does
+	# instead is MOVE you, which nothing else in the bestiary can. A corridor
+	# mouth you were holding, a doorway you backed into, the two cells between
+	# you and the stairs: the bear takes all of that away in one hit and then
+	# it is between you and where you wanted to be. Cheap to kill, expensive
+	# to fight in the wrong place.
+	{"name": "cave bear", "app": &"bear", "hp": 34, "power": 9, "def": 3,
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
+	 "threat": 17, "knockback": 2, "caves": 2.6},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
@@ -522,6 +531,23 @@ const BESTIARY := [
 	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
 	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
 	 "min_depth": 8, "threat": 22, "caves": 0.4},
+	# What the caves have in them on the way back out.
+	#
+	# Only the SECOND ascent-only creature in the bestiary -- the climb has
+	# always drawn from the same faded pool as the descent, so it gets harder
+	# by ceiling rather than by cast, and you meet more of the same things
+	# instead of different ones. This is the fix for that, applied to the band
+	# the bear owns: the same caves, worse.
+	#
+	# It charges, and that is the whole creature. A bear costs you your ground
+	# and leaves you a moment to use; a giant costs you your ground and is
+	# already standing in it. Backing toward a corridor stops working, so the
+	# answer has to be breaking line instead of retreating -- a different
+	# problem, not a bigger one.
+	{"name": "cave giant", "app": &"giant", "hp": 48, "power": 13, "def": 4,
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 10,
+	 "ascent_from": 14, "threat": 26, "knockback": 3, "charges": true,
+	 "caves": 2.4},
 	# Ascent-only, and late on it. `min_depth` stays at the dragon's tier so the
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
@@ -855,6 +881,8 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
+	m.knockback = int(entry.get("knockback", 0))
+	m.charges = entry.get("charges", false)
 	m.senses = entry.get("senses", false)
 	m.wail_radius = entry.get("wail", 0)
 	m.flee_below = entry.get("flee", 0.0)
@@ -934,7 +962,25 @@ func _place_vault_contents(gen: MapGen) -> void:
 			"m", "M":
 				# A guardian is drawn from two tiers deeper than the floor.
 				var tier := effective_depth() + (2 if ch == "M" else 0)
-				spent += _spawn_at(at, tier, ceiling - spent)
+				# _spawn_at answers in three ways and they are not
+				# interchangeable: a positive number is threat spent, 0 means
+				# that particular cell was unusable (occupied, or the stairs
+				# landed on it) and the next marker should still be tried, and
+				# -1 means nothing in the bestiary fits what is left of the
+				# budget. Adding -1 to `spent` REFUNDS a point of threat for
+				# failing, which is backwards; `_spawn_in`'s caller already
+				# reads it correctly.
+				#
+				# That caller breaks and this one continues, on purpose. This
+				# loop walks EVERY marker in the vault, loot included, so
+				# breaking on an unaffordable monster would also throw away the
+				# scroll behind it -- an over-budget room would quietly become
+				# an empty one. Skipping just the monster leaves the room
+				# under-populated, which is the honest outcome.
+				var cost := _spawn_at(at, tier, ceiling - spent)
+				if cost < 0:
+					continue
+				spent += cost
 			"?":
 				_drop_item_at(Item.roll(rng, effective_depth()), at)
 			"!":
@@ -3115,6 +3161,52 @@ func _step_away(actor: Entity) -> bool:
 	actor.y = best.y
 	return true
 
+## Shoves a creature directly away from `from`, up to `distance` cells, and
+## answers how far it actually went.
+##
+## Stops at the first cell it cannot occupy, which is what makes the mechanic
+## tactical rather than random: a bear in the open costs you two cells of
+## ground, and a bear with your back to a wall costs you nothing. Where you
+## stand when it connects is the whole decision.
+##
+## It will not shove anything into a pit or a trap. The codebase already holds
+## this line -- `_open_cell_in` refuses to land a falling player in a second
+## pit, "a chain the player never chose to start" -- and being knocked to
+## another floor by a melee hit is a bigger version of exactly that. Water,
+## mud and rubble are fair game: they cost energy, not agency.
+func _shove(target: Entity, from: Vector2i, distance: int) -> int:
+	var dir := Vector2i(signi(target.x - from.x), signi(target.y - from.y))
+	if dir == Vector2i.ZERO:
+		return 0
+	return _step_along(target, dir, distance)
+
+## Walks a creature `distance` cells in a straight line, stopping at the first
+## cell it cannot occupy, and answers how far it got.
+##
+## Shared by the shove and the charge on purpose: a giant that followed by
+## different rules than the blow that made room for it could end up somewhere
+## its victim could not have been pushed through -- inside a wall, across a
+## pit, or on top of somebody. One mover, one set of rules, and the two can
+## never disagree.
+func _step_along(who: Entity, dir: Vector2i, distance: int) -> int:
+	var dx := dir.x
+	var dy := dir.y
+	var target := who
+	var moved := 0
+	for _i in distance:
+		var nx := target.x + dx
+		var ny := target.y + dy
+		if not map.is_walkable(nx, ny):
+			break
+		if Tiles.is_avoided(map.get_tile(nx, ny)):
+			break
+		if entity_at(nx, ny) != null:
+			break
+		target.x = nx
+		target.y = ny
+		moved += 1
+	return moved
+
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		power_override: int = -1) -> void:
 	var atk := attacker.total_power() if power_override < 0 else power_override
@@ -3186,6 +3278,45 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		msg_log.add("The %s shoots you for %d." % [attacker.name, dmg], Color(0.95, 0.62, 0.35))
 	else:
 		msg_log.add("The %s hits you for %d." % [attacker.name, dmg], Color(0.90, 0.45, 0.40))
+
+	# Shoved only by a connecting melee blow, and only if it survived it. A
+	# corpse has nowhere to be pushed to, and a thrown rock that moved you two
+	# cells would make every archer a bear.
+	if defender.alive and not ranged and attacker.knockback > 0:
+		var was := Vector2i(defender.x, defender.y)
+		var pushed := _shove(defender, Vector2i(attacker.x, attacker.y),
+			attacker.knockback)
+		if pushed > 0:
+			# The charge: it follows into the ground it just cleared, so the
+			# shove buys no distance at all. Capped at how far the target
+			# actually went, so a blow stopped by a wall does not teleport the
+			# attacker through the target's back.
+			if attacker.charges:
+				var dir := Vector2i(signi(defender.x - was.x),
+					signi(defender.y - was.y))
+				if _step_along(attacker, dir, pushed) > 0 and defender.is_player:
+					# Said out loud, or the giant simply appears not to have
+					# been left behind and the shove reads as having failed.
+					msg_log.add("The %s comes with you." % attacker.name,
+						Color(0.95, 0.50, 0.35))
+			events.append({
+				"kind": &"shove", "from": was,
+				"to": Vector2i(defender.x, defender.y),
+				"on_player": defender.is_player,
+			})
+			if defender.is_player:
+				# The view moved without the player spending a turn on it.
+				update_vision()
+				msg_log.add("The %s hurls you back." % attacker.name,
+					Color(0.90, 0.55, 0.40))
+			else:
+				msg_log.add("The %s is hurled back." % defender.name,
+					Color(0.80, 0.80, 0.70))
+		elif defender.is_player:
+			# Honest: you were shoved, and something behind you stopped it.
+			# Costs no extra damage -- the mechanic is about ground, not hurt.
+			msg_log.add("The %s slams you against what is behind you."
+				% attacker.name, Color(0.90, 0.55, 0.40))
 
 	if not defender.alive:
 		if defender.is_player:

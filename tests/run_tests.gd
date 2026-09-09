@@ -116,6 +116,9 @@ func _initialize() -> void:
 	_test_effects_modes()
 	_test_rabbit()
 	_test_banshee()
+	_test_cave_bear()
+	_test_cave_giant()
+	_test_authored_pits_obey_the_rule()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_graves_remember_the_dead()
@@ -190,6 +193,13 @@ func _spawn(gs: GameState, mname: String, x: int, y: int) -> Entity:
 		m.alertness = Entity.Alert.AWAKE
 		gs.entities.append(m)
 		return m
+	# Loudly, rather than by handing back a null that the caller dereferences
+	# three lines later. A misremembered name used to read as "the mechanic is
+	# broken": asking for "rat" when the bestiary says "giant rat" spawned
+	# nothing, so a knockback test saw an empty cell, reported that shoves pass
+	# through creatures, and then crashed on the null -- silently skipping
+	# every remaining check in that function.
+	check("the bestiary has a monster named '%s'" % mname, false, "no such name")
 	return null
 
 # ---------------------------------------------------------------- tests ----
@@ -1855,6 +1865,36 @@ func _test_vaults_are_placed_intact() -> void:
 	check("vault monsters are spawned (%d)" % mobs, mobs > 0)
 	check("vault loot is placed (%d)" % loot, loot > 0)
 
+	# The same authored room must never appear twice on one floor.
+	#
+	# Nothing looked at vault NAMES until this test, which is why the suite
+	# stayed green while the fortress band shipped floors carrying four copies
+	# of the barracks. `vault_rects` alone cannot see it -- two identical rooms
+	# are two perfectly ordinary rectangles.
+	var dup_floors := 0
+	var checked := 0
+	var worst := 0
+	for i in 80:
+		var gs := GameState.new(67000 + i)
+		gs.new_game()
+		# Weighted towards the fortress band, which asks for the most rooms and
+		# so is the only band where a small library can run out.
+		gs.depth = [1, 5, 7, 8, 9, 11, 12, 13, 10, 16][i % 10]
+		gs.build_level()
+		checked += 1
+		var seen := {}
+		for n in gs.vault_names:
+			seen[n] = int(seen.get(n, 0)) + 1
+		var repeated := false
+		for n in seen:
+			worst = maxi(worst, seen[n])
+			if seen[n] > 1:
+				repeated = true
+		if repeated:
+			dup_floors += 1
+	check("no floor carries the same vault twice (%d of %d floors, worst %d)"
+		% [dup_floors, checked, worst], dup_floors == 0, "%d" % dup_floors)
+
 func _test_projectile_path() -> void:
 	var line := Los.path(2, 2, 6, 2)
 	check("a path excludes the origin", not line.has(Vector2i(2, 2)))
@@ -2947,6 +2987,13 @@ func _test_symbol_theme() -> void:
 ## while the room routes around it perfectly well. The ring test is a good
 ## placement GUARD, because refusing to place a decoration costs nothing, but
 ## it is not a property the finished map has to satisfy.
+## Is this cell inside a hand-drawn room?
+func vault_holds(gs: GameState, cell: Vector2i) -> bool:
+	for vr in gs.vault_rects:
+		if vr.has_point(cell):
+			return true
+	return false
+
 func _test_no_decoration_plugs_a_way() -> void:
 	var plugged: Array = []
 	var stranded: Array = []
@@ -2973,12 +3020,37 @@ func _test_no_decoration_plugs_a_way() -> void:
 						# both sides of one axis. One way out means it leads
 						# nowhere, and a door you cannot pass is either a lie or
 						# a room you got into some other way.
+						#
+						# A hazard the AUTHOR put there is not a plug.
+						#
+						# This asks about DECORATION -- the generator scattering
+						# a trap or a pit into a chokepoint at random, which is
+						# a bug because nobody chose it. Inside a hand-drawn
+						# room the same tile is the design: `crossway` puts a
+						# trap in the doorway of the alcove holding its potion,
+						# so reaching the treasure costs you the trap. That is
+						# the oldest idea in the genre and the test has no
+						# business calling it broken.
+						#
+						# The door is passable either way. A trap is a price,
+						# not a wall -- the pathfinder refuses to ROUTE through
+						# one, which is not the same as a player being unable to
+						# walk through it, and this check had been reading the
+						# first as the second.
+						var authored := false
+						for vr in gs.vault_rects:
+							if vr.has_point(Vector2i(x, y)):
+								authored = true
 						var ways := 0
 						for d in [Vector2i(0, -1), Vector2i(0, 1),
 								Vector2i(1, 0), Vector2i(-1, 0)]:
-							if m.is_walkable(x + d.x, y + d.y) \
-									and not Tiles.is_avoided(m.get_tile(x + d.x, y + d.y)):
-								ways += 1
+							var n := Vector2i(x + d.x, y + d.y)
+							if not m.is_walkable(n.x, n.y):
+								continue
+							if Tiles.is_avoided(m.get_tile(n.x, n.y)) \
+									and not (authored and vault_holds(gs, n)):
+								continue
+							ways += 1
 						if ways <= 1 and plugged.size() < 5:
 							plugged.append("seed %d d%d (%d,%d)" % [seed_v, depth, x, y])
 					elif t == Tiles.SHRINE:
@@ -3854,6 +3926,177 @@ func _test_rabbit() -> void:
 		kept.meal == glut.meal and kept.busy == glut.busy)
 
 ## The banshee: the monster that answers the player's best strategy.
+## The bear moves you, which nothing else does. Every edge here is a way that
+## could go wrong quietly: a shove that works but leaves the view stale, or one
+## that helpfully drops you down a pit.
+func _test_cave_bear() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 8
+	gs.player.y = 4
+	var bear := _spawn(gs, "cave bear", 7, 4)
+	check("a bear knows how to shove", bear.knockback == 2)
+
+	gs._attack(bear, gs.player)
+	check("a bear's hit moves the player away (%d,%d)" % [gs.player.x, gs.player.y],
+		gs.player.x == 10 and gs.player.y == 4)
+
+	# Back to a wall: the shove is real, the ground is not there to give.
+	gs.player.x = 19
+	gs.player.y = 4
+	bear.x = 18
+	bear.y = 4
+	gs._attack(bear, gs.player)
+	check("a wall behind you stops the shove dead", gs.player.x == 19)
+
+	# One free cell, not two.
+	gs.player.x = 18
+	gs.player.y = 4
+	bear.x = 17
+	bear.y = 4
+	gs._attack(bear, gs.player)
+	check("a shove stops at the first thing it cannot cross", gs.player.x == 19)
+
+	# A pit behind you is not a shortcut the bear gets to choose for you.
+	gs.player.x = 8
+	gs.player.y = 4
+	bear.x = 7
+	bear.y = 4
+	gs.map.set_tile(9, 4, Tiles.PIT)
+	gs._attack(bear, gs.player)
+	check("nothing is ever shoved into a pit", gs.player.x == 8)
+	gs.map.set_tile(9, 4, Tiles.FLOOR)
+
+	# Diagonals travel on the diagonal, rather than being flattened to an axis.
+	gs.player.x = 8
+	gs.player.y = 4
+	bear.x = 7
+	bear.y = 3
+	gs._attack(bear, gs.player)
+	check("a shove travels along the diagonal it came from (%d,%d)"
+		% [gs.player.x, gs.player.y], gs.player.x == 10 and gs.player.y == 6)
+
+	# Somebody standing where you would land stops it, same as a wall.
+	gs.player.x = 8
+	gs.player.y = 4
+	bear.x = 7
+	bear.y = 3
+	var blocker := _spawn(gs, "giant rat", 9, 5)
+	gs._attack(bear, gs.player)
+	check("a creature in the way stops a shove",
+		gs.player.x == 8 and gs.player.y == 4)
+	blocker.x = 15
+	blocker.y = 6
+
+	# A monster is shoved by the same rule -- but the player has no knockback,
+	# so this only happens if something ever gives one out.
+	check("the player shoves nothing by default", gs.player.knockback == 0)
+
+	# Ranged attacks never shove, or every archer would be a bear.
+	gs.player.x = 8
+	gs.player.y = 4
+	bear.x = 4
+	bear.y = 4
+	gs._attack(bear, gs.player, true)
+	check("a ranged hit never shoves", gs.player.x == 8)
+
+	# It has to survive a suspend, or the save quietly disarms it.
+	var back := Entity.from_dict(bear.to_dict())
+	check("knockback survives a suspend", back.knockback == 2)
+
+## The giant is the bear's ascent counterpart: same verb, different problem. It
+## follows its own knockback, so the shove buys no distance.
+## An authored pit obeys the same rule the generator's own pits do.
+##
+## Built from a synthetic vault rather than one in assets/, deliberately: the
+## only shipped vault that ever had a pit had them swapped for water the day
+## this guard was written, so a test reading the real library would have passed
+## by finding nothing and gone on passing forever.
+func _test_authored_pits_obey_the_rule() -> void:
+	var text := "name: pit-probe\nweight: 100\nmin_depth: 1\nmax_depth: 19\n" \
+		+ "rotate: no\nterrain: fixed\nLAYOUT\n" \
+		+ "#####\n#X.X#\n#...#\n#X.X#\n##+##\n"
+	var probe := Vault.parse(text, "pit_probe")
+	check("the probe vault parses", probe != null)
+
+	# _vault_library is STATIC and lazily loaded, so swapping it in reaches
+	# every test that runs after this one. Put back in both directions below.
+	var real_library := GameState._vault_library
+	var down := 0
+	var up := 0
+	for i in 30:
+		for climbing in [false, true]:
+			var gs := GameState.new(88000 + i)
+			gs.new_game()
+			gs.ascending = climbing
+			# Effective 7 descending, effective 11 climbing: both fortress, so
+			# both ask for three or four vaults and the probe is sure to land.
+			gs.depth = 7 if not climbing else 9
+			GameState._vault_library = [probe] as Array[Vault]
+			gs.build_level()
+			var pits := 0
+			for vr in gs.vault_rects:
+				for y in range(vr.position.y, vr.end.y):
+					for x in range(vr.position.x, vr.end.x):
+						if gs.map.get_tile(x, y) == Tiles.PIT:
+							pits += 1
+			if climbing:
+				up += pits
+			else:
+				down += pits
+
+	GameState._vault_library = real_library
+	check("an authored pit is real on the way down (%d)" % down, down > 0)
+	check("and is solid ground on the way back up (%d)" % up, up == 0, "%d" % up)
+	check("the real vault library is put back",
+		GameState._vault_library.size() == real_library.size())
+
+func _test_cave_giant() -> void:
+	var gs := _arena(25, 11)
+	gs.player.x = 10
+	gs.player.y = 5
+	var giant := _spawn(gs, "cave giant", 9, 5)
+	check("a giant shoves further than a bear", giant.knockback == 3)
+	check("and it charges", giant.charges)
+
+	gs._attack(giant, gs.player)
+	check("a charge keeps it adjacent (%d,%d vs %d,%d)"
+		% [giant.x, giant.y, gs.player.x, gs.player.y],
+		maxi(absi(giant.x - gs.player.x), absi(giant.y - gs.player.y)) == 1)
+	check("the player is still moved across the map", gs.player.x == 13)
+
+	# Back to a wall: nothing was pushed, so nothing is followed. Without the
+	# cap the giant would walk into the player's own cell.
+	gs.player.x = 23
+	gs.player.y = 5
+	giant.x = 22
+	giant.y = 5
+	gs._attack(giant, gs.player)
+	check("a blocked shove is not followed", giant.x == 22 and gs.player.x == 23)
+
+	# The bear is the control: same verb, no charge, so it gets left behind.
+	var bear := _spawn(gs, "cave bear", 4, 5)
+	gs.player.x = 5
+	gs.player.y = 5
+	gs._attack(bear, gs.player)
+	check("a bear does NOT follow its own shove",
+		bear.x == 4 and gs.player.x == 7)
+
+	var back := Entity.from_dict(giant.to_dict())
+	check("charging survives a suspend", back.charges and back.knockback == 3)
+
+	# Ascent-only, like the lich.
+	var seen_down := 0
+	for i in 30:
+		var g2 := GameState.new(41000 + i)
+		g2.new_game()
+		for d in range(1, GameState.MAX_DEPTH + 1):
+			g2.depth = d
+			g2.build_level()
+			for e in g2.entities:
+				if e.name == "cave giant":
+					seen_down += 1
+	check("no giant on the way down", seen_down == 0, str(seen_down))
+
 func _test_banshee() -> void:
 	# The learning floors stay clean, and then it never ages out -- min_depth
 	# and no_fade are independent axes, which is the whole reason it can do
@@ -4016,8 +4259,20 @@ func _test_casters() -> void:
 	check("liches climb out with you (%d)" % seen_up, seen_up > 0, str(seen_up))
 	check("but never early on the climb", seen_early_up == 0, str(seen_early_up))
 
-	# The wizard is a descent monster, from depth 8.
+	# The wizard is a descent monster, from depth 8 -- OUT ON THE FLOOR.
+	#
+	# A vault's `M` marker is documented to draw "a guardian from two tiers
+	# deeper", so at depth 7 it reaches tier 9 and the wizard becomes legal
+	# inside an authored room. That is the entire point of the marker: a
+	# guardian is meant to be worse than its floor, and the room is optional
+	# content the player chooses to open.
+	#
+	# This check used to count every wizard anywhere and passed only because
+	# one vault in the library used `M`. Two more arrived and it started
+	# failing on something the game does on purpose -- so it was measuring
+	# library composition, not the difficulty curve it is named for.
 	var early := 0
+	var guarded := 0
 	for i in 30:
 		var gs := GameState.new(34000 + i)
 		gs.new_game()
@@ -4025,9 +4280,17 @@ func _test_casters() -> void:
 			gs.depth = d
 			gs.build_level()
 			for e in gs.entities:
-				if e.name == "wizard":
+				if e.name != "wizard":
+					continue
+				if vault_holds(gs, Vector2i(e.x, e.y)):
+					guarded += 1
+				else:
 					early += 1
-	check("no wizard above depth 8", early == 0, str(early))
+	check("no wizard above depth 8 out on the floor", early == 0, str(early))
+	# Not asserted as a minimum -- whether any vault rolls one is down to the
+	# library -- but counted, so the exception stays visible rather than
+	# becoming a hole nobody remembers widening.
+	print("        (%d early wizards, every one a vault guardian)" % guarded)
 
 ## How the casters actually fight: they refuse to be reached.
 func _test_caster_standoff_and_blink() -> void:

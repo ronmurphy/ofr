@@ -144,6 +144,22 @@ const POPUP_LIFE := 0.85
 ## different distances in the same fraction of a second, which read as the loud
 ## one being quicker rather than larger.
 const RING_PER_CELL := 0.045
+## How long a knockback chevron stays up. Deliberately the longest effect in
+## the game -- longer than a popup -- because it is the only one explaining
+## something the player did not do themselves. Brad asked for "a second or
+## two"; this is short of that because effects here overlap the next turn, and
+## it is the number to raise if the shove still reads as the screen jumping.
+const SHOVE_LIFE := 0.80
+
+## Capture-only: stops effects ageing so a screenshot tool can park one at a
+## chosen point in its life and photograph it.
+##
+## The same idea as `anim_time` for the shaders, and it exists for the same
+## reason: _shot waits four frames per image, which is easily longer than an
+## effect lives, so every attempt to photograph the knockback chevron caught
+## the frame after it had already been culled. Three rounds of hunting a
+## rendering bug that was not there.
+var hold_effects := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -225,7 +241,7 @@ func _process(delta: float) -> void:
 		_camera_visual = target
 
 	var animating := not _effects.is_empty() or _motion_running()
-	if animating:
+	if animating and not hold_effects:
 		for e in _effects:
 			e["t"] += delta
 		_effects = _effects.filter(func(e): return not _expired(e))
@@ -276,6 +292,21 @@ func play_events(evts: Array) -> void:
 					"life": maxf(0.12, float(reach) * RING_PER_CELL)})
 			continue
 
+		if e["kind"] == &"shove":
+			# You just moved two cells without pressing anything. Without a
+			# mark where you landed that reads as the screen glitching rather
+			# than as something having happened to you.
+			#
+			# A chevron rather than a ring, which is what this was first: a
+			# ring says something happened HERE, and the whole point of a
+			# shove is that it happened in a DIRECTION.
+			if Effects.any():
+				var was: Vector2i = e["from"]
+				_effects.append({"type": &"shove", "from": was, "to": to,
+					"dir": Vector2i(signi(to.x - was.x), signi(to.y - was.y)),
+					"t": 0.0, "life": SHOVE_LIFE})
+			continue
+
 		if e["kind"] == &"notice":
 			# The Metal Gear beat: a big "!" over the head of whatever just
 			# clocked you.
@@ -309,12 +340,21 @@ func play_events(evts: Array) -> void:
 	if not _effects.is_empty():
 		queue_redraw()
 
+## ADD EVERY NEW EFFECT TYPE HERE. The fallthrough is "expired", so an effect
+## this function has not been taught about is created correctly, culled on the
+## very first frame, and never draws once -- with nothing wrong in the effect
+## itself and nothing logged. The knockback chevron was invisible for exactly
+## this reason and took a screenshot to find.
+##
+## The fallthrough stays `true` on purpose: the other way round, a typo would
+## pin an effect on screen forever.
 func _expired(e: Dictionary) -> bool:
 	match e["type"]:
 		&"ring":  return e["t"] >= float(e.get("life", 0.42))
 		&"shot":  return e["t"] >= e["path"].size() * SHOT_PER_CELL
 		&"flash": return e["t"] >= FLASH_LIFE
 		&"popup": return e["t"] >= POPUP_LIFE
+		&"shove": return e["t"] >= float(e.get("life", SHOVE_LIFE))
 	return true
 
 func grid_size() -> Vector2:
@@ -799,6 +839,7 @@ func _draw_effects() -> void:
 			&"flash": _draw_flash(e, t)
 			&"popup": _draw_popup(e, t)
 			&"ring":  _draw_ring(e, t)
+			&"shove": _draw_shove(e, t)
 
 ## A sound, crossing the floor.
 ##
@@ -836,6 +877,48 @@ func _draw_ring(e: Dictionary, t: float) -> void:
 			if not map.in_bounds(c.x, c.y) or not map.is_visible(c.x, c.y):
 				continue
 			draw_rect(Rect2(_screen(c), cell), Color(Palette.NOISE, alpha), true)
+
+## The blow that moved you, drawn as a chevron pointing the way you went.
+##
+## Brad's idea, and better than the impact ring it replaces for one reason: a
+## ring says something happened HERE, and the whole point of knockback is that
+## it happened in a DIRECTION. The player did not press anything, so the effect
+## has to answer "why am I over there" rather than just "something occurred".
+##
+## Three blocks, on the grid, snapped to whole cells. A chevron drawn at
+## fractional positions would slide smoothly between cells and be the one
+## moving thing in the game that is not made of blocks.
+func _draw_shove(e: Dictionary, t: float) -> void:
+	var life: float = e.get("life", SHOVE_LIFE)
+	var k := clampf(t / life, 0.0, 1.0)
+	var from: Vector2i = e["from"]
+	var to: Vector2i = e["to"]
+	var dir: Vector2i = e["dir"]
+	if dir == Vector2i.ZERO:
+		return
+
+	# Travels over the first half, then holds and fades: the shove is a shove,
+	# not a fade-in. Snapped per cell so it steps rather than glides.
+	var span := maxi(absi(to.x - from.x), absi(to.y - from.y))
+	# Clamped to `span` so the point ARRIVES at the player and stops there.
+	# Unclamped it ran one cell past, which left the chevron sitting beyond you
+	# pointing at empty floor -- the force overtaking the thing it moved.
+	var step := int(round(clampf(k / 0.5, 0.0, 1.0) * float(span)))
+	var tip := from + dir * mini(step + 1, maxi(span, 1))
+	var alpha := 1.0 if k < 0.5 else 1.0 - (k - 0.5) / 0.5
+	alpha *= 0.75
+	if alpha <= 0.005:
+		return
+
+	# The arrowhead: the point, and two wings one cell back to either side.
+	var perp := Vector2i(-dir.y, dir.x)
+	var marks := [tip, tip - dir + perp, tip - dir - perp]
+	var map := state.map
+	var cell := Vector2(cell_size, cell_size)
+	for m: Vector2i in marks:
+		if not map.in_bounds(m.x, m.y) or not map.is_visible(m.x, m.y):
+			continue
+		draw_rect(Rect2(_screen(m), cell), Color(Palette.SHOVE, alpha), true)
 
 func _draw_shot(e: Dictionary, t: float) -> void:
 	var line: Array = e["path"]

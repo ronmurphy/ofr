@@ -25,13 +25,24 @@ const NAMES := {
 	UPPER: &"upper", CAVES: &"caves", FORTRESS: &"fortress", DEEP: &"deep",
 }
 
+## The descent floor an effective depth mirrors: 1-10 unchanged, and the climb
+## folded back onto it, so effective 15 answers 5.
+##
+## Anything keyed to WHAT A FLOOR IS rather than how far in you are wants this
+## rather than the raw number, or it will silently stop matching the moment the
+## player turns around. Vault depth ranges did exactly that: `suits()` folded
+## and the min/max either side of it did not, so the same `if` disagreed with
+## itself and the last six floors of the climb had no authored rooms at all.
+static func mirrored(effective: int) -> int:
+	if effective > GameState.MAX_DEPTH:
+		return GameState.MAX_DEPTH * 2 - effective
+	return effective
+
 ## The band an effective depth falls in.
 static func of(effective: int) -> int:
 	# Folded around the bottom, so the climb mirrors the descent without a
 	# second table to keep in step with the first.
-	var d := effective
-	if d > GameState.MAX_DEPTH:
-		d = GameState.MAX_DEPTH * 2 - d
+	var d := mirrored(effective)
 	if d <= 3:
 		return UPPER
 	if d <= 6:
