@@ -41,6 +41,33 @@ wall, so keep comments up top.
 | `min_depth` / `max_depth` | tier gating, same idea as monsters and items |
 | `rotate` | `yes` to allow 90° rotations and mirroring, `no` if it only reads correctly one way up |
 | `terrain` | `fixed` (default) or `random` -- see below |
+| `band` | restrict to one floor theme -- see below. Omit for "anywhere" |
+
+### band: which floors it belongs to
+
+The dungeon is themed in groups of three, and the climb out reuses the same
+groups corrupted rather than replaying the descent backwards:
+
+| band | floors going down | and climbing out |
+|---|---|---|
+| `upper` | 1-3 | 17-19 |
+| `caves` | 4-6 | 14-16 |
+| `fortress` | 7-9 | 11-13 |
+| `deep` | 10 | -- |
+
+Omit `band` and the vault can turn up anywhere its depth range allows, which is
+right for most of them. Set it when a room only makes sense in one kind of
+place -- a masonry guard post reads as a mistake in a cavern.
+
+**The fortress band leans on authored vaults**: it wants three or four a floor
+against the usual nought-to-two, because "built and complex" is its whole
+character and hand-drawn rooms are what built means. The cave band takes almost
+none for the same reason in reverse.
+
+This is declared here rather than inferred from the filename on purpose. A
+rename should never change what the dungeon does, and `encounter_room.txt` and
+`stock_rooms.txt` are general-purpose vaults whose names happen to contain
+"room" -- exactly what a filename rule gets wrong.
 
 ### terrain: fixed or random
 

@@ -261,10 +261,28 @@ func _place_graves() -> void:
 			here.append(rec)
 	if here.is_empty():
 		return
-	# Through the run's own rng, never Array.shuffle() -- a global-rng call in
-	# generation is what made every seeded level unreproducible once before.
+
+	# A SEPARATE rng, and this is not a nicety.
+	#
+	# Graves are drawn from the morgue, and the morgue GROWS -- every death a
+	# player has ever had is in it. Drawing their positions from the run's own
+	# rng made the number of draws depend on how many past deaths matched this
+	# depth, so the same seed generated a different dungeon once the player had
+	# died a few times. Seeded reproducibility is a promise this project makes
+	# and _test_generation_is_deterministic exists to keep.
+	#
+	# Caught by the vault-door test reporting 97 doors one run and 99 the next
+	# on identical seeds -- a flaky test that was telling the truth.
+	#
+	# Seeded from the run and the depth, so graves stay reproducible for a given
+	# save while touching nothing else on the floor.
+	var grave_rng := RandomNumberGenerator.new()
+	grave_rng.seed = int(rng.seed) ^ (depth * 2654435761)
+
+	# Never Array.shuffle() -- a global-rng call in generation is what made
+	# every seeded level unreproducible once before.
 	for i in range(here.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
+		var j := grave_rng.randi_range(0, i)
 		var tmp: Variant = here[i]
 		here[i] = here[j]
 		here[j] = tmp
@@ -274,8 +292,8 @@ func _place_graves() -> void:
 	for _try in 200:
 		if placed >= wanted:
 			return
-		var x := rng.randi_range(1, map.width - 2)
-		var y := rng.randi_range(1, map.height - 2)
+		var x := grave_rng.randi_range(1, map.width - 2)
+		var y := grave_rng.randi_range(1, map.height - 2)
 		var cell := Vector2i(x, y)
 		# Same rule loot obeys: real standing ground, never a pit or a trap,
 		# and never on top of the stairs or the way out.

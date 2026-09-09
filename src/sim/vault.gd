@@ -25,9 +25,24 @@ var name := "vault"
 var weight := 8
 var min_depth := 1
 var max_depth := 99
+## Which floor themes this vault belongs to. Empty means anywhere.
+##
+## Declared in the header rather than inferred from the filename: a rename
+## should never change what the dungeon does, and a vault that says what it is
+## for at the top can be read without knowing a convention. `encounter_room`
+## and `stock_rooms` are general-purpose vaults whose names happen to contain
+## "room", which is exactly the sort of thing a filename rule gets wrong.
+var band := &""
+
 var may_rotate := true
 var fixed_terrain := true
 var rows: Array[String] = []
+
+## Is this vault welcome on a floor of the given band?
+func suits(band_id: int) -> bool:
+	if band == &"":
+		return true
+	return band == Bands.NAMES[band_id]
 
 func size() -> Vector2i:
 	var w := 0
@@ -80,6 +95,7 @@ func _set_meta(key: String, value: String) -> void:
 		"weight": weight = maxi(0, value.to_int())
 		"min_depth": min_depth = value.to_int()
 		"max_depth": max_depth = value.to_int()
+		"band": band = StringName(value.strip_edges().to_lower())
 		"rotate": may_rotate = value.to_lower() != "no"
 		"terrain": fixed_terrain = value.to_lower() != "random"
 

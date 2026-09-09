@@ -354,6 +354,24 @@ func _run() -> void:
 	_use(gs)
 	_scene._refresh()
 
+	# The same explored floor remembered three ways: ordinary, cave, corrupted
+	# cave. Walked first so there is something to remember.
+	for spec in [[2, false, "97_memory_upper"], [5, false, "97_memory_caves"],
+			[5, true, "97_memory_corrupt"]]:
+		var mm := GameState.new(2718)
+		mm.new_game()
+		mm.ascending = bool(spec[1])
+		mm.depth = int(spec[0])
+		mm.build_level()
+		mm.player.max_hp = 9999
+		mm.player.hp = 9999
+		_use(mm)
+		_walk_to_stairs(mm)
+		_scene._refresh()
+		await _shot("%s.png" % spec[2])
+	_use(gs)
+	_scene._refresh()
+
 	# A cave floor, walked, so the band can be looked at rather than measured.
 	var cv := GameState.new(3141)
 	cv.new_game()

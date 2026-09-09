@@ -606,9 +606,16 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		var lit: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
 		fg = (fg * tint * lit).clamp()
 		bg = (bg * tint * lit).clamp()
-	elif tile == Tiles.STAIRS_DOWN:
+	elif tile == Tiles.STAIRS_DOWN or tile == Tiles.STAIRS_UP:
 		# Exempt from memory dimming, and breathing gently so the eye finds it
 		# on a large map.
+		#
+		# STAIRS_UP was missing from this and it mattered: climbing out, the
+		# staircase you are actually walking towards is the one thing on the
+		# map that had no exemption. It matters more now that the corrupted
+		# caves hide memory entirely -- the way out is the only thing you are
+		# allowed to keep remembering, which is both survivable and the right
+		# image.
 		# Still, but not dim: frozen at the top of its breath rather than the
 		# middle, so the stairs stay as findable as they are meant to be.
 		var pulse := 1.0
@@ -629,6 +636,19 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		var memory_tint := _material_tint(map.material_at(x, y), memory_material_boost)
 		fg = _tint_keeping_luma(_remembered(fg), memory_tint)
 		bg = _tint_keeping_luma(_remembered(bg), memory_tint)
+		# How much of the floor you get to keep.
+		#
+		# Caves are darker to remember than built ground; the corrupted ones
+		# are not remembered at all. That is the band's whole character in one
+		# multiplier -- you cannot map a place that will not stay in your head,
+		# so the climb through them is walked blind rather than read off a map
+		# you built on the way down.
+		var recall := _memory_strength()
+		if recall <= 0.0:
+			return
+		if recall < 1.0:
+			fg = Color(fg.r * recall, fg.g * recall, fg.b * recall, 1.0)
+			bg = Color(bg.r * recall, bg.g * recall, bg.b * recall, 1.0)
 
 	var origin := _screen(Vector2i(x, y))
 	var cell := Vector2(cell_size, cell_size)
@@ -1012,6 +1032,23 @@ func apply_effects_mode() -> void:
 	queue_redraw()
 
 const ANIM_SHADER := "res://src/render/shaders/block_anim.gdshader"
+
+## How brightly remembered ground is drawn on this floor.
+##
+## One outside the cave band, dimmer inside it, and nothing at all on the
+## corrupted climb. Staircases are exempt from all of it -- they are handled
+## before this is reached -- so however dark the floor becomes, the way on and
+## the way out still show.
+func _memory_strength() -> float:
+	if state == null:
+		return 1.0
+	var eff := state.effective_depth()
+	if not Bands.is_caves(eff):
+		return 1.0
+	return 0.0 if Bands.is_corrupted(eff) else CAVE_MEMORY
+
+## Remembered cave ground, as a fraction of ordinary remembered ground.
+const CAVE_MEMORY := 0.45
 
 func _hash01(x: int, y: int) -> float:
 	var h := (x * 73856093) ^ (y * 19349663)

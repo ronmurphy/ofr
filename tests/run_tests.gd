@@ -107,6 +107,9 @@ func _initialize() -> void:
 	_test_ember_heat_reads_the_clock()
 	_test_cave_band()
 	_test_cave_dwellers()
+	_test_memory_by_band()
+	_test_generation_ignores_the_morgue()
+	_test_launcher_reach()
 	_test_shrine_voices()
 	_test_noise_is_drawn()
 	_test_dead_fires_are_dead()
@@ -1818,12 +1821,20 @@ func _test_vaults_are_placed_intact() -> void:
 					loot += 1
 	# No door should open onto solid rock: either it leads somewhere or it has
 	# been sealed back into wall.
+	#
+	# Swept across the bands in both directions rather than sampled at one
+	# depth. This loop used to sit on depth 4 alone, which was a fair sample
+	# until the bands landed and made depth 4 a CAVE floor -- caves take 0 or 1
+	# vault by design, so the check quietly went from inspecting 117 doors to
+	# 41 while still reporting green. A test pinned to a constant the world has
+	# since moved out from under is not measuring what its name claims.
 	var blind := 0
 	var doors := 0
 	for i in 60:
 		var gs := GameState.new(66000 + i)
 		gs.new_game()
-		gs.depth = 4
+		# Upper, caves, fortress and deep, descending and climbing back out.
+		gs.depth = [2, 5, 8, 10, 12, 15][i % 6]
 		gs.build_level()
 		for vr in gs.vault_rects:
 			for y in range(vr.position.y, vr.end.y):
@@ -3411,6 +3422,117 @@ func _test_cave_band() -> void:
 		cave_rooms < plain_rooms)
 	check("and more fungus to see by (%d vs %d)" % [cave_fungus, plain_fungus],
 		cave_fungus > plain_fungus)
+
+## The three launchers are three different jobs, and reach is what separates
+## them.
+func _test_launcher_reach() -> void:
+	var sling := Item.make(&"sling")
+	var short_bow := Item.make(&"short_bow")
+	var war_bow := Item.make(&"war_bow")
+	check("a sling is the shortest-armed (%d)" % sling.range_bonus,
+		sling.range_bonus < short_bow.range_bonus, str(sling.range_bonus))
+	check("and a war bow the longest (%d)" % war_bow.range_bonus,
+		war_bow.range_bonus > short_bow.range_bonus)
+	# The gap has to be worth noticing, or a sling simply replaces a bow --
+	# which is what play reported before this was widened.
+	check("the gap to a bow is at least three cells (%d)"
+		% (short_bow.range_bonus - sling.range_bonus),
+		short_bow.range_bonus - sling.range_bonus >= 3,
+		str(short_bow.range_bonus - sling.range_bonus))
+	# Damage is NOT the lever here and must not quietly become one: a sling is
+	# already the weakest launcher and most of its shot is the player's arm.
+	check("a sling is still the weakest launcher",
+		sling.power_bonus < short_bow.power_bonus
+		and short_bow.power_bonus < war_bow.power_bonus)
+	# Free ammunition is the sling's whole reason to exist.
+	check("but it carries the most ammunition",
+		sling.ammo_max > war_bow.ammo_max, str(sling.ammo_max))
+
+## Generation must not depend on the morgue.
+##
+## Gravestones are read from the death log, and the death log GROWS -- so
+## drawing their positions from the run's own rng made the number of draws
+## depend on how many past deaths matched the floor. The same seed then built a
+## different dungeon once a player had died a few times, which breaks the
+## promise _test_generation_is_deterministic exists to keep.
+##
+## It surfaced as a flaky test rather than a bug report: the vault-door check
+## reported 97 doors one run and 99 the next on identical seeds. A test that
+## disagrees with itself is usually telling the truth about something.
+func _test_generation_ignores_the_morgue() -> void:
+	GameState.clear_scratch_files()
+	var before := _floor_fingerprint()
+
+	for i in 12:
+		var d := GameState.new(1)
+		d.new_game()
+		d.depth = 1 + (i % 6)
+		d.player.level = 3
+		d.death_cause = "killed by a kobold"
+		d.write_morgue()
+
+	var after := _floor_fingerprint()
+	check("a floor generates the same however many are buried in it",
+		before == after, "%s vs %s" % [before, after])
+
+	# And graves themselves still appear -- the fix must not have simply
+	# stopped them being placed.
+	var gs := GameState.new(4242)
+	gs.new_game()
+	gs.depth = 1
+	gs.build_level()
+	check("graves are still buried (%d)" % gs.grave_at.size(),
+		not gs.grave_at.is_empty(), str(gs.grave_at.size()))
+
+## A cheap summary of what a set of seeded floors produced.
+func _floor_fingerprint() -> String:
+	var walls := 0
+	var doors := 0
+	var mobs := 0
+	for i in 8:
+		var gs := GameState.new(66000 + i)
+		gs.new_game()
+		gs.depth = 4
+		gs.build_level()
+		mobs += gs.entities.size()
+		for y in GameState.MAP_H:
+			for x in GameState.MAP_W:
+				var t := gs.map.get_tile(x, y)
+				if t == Tiles.WALL:
+					walls += 1
+				elif t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+					doors += 1
+	return "w=%d d=%d m=%d" % [walls, doors, mobs]
+
+## How much of a floor you get to keep in your head.
+func _test_memory_by_band() -> void:
+	var grid := GlyphGrid.new()
+	var gs := GameState.new(9)
+	gs.new_game()
+	grid.state = gs
+
+	gs.depth = 2
+	check("ordinary floors are remembered whole",
+		is_equal_approx(grid._memory_strength(), 1.0),
+		str(grid._memory_strength()))
+	gs.depth = 5
+	check("caves are remembered dimly (%.2f)" % grid._memory_strength(),
+		grid._memory_strength() > 0.0 and grid._memory_strength() < 1.0)
+	gs.ascending = true
+	check("and the corrupted ones not at all",
+		is_zero_approx(grid._memory_strength()), str(grid._memory_strength()))
+	gs.depth = 2
+	check("but only in that band -- the climb out is remembered again",
+		is_equal_approx(grid._memory_strength(), 1.0),
+		str(grid._memory_strength()))
+	grid.free()
+
+	# Whatever the floor forgets, it does not forget the way on or the way out.
+	# STAIRS_UP had no exemption until this band needed one, which meant the
+	# staircase you climb TOWARDS was the one thing on the map that dimmed.
+	var src := FileAccess.get_file_as_string("res://src/render/glyph_grid.gd")
+	check("both staircases are exempt from memory dimming",
+		src.contains("tile == Tiles.STAIRS_DOWN or tile == Tiles.STAIRS_UP"))
 
 ## Caves hold what dens in caves, and the same field does both ends of the band.
 func _test_cave_dwellers() -> void:

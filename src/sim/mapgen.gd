@@ -181,10 +181,12 @@ func _carve_v(map: DungeonMap, y1: int, y2: int, x: int, force: bool = false) ->
 func _reserve_vaults(map: DungeonMap) -> void:
 	if library.is_empty():
 		return
+	var here := Bands.of(depth)
 	var eligible: Array[Vault] = []
 	var total := 0
 	for v in library:
-		if v.min_depth <= depth and v.max_depth >= depth and v.weight > 0:
+		if v.min_depth <= depth and v.max_depth >= depth and v.weight > 0 \
+				and v.suits(here):
 			eligible.append(v)
 			total += v.weight
 	if eligible.is_empty():
@@ -192,8 +194,16 @@ func _reserve_vaults(map: DungeonMap) -> void:
 
 	# Roughly three floors in ten have none. A vault that turns up every single
 	# level is furniture; one that does not is a find.
+	#
+	# The fortress band is the exception: built, complex ground is its whole
+	# character, and authored rooms are what "built" means here. Caves get none
+	# at all -- a hand-drawn masonry room in a cavern reads as a mistake.
 	var roll := rng.randf()
 	var wanted := 0 if roll < 0.30 else (1 if roll < 0.84 else 2)
+	if here == Bands.FORTRESS:
+		wanted = rng.randi_range(3, 4)
+	elif here == Bands.CAVES:
+		wanted = 0 if rng.randf() < 0.75 else 1
 	for _i in wanted:
 		var pick := _weighted_vault(eligible, total)
 		if pick == null:

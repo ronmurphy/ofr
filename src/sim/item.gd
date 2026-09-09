@@ -124,8 +124,22 @@ const CATALOGUE := {
 		"slot": Slot.WEAPON, "power": 7, "throw": 2, "min_depth": 4, "weight": 3,
 	},
 	&"sling": {
+		# Four, not five. Reported from play as "I can take out enemies before
+		# they reach me" -- and the fix is reach rather than damage, because
+		# damage has nowhere left to go.
+		#
+		# Measured: total_power() ADDS the launcher to your own, so weapons
+		# converge as you level. A sling is half a war bow's shot at level one
+		# and 78% of it by level nineteen, and by then the sling itself is 6%
+		# of what it fires -- the rest is your arm. Dropping power below 1 would
+		# change nothing anybody could feel.
+		#
+		# Reach is what makes a ranged weapon a KITING tool rather than a
+		# backup, so that is the honest lever: four against a short bow's seven
+		# and a war bow's eight. The sling stays the thing you use when
+		# something is nearly on you and you have free stones from the rubble.
 		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 1, "range": 5, "min_depth": 1, "weight": 5,
+		"slot": Slot.WEAPON, "power": 1, "range": 4, "min_depth": 1, "weight": 5,
 		"ammo_max": 30, "ammo_kind": &"stone",
 	},
 	&"short_bow": {
