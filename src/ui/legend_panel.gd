@@ -214,9 +214,34 @@ func _terrain_column(x: float, y: float, w: float) -> void:
 		y = _entry(x, y, w, glyph, tint, label, NOTES.get(tile, ""))
 
 func _creature_column(x: float, y: float, w: float) -> void:
-	y = _heading(x, y, "CREATURES")
+	# Counted by walking the SAME list the rows below are drawn from, not by
+	# asking the record how much it holds.
+	#
+	# The record can hold things this panel has no row for: the killer rabbit
+	# is a transformation rather than a bestiary entry, so a player who had met
+	# one and everything else would have read "21/20". A denominator and a
+	# numerator that come from different places will disagree eventually.
+	var known := 0
+	for e in GameState.BESTIARY:
+		if BestiaryLog.knows(e["app"]):
+			known += 1
+	y = _heading(x, y, "CREATURES  %d/%d" % [known, GameState.BESTIARY.size()])
 	y = _entry(x, y, w, "@", Palette.PLAYER, "you", "")
 	for e in GameState.BESTIARY:
+		# Not met yet: a redacted row rather than no row.
+		#
+		# Hiding them entirely would make the panel shrink and grow as you
+		# played, and would hide the one genuinely useful fact -- that there is
+		# more down there than you have seen. A dash keeps the roster's SHAPE
+		# visible while saying nothing about what fills it.
+		#
+		# Listing them outright is what this panel used to do, and it meant a
+		# player on floor two could read that there is an arch lich on the
+		# climb out. A reference that answers questions you have not asked yet
+		# is a spoiler wearing a helpful face.
+		if not BestiaryLog.knows(e["app"]):
+			y = _entry(x, y, w, "-", Palette.UI_DIM, "not yet met", "")
+			continue
 		var art := _look(e["app"])
 		# `min_depth` is the tier the fade weights it at, which for an
 		# ascent-only thing is NOT where you meet it -- the arch lich sits at

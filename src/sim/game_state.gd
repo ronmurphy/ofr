@@ -41,9 +41,15 @@ static var MORGUE_PATH := "user://morgue.txt"
 static func use_scratch_files(tag: String) -> void:
 	SUSPEND_PATH = "user://scratch_%s_suspend.save" % tag
 	MORGUE_PATH = "user://scratch_%s_morgue.txt" % tag
+	# The bestiary is a player-owned record too, and update_vision() writes to
+	# it on sight -- so EVERY headless run that builds a level would otherwise
+	# append to the real one. Redirected here rather than at each call site,
+	# because the call sites are every test and every tool.
+	BestiaryLog.use_path("user://scratch_%s_bestiary.txt" % tag)
 
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
+	BestiaryLog.clear_scratch()
 	for path in [SUSPEND_PATH, MORGUE_PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
@@ -205,6 +211,27 @@ const HP_WARN_FRACTION := 0.30
 ## a target and flatten the swinginess that makes the game tense; this only
 ## clips the disasters -- the room that rolls three orcs against a 30 hp
 ## character with no answer. Density is untouched.
+## What the climb does to the things that live near the top.
+##
+## The ascent has always drawn from the SAME faded pool as the descent, so it
+## got harder by ceiling rather than by cast -- more of the same things, not
+## different ones. These re-admit the creatures the tier fade has retired,
+## worse than they were, so the way out has a population of its own without
+## twenty new entries in the bestiary.
+##
+## They are TRASH on purpose. Doubling a rat gives something worth about four
+## threat, which buys bodies, noise and blocked corridors -- not a second boss.
+## Scaling them to the floor's tier instead would deliver roughly a hundred
+## threat of real danger on top of the room ceiling and end the survivability
+## guarantee outright.
+const CORRUPT_SCALE := 2.0
+## Nothing already worth more than this is worth corrupting. The skeleton sits
+## at 8 and is a mid-tier creature; doubled it becomes a peer, which is the one
+## thing this must not produce.
+const CORRUPT_MAX_BASE := 5
+## Floor under a corrupted thing's cost, so the pool cannot fill with rats.
+const CORRUPT_MIN_COST := 3
+
 const ROOM_THREAT_BASE := 10
 const ROOM_THREAT_PER_DEPTH := 2
 ## Caverns are open ground, so a lone character cannot use a doorway to turn
@@ -729,6 +756,7 @@ func build_level() -> void:
 	for region in gen.caves:
 		_populate_cave(region)
 	_place_vault_contents(gen)
+	_place_corrupted()
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
@@ -893,6 +921,98 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 		if cost < 0:
 			break
 		spent += cost
+
+## The climb's own population, bought from its own budget.
+##
+## A SEPARATE pool, worth the effective depth in threat points, spent after the
+## room ceiling has already been spent. Additive rather than competing: the
+## descent's behaviour is untouched, and the extra danger on the climb is a
+## number you can state -- ceiling + depth, so 42 + 16 at effective 16, about
+## 38% more than the floor would otherwise carry.
+##
+## Growing with depth rather than being a flat bonus is what makes the climb
+## ramp. Eleven points near the bottom buys two things; nineteen near the top
+## buys four or five.
+func _place_corrupted() -> void:
+	if not ascending:
+		return
+	var pool := effective_depth()
+	var open_cells := _corrupt_sites()
+	if open_cells.is_empty():
+		return
+	# Spend until nothing affordable is left. The last few points buying one
+	# more cheap body is the point of a floor cost rather than a percentage.
+	for _guard in 40:
+		if pool < CORRUPT_MIN_COST or open_cells.is_empty():
+			return
+		var entry := _roll_corruptible(pool)
+		if entry.is_empty():
+			return
+		var at: Vector2i = open_cells.pop_back()
+		if entity_at(at.x, at.y) != null:
+			continue
+		var m := monster_from(entry, at.x, at.y)
+		_corrupt(m)
+		entities.append(m)
+		pool -= m.threat
+
+## Makes a creature worse, and charges for it honestly.
+##
+## The threat rises with the stats, which is what keeps the pool arithmetic
+## true: a corrupted thing costs what it is worth, so "nineteen points" means
+## nineteen points of danger rather than nineteen points of accounting.
+func _corrupt(m: Entity) -> void:
+	m.corrupted = true
+	m.max_hp = int(round(float(m.max_hp) * CORRUPT_SCALE))
+	m.hp = m.max_hp
+	m.power = int(round(float(m.power) * CORRUPT_SCALE))
+	m.defense = int(round(float(m.defense) * CORRUPT_SCALE))
+	m.threat = maxi(CORRUPT_MIN_COST, int(round(float(m.threat) * CORRUPT_SCALE)))
+	m.name = "corrupted %s" % m.name
+
+## Something cheap enough to afford, drawn WITHOUT the tier fade.
+##
+## The fade is the whole reason this function exists. Low-tier creatures are
+## never excluded from a floor by cost -- a rat is two threat and always
+## affordable -- they are excluded because `weight` decays to zero about six
+## depths past their `min_depth`. Corruption is a way to re-admit exactly those
+## entries, so applying the fade here would rule out everything it can choose
+## from. `_roll_monster` is left alone and keeps fading the main population.
+func _roll_corruptible(budget: int) -> Dictionary:
+	var pool := []
+	for e in BESTIARY:
+		if int(e["min_depth"]) > 3 or int(e["threat"]) > CORRUPT_MAX_BASE:
+			continue
+		# Events rather than populations -- the banshee caps itself per floor
+		# and has no business arriving in fours.
+		if e.has("max_per_floor") or e.has("ascent_from"):
+			continue
+		var cost := maxi(CORRUPT_MIN_COST,
+			int(round(float(e["threat"]) * CORRUPT_SCALE)))
+		if cost > budget:
+			continue
+		pool.append(e)
+	if pool.is_empty():
+		return {}
+	return pool[rng.randi_range(0, pool.size() - 1)]
+
+## Standing ground away from the player, shuffled, for corrupted arrivals.
+func _corrupt_sites() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for room in room_rects:
+		for y in range(room.position.y, room.end.y):
+			for x in range(room.position.x, room.end.x):
+				if not _can_rest_on(x, y) or Vector2i(x, y) == stairs:
+					continue
+				if Los.steps(x, y, player.x, player.y) < 8:
+					continue
+				out.append(Vector2i(x, y))
+	for i in range(out.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t := out[i]
+		out[i] = out[j]
+		out[j] = t
+	return out
 
 func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
@@ -1330,6 +1450,24 @@ func update_vision() -> void:
 	var sources := [player.light]
 	sources.append_array(static_lights)
 	light_map.compute(map, sources)
+	_note_sightings()
+
+## Anything the player can currently SEE goes in the record of what they have
+## met, for good and across runs.
+##
+## Sight rather than combat, because recognising a thing is what the legend is
+## for -- you learn what a wight looks like by seeing one, not by killing it,
+## and a creature that killed you from out of the dark taught you nothing you
+## could look up afterwards.
+##
+## Sleeping counts. It is on the floor, you are looking at it, and whether it
+## has noticed you is a different question the awareness marks already answer.
+func _note_sightings() -> void:
+	for e in entities:
+		if e.is_player or not e.alive:
+			continue
+		if map.is_visible(e.x, e.y):
+			BestiaryLog.note(e.appearance)
 
 ## Drains the presentation queue. Called by the renderer once per refresh.
 func take_events() -> Array:

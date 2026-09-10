@@ -1,0 +1,26 @@
+Fonts shipped with OFR, and what covers them.
+
+JetBrainsMono-Regular.ttf
+JetBrainsMono-Bold.ttf
+    JetBrains Mono, by the JetBrains Mono Project Authors.
+    SIL Open Font License 1.1 -- see JetBrainsMono-OFL.txt
+
+ofr_icons.ttf
+    A subset of JetBrains Mono Nerd Font, built by tools/build_icon_font.py.
+    It carries only the glyphs this game actually draws -- about 0.9% of the
+    source file -- and those glyphs come from three separate icon projects:
+
+    Material Design Icons, by Pictogrammers.        (26 glyphs)
+        Apache License 2.0 -- see LICENSE-2.0.txt
+
+    Font Awesome Free, by Fonticons, Inc.            (3 glyphs)
+        CC BY 4.0 -- see CC-legalcode.txt
+
+    Codicons, by Microsoft.                          (1 glyph)
+        CC BY 4.0 -- see CC-legalcode.txt
+
+    The typeface those icons are patched into is JetBrains Mono, above.
+
+CC BY 4.0 asks for attribution rather than only for the licence text to travel
+with the work, which is why Font Awesome and Microsoft are named here and not
+merely pointed at a file.

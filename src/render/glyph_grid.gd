@@ -549,7 +549,13 @@ func _draw() -> void:
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
 			_draw_wound(e)
-			_draw_glyph(e.appearance, _visual_cell(e))
+			# The glyph still says WHICH creature; the colour only says that
+			# the climb has been at it. One override rather than a second set
+			# of theme entries, because there is nothing per-creature to say.
+			if e.corrupted:
+				_draw_glyph_tinted(e.appearance, _visual_cell(e), Palette.CORRUPTED)
+			else:
+				_draw_glyph(e.appearance, _visual_cell(e))
 	if state.player.alive:
 		_draw_glyph(state.player.appearance, _visual_cell(state.player))
 
@@ -1142,8 +1148,15 @@ func _remembered(c: Color) -> Color:
 	return Color(m.r * Palette.MEMORY_DIM, m.g * Palette.MEMORY_DIM, m.b * Palette.MEMORY_DIM, 1.0)
 
 func _draw_glyph(id: StringName, cell: Vector2) -> void:
+	_draw_glyph_tinted(id, cell, Color(0, 0, 0, 0))
+
+## The same draw, with an optional colour that replaces the theme's own.
+##
+## Alpha zero means "use the theme", so the ordinary path is unchanged and
+## there is one drawing routine rather than two that can drift apart.
+func _draw_glyph_tinted(id: StringName, cell: Vector2, tint: Color) -> void:
 	var app := render_theme.appearance(id)
-	var fg: Color = app["fg"]
+	var fg: Color = tint if tint.a > 0.0 else app["fg"]
 	# Lighting is sampled at the logical cell, not the fractional one -- a
 	# glyph mid-stride should not flicker between two rooms' light levels.
 	var x := int(round(cell.x))

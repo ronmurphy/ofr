@@ -85,6 +85,11 @@ var knockback := 0
 ## Follows its own knockback into the ground it just cleared, so the shove buys
 ## the target no distance at all. Meaningless without `knockback`.
 var charges := false
+## A low-tier creature the climb has made worse. Cosmetically a colour, but the
+## flag is what the renderer and the bestiary key on -- and what stops a
+## corrupted thing being mistaken for its own base entry in a save.
+var corrupted := false
+
 ## Came up out of a grave wearing a dead run's gear. Its kit is the player's
 ## own, so it hands ALL of it back rather than rolling per item -- see
 ## GameState._drop_loot.
@@ -196,7 +201,7 @@ func to_dict() -> Dictionary:
 		"attack_range": attack_range, "standoff": standoff,
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
-		"charges": charges, "risen": risen,
+		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
@@ -249,6 +254,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.knockback = int(d.get("knockback", 0))
 	e.charges = d.get("charges", false)
 	e.risen = d.get("risen", false)
+	e.corrupted = d.get("corrupted", false)
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

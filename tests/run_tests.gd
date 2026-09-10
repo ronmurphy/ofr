@@ -117,6 +117,7 @@ func _initialize() -> void:
 	_test_rabbit()
 	_test_banshee()
 	_test_graves_raise_the_dead()
+	_test_bestiary_is_earned()
 	_test_cave_bear()
 	_test_cave_giant()
 	_test_authored_pits_obey_the_rule()
@@ -4194,6 +4195,71 @@ func _test_graves_raise_the_dead() -> void:
 	resumed.apply_dict(mid.to_dict())
 	check("an unfinished fight remembers its stone",
 		resumed.risen_grave == Vector2i(8, 6))
+
+## The legend shows what you have MET, and nothing else.
+func _test_bestiary_is_earned() -> void:
+	# Against a scratch file, never the player's own record. Restored below.
+	BestiaryLog.use_path("user://scratch_bestiary_test.txt")
+	BestiaryLog.clear_scratch()
+
+	check("a fresh record knows nothing", BestiaryLog.count() == 0)
+	check("and admits it", not BestiaryLog.knows(&"dragon"))
+
+	check("a first sighting is news", BestiaryLog.note(&"goblin"))
+	check("and a second is not", not BestiaryLog.note(&"goblin"))
+	check("but it is remembered", BestiaryLog.knows(&"goblin"))
+	check("without inventing neighbours", not BestiaryLog.knows(&"orc"))
+	check("the player is never an entry", not BestiaryLog.note(&"player"))
+
+	# It survives the process, which is the whole point of all-time.
+	BestiaryLog.note(&"bear")
+	BestiaryLog._loaded = false
+	BestiaryLog._seen = {}
+	check("it survives being forgotten and reloaded (%d)" % BestiaryLog.count(),
+		BestiaryLog.knows(&"goblin") and BestiaryLog.knows(&"bear"))
+
+	# Seeing one on a real floor records it, through update_vision.
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	var seen_before := BestiaryLog.knows(&"skeleton")
+	check("the skeleton is a stranger to begin with", not seen_before)
+	_spawn(gs, "skeleton", 7, 4)
+	gs.update_vision()
+	check("looking at one is enough to learn it", BestiaryLog.knows(&"skeleton"))
+
+	# And something out of sight teaches nothing.
+	var hidden := _arena(21, 9)
+	hidden.player.x = 2
+	hidden.player.y = 2
+	_spawn(hidden, "cave giant", 19, 7)
+	# _arena hands back a fully lit map, which is convenient for every other
+	# test and exactly wrong for this one.
+	hidden.map.clear_visible()
+	hidden._note_sightings()
+	check("something you never saw is still a stranger",
+		not BestiaryLog.knows(&"giant"))
+
+	# The record can hold appearances the legend has no row for -- the killer
+	# rabbit is a transformation, not a bestiary entry -- so counting the
+	# record instead of the listed creatures reads "21/20".
+	var listed := 0
+	for entry in GameState.BESTIARY:
+		if BestiaryLog.knows(entry["app"]):
+			listed += 1
+	BestiaryLog.note(&"killer_rabbit")
+	var still := 0
+	for entry in GameState.BESTIARY:
+		if BestiaryLog.knows(entry["app"]):
+			still += 1
+	check("a creature with no row does not inflate the tally (%d then %d)"
+		% [listed, still], still == listed)
+	check("though it is still remembered", BestiaryLog.knows(&"killer_rabbit"))
+
+	BestiaryLog.clear_scratch()
+	BestiaryLog.use_path("user://scratch_tests_bestiary.txt")
+	check("the suite's own record path is back",
+		BestiaryLog._path.contains("scratch_tests_"))
 
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)

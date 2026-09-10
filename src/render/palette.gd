@@ -106,6 +106,17 @@ const SHOT          := Color("ffd9a0")
 ## crossing the floor -- this is a blow landing on you, and the two must never
 ## be mistaken for one another at a glance.
 const SHOVE         := Color("ff9a5c")
+## What the climb has done to something. One colour for every corrupted
+## creature, because it says ONE thing -- "this is worse than it looks" -- and
+## the glyph is still carrying which creature it is.
+##
+## A vivid violet, not the muted purples the ogre, shadow and bat already wear.
+## Measured against every creature a corruption can be applied to, under normal
+## vision and all three dichromacies: 39.1 deltaE at worst, against the bat.
+## Every green candidate failed badly -- greens collapse into the yellow-browns
+## the kobold and slinger live in under deuteranopia -- as did magenta, cyan
+## and orange. See tools/check_palette.py.
+const CORRUPTED     := Color("c33cff")
 const HIT_FLASH     := Color("ff9d6b")
 
 const CURSOR        := Color("7fd4ff")
