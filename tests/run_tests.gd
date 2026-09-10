@@ -116,6 +116,7 @@ func _initialize() -> void:
 	_test_effects_modes()
 	_test_rabbit()
 	_test_banshee()
+	_test_graves_raise_the_dead()
 	_test_cave_bear()
 	_test_cave_giant()
 	_test_authored_pits_obey_the_rule()
@@ -3556,6 +3557,28 @@ func _test_generation_ignores_the_morgue() -> void:
 	check("graves are still buried (%d)" % gs.grave_at.size(),
 		not gs.grave_at.is_empty(), str(gs.grave_at.size()))
 
+	# And they come with something to step on, or the rising can never be
+	# triggered: bones carry seven cells and waiting for the terrain pass to
+	# drop some beside a grave by luck is waiting a long time.
+	var with_bones := 0
+	var graves := 0
+	for i in 40:
+		var g := GameState.new(7100 + i)
+		g.new_game()
+		g.depth = 1
+		g.build_level()
+		for cell: Vector2i in g.grave_at:
+			graves += 1
+			var near := 0
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					if g.map.get_tile(cell.x + dx, cell.y + dy) == Tiles.BONES:
+						near += 1
+			if near > 0:
+				with_bones += 1
+	check("a headstone comes with bone litter (%d of %d)" % [with_bones, graves],
+		graves > 0 and with_bones == graves, "%d of %d" % [with_bones, graves])
+
 ## A cheap summary of what a set of seeded floors produced.
 func _floor_fingerprint() -> String:
 	var walls := 0
@@ -3929,6 +3952,249 @@ func _test_rabbit() -> void:
 ## The bear moves you, which nothing else does. Every edge here is a way that
 ## could go wrong quietly: a shove that works but leaves the view stale, or one
 ## that helpfully drops you down a pit.
+## The dead come back wearing what you lost.
+func _test_graves_raise_the_dead() -> void:
+	# --- the morgue keeps the gear, and every older line still parses -------
+	var old_line := "2026-09-03 23:09:49  level 1  killed by a kobold on depth 1, empty-handed, after 228 turns"
+	var mid_line := old_line + "; 62 slain, most often cave bat"
+	var new_line := mid_line + "; bearing short bow +1, chain mail +2"
+	var bare_gear := old_line + "; bearing war axe"
+
+	var a := Morgue.parse(old_line)
+	var b := Morgue.parse(mid_line)
+	var c := Morgue.parse(new_line)
+	var d := Morgue.parse(bare_gear)
+	check("a death from before the run recorder still parses", int(a.get("level", 0)) == 1)
+	check("and carries no gear", not a.has("gear"))
+	check("a death from before gear was logged still parses",
+		int(b.get("slain", 0)) == 62 and not b.has("gear"))
+	check("the nemesis does not swallow the gear clause",
+		String(b.get("nemesis", "")) == "cave bat"
+			and String(c.get("nemesis", "")) == "cave bat")
+	check("gear is read back off the line (%s)" % str(c.get("gear", [])),
+		c.get("gear", []).size() == 2)
+	check("gear parses without a run record", d.get("gear", []).size() == 1)
+
+	# --- and turns back into real items ------------------------------------
+	var bow := Item.from_display_name("short bow +1")
+	check("a display name rebuilds its item", bow != null and bow.id == &"short_bow")
+	check("with its upgrades on it", bow != null and bow.upgrade_level() == 1)
+	var plain := Item.from_display_name("short bow")
+	check("an unenchanted name rebuilds too",
+		plain != null and plain.upgrade_level() == 0)
+	check("and something the catalogue never heard of is nothing",
+		Item.from_display_name("sword of nonsense +3") == null)
+
+	# --- a stone with gear answers bones ------------------------------------
+	var armed := {"level": 7, "cause": "killed by an orc", "depth": 7,
+		"turns": 900, "gear": ["short bow +1", "chain mail +2"]}
+	var poor := {"level": 2, "cause": "killed by a rat", "depth": 7, "turns": 90}
+
+	var rose := 0
+	var twice := 0
+	for i in 60:
+		var gs := _arena(25, 13)
+		gs.rng = RandomNumberGenerator.new()
+		gs.rng.seed = 4000 + i
+		gs.player.x = 6
+		gs.player.y = 6
+		gs.map.set_tile(8, 6, Tiles.GRAVE)
+		gs.grave_at[Vector2i(8, 6)] = armed
+		gs._make_noise(Vector2i(6, 6), 7)
+		var up := 0
+		for e in gs.entities:
+			if e.risen:
+				up += 1
+		if up > 0:
+			rose += 1
+			# A second crunch must never produce a second one.
+			gs._make_noise(Vector2i(6, 6), 7)
+			var after := 0
+			for e in gs.entities:
+				if e.risen:
+					after += 1
+			if after > up:
+				twice += 1
+	check("bones wake an armed grave sometimes (%d of 60)" % rose,
+		rose > 5 and rose < 55, "%d" % rose)
+	check("but never twice on one floor", twice == 0, "%d" % twice)
+
+	# --- a stone with nothing on it stays shut ------------------------------
+	var quiet := 0
+	for i in 60:
+		var gs := _arena(25, 13)
+		gs.rng = RandomNumberGenerator.new()
+		gs.rng.seed = 7000 + i
+		gs.player.x = 6
+		gs.player.y = 6
+		gs.map.set_tile(8, 6, Tiles.GRAVE)
+		gs.grave_at[Vector2i(8, 6)] = poor
+		gs._make_noise(Vector2i(6, 6), 7)
+		for e in gs.entities:
+			if e.risen:
+				quiet += 1
+	check("a grave with nothing in it never rises", quiet == 0, "%d" % quiet)
+
+	# --- and only these two noises do it ------------------------------------
+	var wrong := 0
+	for i in 60:
+		for cause in [&"combat", &"forge", &"clamour"]:
+			var gs := _arena(25, 13)
+			gs.rng = RandomNumberGenerator.new()
+			gs.rng.seed = 9000 + i
+			gs.player.x = 6
+			gs.player.y = 6
+			gs.map.set_tile(8, 6, Tiles.GRAVE)
+			gs.grave_at[Vector2i(8, 6)] = armed
+			gs._make_noise(Vector2i(6, 6), 7, cause)
+			for e in gs.entities:
+				if e.risen:
+					wrong += 1
+	check("swinging a sword does not wake the dead", wrong == 0, "%d" % wrong)
+
+	# --- a wail does, though -----------------------------------------------
+	var wailed := 0
+	for i in 60:
+		var gs := _arena(25, 13)
+		gs.rng = RandomNumberGenerator.new()
+		gs.rng.seed = 11000 + i
+		gs.player.x = 6
+		gs.player.y = 6
+		gs.map.set_tile(8, 6, Tiles.GRAVE)
+		gs.grave_at[Vector2i(8, 6)] = armed
+		gs._make_noise(Vector2i(10, 6), 7, &"wail")
+		for e in gs.entities:
+			if e.risen:
+				wailed += 1
+	check("a banshee wakes them too (%d of 60)" % wailed, wailed > 5)
+
+	# --- it is wearing the gear, and hands all of it back -------------------
+	var gs2 := _arena(25, 13)
+	gs2.player.x = 6
+	gs2.player.y = 6
+	gs2.map.set_tile(8, 6, Tiles.GRAVE)
+	gs2.grave_at[Vector2i(8, 6)] = armed
+	gs2._raise_from(Vector2i(8, 6))
+	var dead: Entity = null
+	for e in gs2.entities:
+		if e.risen:
+			dead = e
+	check("the risen dead is armed", dead != null and dead.equipped.size() == 2)
+	check("and costs more than a bare skeleton (%d)" % (dead.threat if dead else 0),
+		dead != null and dead.threat > 12)
+	check("the stone STAYS while its occupant is up",
+		gs2.map.get_tile(8, 6) == Tiles.GRAVE
+			and gs2.grave_at.has(Vector2i(8, 6)))
+	check("and it is still readable mid-fight",
+		Morgue.epitaph(gs2.grave_at[Vector2i(8, 6)]).size() > 0)
+	check("and a floor only gives up one", gs2.grave_risen)
+	check("the floor remembers which stone woke",
+		gs2.risen_grave == Vector2i(8, 6))
+
+	gs2.ground = []
+	dead.hp = 0
+	dead.alive = false
+	gs2._drop_loot(dead)
+	check("it hands back everything it carried (%d items)" % gs2.ground.size(),
+		gs2.ground.size() == 2, "%d" % gs2.ground.size())
+
+	# Put down, and the stone settles -- but the morgue line is untouched.
+	gs2._settle_the_grave()
+	check("the stone goes once the fight is won",
+		gs2.map.get_tile(8, 6) != Tiles.GRAVE
+			and not gs2.grave_at.has(Vector2i(8, 6)))
+	check("and the floor stops pointing at it",
+		gs2.risen_grave == Vector2i(-1, -1))
+
+	# --- and the flag survives a suspend ------------------------------------
+	var back := GameState.new(1)
+	back.new_game()
+	back.apply_dict(gs2.to_dict())
+	check("one-per-floor survives a suspend", back.grave_risen)
+
+	# --- reclaiming crosses it off for good, without losing the line --------
+	#
+	# Against a SCRATCH morgue, never the player's own. This test writes to the
+	# file, which is the one file in the game that cannot be regenerated.
+	# Switched, then switched BACK below: use_scratch_files sets statics, so
+	# leaving them pointed here would send every later test's morgue writes to
+	# this file. Same shape as the static vault library above.
+	GameState.use_scratch_files("reclaim_test")
+	GameState.clear_scratch_files()
+	var written := "2026-09-09 20:00:00  level 7  killed by an orc on depth 7, empty-handed, after 900 turns; bearing short bow +1"
+	var keep := "2026-09-09 20:01:00  level 3  killed by a bat on depth 3, empty-handed, after 120 turns"
+	var mf := FileAccess.open(GameState.MORGUE_PATH, FileAccess.WRITE)
+	mf.store_line(written)
+	mf.store_line(keep)
+	mf.close()
+
+	var before := Morgue.records(GameState.MORGUE_PATH)
+	check("the scratch morgue holds both deaths", before.size() == 2)
+	check("and one of them is armed", before[0].has("gear"))
+	check("which has not been answered for yet", not before[0].has("reclaimed"))
+
+	check("marking one succeeds",
+		Morgue.mark_reclaimed(GameState.MORGUE_PATH, written))
+	var after := Morgue.records(GameState.MORGUE_PATH)
+	check("nothing was deleted (%d rows)" % after.size(), after.size() == 2)
+	check("the answered death is marked", after[0].get("reclaimed", false))
+	check("and still remembers what it carried", after[0].has("gear"))
+	check("the other death is untouched", not after[1].has("reclaimed"))
+	check("marking twice is harmless",
+		Morgue.mark_reclaimed(GameState.MORGUE_PATH, after[0]["line"])
+			and Morgue.records(GameState.MORGUE_PATH).size() == 2)
+	check("a line the morgue never held is refused",
+		not Morgue.mark_reclaimed(GameState.MORGUE_PATH, "not in this file"))
+	check("the stone says it has been answered for",
+		"already answered for" in Morgue.epitaph(after[0]))
+
+	# Each piece on its own line, short enough for the look panel not to cut
+	# it. The panel is roughly 24 characters wide at the shipped font size, and
+	# "buried with dagger, lea.." is what comma-joining produced in play.
+	var stone := Morgue.epitaph({"level": 7, "cause": "killed by an orc",
+		"depth": 7, "turns": 900,
+		"gear": ["war bow +2", "plate mail +1", "tower shield"]})
+	check("the header names no items", "buried with" in stone)
+	check("and each piece gets its own line",
+		"  war bow +2" in stone and "  plate mail +1" in stone
+			and "  tower shield" in stone)
+	var longest := 0
+	for line: String in stone:
+		longest = maxi(longest, line.length())
+	check("no epitaph line runs long (%d chars)" % longest, longest <= 26,
+		"%d" % longest)
+
+	# And a marked record never rises again, however loud you are.
+	var settled := 0
+	for i in 40:
+		var gs3 := _arena(25, 13)
+		gs3.rng = RandomNumberGenerator.new()
+		gs3.rng.seed = 13000 + i
+		gs3.player.x = 6
+		gs3.player.y = 6
+		gs3.map.set_tile(8, 6, Tiles.GRAVE)
+		gs3.grave_at[Vector2i(8, 6)] = after[0]
+		gs3._make_noise(Vector2i(6, 6), 7)
+		for e in gs3.entities:
+			if e.risen:
+				settled += 1
+	check("an answered grave never rises again", settled == 0, "%d" % settled)
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("tests")
+	check("the suite's own scratch paths are back",
+		GameState.MORGUE_PATH.contains("scratch_tests_"))
+
+	# A fight interrupted by a suspend has to come back still owed.
+	var mid := _arena(25, 13)
+	mid.map.set_tile(8, 6, Tiles.GRAVE)
+	mid.grave_at[Vector2i(8, 6)] = armed
+	mid._raise_from(Vector2i(8, 6))
+	var resumed := GameState.new(1)
+	resumed.new_game()
+	resumed.apply_dict(mid.to_dict())
+	check("an unfinished fight remembers its stone",
+		resumed.risen_grave == Vector2i(8, 6))
+
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)
 	gs.player.x = 8
@@ -4965,6 +5231,32 @@ func _test_icon_theme() -> void:
 			missing.append("%s U+%X" % [id, int(GlyphTheme.OVERRIDES[id])])
 	check("every override names a real appearance id", unknown.is_empty(), str(unknown))
 	check("every icon exists in the font we ship", missing.is_empty(), str(missing))
+
+	# The look panel draws one icon of its own, and it draws it with the TEXT
+	# face rather than the map's. That face has no icon range by itself, so the
+	# skull renders as nothing unless the fallback chain is wired -- the same
+	# failure as the invisible shrine and brazier glyphs, which were also real
+	# codepoints drawn with a font that did not carry them.
+	var panel := Sidebar.ui_font()
+	check("the look panel's font carries its skull",
+		panel != null and panel.has_char(Sidebar.SKULL),
+		"U+%X" % Sidebar.SKULL)
+	# And it still draws ordinary words, which is the whole point of the order.
+	check("and still has its letters",
+		panel != null and panel.has_char("k".unicode_at(0)))
+
+	# "killed by a kobold slinger" is 26 characters against a panel about 24
+	# wide, and arrived truncated in play as "killed by a kobold slin..".
+	var bar := Sidebar.new()
+	check("the skull replaces the words",
+		bar._skullify("killed by a kobold slinger") == char(Sidebar.SKULL) + " kobold slinger")
+	check("and handles an, too",
+		bar._skullify("killed by an orc") == char(Sidebar.SKULL) + " orc")
+	check("a fall is left as written",
+		bar._skullify("broken by a fall") == "broken by a fall")
+	check("and so is walking out",
+		bar._skullify("left the dungeon on depth 4") == "left the dungeon on depth 4")
+	bar.free()
 	check("ascii survived the subset", font.has_char(65) and font.has_char(64))
 	check("and so did the symbol mode's characters",
 		font.has_char("≈".unicode_at(0)) and font.has_char("⌂".unicode_at(0)))

@@ -27,6 +27,11 @@ OUT = ROOT / "assets" / "fonts" / "ofr_icons.ttf"
 ASCII_THEME = ROOT / "src" / "render" / "ascii_theme.gd"
 GLYPH_THEME = ROOT / "src" / "render" / "glyph_theme.gd"
 SYMBOL_THEME = ROOT / "src" / "render" / "symbol_theme.gd"
+## Not a theme, but it names a codepoint: the look panel draws md-skull for
+## "killed by". Scanned for the same reason the themes are -- so the subset is
+## derived from what the game actually asks for, and adding an icon anywhere
+## never means remembering to edit a list over here as well.
+SIDEBAR = ROOT / "src" / "ui" / "sidebar.gd"
 
 ## Everything printable, so the map, the legend and every panel can render text
 ## through the same face if they ever need to.
@@ -81,6 +86,7 @@ def main():
     wanted |= chars_in(ASCII_THEME)
     wanted |= chars_in(SYMBOL_THEME)
     wanted |= codepoints_in(GLYPH_THEME)
+    wanted |= codepoints_in(SIDEBAR)
 
     # Alternates: a handful of spares per role, so changing one's mind about a
     # picture costs a line in GlyphTheme rather than a font rebuild. Kept

@@ -231,6 +231,38 @@ static func make(item_id: StringName) -> Item:
 ## How many times this item has been merged.
 ## One expression for both: equipment carries its level in the stat bonuses it
 ## has gained, a consumable in `boosts`, and the other term is always zero.
+## Rebuilds an item from what `display_name()` produced -- "short bow +1" back
+## into a short bow with one upgrade on it.
+##
+## Exists for the morgue, which is a HUMAN-READABLE log by deliberate design:
+## a line you can `cat` cannot carry item ids, so a grave that raises the dead
+## has to get its gear back out of prose. Matching on the catalogue's own names
+## rather than a second table means a renamed item can never silently stop
+## being recoverable -- it just stops matching, and an unarmed skeleton is a
+## far better failure than a wrong one.
+##
+## Returns null for anything the catalogue does not know, including gear from a
+## future version of the game a player has since rolled back.
+static func from_display_name(text: String) -> Item:
+	var trimmed := text.strip_edges()
+	if trimmed == "":
+		return null
+	var ups := 0
+	var plus := trimmed.rfind(" +")
+	if plus > 0:
+		var tail := trimmed.substr(plus + 2)
+		if tail.is_valid_int():
+			ups = tail.to_int()
+			trimmed = trimmed.substr(0, plus)
+	for item_id in CATALOGUE:
+		if String(CATALOGUE[item_id]["name"]) != trimmed:
+			continue
+		var it := make(item_id)
+		for _i in clampi(ups, 0, MAX_UPGRADES):
+			it.upgrade()
+		return it
+	return null
+
 func upgrade_level() -> int:
 	return (power_bonus - base_power_bonus) \
 		+ (defense_bonus - base_defense_bonus) + boosts

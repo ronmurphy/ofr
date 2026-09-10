@@ -248,6 +248,14 @@ func _morgue() -> Array:
 ## on depth 1 should meet a reminder, not a cemetery. The floor still draws
 ## from all of them, so which graves appear varies by run.
 const MAX_GRAVES := 2
+## How often a grave that hears bones or a wail actually gives something up.
+##
+## A CHANCE, not a certainty, and that is the whole mechanic. Brad's rule, from
+## running tables: players go cautious the moment they see gravestones, and
+## they stay cautious because sometimes nothing happens. A stone that always
+## rose would be arithmetic -- clear them first, or route around bones -- and
+## the dread would be gone inside one run.
+const GRAVE_RISE_CHANCE := 0.45
 
 ## Bury the runs that ended on this floor.
 ##
@@ -303,7 +311,66 @@ func _place_graves() -> void:
 			continue
 		map.set_tile(x, y, Tiles.GRAVE)
 		grave_at[cell] = here[placed]
+		_scatter_bones_around(cell, grave_rng)
 		placed += 1
+
+## Bone litter around a headstone.
+##
+## Brad's call, and it is what makes the whole mechanic reachable: bones carry
+## exactly seven cells, so a boneyard in the next room down a corridor is out
+## of range, and waiting for the terrain pass to drop bones beside a grave by
+## luck is waiting a long time.
+##
+## Scattered around EVERY grave, armed or not. Putting them only beside stones
+## that can rise would make the pairing a reliable warning, and a reliable
+## warning is a signpost rather than dread -- the same reason a poor grave is
+## allowed to sit in bones and simply never answer.
+##
+## Drawn from the GRAVE rng, never the generation one. Graves come from the
+## morgue and the morgue grows, so spending generation randomness here is
+## exactly the bug that made a seed stop reproducing its dungeon once a player
+## had died a few times.
+func _scatter_bones_around(cell: Vector2i, grave_rng: RandomNumberGenerator) -> void:
+	var wanted := grave_rng.randi_range(2, 4)
+	var dropped := 0
+	# The ring first, then one out, so the litter reads as spreading from the
+	# stone rather than as a patch that happens to contain one.
+	for step in [1, 2]:
+		for dy in range(-step, step + 1):
+			for dx in range(-step, step + 1):
+				if dropped >= wanted:
+					return
+				if maxi(absi(dx), absi(dy)) != step:
+					continue
+				var n := cell + Vector2i(dx, dy)
+				if not map.in_bounds(n.x, n.y) or n == stairs:
+					continue
+				# Plain ground only. Authored terrain, water, doors and hazards
+				# all mean something already, and bones would be a lie over
+				# any of them.
+				var t := map.get_tile(n.x, n.y)
+				if t != Tiles.FLOOR and t != Tiles.CAVE_FLOOR:
+					continue
+				if grave_rng.randf() < 0.45:
+					map.set_tile(n.x, n.y, Tiles.BONES)
+					dropped += 1
+
+## The stone whose occupant is currently up and about, or (-1,-1).
+##
+## Kept so the headstone can stay put while the fight is on and go when the
+## fight is won. The stone vanishing at the MOMENT of rising was the first
+## version, and it left nothing to look at afterwards and no way to tell which
+## of the two had woken -- the interesting information disappeared exactly when
+## it became interesting.
+var risen_grave := Vector2i(-1, -1)
+
+## One rising per floor, ever -- not one at a time.
+##
+## "One at a time" only slows the obvious exploit: make noise, kill it, make
+## noise again, and walk off with two dead runs' equipment. Once per visit
+## means "which of the two stones woke?" is a question you get to ask once, and
+## there is nothing to farm.
+var grave_risen := false
 
 ## Cell -> hit points left in that brazier.
 var brazier_charge: Dictionary = {}
@@ -648,6 +715,8 @@ func build_level() -> void:
 	brazier_charge.clear()
 	ember_until.clear()
 	grave_at.clear()
+	grave_risen = false
+	risen_grave = Vector2i(-1, -1)
 	_last_grave = Vector2i(-1, -1)
 	for y in map.height:
 		for x in map.width:
@@ -919,6 +988,30 @@ func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
 	return spent
 
 ## Whatever a corpse leaves behind.
+## The stone goes quiet for good once the thing under it has been put down.
+##
+## Crosses the death off in the morgue as well, so it can never be fought for a
+## second copy of the same gear in a later run. The line is MARKED, never
+## removed -- see Morgue.mark_reclaimed, which adds a clause and rewrites via a
+## temp file rather than editing the one unregenerable file in the game.
+func _settle_the_grave() -> void:
+	if risen_grave.x < 0:
+		return
+	# Crossed off before the record goes, and across runs -- the save is
+	# per-run, so marking it there would let the same dead character be beaten
+	# again next time for another copy of the same gear.
+	var rec: Dictionary = grave_at.get(risen_grave, {})
+	if rec.has("line"):
+		Morgue.mark_reclaimed(MORGUE_PATH, String(rec["line"]))
+	if map.get_tile(risen_grave.x, risen_grave.y) == Tiles.GRAVE:
+		map.set_tile(risen_grave.x, risen_grave.y, Tiles.FLOOR)
+	grave_at.erase(risen_grave)
+	if risen_grave == _last_grave:
+		_last_grave = Vector2i(-1, -1)
+	risen_grave = Vector2i(-1, -1)
+	msg_log.add("The headstone crumbles. Whatever was owed here is paid.",
+		Color(0.70, 0.72, 0.78))
+
 func _drop_loot(victim: Entity) -> void:
 	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit":
 		_drop_meat(victim)
@@ -933,7 +1026,14 @@ func _drop_loot(victim: Entity) -> void:
 			return
 	for slot in victim.equipped:
 		var it: Item = victim.equipped[slot]
-		if rng.randf() > LOOT_DROP_CHANCE:
+		# A risen grave hands back ALL of it. Everything else rolls per item.
+		#
+		# This gear is the player's own, lost on this floor in an earlier run,
+		# and the whole point of the fight is reclaiming it. A per-item roll
+		# would turn "beat your own corpse and get your bow back" into "beat
+		# your own corpse and maybe get nothing", which is a worse offer than
+		# not having the mechanic.
+		if not victim.risen and rng.randf() > LOOT_DROP_CHANCE:
 			continue
 		it.x = at.x
 		it.y = at.y
@@ -1632,6 +1732,92 @@ func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void
 	if roused > 0:
 		msg_log.add("The noise carries. %d things turn towards it." % roused,
 			Color(0.95, 0.70, 0.40))
+
+	# Bones and a wail, and nothing else.
+	#
+	# Those two are already distinct causes with no extra plumbing: the banshee
+	# passes &"wail", and `Tiles.noise_radius` answers 7 for BONES and 0 for
+	# every other tile -- and this function returns early at 0 -- so every
+	# &"step" noise in the game IS a bone crunch. Combat and the forge are loud
+	# too, and deliberately do not do this: the rule has to be a rule a player
+	# can hold in their head.
+	if cause == &"step" or cause == &"wail":
+		_wake_a_grave(at, radius)
+
+## Something under a headstone hears the noise and answers it.
+##
+## Only stones that were buried with gear ever rise, which is also the entire
+## safeguard: an empty grave has nothing worth fighting for, so it stays quiet.
+## Done HERE, on the outcome, rather than by keeping bones and banshees away
+## from poor graves during generation -- partly because a banshee walks through
+## stone and cannot be kept out of anywhere, but mostly because a reliable
+## warning is not dread. If bones only ever appeared beside armed stones, the
+## pairing would become a signpost. Sometimes nothing happens is the mechanic.
+func _wake_a_grave(at: Vector2i, radius: int) -> void:
+	if grave_risen:
+		return
+	var heard: Array[Vector2i] = []
+	for cell in grave_at:
+		# Chebyshev, the same metric the noise itself uses to decide who woke.
+		if Los.steps(cell.x, cell.y, at.x, at.y) > radius:
+			continue
+		var rec: Dictionary = grave_at[cell]
+		if not rec.has("gear"):
+			continue
+		# Answered for already, in some earlier run. The stone still stands and
+		# still reads -- it just has nothing left to owe.
+		if rec.get("reclaimed", false):
+			continue
+		heard.append(cell)
+	if heard.is_empty():
+		return
+	if rng.randf() >= GRAVE_RISE_CHANCE:
+		return
+	# Which one is the gamble. Two stones in a room means two possible fights
+	# and no way to choose between them.
+	var from_cell: Vector2i = heard[rng.randi_range(0, heard.size() - 1)]
+	_raise_from(from_cell)
+
+func _raise_from(cell: Vector2i) -> void:
+	var rec: Dictionary = grave_at[cell]
+	var spot := cell if entity_at(cell.x, cell.y) == null else _nearest_restable(cell)
+	if spot.x < 0:
+		return
+	var entry := {}
+	for e in BESTIARY:
+		if e["name"] == "skeleton":
+			entry = e
+	if entry.is_empty():
+		return
+
+	var risen := monster_from(entry, spot.x, spot.y)
+	risen.risen = true
+	risen.alertness = Entity.Alert.AWAKE
+	risen.name = "risen dead"
+	# Wearing what the run died in, and charged for it.
+	#
+	# The threat ceiling is a survivability promise, and gear is exactly why
+	# `_arm_monster` already adds equipment cost to threat -- a room of armed
+	# orcs that costs what a room of bare ones costs makes the promise a lie.
+	# The same has to be true when the equipment came out of a grave, even
+	# though nothing here is rolling against a budget: the number has to mean
+	# something later, when this thing is counted.
+	for text in rec.get("gear", []):
+		var it := Item.from_display_name(String(text))
+		if it == null:
+			continue
+		risen.equipped[it.slot] = it
+		risen.inventory.append(it)
+		risen.threat += it.power_bonus + it.defense_bonus
+	entities.append(risen)
+	grave_risen = true
+	# The stone STAYS while its occupant is up. It is the only thing on the
+	# floor that says what you are fighting and why, and it is still readable
+	# from across the room mid-fight.
+	risen_grave = cell
+	events.append({"kind": &"noise", "to": spot, "radius": 4, "cause": &"rise"})
+	msg_log.add("The stone shifts. Something you buried stands up.",
+		Color(0.85, 0.90, 0.95))
 
 ## Announces a change of footing, once, when it changes.
 func _note_footing() -> void:
@@ -2491,6 +2677,8 @@ func to_dict() -> Dictionary:
 		"stairs": [stairs.x, stairs.y],
 		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
+		"grave_risen": grave_risen,
+		"risen_grave": [risen_grave.x, risen_grave.y],
 		"hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
 		"flare": torch_flare,
@@ -2551,6 +2739,10 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
+	grave_risen = d.get("grave_risen", false)
+	var rg: Array = d.get("risen_grave", [-1, -1])
+	risen_grave = Vector2i(int(rg[0]), int(rg[1])) if rg.size() == 2 \
+		else Vector2i(-1, -1)
 	grave_at.clear()
 	var saved_graves: Dictionary = d.get("graves", {})
 	for key in saved_graves:
@@ -2652,6 +2844,24 @@ func morgue_line() -> String:
 		line += "; %d slain" % slain
 		if nemesis != "":
 			line += ", most often %s" % nemesis
+
+	# What they were wearing when it happened.
+	#
+	# Appended as one more optional clause, the same way the run record was:
+	# every line already in a player's morgue still parses, and a death from
+	# before this existed simply raises an unarmed skeleton. The older ghosts
+	# being the poorer ones is a better outcome than a migration.
+	#
+	# Display names rather than ids, because a morgue is something you can
+	# `cat` and "short bow +1" is the point. Item.from_display_name reads them
+	# back off the catalogue.
+	var worn: Array[String] = []
+	for slot in [Item.Slot.WEAPON, Item.Slot.ARMOR, Item.Slot.OFFHAND]:
+		var it: Variant = player.equipped.get(slot, null)
+		if it != null:
+			worn.append(it.display_name())
+	if not worn.is_empty():
+		line += "; bearing %s" % ", ".join(worn)
 	return line
 
 ## JSON has no integers -- every number comes back a double, including the ones
@@ -3330,6 +3540,8 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			events.append({"kind": &"kill",
 				"to": Vector2i(defender.x, defender.y)})
 			_drop_loot(defender)
+			if defender.risen:
+				_settle_the_grave()
 			if attacker.is_player:
 				award_xp(defender.threat)
 				_tally_in("kills", defender.name)

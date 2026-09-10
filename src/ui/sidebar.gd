@@ -61,7 +61,7 @@ static func essential_keys() -> Array:
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if font == null:
-		font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+		font = ui_font()
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
@@ -254,6 +254,42 @@ func _key_row(y: float, key: String, action: String) -> void:
 	draw_string(font, Vector2(PAD, y), action,
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, Palette.UI_DIM)
 
+## md-skull_crossbones. Stands in for the words "killed by a", which are eleven
+## characters of boilerplate on a panel about twenty-four wide -- enough that
+## "killed by a kobold slinger" arrived as "killed by a kobold slin..".
+##
+## The FA skull is the obvious pick and is NOT in JetBrains Mono Nerd Font, so
+## this is the Material Design one, which is also the family every other icon
+## in the game comes from.
+const SKULL := 0xF068C
+
+## The panel font, with the icon font behind it.
+##
+## Text first and icons as the FALLBACK -- the opposite order to
+## GlyphGrid.map_font(), which is icons first because the map is mostly icons.
+## Here almost everything is words and one thing is a picture.
+##
+## Without this the skull renders as nothing at all: the sidebar loaded plain
+## JetBrainsMono, which has no icon range. That is the same failure as the
+## invisible shrine and brazier glyphs, which were also a real codepoint drawn
+## with a font that did not carry it.
+static func ui_font() -> Font:
+	var text: FontFile = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	text.fallbacks = [load("res://assets/fonts/ofr_icons.ttf")]
+	return text
+
+## Swaps the words for the picture, in the RENDER layer where glyphs belong.
+##
+## Morgue.epitaph() is simulation code and deliberately knows nothing about
+## fonts or codepoints -- it answers in words, and what those words look like
+## is this side's problem. Only the "killed by" causes are touched; a fall or a
+## walk back into daylight reads fine as written.
+func _skullify(line: String) -> String:
+	for prefix in ["killed by a ", "killed by an ", "killed by "]:
+		if line.begins_with(prefix):
+			return char(SKULL) + " " + line.substr(prefix.length())
+	return line
+
 ## Same defence for the look panel, where a long item name would otherwise run
 ## through the frame.
 func _fit(text: String) -> String:
@@ -293,7 +329,7 @@ func _describe() -> Array:
 		# The whole reason the morgue is worth reading back: the cursor is
 		# already how you interrogate anything else on the floor.
 		for line in Morgue.epitaph(state.grave_at[hovered]):
-			out.append(line)
+			out.append(_skullify(String(line)))
 	elif tile == Tiles.SHRINE:
 		# Named only once its colour has been learned the hard way.
 		out.append(state.shrine_label(int(state.shrine_at.get(hovered, 0))))
