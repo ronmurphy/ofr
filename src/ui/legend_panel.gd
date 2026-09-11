@@ -21,7 +21,9 @@ var state: GameState
 const PAD := 24.0
 const LINE := 21.0
 const GLYPH_X := 4.0
-const NAME_X := 30.0
+## Leaves room for a second glyph beside the first -- see _entry's `second`,
+## which is where a corrupted variant is shown.
+const NAME_X := 44.0
 
 ## Drawn procedurally on the map rather than lettered, so the legend needs a
 ## stand-in for them.
@@ -131,8 +133,17 @@ func _heading(x: float, y: float, text: String) -> float:
 
 ## One row: glyph, name, and an optional dim note on the right.
 func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
-		name: String, note: String = "") -> float:
+		name: String, note: String = "", second: String = "") -> float:
 	var base := y + font.get_ascent(font_size)
+	# A creature the climb has got hold of, shown BESIDE its ordinary self
+	# rather than as a row of its own. One row per creature keeps the roster
+	# the same length and keeps the count honest -- corruption is a second
+	# thing to learn about a creature, not a second creature.
+	if second != "":
+		var ss := GlyphTheme.draw_size(second, font_size)
+		var sf := icon_font if GlyphTheme.is_icon(second) else font
+		draw_string(sf, Vector2(x + GLYPH_X + 13.0, base + (font_size - ss) * 0.35),
+			second, HORIZONTAL_ALIGNMENT_LEFT, -1, ss, Palette.CORRUPTED)
 	# Icons are drawn larger here for the same reason they are on the map, and
 	# it matters more here: this panel is where they are learned.
 	var gs := GlyphTheme.draw_size(glyph, font_size)
@@ -243,6 +254,8 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			y = _entry(x, y, w, "-", Palette.UI_DIM, "not yet met", "")
 			continue
 		var art := _look(e["app"])
+		# The same glyph again in violet, once you have met one.
+		var twisted: String = art["ch"] if BestiaryLog.knows_corrupted(e["app"]) else ""
 		# `min_depth` is the tier the fade weights it at, which for an
 		# ascent-only thing is NOT where you meet it -- the arch lich sits at
 		# the dragon's tier and is gated separately. Printing "depth 10+" for
@@ -262,7 +275,7 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			# the thing worth learning by meeting one, and the log says it
 			# plainly the first time it happens.
 			note = "wails  " + note
-		y = _entry(x, y, w, art["ch"], art["fg"], e["name"], note)
+		y = _entry(x, y, w, art["ch"], art["fg"], e["name"], note, twisted)
 
 	y += LINE * 0.6
 	y = _heading(x, y, "BEHAVIOUR MARKS")

@@ -95,7 +95,34 @@ def main():
     wanted |= set(keep_spares)
 
     from fontTools.ttLib import TTFont
-    have = set(TTFont(SOURCE).getBestCmap())
+    src_cmap = TTFont(SOURCE).getBestCmap()
+    have = set(src_cmap)
+
+    # Does each codepoint's comment say what that codepoint actually IS?
+    #
+    # The check below only proves a codepoint exists in the source font, which
+    # is true of any number typed by mistake. `&"bear": 0xF0A72,  # md-paw`
+    # passed every test for a day and drew md-solar_power, because the real
+    # md-paw is 0xF03E9. A comment asserting what a hex number means is a claim
+    # nothing was verifying -- so verify it.
+    wrong = []
+    for path in (GLYPH_THEME, SIDEBAR):
+        if not path.exists():
+            continue
+        for m in re.finditer(r"(0x[0-9A-Fa-f]{4,5})\s*,?\s*#\s*([a-z]+-[a-z0-9_]+)",
+                             path.read_text()):
+            cp = int(m.group(1), 16)
+            claimed = m.group(2)
+            actual = src_cmap.get(cp)
+            if actual != claimed:
+                wrong.append("   %s in %s says %s, is actually %s"
+                             % (m.group(1), path.name, claimed, actual or "absent"))
+    if wrong:
+        print("CODEPOINT COMMENTS THAT LIE:")
+        for w in wrong:
+            print(w)
+        return 1
+
     missing = sorted(c for c in wanted if c not in have)
     if missing:
         print("NOT IN THE SOURCE FONT -- these would render as nothing:")

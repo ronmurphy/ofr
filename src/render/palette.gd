@@ -66,6 +66,12 @@ const LAUNCHER      := Color("c8b28a")
 const AIM_OK        := Color("8fe0a8")
 const AIM_BLOCKED   := Color("e07a6a")
 const ARMOUR        := Color("a89a7c")
+## Elemental stones. Pale and cold and near-white: they are the only item that
+## is raw material rather than equipment, and nothing else on the floor is this
+## bright. The element is carried by the name, never by the colour -- six
+## coloured stones would put colour in charge of identity across six items and
+## hand check_palette.py real work for no gain.
+const STONE_ITEM    := Color("dfe4ea")
 
 ## Material tints, applied to terrain base colours -- deliberately NOT to the
 ## light.

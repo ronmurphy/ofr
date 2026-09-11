@@ -48,6 +48,19 @@ static func seen() -> Dictionary:
 static func knows(app: StringName) -> bool:
 	return seen().has(app)
 
+## Corrupted sightings are recorded under their own key rather than as a flag
+## on the base entry, so "I have met a rat" and "I have met a rat the climb got
+## hold of" stay separate facts. They are separate encounters and the legend
+## shows them as separate glyphs.
+static func corrupt_key(app: StringName) -> StringName:
+	return StringName("corrupt:" + String(app))
+
+static func knows_corrupted(app: StringName) -> bool:
+	return seen().has(corrupt_key(app))
+
+static func note_corrupted(app: StringName) -> bool:
+	return note(corrupt_key(app))
+
 static func count() -> int:
 	return seen().size()
 

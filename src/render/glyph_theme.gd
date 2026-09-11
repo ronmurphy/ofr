@@ -49,6 +49,7 @@ const OVERRIDES := {
 	&"ogre":     HEAVY_FIGURE,
 	&"troll":    HEAVY_FIGURE,
 	&"giant":    HEAVY_FIGURE,
+	&"stone":    0xF01C8,   # md-diamond_stone
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent
@@ -75,7 +76,12 @@ const OVERRIDES := {
 	&"banshee":  0xF165D,
 	&"shadow":   0xF02A0,   # md-ghost -- the incognito hat read as a detective
 	&"golem":    0xF06A9,   # md-robot
-	&"bear":     0xF0A72,   # md-paw
+	# The REAL md-paw. This said 0xF0A72 for a day, which is md-solar_power --
+	# written from memory, labelled with what it was meant to be, and never
+	# questioned because the font test only checks that a codepoint EXISTS.
+	# Brad reported the bear's icon as unreadable; he was looking at a solar
+	# panel. tools/build_icon_font.py now verifies these comments.
+	&"bear":     0xF03E9,   # md-paw
 	# Wyvern and dragon share a silhouette and are told apart by colour alone,
 	# which is why check_palette.py checks that pair too.
 	&"wyvern":   0xEEF8,    # fa-dragon

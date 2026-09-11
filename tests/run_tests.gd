@@ -118,6 +118,8 @@ func _initialize() -> void:
 	_test_banshee()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
+	_test_meat_keeps_its_worth()
+	_test_binding_a_stone()
 	_test_cave_bear()
 	_test_cave_giant()
 	_test_authored_pits_obey_the_rule()
@@ -4256,10 +4258,129 @@ func _test_bestiary_is_earned() -> void:
 		% [listed, still], still == listed)
 	check("though it is still remembered", BestiaryLog.knows(&"killer_rabbit"))
 
+	# A corrupted sighting is its own fact, not a flag on the base entry.
+	check("meeting a rat says nothing about the corrupted kind",
+		BestiaryLog.knows(&"rat") == BestiaryLog.knows(&"rat")
+			and not BestiaryLog.knows_corrupted(&"rat"))
+	BestiaryLog.note_corrupted(&"rat")
+	check("and the corrupted kind is learned on its own",
+		BestiaryLog.knows_corrupted(&"rat"))
+	check("without claiming you met the ordinary one",
+		BestiaryLog.knows(&"goblin") and not BestiaryLog.knows_corrupted(&"goblin"))
+
+	# Seeing one in play records the corrupted key, not the plain one.
+	var vg := _arena(21, 9)
+	vg.player.x = 5
+	vg.player.y = 4
+	var vermin := _spawn(vg, "kobold", 7, 4)
+	vg._corrupt(vermin)
+	vg.update_vision()
+	check("a violet kobold teaches the violet kobold",
+		BestiaryLog.knows_corrupted(&"kobold"))
+	check("and not the ordinary one", not BestiaryLog.knows(&"kobold"))
+	check("corruption doubled it (%d hp, %d power, %d threat)"
+		% [vermin.max_hp, vermin.power, vermin.threat],
+		vermin.max_hp == 12 and vermin.power == 6 and vermin.threat == 6)
+	check("and it says so in its name", vermin.name.begins_with("corrupted"))
+	check("and it survives a suspend",
+		Entity.from_dict(vermin.to_dict()).corrupted)
+
 	BestiaryLog.clear_scratch()
 	BestiaryLog.use_path("user://scratch_tests_bestiary.txt")
 	check("the suite's own record path is back",
 		BestiaryLog._path.contains("scratch_tests_"))
+
+## A haunch is worth what the rabbit made it worth, before and after a save.
+func _test_meat_keeps_its_worth() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 4
+	gs.player.y = 4
+	gs.depth = 9
+	var bun := _spawn(gs, "rabbit", 6, 4)
+	bun.meal = 2
+	gs.ground = []
+	gs._drop_meat(bun)
+	check("a rabbit leaves a haunch", gs.ground.size() == 1)
+	var haunch: Item = gs.ground[0]
+	var want := GameState.MEAT_BASE + 2 + int(floor(9.0 / GameState.MEAT_PER_DEPTH))
+	check("worth base plus what it ate plus depth (%d, wanted %d)"
+		% [haunch.effective_magnitude(), want],
+		haunch.effective_magnitude() == want)
+
+	# The bug: magnitude was never serialised, so a suspend handed back the
+	# catalogue's placeholder of 1 and an eight-point meal became a one-point
+	# one without a word in the log.
+	var back := Item.from_dict(haunch.to_dict())
+	check("and it is still worth that after a suspend (%d)"
+		% back.effective_magnitude(),
+		back.effective_magnitude() == want)
+
+	# A save written before magnitude was kept must not crash or read as zero.
+	var old_save := {"id": "meat", "letter": "", "x": 0, "y": 0,
+		"pow": 0, "def": 0, "ammo": 0, "boost": 0}
+	var legacy := Item.from_dict(old_save)
+	check("an older save still yields a usable haunch",
+		legacy != null and legacy.effective_magnitude() >= 1)
+
+	# And you eat it. You do not drink it.
+	check("meat is eaten", haunch.verb() == "eat")
+	check("a potion is still drunk",
+		Item.make(&"potion_healing").verb() == "drink")
+	gs.player.hp = 1
+	gs.player.max_hp = 99
+	var log_before := gs.msg_log.entries.size()
+	gs._apply_effect(haunch)
+	check("the log says so", gs.msg_log.entries.size() > log_before)
+
+## A stone goes into a weapon at a dying brazier, once, forever.
+func _test_binding_a_stone() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	var blade := Item.make(&"dagger")
+	gs.player.inventory.append(blade)
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+	var stone := Item.make(&"stone_fire")
+	gs.player.inventory.append(stone)
+
+	# No brazier at all.
+	check("a stone needs a fire", not gs.player_bind(gs.player.inventory.find(stone)))
+	check("and is not spent trying", gs.player.inventory.has(stone))
+
+	# A LIT brazier is the wrong heat -- this is the rule the whole feature
+	# hangs on, so it is asserted rather than assumed.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(6, 4)] = GameState.BRAZIER_CHARGE
+	check("a living flame will not set a stone",
+		not gs.player_bind(gs.player.inventory.find(stone)))
+	check("nor is it offered", not gs.can_bind_stone(stone))
+
+	# Embers will.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs.brazier_charge.erase(Vector2i(6, 4))
+	gs.ember_until[Vector2i(6, 4)] = gs.turns + GameState.EMBER_TURNS
+	check("dying coals will", gs.can_bind_stone(stone))
+	check("and it takes", gs.player_bind(gs.player.inventory.find(stone)))
+	check("the blade holds the element", blade.element == &"fire")
+	check("the stone is spent", not gs.player.inventory.has(stone))
+	check("and the brazier is black for good",
+		gs.map.get_tile(6, 4) == Tiles.BRAZIER_DEAD)
+
+	# One stone, forever.
+	var second := Item.make(&"stone_frost")
+	gs.player.inventory.append(second)
+	gs.map.set_tile(4, 4, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(4, 4)] = gs.turns + GameState.EMBER_TURNS
+	check("a bound weapon is never offered another", not gs.can_bind_stone(second))
+	check("and refuses one", not gs.player_bind(gs.player.inventory.find(second)))
+	check("the first element stands", blade.element == &"fire")
+	check("and the second stone is not eaten", gs.player.inventory.has(second))
+
+	# It survives a suspend, or the save quietly unbinds it.
+	check("a binding survives a suspend",
+		Item.from_dict(blade.to_dict()).element == &"fire")
+	check("and a plain weapon stays plain",
+		Item.from_dict(Item.make(&"dagger").to_dict()).element == &"")
 
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)

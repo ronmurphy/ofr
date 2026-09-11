@@ -756,12 +756,15 @@ func build_level() -> void:
 	for region in gen.caves:
 		_populate_cave(region)
 	_place_vault_contents(gen)
-	_place_corrupted()
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
 		vault_rects.append(spot["rect"])
 		vault_names.append(spot["vault"].name)
+	# AFTER the vault rects are recorded, because _corrupt_sites reads them to
+	# keep out of authored rooms. Called any earlier and it would be checking
+	# the previous floor's vaults.
+	_place_corrupted()
 
 	pathfinder = Pathfinder.new(map)
 	update_vision()
@@ -997,15 +1000,37 @@ func _roll_corruptible(budget: int) -> Dictionary:
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 ## Standing ground away from the player, shuffled, for corrupted arrivals.
+##
+## THE CORRIDORS, never the rooms. This is not a preference, it is the
+## survivability guarantee: `room_threat_ceiling()` promises that the room you
+## walk into can be beaten, and `_test_threat_ceiling_holds_on_the_climb`
+## checks it room by room. Rooms have already spent that budget by the time
+## this runs, so dropping corrupted things into them stacks straight through
+## the ceiling -- measured at 218 breaches across 2027 rooms, worst 15 over,
+## and it shipped before the suite caught it.
+##
+## Corridors carry no such promise, and they are the better place anyway: you
+## meet the trash BETWEEN rooms, strung out and in the open, which is where
+## being swarmed by cheap things actually costs you something.
 func _corrupt_sites() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
-	for room in room_rects:
-		for y in range(room.position.y, room.end.y):
-			for x in range(room.position.x, room.end.x):
-				if not _can_rest_on(x, y) or Vector2i(x, y) == stairs:
-					continue
-				if Los.steps(x, y, player.x, player.y) < 8:
-					continue
+	for y in map.height:
+		for x in map.width:
+			if not _can_rest_on(x, y) or Vector2i(x, y) == stairs:
+				continue
+			if Los.steps(x, y, player.x, player.y) < 8:
+				continue
+			var indoors := false
+			for room in room_rects:
+				if room.has_point(Vector2i(x, y)):
+					indoors = true
+					break
+			if not indoors:
+				for vr in vault_rects:
+					if vr.has_point(Vector2i(x, y)):
+						indoors = true
+						break
+			if not indoors:
 				out.append(Vector2i(x, y))
 	for i in range(out.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
@@ -1466,7 +1491,15 @@ func _note_sightings() -> void:
 	for e in entities:
 		if e.is_player or not e.alive:
 			continue
-		if map.is_visible(e.x, e.y):
+		if not map.is_visible(e.x, e.y):
+			continue
+		# A corrupted thing teaches you the corrupted thing, and nothing about
+		# the ordinary one. They are different encounters -- different colour,
+		# different fight -- and in practice you always meet the plain version
+		# first anyway, since corruption exists only on the climb.
+		if e.corrupted:
+			BestiaryLog.note_corrupted(e.appearance)
+		else:
 			BestiaryLog.note(e.appearance)
 
 ## Drains the presentation queue. Called by the renderer once per refresh.
@@ -2143,6 +2176,74 @@ func player_merge(index: int) -> bool:
 	_end_player_turn()
 	return true
 
+## Binds a stone into the weapon in hand, at a dying brazier, forever.
+##
+## EMBERS ONLY, and the fiction is the mechanic: live flame is too hot to set a
+## stone, embers are the right heat. It is also what the ember forge has been
+## waiting for -- until now it bought one extra `+1`, which is a consolation
+## prize for a brazier you already drained. This makes a sequence out of it:
+## warm yourself at a brazier for the ten hit points you wanted anyway, then
+## have twenty turns and ONE working to decide between an edge and an element,
+## carrying both the stone and the weapon before you start.
+func player_bind(index: int) -> bool:
+	if game_over or index < 0 or index >= player.inventory.size():
+		return false
+	var stone: Item = player.inventory[index]
+	if stone.kind != Item.Kind.STONE:
+		return false
+
+	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	if blade == null:
+		msg_log.add("You have nothing in hand to set it into.",
+			Color(0.7, 0.6, 0.4))
+		return false
+	# One stone, forever. Refused rather than replaced: the whole weight of the
+	# choice is that it cannot be taken back, and overwriting would turn a
+	# commitment into a preference.
+	if blade.element != &"":
+		msg_log.add("The %s already holds a stone. It will take no other."
+			% blade.display_name(), Color(0.7, 0.6, 0.4))
+		return false
+
+	var hot := _adjacent_embers()
+	if hot.x < 0:
+		if _adjacent_brazier().x >= 0:
+			msg_log.add("The flame is too fierce. A stone wants dying coals.",
+				Color(0.7, 0.6, 0.4))
+		else:
+			msg_log.add("You need a guttering brazier to set a stone.",
+				Color(0.7, 0.6, 0.4))
+		return false
+
+	_travel.clear()
+	blade.element = stone.element
+	player.inventory.erase(stone)
+	stone.letter = ""
+	_tally("bindings")
+	events.append({"kind": &"forge", "to": hot})
+
+	# Same cost as an ember forge, because it IS one: the brazier is spent.
+	map.set_tile(hot.x, hot.y, Tiles.BRAZIER_DEAD)
+	ember_until.erase(hot)
+	msg_log.add("You set the %s into the %s. It drinks the last of the heat."
+		% [stone.name, blade.display_name()], Color(0.85, 0.88, 0.70))
+	msg_log.add("The brazier goes black. Nothing will kindle it again.",
+		Color(0.45, 0.42, 0.42))
+	_make_noise(hot, FORGE_NOISE, &"forge")
+	_end_player_turn()
+	return true
+
+## Can this stone be set right now? Drives the inventory marker, the same way
+## can_forge_item does -- so a weapon that already holds one simply never
+## offers, rather than refusing after the click.
+func can_bind_stone(stone: Item) -> bool:
+	if stone.kind != Item.Kind.STONE:
+		return false
+	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	if blade == null or blade.element != &"":
+		return false
+	return _adjacent_embers().x >= 0
+
 ## Why there is no forging this, here. Four different situations that all used
 ## to print "you need a lit brazier", which is a lie in three of them.
 func _no_forge_reason(item: Item) -> String:
@@ -2587,7 +2688,8 @@ func _apply_effect(item: Item) -> bool:
 				return false
 			var healed := mini(item.effective_magnitude(), player.max_hp - player.hp)
 			player.hp += healed
-			msg_log.add("You drink the %s. %d hp restored." % [item.display_name(), healed],
+			msg_log.add("You %s the %s. %d hp restored."
+				% [item.verb(), item.display_name(), healed],
 				Color(0.55, 0.85, 0.55))
 			return true
 
