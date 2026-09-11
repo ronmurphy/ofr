@@ -524,7 +524,16 @@ func _use_item(index: int) -> void:
 ## Forging keeps the panel open, so the result is visible and a second merge
 ## does not need the list reopened.
 func _merge_item(index: int) -> void:
-	state.player_merge(index)
+	# A gem is set into a weapon rather than merged with a twin, so the same
+	# click has to mean the right thing for the thing under it. Without this
+	# player_bind was reachable only from the test suite -- the mechanic
+	# existed and nothing in the game could ever call it.
+	var item: Item = state.player.inventory[index] if index >= 0 \
+		and index < state.player.inventory.size() else null
+	if item != null and item.kind == Item.Kind.GEM:
+		state.player_bind(index)
+	else:
+		state.player_merge(index)
 	_refresh()
 
 func _drop_item(index: int) -> void:

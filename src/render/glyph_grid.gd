@@ -292,6 +292,16 @@ func play_events(evts: Array) -> void:
 					"life": maxf(0.12, float(reach) * RING_PER_CELL)})
 			continue
 
+		if e["kind"] == &"recall":
+			# Drawn as a flight from the pile to the player, which is the same
+			# path a shot takes in reverse -- so the picture says "these are
+			# your arrows coming back" without a word.
+			if Effects.any():
+				var line := Los.path(e["from"].x, e["from"].y, to.x, to.y)
+				if not line.is_empty():
+					_effects.append({"type": &"shot", "path": line, "t": 0.0})
+			continue
+
 		if e["kind"] == &"shove":
 			# You just moved two cells without pressing anything. Without a
 			# mark where you landed that reads as the screen glitching rather

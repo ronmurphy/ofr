@@ -120,6 +120,10 @@ func _initialize() -> void:
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
 	_test_binding_a_stone()
+	_test_gems_bite()
+	_test_gem_of_returning()
+	_test_the_first_gem_is_certain()
+	_test_every_kind_is_listed()
 	_test_cave_bear()
 	_test_cave_giant()
 	_test_authored_pits_obey_the_rule()
@@ -148,6 +152,19 @@ var _silent_ok := true
 func check_silent(condition: bool) -> void:
 	if not condition:
 		_silent_ok = false
+
+## Reports everything check_silent has gathered since the last report, and
+## arms it again.
+##
+## Without the reset `_silent_ok` is a one-shot: the first block to fail one
+## silently poisons every later block that reports it, and the first block to
+## REPORT it clears nothing, so the next block is reporting the previous one's
+## result. And it has to be reported at all -- the band-folding block gathered
+## eighteen assertions and then called `check(..., true)`, so none of them
+## could fail the suite.
+func check_gathered(name: String, detail: String = "") -> void:
+	check(name, _silent_ok, detail)
+	_silent_ok = true
 
 func check(name: String, condition: bool, detail: String = "") -> void:
 	if condition:
@@ -969,7 +986,7 @@ func _test_monsters_carry_gear() -> void:
 		loot.entities.erase(victim)
 	check("gear drops sometimes (%d of %d)" % [drops, kills], drops > 0)
 	check("and not every time", drops < kills)
-	check("a corpse never keeps its equipment", _silent_ok)
+	check_gathered("a corpse never keeps its equipment")
 
 func _test_the_amulet_and_the_ascent() -> void:
 	var gs := GameState.new(8800)
@@ -3435,7 +3452,7 @@ func _test_cave_band() -> void:
 		check_silent(Bands.is_caves(eff))
 	for eff in [7, 8, 9, 11, 12, 13]:
 		check_silent(Bands.of(eff) == Bands.FORTRESS)
-	check("the bands fold around the bottom", true)
+	check_gathered("the bands fold around the bottom")
 	check("depth 10 is its own place", Bands.of(10) == Bands.DEEP)
 	check("and the climb is the corrupted half",
 		Bands.is_corrupted(14) and not Bands.is_corrupted(6))
@@ -3579,8 +3596,13 @@ func _test_generation_ignores_the_morgue() -> void:
 						near += 1
 			if near > 0:
 				with_bones += 1
+	# Almost all, not all. The scatter is a roll and it only writes on plain
+	# floor, so a stone that lands hemmed in by water or masonry gets none --
+	# which is correct. Asserting 100% made this a test of luck: it passed at
+	# 80 of 80 one day and failed at 78 the next without the mechanic changing.
 	check("a headstone comes with bone litter (%d of %d)" % [with_bones, graves],
-		graves > 0 and with_bones == graves, "%d of %d" % [with_bones, graves])
+		graves > 0 and with_bones >= int(graves * 0.9),
+		"%d of %d" % [with_bones, graves])
 
 ## A cheap summary of what a set of seeded floors produced.
 func _floor_fingerprint() -> String:
@@ -4332,7 +4354,7 @@ func _test_meat_keeps_its_worth() -> void:
 	gs._apply_effect(haunch)
 	check("the log says so", gs.msg_log.entries.size() > log_before)
 
-## A stone goes into a weapon at a dying brazier, once, forever.
+## A gem goes into a weapon at a dying brazier, once, forever.
 func _test_binding_a_stone() -> void:
 	var gs := _arena(21, 9)
 	gs.player.x = 5
@@ -4340,47 +4362,320 @@ func _test_binding_a_stone() -> void:
 	var blade := Item.make(&"dagger")
 	gs.player.inventory.append(blade)
 	gs.player.equipped[Item.Slot.WEAPON] = blade
-	var stone := Item.make(&"stone_fire")
-	gs.player.inventory.append(stone)
+	var gem := Item.make(&"gem_fire")
+	gs.player.inventory.append(gem)
 
 	# No brazier at all.
-	check("a stone needs a fire", not gs.player_bind(gs.player.inventory.find(stone)))
-	check("and is not spent trying", gs.player.inventory.has(stone))
+	check("a gem needs a fire", not gs.player_bind(gs.player.inventory.find(gem)))
+	check("and is not spent trying", gs.player.inventory.has(gem))
 
-	# A LIT brazier is the wrong heat -- this is the rule the whole feature
-	# hangs on, so it is asserted rather than assumed.
+	# A LIT brazier does not SET the gem -- it rakes down to coals instead, so
+	# a player at full health with nothing to merge is not locked out of the
+	# forge entirely. Two deliberate clicks, no dialog.
 	gs.map.set_tile(6, 4, Tiles.BRAZIER)
 	gs.brazier_charge[Vector2i(6, 4)] = GameState.BRAZIER_CHARGE
-	check("a living flame will not set a stone",
-		not gs.player_bind(gs.player.inventory.find(stone)))
-	check("nor is it offered", not gs.can_bind_stone(stone))
+	check("a lit brazier is offered", gs.can_bind_gem(gem))
+	check("and the first click rakes it down",
+		gs.player_bind(gs.player.inventory.find(gem)))
+	check("the gem is NOT spent on that click", gs.player.inventory.has(gem))
+	check("the blade is still bare", blade.element == &"")
+	check("the fire is coals now",
+		gs.map.get_tile(6, 4) == Tiles.BRAZIER_SPENT)
+	check("and the warmth is gone with it",
+		int(gs.brazier_charge.get(Vector2i(6, 4), 0)) == 0)
 
-	# Embers will.
-	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
-	gs.brazier_charge.erase(Vector2i(6, 4))
-	gs.ember_until[Vector2i(6, 4)] = gs.turns + GameState.EMBER_TURNS
-	check("dying coals will", gs.can_bind_stone(stone))
-	check("and it takes", gs.player_bind(gs.player.inventory.find(stone)))
+	# And the second click sets it into the blade.
+	check("dying coals will", gs.can_bind_gem(gem))
+	check("and it takes", gs.player_bind(gs.player.inventory.find(gem)))
 	check("the blade holds the element", blade.element == &"fire")
-	check("the stone is spent", not gs.player.inventory.has(stone))
+	check("the gem is spent", not gs.player.inventory.has(gem))
 	check("and the brazier is black for good",
 		gs.map.get_tile(6, 4) == Tiles.BRAZIER_DEAD)
 
 	# One stone, forever.
-	var second := Item.make(&"stone_frost")
+	var second := Item.make(&"gem_frost")
 	gs.player.inventory.append(second)
 	gs.map.set_tile(4, 4, Tiles.BRAZIER_SPENT)
 	gs.ember_until[Vector2i(4, 4)] = gs.turns + GameState.EMBER_TURNS
-	check("a bound weapon is never offered another", not gs.can_bind_stone(second))
+	check("a bound weapon is never offered another", not gs.can_bind_gem(second))
 	check("and refuses one", not gs.player_bind(gs.player.inventory.find(second)))
 	check("the first element stands", blade.element == &"fire")
-	check("and the second stone is not eaten", gs.player.inventory.has(second))
+	check("and the second gem is not eaten", gs.player.inventory.has(second))
 
 	# It survives a suspend, or the save quietly unbinds it.
 	check("a binding survives a suspend",
 		Item.from_dict(blade.to_dict()).element == &"fire")
 	check("and a plain weapon stays plain",
 		Item.from_dict(Item.make(&"dagger").to_dict()).element == &"")
+
+## What a bound gem actually does when the blow lands.
+func _test_gems_bite() -> void:
+	# --- fire adds a share, not a flat number ---------------------------
+	var gs := _arena(21, 9)
+	gs.player.x = 4
+	gs.player.y = 4
+	gs.player.power = 20
+	var blade := Item.make(&"dagger")
+	gs.player.inventory.append(blade)
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+
+	var plain := _spawn(gs, "cave troll", 5, 4)
+	plain.max_hp = 9999
+	plain.hp = 9999
+	gs._attack(gs.player, plain)
+	var without := 9999 - plain.hp
+
+	blade.element = &"fire"
+	plain.hp = 9999
+	gs._attack(gs.player, plain)
+	var with_fire := 9999 - plain.hp
+	check("fire hits harder (%d vs %d)" % [with_fire, without], with_fire > without)
+
+	# --- frost slows, including things that fly --------------------------
+	blade.element = &"frost"
+	var bird := _spawn(gs, "wyvern", 3, 4)
+	var warm := gs.move_cost_for(bird, 3, 5)
+	gs._attack(gs.player, bird)
+	check("frost takes hold", bird.chilled > 0)
+	var cold := gs.move_cost_for(bird, 3, 5)
+	check("a chilled flier is slower (%d vs %d)" % [cold, warm], cold > warm)
+	var was := bird.chilled
+	gs._take_ai_turn(bird)
+	check("one turn at a time (%d then %d)" % [was, bird.chilled],
+		bird.chilled < was)
+
+	# --- leech returns a share of the blow -------------------------------
+	blade.element = &"leech"
+	gs.player.max_hp = 200
+	gs.player.hp = 50
+	var sack := _spawn(gs, "cave troll", 5, 4)
+	sack.max_hp = 9999
+	sack.hp = 9999
+	gs._attack(gs.player, sack)
+	check("leech heals the wielder (%d)" % gs.player.hp, gs.player.hp > 50)
+	check("but never past whole", gs.player.hp <= gs.player.max_hp)
+	gs.player.hp = gs.player.max_hp
+	var full := gs.player.hp
+	gs._attack(gs.player, sack)
+	check("and gives nothing when you are whole", gs.player.hp == full)
+
+	# --- the crag raises spires, and never on the player -----------------
+	blade.element = &"crag"
+	var stuck := _spawn(gs, "cave troll", 8, 4)
+	stuck.max_hp = 9999
+	stuck.hp = 9999
+	gs.player.x = 7
+	gs.player.y = 4
+	var before := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.STALAGMITE:
+				before += 1
+	gs._attack(gs.player, stuck)
+	var after := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.STALAGMITE:
+				after += 1
+	check("the crag raises stone (%d spires)" % (after - before), after > before)
+	check("never more than the cap",
+		after - before <= GameState.GEM_CRAG_SPIRES)
+	check("and never under the player who swung",
+		gs.map.get_tile(gs.player.x, gs.player.y) != Tiles.STALAGMITE)
+
+	# --- a bow carries no element ---------------------------------------
+	var bow := Item.make(&"short_bow")
+	bow.element = &"fire"
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	check("a gem does not fire down a bowstring",
+		gs._gem_of(gs.player, true) == &"")
+	check("though it is still bound to the weapon", bow.element == &"fire")
+
+	# --- and the chill survives a suspend --------------------------------
+	bird.chilled = 3
+	check("frost survives a suspend",
+		Entity.from_dict(bird.to_dict()).chilled == 3)
+
+## Arrows come home, and only to the weapon that earns them.
+func _test_gem_of_returning() -> void:
+	# --- who will hold which gem ---------------------------------------
+	var bow := Item.make(&"short_bow")
+	var sling := Item.make(&"sling")
+	var dagger := Item.make(&"dagger")
+	var mail := Item.make(&"chain_mail")
+
+	check("a bow takes returning", bow.accepts_element(&"return"))
+	check("a sling does not -- it knaps its own",
+		not sling.accepts_element(&"return"))
+	check("nor does a blade", not dagger.accepts_element(&"return"))
+	check("frost is melee only", dagger.accepts_element(&"frost")
+		and not bow.accepts_element(&"frost"))
+	check("so is leech", dagger.accepts_element(&"leech")
+		and not bow.accepts_element(&"leech"))
+	check("fire goes anywhere", dagger.accepts_element(&"fire")
+		and bow.accepts_element(&"fire") and sling.accepts_element(&"fire"))
+	check("and so does the crag", sling.accepts_element(&"crag"))
+	check("armour holds nothing at all", not mail.accepts_element(&"fire"))
+
+	# --- the forge refuses what the weapon will not take ---------------
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.append(bow)
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	var frost := Item.make(&"gem_frost")
+	gs.player.inventory.append(frost)
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(6, 4)] = gs.turns + GameState.EMBER_TURNS
+	check("a bow is never offered frost", not gs.can_bind_gem(frost))
+	check("and refuses it at the coals",
+		not gs.player_bind(gs.player.inventory.find(frost)))
+
+	var back := Item.make(&"gem_return")
+	gs.player.inventory.append(back)
+	check("but takes returning", gs.can_bind_gem(back))
+	check("and binds it", gs.player_bind(gs.player.inventory.find(back)))
+	check("the bow holds it", bow.element == &"return")
+
+	# --- and the arrows come home --------------------------------------
+	bow.ammo = bow.ammo_max - 4
+	# Binding ended a turn, so the counter is already at one. Zeroed here
+	# rather than counted around: a test that quietly starts from a different
+	# number than it claims is a test that will lie later.
+	gs._return_walk = 0
+	var pile := Item.make(&"arrows")
+	pile.ammo = 4
+	pile.x = 9
+	pile.y = 4
+	gs.ground = [pile]
+	gs.take_events()
+
+	for i in GameState.GEM_RETURN_STEPS - 1:
+		gs._end_player_turn()
+	check("nothing comes back early (%d)" % bow.ammo, bow.ammo == bow.ammo_max - 4)
+	gs._end_player_turn()
+	check("then the quiver fills (%d/%d)" % [bow.ammo, bow.ammo_max],
+		bow.ammo == bow.ammo_max)
+	check("and the pile is gone", gs.ground.is_empty())
+	var flights := 0
+	for ev in gs.take_events():
+		if ev["kind"] == &"recall":
+			flights += 1
+	check("the flight is drawn (%d)" % flights, flights == 1)
+
+	# A full quiver leaves them where they lie.
+	var spare := Item.make(&"arrows")
+	spare.ammo = 3
+	spare.x = 9
+	spare.y = 4
+	gs.ground = [spare]
+	for i in GameState.GEM_RETURN_STEPS + 1:
+		gs._end_player_turn()
+	check("a full quiver calls nothing", gs.ground.size() == 1)
+
+	# Unbinding stops the clock rather than banking it.
+	gs.player.equipped[Item.Slot.WEAPON] = dagger
+	gs._end_player_turn()
+	check("a blade counts no steps", gs._return_walk == 0)
+
+## Every player meets a gem, early, whatever the dice do.
+func _test_the_first_gem_is_certain() -> void:
+	# Measured before the guarantee existed: half of depth-2 floors carried no
+	# gem, a third of depth-3, two thirds of the caves -- about one run in six
+	# reached floor three having never seen one.
+	var barren := 0
+	var doubled := 0
+	for i in 60:
+		var gs := GameState.new(5200 + i)
+		gs.new_game()
+		gs.depth = 2
+		gs.build_level()
+		var found := 0
+		for it in gs.ground:
+			if it.kind == Item.Kind.GEM:
+				found += 1
+		if found == 0:
+			barren += 1
+		if found > 1:
+			doubled += 1
+	check("floor two always holds a gem now (%d barren of 60)" % barren,
+		barren == 0, "%d" % barren)
+	# The guarantee must not become a second source: a lucky floor should look
+	# exactly as it did before.
+	check("and lucky floors are untouched (%d had more than one)" % doubled,
+		doubled > 0)
+
+	# Only the first. Once one has been seen, later floors are ordinary again.
+	var run := GameState.new(77)
+	run.new_game()
+	run.depth = 2
+	run.build_level()
+	check("the run remembers having produced one", run.gem_found)
+	# Once one has been produced the guarantee is spent, so later floors are
+	# ordinary again -- which across many runs means some of them carry none.
+	var later_barren := 0
+	for i in 40:
+		var r := GameState.new(6100 + i)
+		r.new_game()
+		r.gem_found = true
+		r.depth = 4
+		r.build_level()
+		var any := false
+		for it in r.ground:
+			if it.kind == Item.Kind.GEM:
+				any = true
+		if not any:
+			later_barren += 1
+	check("later floors are back to chance (%d of 40 barren)" % later_barren,
+		later_barren > 0, "%d" % later_barren)
+
+	# It survives a suspend, or a resumed run gets a second free gem.
+	var back := GameState.new(1)
+	back.new_game()
+	back.apply_dict(run.to_dict())
+	check("the guarantee is spent across a suspend", back.gem_found)
+
+	# And the climb never triggers it.
+	var up := GameState.new(31)
+	up.new_game()
+	up.gem_found = false
+	up.ascending = true
+	up.depth = 2
+	up.build_level()
+	var climbing := 0
+	for it in up.ground:
+		if it.kind == Item.Kind.GEM:
+			climbing += 1
+	check("the climb is not given one", not up.gem_found or climbing == 0)
+
+## Every item kind must have somewhere to be shown.
+##
+## The inventory draws by walking GROUPS, not by walking the pack, so a kind
+## with no group is carried and never appears -- which is exactly what happened
+## to the first gem picked up in play.
+func _test_every_kind_is_listed() -> void:
+	var panel := InventoryPanel.new()
+	var grouped := {}
+	for g in InventoryPanel.GROUPS:
+		grouped[g[0]] = true
+
+	var homeless: Array[String] = []
+	for key in Item.CATALOGUE:
+		var it := Item.make(key)
+		var shown := false
+		for g in InventoryPanel.GROUPS:
+			if panel._matches(it, g[0]):
+				shown = true
+				break
+		if not shown:
+			homeless.append(String(key))
+	check("every item in the catalogue has a group (%d homeless)"
+		% homeless.size(), homeless.is_empty(), str(homeless))
+	check("and the gem tab finds them",
+		panel._matches(Item.make(&"gem_fire"), InventoryPanel.Filter.GEMS))
+	check("without catching anything else",
+		not panel._matches(Item.make(&"dagger"), InventoryPanel.Filter.GEMS))
+	panel.free()
 
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)

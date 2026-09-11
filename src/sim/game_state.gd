@@ -203,6 +203,51 @@ const LEVEL_HP := 5
 ## it immunity, and it makes the armour curve smooth instead of cliff-edged. It
 ## barely touches the early game: nothing changes at depths 1-3.
 const DAMAGE_FLOOR_FRACTION := 0.25
+
+## What a bound gem adds, as a SHARE of the blow rather than a flat number.
+##
+## Flat was the obvious shape and it is the shape this project already has a
+## measured problem with: a +3 is sixty per cent of a level-one hit and twenty
+## per cent of a level-fifteen one, so it would deflate exactly the way the
+## weapon bonuses do. A share keeps a gem worth what it was worth.
+const GEM_FIRE_SHARE := 0.35
+## Leech is deliberately stingier, and it is measured against the BRAZIER's ten
+## hit points rather than against the health bar. D&D's vampiric touch is half
+## the damage dealt, which here is six or seven a swing -- most of a brazier per
+## hit, and it would make the forge pointless. At fifteen per cent a fight and
+## a half is worth one brazier.
+const GEM_LEECH_SHARE := 0.15
+## How long frost holds, and how much it costs. The multiplier is deliberately
+## short of mud's 2.0: mud is terrain you can walk around, and this follows you.
+const GEM_FROST_TURNS := 5
+const GEM_FROST_COST := 1.7
+## At most this many spires per blow. Two, because the point is to break a line
+## of approach rather than to bury the thing.
+const GEM_CRAG_SPIRES := 2
+## Steps before loosed arrows come home.
+##
+## Five is chosen to split the two kinds of scarcity apart. WITHIN a fight five
+## steps is a long time, so the quiver you started the fight with is still the
+## quiver you fight it with -- the decision about whether a shot is worth an
+## arrow survives intact. BETWEEN fights they come back, which removes the walk
+## across the room to pick them up. That walk was never a decision: you always
+## want your arrows, and the only way to get it wrong is to forget.
+const GEM_RETURN_STEPS := 5
+## The floors the first gem is guaranteed to appear on, and the flag saying it
+## already has.
+##
+## Measured before this existed: half of depth-2 floors carried no gem at all,
+## a third of depth-3 floors, and two thirds of the cave floors -- so roughly
+## one run in six reached the third floor having never seen one. A mechanic
+## that may simply not occur is a mechanic players do not learn, and this one
+## already asks for three things to coincide (a gem, a spent brazier inside its
+## twenty-turn window, and the right weapon in hand).
+##
+## Only the FIRST one is placed. Everything after it is the ordinary roll, so
+## the guarantee buys discovery and nothing else.
+const GEM_PITY_FLOORS := [2, 3, 4]
+var gem_found := false
+
 const HP_WARN_FRACTION := 0.30
 
 ## The threat ceiling.
@@ -398,6 +443,11 @@ var risen_grave := Vector2i(-1, -1)
 ## means "which of the two stones woke?" is a question you get to ask once, and
 ## there is nothing to farm.
 var grave_risen := false
+
+## Steps walked since the last arrows came home. Only counts while a gem of
+## returning is actually in hand, so unbinding it stops the clock rather than
+## banking progress.
+var _return_walk := 0
 
 ## Cell -> hit points left in that brazier.
 var brazier_charge: Dictionary = {}
@@ -672,6 +722,9 @@ func new_game() -> void:
 	depth = 1
 	turns = 0
 	game_over = false
+	# A fresh run has met nothing. Cleared here as well as at declaration
+	# because new_game() is also the restart path.
+	gem_found = false
 	player = Entity.new("you", &"player", 0, 0)
 	player.is_player = true
 	player.faction = Entity.Faction.PLAYER
@@ -756,6 +809,7 @@ func build_level() -> void:
 	for region in gen.caves:
 		_populate_cave(region)
 	_place_vault_contents(gen)
+	_place_first_gem()
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
@@ -886,18 +940,64 @@ func can_step(fx: int, fy: int, nx: int, ny: int) -> bool:
 	return map.is_walkable(nx, fy) and map.is_walkable(fx, ny)
 
 func move_cost_for(actor: Entity, x: int, y: int) -> int:
+	# Frost is on the CREATURE, not the ground, so it is charged before the
+	# flying exemption rather than after. A chilled wyvern is still flying; it
+	# is just flying badly, and a frost gem that did nothing to the things you
+	# most want to slow down would be a gem nobody binds.
+	var chill := GEM_FROST_COST if actor.chilled > 0 else 1.0
 	if actor.flying:
-		return Scheduler.ACTION_COST
+		return int(round(Scheduler.ACTION_COST * chill))
 	var m := Tiles.move_cost(map.get_tile(x, y))
 	if actor.heavy and m > 1.0:
 		m += 0.6
-	return int(round(Scheduler.ACTION_COST * m))
+	return int(round(Scheduler.ACTION_COST * m * chill))
 
 func room_threat_ceiling() -> int:
 	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
 
 func cave_threat_ceiling() -> int:
 	return int(round(room_threat_ceiling() * CAVE_THREAT_SCALE))
+
+## Makes sure the player meets a gem at least once, early.
+##
+## Runs after the ordinary loot has been scattered, and only if that loot did
+## not already produce one -- so on a lucky floor this does nothing at all and
+## the guarantee is invisible.
+func _place_first_gem() -> void:
+	if gem_found or ascending:
+		return
+	if not GEM_PITY_FLOORS.has(depth):
+		return
+	for it in ground:
+		if it.kind == Item.Kind.GEM:
+			gem_found = true
+			return
+	for e in entities:
+		for slot in e.equipped:
+			if e.equipped[slot].element != &"":
+				gem_found = true
+				return
+
+	var at := _open_cell_in(room_rects[0] if not room_rects.is_empty()
+		else Rect2i(1, 1, map.width - 2, map.height - 2))
+	if at.x < 0:
+		return
+	# Drawn from the same table as everything else rather than from a
+	# hand-picked favourite, so which element you meet first is still yours to
+	# discover. Retried because the roll is weighted across the whole catalogue
+	# and most of it is not a gem.
+	var gem: Item = null
+	for _try in 200:
+		var pick := Item.roll(rng, effective_depth())
+		if pick != null and pick.kind == Item.Kind.GEM:
+			gem = pick
+			break
+	if gem == null:
+		return
+	gem.x = at.x
+	gem.y = at.y
+	ground.append(gem)
+	gem_found = true
 
 func _populate_room(room: Rect2i, archetype: int) -> void:
 	if rng.randf() < 0.55:
@@ -2176,7 +2276,7 @@ func player_merge(index: int) -> bool:
 	_end_player_turn()
 	return true
 
-## Binds a stone into the weapon in hand, at a dying brazier, forever.
+## Binds a gem into the weapon in hand, at a dying brazier, forever.
 ##
 ## EMBERS ONLY, and the fiction is the mechanic: live flame is too hot to set a
 ## stone, embers are the right heat. It is also what the ember forge has been
@@ -2188,8 +2288,8 @@ func player_merge(index: int) -> bool:
 func player_bind(index: int) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
 		return false
-	var stone: Item = player.inventory[index]
-	if stone.kind != Item.Kind.STONE:
+	var gem: Item = player.inventory[index]
+	if gem.kind != Item.Kind.GEM:
 		return false
 
 	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
@@ -2201,24 +2301,47 @@ func player_bind(index: int) -> bool:
 	# choice is that it cannot be taken back, and overwriting would turn a
 	# commitment into a preference.
 	if blade.element != &"":
-		msg_log.add("The %s already holds a stone. It will take no other."
+		msg_log.add("The %s already holds a gem. It will take no other."
 			% blade.display_name(), Color(0.7, 0.6, 0.4))
+		return false
+	if not blade.accepts_element(gem.element):
+		msg_log.add("The %s will not hold that one." % blade.display_name(),
+			Color(0.7, 0.6, 0.4))
 		return false
 
 	var hot := _adjacent_embers()
 	if hot.x < 0:
-		if _adjacent_brazier().x >= 0:
-			msg_log.add("The flame is too fierce. A stone wants dying coals.",
-				Color(0.7, 0.6, 0.4))
-		else:
-			msg_log.add("You need a guttering brazier to set a stone.",
-				Color(0.7, 0.6, 0.4))
+		var lit := _adjacent_brazier()
+		if lit.x >= 0:
+			# Raking the fire down: the first of two clicks.
+			#
+			# Without this a careful player is LOCKED OUT. Warming only works
+			# while hurt, so at full health with nothing to merge there is no
+			# way to reduce a brazier to coals at all, and the forge ends up
+			# gated behind taking damage on purpose. That punishes playing
+			# well, which no rule here should.
+			#
+			# Two deliberate clicks rather than a confirmation dialog: the game
+			# has no prompt system, and an action with its own message IS the
+			# confirmation. The price is whatever warmth was left -- the same
+			# decision the brazier has always posed, with a third branch.
+			var lost := int(brazier_charge.get(lit, 0))
+			brazier_charge[lit] = 0
+			_gutter(lit)
+			msg_log.add("You rake the fire down to coals. (%d warmth given up)"
+				% lost, Color(0.85, 0.75, 0.55))
+			msg_log.add("Set the gem now, before they cool.",
+				Color(0.70, 0.74, 0.80))
+			_end_player_turn()
+			return true
+		msg_log.add("You need a guttering brazier to set a gem.",
+			Color(0.7, 0.6, 0.4))
 		return false
 
 	_travel.clear()
-	blade.element = stone.element
-	player.inventory.erase(stone)
-	stone.letter = ""
+	blade.element = gem.element
+	player.inventory.erase(gem)
+	gem.letter = ""
 	_tally("bindings")
 	events.append({"kind": &"forge", "to": hot})
 
@@ -2226,23 +2349,28 @@ func player_bind(index: int) -> bool:
 	map.set_tile(hot.x, hot.y, Tiles.BRAZIER_DEAD)
 	ember_until.erase(hot)
 	msg_log.add("You set the %s into the %s. It drinks the last of the heat."
-		% [stone.name, blade.display_name()], Color(0.85, 0.88, 0.70))
+		% [gem.name, blade.display_name()], Color(0.85, 0.88, 0.70))
 	msg_log.add("The brazier goes black. Nothing will kindle it again.",
 		Color(0.45, 0.42, 0.42))
 	_make_noise(hot, FORGE_NOISE, &"forge")
 	_end_player_turn()
 	return true
 
-## Can this stone be set right now? Drives the inventory marker, the same way
+## Can this gem be set right now? Drives the inventory marker, the same way
 ## can_forge_item does -- so a weapon that already holds one simply never
 ## offers, rather than refusing after the click.
-func can_bind_stone(stone: Item) -> bool:
-	if stone.kind != Item.Kind.STONE:
+func can_bind_gem(gem: Item) -> bool:
+	if gem.kind != Item.Kind.GEM:
 		return false
 	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
 	if blade == null or blade.element != &"":
 		return false
-	return _adjacent_embers().x >= 0
+	if not blade.accepts_element(gem.element):
+		return false
+	# True at a LIT brazier too: the click there rakes the fire down, which is
+	# a real step toward binding rather than a refusal. Marking it otherwise
+	# would hide the only route a healthy player has to the forge.
+	return _adjacent_embers().x >= 0 or _adjacent_brazier().x >= 0
 
 ## Why there is no forging this, here. Four different situations that all used
 ## to print "you need a lit brazier", which is a lie in three of them.
@@ -2495,6 +2623,49 @@ func _knap_stones() -> bool:
 		% [sling.ammo, sling.ammo_max], Color(0.80, 0.78, 0.70))
 	_end_player_turn()
 	return true
+
+## Arrows finding their way home.
+##
+## Counted in TURNS rather than in tiles moved, because a turn is what the rest
+## of this game charges for -- waiting in mud, opening a door and standing still
+## all cost one, and an arrow that only came back when you walked would reward
+## pacing about rather than fighting.
+func _tick_returning() -> void:
+	var bow: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	if bow == null or bow.element != &"return":
+		_return_walk = 0
+		return
+	_return_walk += 1
+	if _return_walk < GEM_RETURN_STEPS:
+		return
+	_return_walk = 0
+	if bow.ammo >= bow.ammo_max:
+		return
+
+	var came := 0
+	var from: Array[Vector2i] = []
+	for it in ground.duplicate():
+		if it.id != &"arrows":
+			continue
+		var room: int = int(bow.ammo_max) - int(bow.ammo) - came
+		if room <= 0:
+			break
+		var taken: int = mini(it.ammo, room)
+		came += taken
+		it.ammo -= taken
+		from.append(Vector2i(it.x, it.y))
+		if it.ammo <= 0:
+			ground.erase(it)
+	if came <= 0:
+		return
+	bow.ammo += came
+	# One event per pile, so the renderer can draw each flight from where it
+	# actually lay rather than from an average of them.
+	for at in from:
+		events.append({"kind": &"recall", "from": at,
+			"to": Vector2i(player.x, player.y)})
+	msg_log.add("Your arrows shiver loose and come back. (+%d, %d/%d)"
+		% [came, bow.ammo, bow.ammo_max], Color(0.80, 0.85, 0.70))
 
 ## Gathering spent arrows back into the quiver.
 func _gather_ammo(pile: Item) -> bool:
@@ -2783,6 +2954,7 @@ func step_travel() -> bool:
 func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
+	_tick_returning()
 	# The cost was already being computed and thrown away. Difficult ground has
 	# always charged the world for the time it takes; this is the first thing
 	# that charges the record too.
@@ -2918,6 +3090,7 @@ func to_dict() -> Dictionary:
 		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
+		"gem_found": gem_found,
 		"risen_grave": [risen_grave.x, risen_grave.y],
 		"hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
@@ -2980,6 +3153,7 @@ func apply_dict(d: Dictionary) -> bool:
 		if bits.size() == 2:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
 	grave_risen = d.get("grave_risen", false)
+	gem_found = d.get("gem_found", false)
 	var rg: Array = d.get("risen_grave", [-1, -1])
 	risen_grave = Vector2i(int(rg[0]), int(rg[1])) if rg.size() == 2 \
 		else Vector2i(-1, -1)
@@ -3162,6 +3336,8 @@ func _take_ai_turn(actor: Entity) -> int:
 	if actor.regen > 0 and actor.hp < actor.max_hp:
 		actor.hp = mini(actor.max_hp, actor.hp + actor.regen)
 
+	if actor.chilled > 0:
+		actor.chilled -= 1
 	_update_awareness(actor)
 	# Asleep, or merely stirring: it spends its turn not acting. That pause is
 	# the player's window to withdraw, and it is the point of the middle state.
@@ -3657,6 +3833,93 @@ func _step_along(who: Entity, dir: Vector2i, distance: int) -> int:
 		moved += 1
 	return moved
 
+## The element bound into whatever this blow was struck with.
+##
+## Melee only, deliberately. A launcher's gem would fire from across the room
+## with none of the risk that makes the ember forge decision hard, and the
+## peek-and-duck loop is already the strongest thing an archer has. Reach is
+## paid for in damage everywhere else in this game; it should be paid for here
+## too.
+func _gem_of(attacker: Entity, ranged: bool) -> StringName:
+	if ranged:
+		return &""
+	var held: Variant = attacker.equipped.get(Item.Slot.WEAPON, null)
+	if held == null:
+		return &""
+	return held.element
+
+## What an element does once the blow has landed. Fire is handled at the
+## damage line instead, because it changes the number itself.
+func _gem_strikes(gem: StringName, attacker: Entity, defender: Entity,
+		dmg: int) -> void:
+	match gem:
+		&"frost":
+			if defender.alive:
+				defender.chilled = GEM_FROST_TURNS
+				if attacker.is_player:
+					msg_log.add("Frost creeps over the %s. It slows."
+						% defender.name, Color(0.62, 0.82, 0.95))
+		&"leech":
+			# Rounded UP so a glancing blow still returns something. A gem that
+			# gives nothing on a bad hit teaches the player it is unreliable
+			# rather than modest.
+			var drawn := maxi(1, int(ceil(float(dmg) * GEM_LEECH_SHARE)))
+			drawn = mini(drawn, attacker.max_hp - attacker.hp)
+			if drawn > 0:
+				attacker.hp += drawn
+				if attacker.is_player:
+					msg_log.add("The gem drinks, and you feel it. (+%d)" % drawn,
+						Color(0.80, 0.55, 0.75))
+		&"crag":
+			_raise_spires(defender)
+
+## Stone spires erupt around whatever was hit.
+##
+## Never on the attacker's own cell and never where anything is standing, so it
+## can hem a thing in but can never bury the player who swung. Plain ground
+## only -- a spire through water or an authored vault floor would be writing
+## over something that already means something.
+func _raise_spires(target: Entity) -> void:
+	var made := 0
+	var spots: Array[Vector2i] = []
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			spots.append(Vector2i(target.x + dx, target.y + dy))
+	for i in range(spots.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t := spots[i]
+		spots[i] = spots[j]
+		spots[j] = t
+	for c in spots:
+		if made >= GEM_CRAG_SPIRES:
+			break
+		if not map.in_bounds(c.x, c.y) or entity_at(c.x, c.y) != null:
+			continue
+		if c == Vector2i(player.x, player.y) or c == stairs:
+			continue
+		var t := map.get_tile(c.x, c.y)
+		if t != Tiles.FLOOR and t != Tiles.CAVE_FLOOR:
+			continue
+		if protected_cell(c):
+			continue
+		map.set_tile(c.x, c.y, Tiles.STALAGMITE)
+		made += 1
+	if made > 0:
+		if pathfinder != null:
+			pathfinder = Pathfinder.new(map)
+		msg_log.add("Stone tears up out of the floor around it.",
+			Color(0.78, 0.74, 0.66))
+
+## Is this cell inside a hand-drawn room? Authored terrain is what the author
+## drew and nothing gets to rewrite it.
+func protected_cell(c: Vector2i) -> bool:
+	for vr in vault_rects:
+		if vr.has_point(c):
+			return true
+	return false
+
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		power_override: int = -1) -> void:
 	var atk := attacker.total_power() if power_override < 0 else power_override
@@ -3671,7 +3934,14 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	var raw := atk - defender.total_defense() + rng.randi_range(-1, 1)
 	var least := int(ceil(float(atk) * DAMAGE_FLOOR_FRACTION))
 	var dmg := maxi(maxi(1, least), raw)
+	# What the bound gem adds, before the blow lands, so fire is part of the
+	# number the player is shown rather than a second mysterious deduction.
+	var gem := _gem_of(attacker, ranged)
+	if gem == &"fire":
+		dmg += maxi(1, int(round(float(dmg) * GEM_FIRE_SHARE)))
 	defender.take_damage(dmg)
+	if gem != &"":
+		_gem_strikes(gem, attacker, defender, dmg)
 
 	if attacker.is_player:
 		_tally("dealt", dmg)

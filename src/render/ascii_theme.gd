@@ -36,11 +36,11 @@ const TABLE := {
 	&"potion":      {"ch": "!", "fg": Palette.POTION},
 	&"scroll":      {"ch": "?", "fg": Palette.SCROLL},
 	&"amulet":      {"ch": "\"", "fg": Palette.AMULET},
-	## Every elemental stone, one glyph and one colour. `$` is the roguelike's
+	## Every elemental gem, one glyph and one colour. `$` is the roguelike's
 	## own mark for something valuable, and a stone is the most valuable thing
 	## on a floor. Which element it holds is a NAME, read with the look key --
 	## the same bargain as `[` for every piece of armour.
-	&"stone":       {"ch": "$", "fg": Palette.STONE_ITEM},
+	&"gem":         {"ch": "$", "fg": Palette.GEM},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
 	&"launcher":    {"ch": "}", "fg": Palette.LAUNCHER},
 	&"ammo":        {"ch": "\\", "fg": Palette.LAUNCHER},

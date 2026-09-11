@@ -85,6 +85,10 @@ var knockback := 0
 ## Follows its own knockback into the ground it just cleared, so the shove buys
 ## the target no distance at all. Meaningless without `knockback`.
 var charges := false
+## Turns of frost left on it. Slows its movement, not its attacks -- a chilled
+## thing still swings as hard, it just cannot close or flee as fast.
+var chilled := 0
+
 ## A low-tier creature the climb has made worse. Cosmetically a colour, but the
 ## flag is what the renderer and the bestiary key on -- and what stops a
 ## corrupted thing being mistaken for its own base entry in a save.
@@ -202,6 +206,7 @@ func to_dict() -> Dictionary:
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
 		"charges": charges, "risen": risen, "corrupted": corrupted,
+		"chilled": chilled,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
@@ -255,6 +260,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.charges = d.get("charges", false)
 	e.risen = d.get("risen", false)
 	e.corrupted = d.get("corrupted", false)
+	e.chilled = int(d.get("chilled", 0))
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

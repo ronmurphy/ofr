@@ -7,9 +7,9 @@ extends RefCounted
 ## already exist on Entity. No stat system is needed to make a sword work, and
 ## adding one now would be inventing a dependency that isn't there.
 
-## STONE is last on purpose: `kind` is read from the catalogue rather than
+## GEM is last on purpose: `kind` is read from the catalogue rather than
 ## saved, so appending is safe, but inserting would still be a needless risk.
-enum Kind { POTION, SCROLL, WEAPON, ARMOR, AMULET, STONE }
+enum Kind { POTION, SCROLL, WEAPON, ARMOR, AMULET, GEM }
 ## OFFHAND is the shield hand. A launcher claims it -- see is_two_handed --
 ## which is what turns "bow or blade" from a damage question into a posture.
 enum Slot { NONE = -1, WEAPON, ARMOR, OFFHAND }
@@ -22,9 +22,9 @@ var slot: int = Slot.NONE
 
 # Consumable fields
 var effect: StringName = &""
-## Which element a stone carries, or which one has been bound into a weapon.
+## Which element a gem carries, or which one has been bound into a weapon.
 ## Empty for everything else. The binding is permanent -- see
-## GameState._bind_stone -- so a weapon can only ever hold one.
+## GameState.player_bind -- so a weapon can only ever hold one.
 var element: StringName = &""
 ## Overrides the verb its KIND would imply. Empty means "ask the kind", which
 ## is right for everything except food: meat is a Kind.POTION so that it stacks
@@ -111,36 +111,51 @@ const CATALOGUE := {
 		"min_depth": 999, "weight": 0,
 	},
 
-	# Elemental stones.
+	# Elemental gems.
+	#
+	# GEM rather than "stone": this codebase already calls two other things
+	# stone -- the wall material in materials.gd and the sling's ammunition --
+	# and a third meaning would have been one too many. The glyph was always a
+	# cut gem anyway.
 	#
 	# One glyph and one colour for all of them, the way every armour is `[` and
 	# every potion `!`. The NAME tells you which, read off the look panel.
 	#
 	# Per-element icons were tried on paper and abandoned: `md-fire` is already
-	# the brazier and the water glyph is already water, so a fire stone on the
+	# the brazier and the water glyph is already water, so a fire gem on the
 	# floor would read as the single most important interactive thing in the
-	# game, and a water stone as a puddle.
+	# game, and a water gem as a puddle.
 	#
-	# Four rather than six. At roughly one stone a floor and a permanent
+	# Four rather than six. At roughly one gem a floor and a permanent
 	# binding, a player meets eight or ten in a run -- if half of them are
 	# variations on "the enemy is inconvenienced", none of them becomes the one
 	# you hope to find. These four answer four different questions: damage,
 	# distance, survival, ground.
-	&"stone_fire": {
-		"name": "ember stone", "app": &"stone", "kind": Kind.STONE,
+	&"gem_fire": {
+		"name": "gem of fire", "app": &"gem", "kind": Kind.GEM,
 		"element": &"fire", "min_depth": 2, "weight": 4,
 	},
-	&"stone_frost": {
-		"name": "rime stone", "app": &"stone", "kind": Kind.STONE,
+	&"gem_frost": {
+		"name": "gem of frost", "app": &"gem", "kind": Kind.GEM,
 		"element": &"frost", "min_depth": 2, "weight": 4,
 	},
-	&"stone_leech": {
-		"name": "thirsting stone", "app": &"stone", "kind": Kind.STONE,
+	&"gem_leech": {
+		"name": "gem of thirst", "app": &"gem", "kind": Kind.GEM,
 		"element": &"leech", "min_depth": 3, "weight": 3,
 	},
-	&"stone_earth": {
-		"name": "grinding stone", "app": &"stone", "kind": Kind.STONE,
-		"element": &"earth", "min_depth": 3, "weight": 3,
+	## Bow only. Slings knap their ammunition out of rubble, so a sling that
+	## also called its stones back would be answering a question it does not
+	## have -- and arrows are the only strictly CLOSED resource in the game:
+	## nothing in the world ever adds one, so every arrow left behind is gone
+	## for the run.
+	&"gem_return": {
+		"name": "gem of returning", "app": &"gem", "kind": Kind.GEM,
+		"element": &"return", "min_depth": 3, "weight": 3,
+	},
+
+	&"gem_crag": {
+		"name": "gem of the crag", "app": &"gem", "kind": Kind.GEM,
+		"element": &"crag", "min_depth": 3, "weight": 3,
 	},
 
 	&"potion_healing": {
@@ -280,6 +295,36 @@ static func make(item_id: StringName) -> Item:
 ## How many times this item has been merged.
 ## One expression for both: equipment carries its level in the stat bonuses it
 ## has gained, a consumable in `boosts`, and the other term is always zero.
+## Which elements this weapon will take.
+##
+## Not every gem belongs on every weapon, and the restrictions are arguments
+## rather than flavour:
+##
+##   leech   MELEE ONLY. You drink from a thing you are standing next to, and
+##           healing from across a room removes the risk that makes the ember
+##           forge decision hard in the first place.
+##   frost   MELEE ONLY, and this is the important one. Melee frost is paid for
+##           -- you take a hit before you can slow anything. Ranged frost is
+##           free, and the codebase already records that shoot-and-retreat was
+##           too strong once: "eight of fifteen monsters are slower than the
+##           player and can never close, so those turns were free". A frost
+##           arrow makes that true of all fifteen.
+##   return  LAUNCHERS ONLY, and pointless on a sling.
+##   fire    Anything. You can set a stone or an arrow alight.
+##   crag    Anything. Something heavy striking the ground is the whole idea.
+func accepts_element(el: StringName) -> bool:
+	if not is_equipment() or kind != Kind.WEAPON:
+		return false
+	var ranged := range_bonus > 1
+	match el:
+		&"leech", &"frost":
+			return not ranged
+		&"return":
+			return ammo_kind == &"arrow"
+		&"fire", &"crag":
+			return true
+	return false
+
 ## Rebuilds an item from what `display_name()` produced -- "short bow +1" back
 ## into a short bow with one upgrade on it.
 ##
@@ -372,7 +417,7 @@ func verb() -> String:
 	if use_verb != "":
 		return use_verb
 	match kind:
-		Kind.STONE: return "bind"
+		Kind.GEM: return "bind"
 		Kind.POTION: return "drink"
 		Kind.SCROLL: return "read"
 		Kind.WEAPON: return "wield"

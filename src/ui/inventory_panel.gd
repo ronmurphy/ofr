@@ -14,7 +14,10 @@ signal merge_requested(index: int)
 signal throw_requested(index: int)
 signal close_requested()
 
-enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS }
+## GEMS is last so the existing order is untouched -- `cycle_filter` wraps on
+## FILTERS.size(), so appending is safe and inserting would shuffle the tabs
+## under a player who has learned where they are.
+enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS, GEMS, AMULET }
 
 const FILTERS := [
 	{"id": Filter.ALL,      "label": "all"},
@@ -22,13 +25,23 @@ const FILTERS := [
 	{"id": Filter.ARMOUR,   "label": "armour"},
 	{"id": Filter.POTIONS,  "label": "potions"},
 	{"id": Filter.SCROLLS,  "label": "scrolls"},
+	{"id": Filter.GEMS,     "label": "gems"},
 ]
 
+## Every kind needs a group or its items are INVISIBLE -- the list is drawn by
+## walking this, not by walking the pack, so an item belonging to none of these
+## is carried and never shown. A gem was picked up and vanished for exactly
+## this reason.
 const GROUPS := [
 	[Filter.WEAPONS, "WEAPONS"],
 	[Filter.ARMOUR,  "ARMOUR"],
 	[Filter.POTIONS, "POTIONS"],
 	[Filter.SCROLLS, "SCROLLS"],
+	[Filter.GEMS,    "GEMS"],
+	# The thing the whole game is about, and it was homeless until a test went
+	# looking: Kind.AMULET belonged to no group, so the Amulet of the Deep was
+	# carried and never shown in the pack. Found by the guard written for gems.
+	[Filter.AMULET,  "AMULET"],
 ]
 
 @export var font: Font
@@ -110,6 +123,8 @@ func _matches(item: Item, f: int) -> bool:
 		Filter.ARMOUR:   return item.kind == Item.Kind.ARMOR
 		Filter.POTIONS:  return item.kind == Item.Kind.POTION
 		Filter.SCROLLS:  return item.kind == Item.Kind.SCROLL
+		Filter.GEMS:     return item.kind == Item.Kind.GEM
+		Filter.AMULET:   return item.kind == Item.Kind.AMULET
 	return true
 
 ## Best first, then alphabetical -- so deciding what to wear is a glance at the
@@ -343,7 +358,8 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	# A dot marks what can be forged right now, so the player does not have to
 	# work out that the item to click is the one being IMPROVED, not the one
 	# being consumed.
-	if state.can_forge_item(item):
+	if state.can_forge_item(item) \
+			or (item.kind == Item.Kind.GEM and state.can_bind_gem(item)):
 		draw_string(font, base - Vector2(14.0, 0.0), "●",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.STAIRS)
 

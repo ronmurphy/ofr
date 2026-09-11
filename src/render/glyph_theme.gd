@@ -49,7 +49,7 @@ const OVERRIDES := {
 	&"ogre":     HEAVY_FIGURE,
 	&"troll":    HEAVY_FIGURE,
 	&"giant":    HEAVY_FIGURE,
-	&"stone":    0xF01C8,   # md-diamond_stone
+	&"gem":      0xF01C8,   # md-diamond_stone
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent
