@@ -4612,10 +4612,12 @@ func _test_the_first_gem_is_certain() -> void:
 			doubled += 1
 	check("floor two always holds a gem now (%d barren of 60)" % barren,
 		barren == 0, "%d" % barren)
-	# The guarantee must not become a second source: a lucky floor should look
-	# exactly as it did before.
-	check("and lucky floors are untouched (%d had more than one)" % doubled,
-		doubled > 0)
+	# Written when gems were ordinary loot and a lucky floor could carry two.
+	# They are chest-only now, so exactly one -- the guaranteed one -- is the
+	# correct answer and more would mean the guarantee had become a second
+	# source rather than a backstop.
+	check("and never more than the one (%d floors had two)" % doubled,
+		doubled == 0, "%d" % doubled)
 
 	# Only the first. Once one has been seen, later floors are ordinary again.
 	var run := GameState.new(77)
@@ -4806,6 +4808,9 @@ func _test_chests() -> void:
 
 	# Walking into it opens it, and it gives up a gem.
 	var gs2 := _arena(21, 9)
+	# Depth matters: gems start at 2 and 3, so a chest opened on floor one
+	# would honestly have nothing in it.
+	gs2.depth = 5
 	gs2.player.x = 5
 	gs2.player.y = 4
 	gs2.map.set_tile(6, 4, Tiles.CHEST)

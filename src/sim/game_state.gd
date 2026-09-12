@@ -991,12 +991,40 @@ func _place_chest() -> void:
 		return
 	if room_rects.is_empty():
 		return
-	var at := _open_cell_in(room_rects[room_rects.size() - 1])
-	if at.x < 0 or at == stairs or at == Vector2i(player.x, player.y):
+	# Tried across every room rather than taken from one.
+	#
+	# The first version asked `_open_cell_in` for a single room's most central
+	# cell and gave up if anything was there -- and by this point the rooms have
+	# already been populated, so the middle of a room is exactly where a monster
+	# or a piece of loot is standing. Measured: zero chests placed, on every
+	# floor that should have carried one.
+	var placed := false
+	for attempt in room_rects.size():
+		var room: Rect2i = room_rects[(room_rects.size() - 1 + attempt)
+			% room_rects.size()]
+		for y in range(room.position.y, room.end.y):
+			for x in range(room.position.x, room.end.x):
+				var c := Vector2i(x, y)
+				if c == stairs or c == Vector2i(player.x, player.y):
+					continue
+				if not _can_rest_on(x, y) or entity_at(x, y) != null:
+					continue
+				if not items_at(x, y).is_empty():
+					continue
+				# Never inside a hand-drawn room: an author who wanted a chest
+				# in theirs can draw one, and one arriving uninvited would sit
+				# on top of what they did draw.
+				if protected_cell(c):
+					continue
+				map.set_tile(x, y, Tiles.CHEST)
+				placed = true
+				break
+			if placed:
+				break
+		if placed:
+			break
+	if not placed:
 		return
-	if not _can_rest_on(at.x, at.y) or entity_at(at.x, at.y) != null:
-		return
-	map.set_tile(at.x, at.y, Tiles.CHEST)
 
 ## Lifting the lid.
 ##
