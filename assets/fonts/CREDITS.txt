@@ -7,19 +7,26 @@ JetBrainsMono-Bold.ttf
 
 ofr_icons.ttf
     A subset of JetBrains Mono Nerd Font, built by tools/build_icon_font.py.
-    It carries only the glyphs this game actually draws -- about 0.9% of the
-    source file -- and those glyphs come from three separate icon projects:
+    It carries the handful of glyphs this game draws and the alternates it
+    was choosing between -- about 0.9% of the source file -- and those glyphs
+    come from three separate icon projects:
 
-    Material Design Icons, by Pictogrammers.        (26 glyphs)
+    Material Design Icons, by Pictogrammers.        (53 glyphs)
         Apache License 2.0 -- see LICENSE-2.0.txt
 
-    Font Awesome Free, by Fonticons, Inc.            (3 glyphs)
+    Font Awesome Free, by Fonticons, Inc.            (6 glyphs)
         CC BY 4.0 -- see CC-legalcode.txt
 
-    Codicons, by Microsoft.                          (1 glyph)
+    Codicons, by Microsoft.                          (2 glyphs)
         CC BY 4.0 -- see CC-legalcode.txt
 
     The typeface those icons are patched into is JetBrains Mono, above.
+
+Counts are of the glyphs actually in ofr_icons.ttf, which is more than the
+game currently draws: the subset keeps the alternates the render themes were
+choosing between, so changing one's mind about an icon costs a line of GDScript
+instead of a font rebuild. They were last recounted from the built file rather
+than from the theme tables.
 
 CC BY 4.0 asks for attribution rather than only for the licence text to travel
 with the work, which is why Font Awesome and Microsoft are named here and not

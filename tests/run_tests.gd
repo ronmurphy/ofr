@@ -125,6 +125,8 @@ func _initialize() -> void:
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
 	_test_chests()
+	_test_the_dead_are_marked()
+	_test_damage_types()
 	_test_the_first_gem_is_certain()
 	_test_every_kind_is_listed()
 	_test_cave_bear()
@@ -3969,8 +3971,18 @@ func _test_rabbit() -> void:
 			if e.name == "rabbit":
 				here += 1
 		seen += here
-		check_silent(here <= 2)
+		# Three, not two. `max_per_floor` is 2 and the cave band lifts it by one
+		# for things that belong there -- the bestiary comment says so outright:
+		# "three rabbits is a fifth of them by arithmetic alone, and three is
+		# the cap we chose". This asserted two and had been failing silently
+		# since the lift was added, invisible because nothing reported it.
+		check_silent(here <= 3)
 	check("rabbits turn up across the dungeon (%d in 40 floors)" % seen, seen > 0)
+	# Gathered above and never reported until now. An unreported check_silent
+	# is worse than none: it cannot fail the suite itself, and it leaves
+	# `_silent_ok` false for whoever reports NEXT -- which is how a perfectly
+	# correct test of the undead came to fail for a reason about rabbits.
+	check_gathered("and never more than three on a floor")
 
 	var kept := Entity.from_dict(glut.to_dict())
 	check("a half-fed rabbit survives a suspend",
@@ -4821,13 +4833,122 @@ func _test_chests() -> void:
 	check("walking into it opens it",
 		gs2.map.get_tile(6, 4) != Tiles.CHEST)
 	check("and you do not step onto it", gs2.player.x == 5)
-	var found := 0
+	# The FIRST chest of a run hands out a unique -- there is one ring in a
+	# dungeon and a chest is the only way to it. Gems are what chests hold once
+	# the uniques are spent.
+	var prize := ""
+	for it in gs2.ground:
+		prize = String(it.id)
+	check("the first chest holds the unique (%s)" % prize, prize == "rat_ring")
+	check("and the run remembers it", gs2.uniques_found.has(&"rat_ring"))
+
+	# A second chest, with the ring already found, gives a gem instead.
+	gs2.ground = []
+	gs2.map.set_tile(4, 4, Tiles.CHEST)
+	gs2.pathfinder = Pathfinder.new(gs2.map)
+	gs2.player.x = 5
+	gs2.player.y = 4
+	gs2.player_move(-1, 0)
+	var gems := 0
 	for it in gs2.ground:
 		if it.kind == Item.Kind.GEM:
-			found += 1
-	check("it held a gem (%d)" % found, found == 1)
-	check("and that counts as the run's first",
-		gs2.gem_found)
+			gems += 1
+	check("a later chest holds a gem (%d)" % gems, gems == 1)
+	check("and that counts as the run's first gem", gs2.gem_found)
+	check("and the ring is never handed out twice",
+		gs2.uniques_found.size() == 1)
+
+## Who counts as dead, and who does not.
+##
+## Written alongside its first consumer rather than ahead of it -- a flag
+## nothing reads is a lie in the save file, and this project has shipped two of
+## those already.
+func _test_the_dead_are_marked() -> void:
+	var gs := _arena(21, 9)
+	var dead := ["skeleton", "wight", "shadow", "banshee", "arch lich"]
+	var living := ["giant rat", "goblin", "orc", "cave bear", "rabbit",
+		"young dragon", "cave troll"]
+	for n in dead:
+		var e := _spawn(gs, n, 2, 2)
+		check_silent(e != null and e.unliving)
+		if e != null:
+			e.alive = false
+	check_gathered("the dead are marked as such")
+	for n in living:
+		var e := _spawn(gs, n, 3, 3)
+		check_silent(e != null and not e.unliving)
+		if e != null:
+			e.alive = false
+	check_gathered("and the living are not")
+
+	# The golem is the interesting edge: never alive, but not a corpse either.
+	var golem := _spawn(gs, "stone golem", 4, 4)
+	check("a golem is not counted among the dead",
+		golem != null and not golem.unliving)
+
+	var back := Entity.from_dict(_spawn(gs, "skeleton", 5, 5).to_dict())
+	check("and it survives a suspend", back.unliving)
+
+## What you hit a thing WITH, and whether it cares.
+func _test_damage_types() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 4
+	gs.player.y = 4
+	gs.player.power = 20
+
+	check("a sword slashes", Item.make(&"short_sword").damage_type == &"slash")
+	check("a bow pierces", Item.make(&"war_bow").damage_type == &"pierce")
+	check("a sling is blunt", Item.make(&"sling").damage_type == &"blunt")
+	check("and so is a mace", Item.make(&"mace").damage_type == &"blunt")
+	check("bare hands are nothing in particular",
+		Item.make(&"potion_healing").damage_type == &"")
+
+	# A skeleton has nothing to cut and nothing to puncture.
+	var bones := _spawn(gs, "skeleton", 5, 4)
+	check("a skeleton shrugs off steel",
+		bones.resists.has(&"slash") and bones.resists.has(&"pierce"))
+	check("and feels a mace", bones.weak_to.has(&"blunt"))
+
+	# Measured across many swings, because a single blow carries a +/-1 roll.
+	var sword := Item.make(&"short_sword")
+	var mace := Item.make(&"mace")
+	var slashed := 0
+	var clubbed := 0
+	for i in 400:
+		bones.max_hp = 99999
+		bones.hp = 99999
+		gs.player.equipped[Item.Slot.WEAPON] = sword
+		gs._attack(gs.player, bones)
+		slashed += 99999 - bones.hp
+		bones.hp = 99999
+		gs.player.equipped[Item.Slot.WEAPON] = mace
+		gs._attack(gs.player, bones)
+		clubbed += 99999 - bones.hp
+	check("the mace hurts it more than the sword (%d vs %d over 400)"
+		% [clubbed, slashed], clubbed > slashed)
+
+	# And something alive does not care which it was.
+	var orc := _spawn(gs, "orc", 6, 4)
+	check("an orc resists nothing", orc.resists.is_empty()
+		and orc.weak_to.is_empty())
+
+	# The golem is stone, not dead -- it resists without being unliving.
+	var golem := _spawn(gs, "stone golem", 7, 4)
+	check("a golem resists steel", golem.resists.has(&"slash"))
+	check("but is not counted among the dead", not golem.unliving)
+	check("and it throws rather than shuffles", golem.attack_range > 1)
+
+	# Its corpse is ammunition.
+	gs.map.set_tile(7, 4, Tiles.FLOOR)
+	golem.hp = 0
+	golem.alive = false
+	gs._drop_loot(golem)
+	check("a fallen golem leaves rubble",
+		gs.map.get_tile(7, 4) == Tiles.RUBBLE)
+
+	check("resistance survives a suspend",
+		Entity.from_dict(bones.to_dict()).resists.has(&"blunt") == false
+			and Entity.from_dict(bones.to_dict()).weak_to.has(&"blunt"))
 
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)
@@ -5633,6 +5754,54 @@ func _test_offhand_and_swap() -> void:
 	check("swapping back reaches for the blade", gs.player_swap_weapon())
 	check("the axe is in hand again", gs.player.is_equipped(axe))
 
+	# The swap key must never hand you a polymorph.
+	#
+	# Reachable without trying: throw your only dagger, hold a bow, carry the
+	# ring, and the key that exists to put a blade in a cornered archer's hands
+	# made him a blind, handless rat. It denies nothing -- the ring goes on from
+	# the pack for the same one turn -- but it used to be quietly BETTER than
+	# the pack, because the swap re-raises your shield on the way to a
+	# one-handed item. A rat holding a buckler.
+	var trap := _arena(21, 9)
+	trap.player.x = 5
+	trap.player.y = 4
+	for held in trap.player.inventory.duplicate():
+		if held.slot == Item.Slot.WEAPON:
+			trap.player.inventory.erase(held)
+	trap.player.equipped.erase(Item.Slot.WEAPON)
+	var trap_bow := Item.make(&"war_bow")
+	var trap_ring := Item.make(&"rat_ring")
+	trap.give_item(trap_bow)
+	trap.give_item(trap_ring)
+	trap.player.equipped[Item.Slot.WEAPON] = trap_bow
+	check("with only the ring to fall back on, the swap is refused",
+		not trap.player_swap_weapon())
+	check("and it did not turn you into a rat", not trap.ratted())
+
+	# The way OUT still works, which is the half of this that plays well: a rat
+	# cannot attack, so one key putting a weapon back in your hands is the
+	# form's answer to being cornered. One-way on purpose -- becoming a rat
+	# stays a deliberate act you go to the pack for.
+	var out := _arena(21, 9)
+	out.player.x = 5
+	out.player.y = 4
+	for held in out.player.inventory.duplicate():
+		if held.slot == Item.Slot.WEAPON:
+			out.player.inventory.erase(held)
+	var out_bow := Item.make(&"war_bow")
+	var out_ring := Item.make(&"rat_ring")
+	out.give_item(out_bow)
+	out.give_item(out_ring)
+	out.give_item(Item.make(&"war_axe"))
+	out.player.equipped[Item.Slot.WEAPON] = out_ring
+	check("a rat is a rat", out.ratted())
+	check("the swap key gets you out", out.player_swap_weapon())
+	check("and you are yourself again", not out.ratted())
+	check("holding the bow", out.player.is_equipped(out_bow))
+	out.player_swap_weapon()
+	check("and swapping on reaches the axe, never back to the ring",
+		out.player.is_equipped(out.player.inventory[2]) and not out.ratted())
+
 	# Nothing to swap to is refused rather than silently doing nothing.
 	var bare := _arena(21, 9)
 	bare.player.x = 5
@@ -5865,6 +6034,23 @@ func _test_icon_theme() -> void:
 			missing.append("%s U+%X" % [id, int(GlyphTheme.OVERRIDES[id])])
 	check("every override names a real appearance id", unknown.is_empty(), str(unknown))
 	check("every icon exists in the font we ship", missing.is_empty(), str(missing))
+
+	# The check that runs the OTHER way, and the one that was missing.
+	#
+	# The three checks above start from the theme tables and ask whether the
+	# font can draw them. Nothing started from the ITEM CATALOGUE and asked
+	# whether the themes know it. So a new item with a mistyped "app" -- or,
+	# more likely, a new item whose author added the theme entry to the glyph
+	# table and forgot the ASCII one -- drew the fallback "?" in letter mode
+	# and raised nothing anywhere. The mace and the axe were the first items to
+	# get appearance ids of their own, which is when this hole became reachable.
+	var undrawable: Array = []
+	for id in Item.CATALOGUE:
+		var app: StringName = Item.CATALOGUE[id].get("app", &"")
+		if not AsciiTheme.TABLE.has(app):
+			undrawable.append("%s -> %s" % [id, app])
+	check("every catalogue item has an appearance the themes know",
+		undrawable.is_empty(), str(undrawable))
 
 	# The look panel draws one icon of its own, and it draws it with the TEXT
 	# face rather than the map's. That face has no icon range by itself, so the

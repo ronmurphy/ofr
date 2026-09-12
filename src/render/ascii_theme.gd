@@ -44,7 +44,16 @@ const TABLE := {
 	## on a floor. Which element it holds is a NAME, read with the look key --
 	## the same bargain as `[` for every piece of armour.
 	&"gem":         {"ch": "$", "fg": Palette.GEM},
+	## A ring. `=` is the roguelike's own mark for one and nothing here uses it.
+	&"ring":        {"ch": "=", "fg": Palette.RING},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
+	## The mace and the axe carry their damage type in the PICTURE modes,
+	## where a silhouette can say "blunt" at a glance. Here they stay ")"
+	## in weapon blue, because ")" is the roguelike's mark for a melee
+	## weapon and splitting it would be inventing notation the genre
+	## already settled. The look key tells you which one it is.
+	&"mace":        {"ch": ")", "fg": Palette.WEAPON},
+	&"axe":         {"ch": ")", "fg": Palette.WEAPON},
 	&"launcher":    {"ch": "}", "fg": Palette.LAUNCHER},
 	&"ammo":        {"ch": "\\", "fg": Palette.LAUNCHER},
 	&"armour":      {"ch": "[", "fg": Palette.ARMOUR},

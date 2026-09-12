@@ -210,6 +210,27 @@ const DAMAGE_FLOOR_FRACTION := 0.25
 ## measured problem with: a +3 is sixty per cent of a level-one hit and twenty
 ## per cent of a level-fifteen one, so it would deflate exactly the way the
 ## weapon bonuses do. A share keeps a gem worth what it was worth.
+## What a damage type is worth against something that shrugs it off, or that
+## it finds.
+##
+## Deliberately modest. These exist to change WHICH weapon you reach for, not
+## to make one useless -- and `DAMAGE_FLOOR_FRACTION` already guarantees every
+## blow lands for at least a quarter of your attack, so a resisted weapon can
+## never be reduced to nothing. That floor is what makes this safe to add at
+## all.
+const RESISTED := 0.70
+## Raised from 1.40 after play. Reported from a real run: a +5 mace on a wight
+## did 14, a +7 war axe did 13. The system WORKED -- the numbers came out of
+## the formula exactly -- and it still failed, because one point of damage is
+## not worth an inventory slot and a second weapon to swap to. The optimal play
+## was "just use the axe", which is the weapon-convergence problem wearing a
+## new hat.
+##
+## At 1.60 the same pair reads 16 against 13. The resist side stays where it
+## was: being punished for the wrong weapon is already legible at 0.70, and it
+## is the REWARD for carrying the right one that was too thin to notice.
+const VULNERABLE := 1.60
+
 const GEM_FIRE_SHARE := 0.35
 ## Leech is deliberately stingier, and it is measured against the BRAZIER's ten
 ## hit points rather than against the health bar. D&D's vampiric touch is half
@@ -247,6 +268,9 @@ const GEM_RETURN_STEPS := 5
 ## the guarantee buys discovery and nothing else.
 const GEM_PITY_FLOORS := [2, 3, 4]
 var gem_found := false
+## Which uniques this run has already turned up. One of each per dungeon, so a
+## second chest cannot hand you a second ring.
+var uniques_found: Dictionary = {}
 
 ## How far a chest's hinges carry. The existing ladder: combat 6, bones 7, a
 ## banshee's wail 9, the forge 10, the vigil shrine 24. Eight puts it above an
@@ -258,6 +282,19 @@ const CHEST_NOISE := 8
 ## relief rather than something to plan around. Same reasoning as the graves'
 ## 45%: a rule that always fires stops being tense and becomes arithmetic.
 const CHEST_TRAP_CHANCE := 0.75
+
+## How much harder a rat is to notice. Multiplied into the detection chance, on
+## top of the darkness that comes free from having no torch.
+##
+## Note that losing the torch is NOT a cost for a stealth item -- `lum` is a
+## term in the detection formula, so being unlit already makes you harder to
+## see. The real price of no torch is that you cannot SEE: navigation, and
+## spotting what is ahead.
+const RAT_NOTICE := 0.35
+## And on the climb, where nothing expects a rat because there are none.
+## Brad's rule, and the best part of the design: the disguise fails because
+## there is nothing left to be disguised as.
+const RAT_NOTICE_ASCENT := 0.70
 
 const HP_WARN_FRACTION := 0.30
 
@@ -579,7 +616,7 @@ const BESTIARY := [
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
 	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4},
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4, "unliving": true, "resists": ["slash", "pierce"], "weak_to": ["blunt"]},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3},
 
@@ -605,13 +642,28 @@ const BESTIARY := [
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
 	 "threat": 17, "knockback": 2, "caves": 2.6},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
-	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5},
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"]},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
 	 "speed": 140, "ai": &"hunter", "flee": 0.10, "flying": true, "min_depth": 7, "threat": 20, "caves": 2.2},
+	# It throws its own rubble, and that is the fix for a monster you could
+	# simply walk away from.
+	#
+	# At speed 70 it is the slowest thing in the game and can never close on a
+	# player -- so it was a threat you ignored rather than fought. Reach makes
+	# it dangerous at exactly the distance you were comfortable at, and a
+	# golem lobbing stone is a better picture than a golem shuffling after you.
+	#
+	# The threat rises with it: a thing that can only be outwalked is worth
+	# less than a thing that can hit you from six cells away.
+	#
+	# Melee is unchanged and enormous -- if it does reach you, it should be
+	# felt.
 	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
-	 "speed": 70, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 8, "threat": 20, "caves": 0.5},
+	 "speed": 70, "ai": &"ranged", "range": 6, "standoff": 2, "flee": 0.0,
+	 "heavy": true, "min_depth": 8, "threat": 24, "caves": 0.5,
+	 "resists": ["slash", "pierce"], "weak_to": ["blunt"]},
 	{"name": "shadow", "app": &"shadow", "hp": 20, "power": 13, "def": 1,
-	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0},
+	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0, "unliving": true},
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
 	 "threat": 28, "caves": 2.0},
@@ -671,7 +723,7 @@ const BESTIARY := [
 	# walls are cover -- meeting the thing that ignores both before either has
 	# landed teaches nothing.
 	 "phasing": true, "senses": true, "wail": 9, "no_fade": true,
-	 "max_per_floor": 1, "weight": 0.30, "min_depth": 3, "threat": 8},
+	 "max_per_floor": 1, "weight": 0.30, "min_depth": 3, "threat": 8, "unliving": true},
 
 	# --- the casters ------------------------------------------------------
 	# Frail, long-armed, and unwilling to be reached. Both fight by refusing
@@ -707,7 +759,7 @@ const BESTIARY := [
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
 	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
-	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6},
+	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"]},
 ]
 
 ## The deepest tier that exists.
@@ -736,6 +788,7 @@ func new_game() -> void:
 	# A fresh run has met nothing. Cleared here as well as at declaration
 	# because new_game() is also the restart path.
 	gem_found = false
+	uniques_found.clear()
 	player = Entity.new("you", &"player", 0, 0)
 	player.is_player = true
 	player.faction = Entity.Faction.PLAYER
@@ -920,6 +973,14 @@ func shrine_label(kind: int) -> String:
 	return "an unfamiliar shrine"
 
 ## The forging ceiling, which the anvil raises.
+## Is the player wearing the ring right now?
+##
+## Asked of the equipped weapon rather than a flag, so there is exactly one
+## place the truth lives and taking the ring off cannot leave the rat behind.
+func ratted() -> bool:
+	var held: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	return held != null and held.transforms()
+
 func upgrade_cap() -> int:
 	return Item.MAX_UPGRADES + forge_cap_bonus
 
@@ -1069,7 +1130,17 @@ func _open_chest(at: Vector2i) -> void:
 	_travel.clear()
 	events.append({"kind": &"forge", "to": at})
 
-	var prize := Item.roll_gem(rng, effective_depth())
+	# A unique first, if the run has not produced one yet -- they are one per
+	# dungeon and a chest is the only way to one. Gems are what a chest holds
+	# once the uniques are spent.
+	var prize: Item = null
+	for key in Item.uniques(effective_depth()):
+		if not uniques_found.has(key):
+			prize = Item.make(key)
+			uniques_found[key] = true
+			break
+	if prize == null:
+		prize = Item.roll_gem(rng, effective_depth())
 	if prize != null:
 		_drop_item_at(prize, at)
 		gem_found = true
@@ -1313,6 +1384,13 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
 	m.knockback = int(entry.get("knockback", 0))
+	m.unliving = entry.get("unliving", false)
+	m.resists.clear()
+	for r in entry.get("resists", []):
+		m.resists.append(StringName(r))
+	m.weak_to.clear()
+	for w in entry.get("weak_to", []):
+		m.weak_to.append(StringName(w))
 	m.charges = entry.get("charges", false)
 	m.senses = entry.get("senses", false)
 	m.wail_radius = entry.get("wail", 0)
@@ -1377,6 +1455,19 @@ func _settle_the_grave() -> void:
 func _drop_loot(victim: Entity) -> void:
 	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit":
 		_drop_meat(victim)
+	# A golem falls apart into what it was made of, and what it was throwing.
+	#
+	# Brad's idea, and it closes the loop: the thing made of rock arms you
+	# against the next one. Rubble knaps into sling stones, a sling is blunt,
+	# and blunt is what golems are weak to -- so its corpse is ammunition for
+	# killing its kin. Nothing here is new; it is four existing rules meeting.
+	if victim.appearance == &"golem":
+		var at := Vector2i(victim.x, victim.y)
+		if map.in_bounds(at.x, at.y) and map.get_tile(at.x, at.y) == Tiles.FLOOR \
+				and not protected_cell(at):
+			map.set_tile(at.x, at.y, Tiles.RUBBLE)
+			msg_log.add("The golem comes apart into a heap of stone.",
+				Color(0.78, 0.74, 0.66))
 	# Where it fell, unless where it fell is a hole. Nothing can spawn on a
 	# hazard any more, but a monster can be pushed or blinked onto one later.
 	var at := Vector2i(victim.x, victim.y)
@@ -1663,6 +1754,11 @@ func entity_at(x: int, y: int) -> Entity:
 func update_vision() -> void:
 	var lit_reach := torch_radius()
 	var radius := lit_reach if torch_lit else DOUSED_RADIUS
+	# A rat is not carrying a torch. This is the honest cost of the ring: not
+	# the stealth (being unlit HELPS you hide -- `lum` is a term in the
+	# detection formula) but the blindness. You cannot see what is coming.
+	if ratted():
+		radius = DOUSED_RADIUS
 	if torch_flare > 0:
 		# The flare burns at full strength wherever you are, which is the point
 		# of it in the dark band: on a cave floor it does not merely double your
@@ -1882,6 +1978,10 @@ func player_move(dx: int, dy: int) -> bool:
 
 	var target := entity_at(nx, ny)
 	if target != null and target != player:
+		if ratted():
+			msg_log.add("You have no hands. Whatever you meant to do, you cannot.",
+				Color(0.7, 0.6, 0.4))
+			return false
 		_attack(player, target)
 		_end_player_turn()
 		return true
@@ -2781,6 +2881,27 @@ func _knap_stones() -> bool:
 ## of this game charges for -- waiting in mud, opening a door and standing still
 ## all cost one, and an arrow that only came back when you walked would reward
 ## pacing about rather than fighting.
+## The ring burning down, a turn at a time.
+##
+## Charged by TURNS SPENT AS A RAT rather than by transformation, so changing
+## back to use a brazier pauses the drain instead of costing another use. When
+## it runs out you are simply a person again, standing wherever you were.
+func _burn_the_ring() -> void:
+	if not ratted():
+		return
+	var ring: Item = player.equipped[Item.Slot.WEAPON]
+	ring.charges -= 1
+	if ring.charges == 20:
+		msg_log.add("The ring is growing cold on your paw.",
+			Color(0.75, 0.70, 0.80))
+	if ring.charges > 0:
+		return
+	player.equipped.erase(Item.Slot.WEAPON)
+	player.inventory.erase(ring)
+	msg_log.add("The ring crumbles, and you are yourself again.",
+		Color(0.85, 0.80, 0.90))
+	update_vision()
+
 func _tick_returning() -> void:
 	var bow: Variant = player.equipped.get(Item.Slot.WEAPON, null)
 	if bow == null or bow.element != &"return":
@@ -2936,6 +3057,23 @@ func player_swap_weapon() -> bool:
 	var best: Item = null
 	for it in player.inventory:
 		if it.slot != Item.Slot.WEAPON or it == held:
+			continue
+		# Never swap you INTO something that changes what you are.
+		#
+		# Reported from play, and it was reachable without trying: throw your
+		# dagger, hold a bow, carry the ring, and this key -- the one that
+		# exists so a cornered archer can get a blade in his hands -- turned
+		# you into a blind, handless rat instead. The panic button is the worst
+		# possible place for a surprise.
+		#
+		# This denies nothing. The ring can still be put on from the pack for
+		# the same one turn this key costs, so every strategy rat form allows
+		# is exactly as available as it was. What it removes is a shortcut that
+		# was also QUIETLY BETTER than the pack: the swap re-raises your shield
+		# on the way to a one-handed item, so going this way made you a rat
+		# still somehow holding a buckler. Nobody designed that; it fell out of
+		# two correct rules meeting.
+		if it.transforms():
 			continue
 		if it.is_two_handed() != want_reach:
 			continue
@@ -3112,7 +3250,12 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	elapsed += cost
 	_note_footing()
 	var underfoot := map.get_tile(player.x, player.y)
-	_make_noise(Vector2i(player.x, player.y), Tiles.noise_radius(underfoot))
+	# Eight inches of rat crossing a boneyard makes no sound worth hearing.
+	# The sharpest thing the ring buys: it is the only way past a gravestone
+	# in bones without waking what is under it.
+	if not ratted():
+		_make_noise(Vector2i(player.x, player.y), Tiles.noise_radius(underfoot))
+	_burn_the_ring()
 	if underfoot == Tiles.BONES:
 		# Crossing it destroys it. That turns a boneyard from a standing toll
 		# into something you can PREPARE -- walk it once while things are
@@ -3242,6 +3385,7 @@ func to_dict() -> Dictionary:
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
 		"gem_found": gem_found,
+		"uniques": uniques_found.keys(),
 		"risen_grave": [risen_grave.x, risen_grave.y],
 		"hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
@@ -3305,6 +3449,9 @@ func apply_dict(d: Dictionary) -> bool:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
 	grave_risen = d.get("grave_risen", false)
 	gem_found = d.get("gem_found", false)
+	uniques_found.clear()
+	for k in d.get("uniques", []):
+		uniques_found[StringName(k)] = true
 	var rg: Array = d.get("risen_grave", [-1, -1])
 	risen_grave = Vector2i(int(rg[0]), int(rg[1])) if rg.size() == 2 \
 		else Vector2i(-1, -1)
@@ -3553,6 +3700,15 @@ func _notices_player(actor: Entity, d: int) -> bool:
 	# are line-of-sight and light, and this is deaf to both.
 	if actor.senses:
 		return true
+	# The dead are not fooled. Absolute rather than a multiplier: a skeleton
+	# sees a rat exactly as well as it sees a person, which makes a graveyard
+	# the one place the ring is worth nothing and ties it back to the stones.
+	if ratted() and not actor.unliving:
+		# Anything adjacent still finds you -- see below -- so this only ever
+		# softens the middle distance, which is where sneaking happens.
+		var soften := RAT_NOTICE_ASCENT if ascending else RAT_NOTICE
+		if rng.randf() >= soften:
+			return false
 	if not Los.clear(map, actor.x, actor.y, player.x, player.y):
 		return false
 	# Anything you are standing next to finds you, however dark it is.
@@ -3991,6 +4147,14 @@ func _step_along(who: Entity, dir: Vector2i, distance: int) -> int:
 ## peek-and-duck loop is already the strongest thing an archer has. Reach is
 ## paid for in damage everywhere else in this game; it should be paid for here
 ## too.
+## How this attacker hurts things. Empty for bare hands, which nothing resists
+## and nothing is weak to -- a fist is a fist.
+func _damage_type_of(attacker: Entity) -> StringName:
+	var held: Variant = attacker.equipped.get(Item.Slot.WEAPON, null)
+	if held == null:
+		return &""
+	return held.damage_type
+
 func _gem_of(attacker: Entity, ranged: bool) -> StringName:
 	if ranged:
 		return &""
@@ -4083,6 +4247,15 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		atk = maxi(1, int(attacker.power / 2))
 
 	var raw := atk - defender.total_defense() + rng.randi_range(-1, 1)
+	# What it was struck WITH, before the floor is applied -- so a resisted
+	# blow still lands for the guaranteed minimum rather than nothing, and a
+	# weakness multiplies the real number rather than the floor.
+	var kind := _damage_type_of(attacker)
+	if kind != &"":
+		if defender.resists.has(kind):
+			raw = int(round(float(raw) * RESISTED))
+		elif defender.weak_to.has(kind):
+			raw = int(round(float(raw) * VULNERABLE))
 	var least := int(ceil(float(atk) * DAMAGE_FLOOR_FRACTION))
 	var dmg := maxi(maxi(1, least), raw)
 	# What the bound gem adds, before the blow lands, so fire is part of the

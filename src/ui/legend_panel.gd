@@ -121,7 +121,7 @@ func _creature_lines() -> int:
 	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4
 
 func _item_lines() -> int:
-	return 1 + 7 + 1 + 1 + Shrines.COUNT
+	return 1 + 9 + 1 + 1 + Shrines.COUNT
 
 func _control_lines() -> int:
 	return 1 + MOVE_ART.size() + 2 + 1 + 1 + Sidebar.KEYS.size()
@@ -287,7 +287,12 @@ func _creature_column(x: float, y: float, w: float) -> void:
 func _item_column(x: float, y: float, w: float) -> void:
 	y = _heading(x, y, "WHAT YOU CAN CARRY")
 	for pair in [[&"potion", "potions"], [&"scroll", "scrolls"],
-			[&"weapon", "melee weapons"], [&"launcher", "slings and bows"],
+			[&"weapon", "swords and daggers"],
+			# These two earn their own rows because they now have their own
+			# pictures, and a picture nothing explains is worse than a shared
+			# one. What they are FOR is the damage type, so the row says it.
+			[&"mace", "maces -- blunt"], [&"axe", "axes -- heavy slash"],
+			[&"launcher", "slings and bows"],
 			[&"armour", "armour"], [&"shield", "shields, not with a bow"],
 			[&"amulet", "the Amulet of the Deep"]]:
 		var art := _look(pair[0])

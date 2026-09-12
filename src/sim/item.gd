@@ -31,6 +31,16 @@ var element: StringName = &""
 ## and drinks through the same code as a healing draught, and the log duly said
 ## "You drink the haunch of rabbit".
 var use_verb: String = ""
+## One per run, dungeon-wide, and never ordinary loot. Chests are the only way
+## to one -- see GameState._open_chest.
+## How this weapon hurts: &"slash", &"pierce" or &"blunt". Empty for anything
+## that is not a weapon, and for bare hands -- which resist nothing and are
+## resisted by nothing.
+var damage_type: StringName = &""
+
+var unique := false
+## Turns of use left in a unique that burns down. Zero means it does not.
+var charges := 0
 var magnitude: int = 0
 ## How much one forging adds to `magnitude`. Zero means this cannot be worked
 ## at a brazier at all, which is how the catalogue says "not forgeable" without
@@ -166,6 +176,27 @@ const CATALOGUE := {
 		"element": &"crag", "min_depth": 3, "weight": 0,
 	},
 
+	## The first unique. It claims the WEAPON hand and gives no power, which is
+	## the whole cost: as a rat you cannot fight at all, and taking the ring
+	## off mid-fight is a turn spent becoming a person again in front of
+	## whatever you were creeping past.
+	##
+	## Kind.WEAPON so the slot machinery already understands it. Armour and a
+	## shield stay on -- Brad's ruling: the ring shapeshifts what you are
+	## wearing along with you.
+	##
+	## Weight 0: uniques are never floor loot. A chest is the only way to one.
+	&"rat_ring": {
+		"name": "ring of the rat", "app": &"ring", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 0, "unique": true,
+		## Turns you may spend as a rat, across the whole run. Charged by the
+		## TURN rather than by transformation, so "change back, use the brazier,
+		## change again" stays viable -- per-use charges would punish the one
+		## tactic the no-hands rule is meant to allow.
+		"charges": 220,
+		"min_depth": 2, "weight": 0,
+	},
+
 	&"potion_healing": {
 		"name": "potion of healing", "app": &"potion", "kind": Kind.POTION,
 		"effect": &"heal", "magnitude": 12, "forge": 8,
@@ -183,16 +214,32 @@ const CATALOGUE := {
 
 	&"dagger": {
 		"name": "dagger", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 2, "throw": 5, "min_depth": 1, "weight": 7,
+		"slot": Slot.WEAPON, "power": 2, "dmg": &"pierce", "throw": 5, "min_depth": 1, "weight": 7,
 	},
 	&"short_sword": {
 		"name": "short sword", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 4, "throw": 3, "min_depth": 2, "weight": 5,
+		"slot": Slot.WEAPON, "power": 4, "dmg": &"slash", "throw": 3, "min_depth": 2, "weight": 5,
 	},
 	&"war_axe": {
-		"name": "war axe", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 7, "throw": 2, "min_depth": 4, "weight": 3,
+		"name": "war axe", "app": &"axe", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 7, "dmg": &"slash", "throw": 2, "min_depth": 4, "weight": 3,
 	},
+	## The melee answer to bone and stone.
+	##
+	## Added WITH the damage types rather than before them, and that is the
+	## whole point: without them a mace is a fourth stat line between the short
+	## sword and the war axe, and this project already has a measured problem
+	## with weapons converging on one ladder. With them it is the only melee
+	## weapon that hurts a skeleton properly -- a reason rather than a number.
+	##
+	## Power sits between the sword and the axe, and it throws badly: a head on
+	## a handle is not a thrown weapon.
+	&"mace": {
+		"name": "mace", "app": &"mace", "kind": Kind.WEAPON,
+		"slot": Slot.WEAPON, "power": 5, "dmg": &"blunt", "throw": 1,
+		"min_depth": 3, "weight": 4,
+	},
+
 	&"sling": {
 		# Four, not five. Reported from play as "I can take out enemies before
 		# they reach me" -- and the fix is reach rather than damage, because
@@ -209,17 +256,17 @@ const CATALOGUE := {
 		# and a war bow's eight. The sling stays the thing you use when
 		# something is nearly on you and you have free stones from the rubble.
 		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 1, "range": 4, "min_depth": 1, "weight": 5,
+		"slot": Slot.WEAPON, "power": 1, "dmg": &"blunt", "range": 4, "min_depth": 1, "weight": 5,
 		"ammo_max": 30, "ammo_kind": &"stone",
 	},
 	&"short_bow": {
 		"name": "short bow", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 3, "range": 7, "min_depth": 3, "weight": 4,
+		"slot": Slot.WEAPON, "power": 3, "dmg": &"pierce", "range": 7, "min_depth": 3, "weight": 4,
 		"ammo_max": 16, "ammo_kind": &"arrow",
 	},
 	&"war_bow": {
 		"name": "war bow", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 5, "range": 8, "min_depth": 6, "weight": 3,
+		"slot": Slot.WEAPON, "power": 5, "dmg": &"pierce", "range": 8, "min_depth": 6, "weight": 3,
 		"ammo_max": 20, "ammo_kind": &"arrow",
 	},
 
@@ -285,6 +332,9 @@ static func make(item_id: StringName) -> Item:
 	it.effect = data.get("effect", &"")
 	it.element = data.get("element", &"")
 	it.use_verb = data.get("verb", "")
+	it.unique = data.get("unique", false)
+	it.damage_type = data.get("dmg", &"")
+	it.charges = int(data.get("charges", 0))
 	it.magnitude = data.get("magnitude", 0)
 	it.forge_bonus = data.get("forge", 0)
 	it.power_bonus = data.get("power", 0)
@@ -429,6 +479,18 @@ func uses_ammo() -> bool:
 func is_two_handed() -> bool:
 	return is_equipment() and range_bonus > 1
 
+## Does putting this on change what you ARE, rather than what you are holding?
+##
+## The ring occupies the weapon hand but you cannot fight with it -- a melee
+## item, not a melee weapon. Everything that reaches for "the best thing in the
+## pack to swing" has to know the difference, because a key that hands you a
+## weapon under pressure must never hand you a polymorph instead.
+##
+## Here rather than in GameState so there is still exactly one place that knows
+## which item this is: `ratted()` asks the same question of the equipped slot.
+func transforms() -> bool:
+	return id == &"rat_ring"
+
 ## What the item does when clicked, for messages and the inventory hint.
 ##
 ## One accessor, so the log line and the inventory hint can never disagree --
@@ -486,6 +548,7 @@ func to_dict() -> Dictionary:
 		# reason boosts and magnitude are, and written down now rather than
 		# discovered later: a suspended run must not hand back a plain sword.
 		"element": String(element),
+		"charges": charges,
 	}
 
 static func from_dict(d: Dictionary) -> Item:
@@ -505,6 +568,7 @@ static func from_dict(d: Dictionary) -> Item:
 	# right for everything except meat -- which those saves have already lost.
 	it.magnitude = int(d.get("magnitude", it.magnitude))
 	it.element = StringName(d.get("element", String(it.element)))
+	it.charges = int(d.get("charges", it.charges))
 	# Saves written before launchers held ammunition come back loaded rather
 	# than empty: a resumed run should not find its bow inexplicably dry.
 	it.ammo = int(d.get("ammo", it.ammo_max))
@@ -540,6 +604,22 @@ static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: in
 ##
 ## Even odds across whatever the depth allows, so which element a chest holds
 ## is a genuine surprise rather than a weighted favourite.
+## Every unique the depth allows, in catalogue order.
+##
+## A chest draws from here before it falls back to gems, and the run tracks
+## which have already been found -- one per dungeon, so a second chest cannot
+## hand you a second ring.
+static func uniques(depth: int) -> Array[StringName]:
+	var out: Array[StringName] = []
+	for key in CATALOGUE:
+		var data: Dictionary = CATALOGUE[key]
+		if not data.get("unique", false):
+			continue
+		if int(data.get("min_depth", 999)) > depth:
+			continue
+		out.append(key)
+	return out
+
 static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
 	var pool: Array[StringName] = []
 	for key in CATALOGUE:

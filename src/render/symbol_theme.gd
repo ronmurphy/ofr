@@ -57,6 +57,8 @@ const OVERRIDES := {
 	&"scroll":   {"ch": "≡"},
 	&"amulet":   {"ch": "◎"},
 	&"weapon":   {"ch": "†"},
+	&"mace":     {"ch": "†"},
+	&"axe":      {"ch": "†"},
 	&"launcher": {"ch": "➜"},
 	&"ammo":     {"ch": "➜"},
 	&"armour":   {"ch": "◫"},

@@ -85,6 +85,26 @@ var knockback := 0
 ## Follows its own knockback into the ground it just cleared, so the shove buys
 ## the target no distance at all. Meaningless without `knockback`.
 var charges := false
+## Damage types this shrugs off, and the one that finds it. Lists rather than
+## single values: a skeleton has nothing to cut AND nothing to puncture, and an
+## arrow goes between the ribs.
+##
+## Deliberately NOT keyed on `unliving`. A golem resists a sword because it is
+## made of rock, a skeleton because there is no flesh on it -- same effect,
+## different reason, and a future creature could have one without the other.
+var resists: Array[StringName] = []
+var weak_to: Array[StringName] = []
+
+## Dead, or never alive in the way that matters. Skeletons, wights, shadows,
+## banshees and the lich.
+##
+## Three separate rules want this and none of them is about combat: a wolf's
+## howl wakes the LIVING, a rat disguise does not fool the dead, and a dropped
+## fungus offends them rather than drawing them. The stone golem is
+## deliberately NOT one -- it was never alive, but it is not a corpse either,
+## and every rule here is about things that used to breathe.
+var unliving := false
+
 ## Turns of frost left on it. Slows its movement, not its attacks -- a chilled
 ## thing still swings as hard, it just cannot close or flee as fast.
 var chilled := 0
@@ -206,6 +226,8 @@ func to_dict() -> Dictionary:
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
 		"charges": charges, "risen": risen, "corrupted": corrupted,
+		"unliving": unliving,
+		"resists": resists, "weak_to": weak_to,
 		"chilled": chilled,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
@@ -260,6 +282,13 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.charges = d.get("charges", false)
 	e.risen = d.get("risen", false)
 	e.corrupted = d.get("corrupted", false)
+	e.unliving = d.get("unliving", false)
+	e.resists.clear()
+	for r in d.get("resists", []):
+		e.resists.append(StringName(r))
+	e.weak_to.clear()
+	for w in d.get("weak_to", []):
+		e.weak_to.append(StringName(w))
 	e.chilled = int(d.get("chilled", 0))
 	e.alive = d.get("alive", true)
 

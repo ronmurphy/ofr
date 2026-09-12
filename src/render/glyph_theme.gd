@@ -51,6 +51,7 @@ const OVERRIDES := {
 	&"giant":    HEAVY_FIGURE,
 	&"gem":      0xF01C8,   # md-diamond_stone
 	&"chest":    0xF0726,   # md-treasure_chest
+	&"ring":     0xF07EB,   # md-ring
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent
@@ -97,7 +98,17 @@ const OVERRIDES := {
 	# --- carryables ---------------------------------------------------------
 	&"potion":   0xF0093,   # md-flask
 	&"scroll":   0xF0BC2,   # md-script_text
+	## Shape carries the DAMAGE TYPE here, the way it carries rank among
+	## the humanoids. Dagger and short sword keep the sword: one pierces
+	## and one slashes, but they are the same object to look at and
+	## pretending otherwise would be a distinction without a picture.
+	## Blunt and the heavy slash each get a silhouette, because those are
+	## the two you decide between when something in front of you is made
+	## of bone.
 	&"weapon":   0xF04E5,   # md-sword
+	&"mace":     0xF1843,   # md-mace
+	&"axe":      0xF1842,   # md-axe_battle -- NOT md-axe, which is a
+	                        # woodcutting axe and reads as a tool
 	&"launcher": 0xF1841,   # md-bow_arrow
 	&"ammo":     0xF1840,   # md-arrow_projectile -- spent arrows on the floor
 	&"armour":   0xF0A7B,   # md-tshirt_crew

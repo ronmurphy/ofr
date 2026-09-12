@@ -75,6 +75,9 @@ const GEM           := Color("dfe4ea")
 ## A chest, unopened. Warm and worked, against the cold stone and the colder
 ## gems -- it is the one thing on a floor that was MADE rather than found.
 const CHEST         := Color("c9953f")
+## A unique. Deliberately unlike anything else on a floor -- there is one in a
+## run and it should not be mistaken for loot.
+const RING          := Color("b98cd6")
 
 ## Material tints, applied to terrain base colours -- deliberately NOT to the
 ## light.
