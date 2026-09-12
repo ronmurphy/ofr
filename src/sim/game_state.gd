@@ -1016,6 +1016,17 @@ func _place_chest() -> void:
 				# on top of what they did draw.
 				if protected_cell(c):
 					continue
+				# OPEN GROUND ONLY, and this is not fussiness.
+				#
+				# A chest is SOLID. Dropped on the square in front of a room's
+				# only door it walls the room shut, and the first version did
+				# exactly that: `and completable in every band` failed for
+				# caves, fortress and deep at once, and a door was left leading
+				# nowhere. Requiring all eight neighbours to be standable puts
+				# it in the middle of open floor, where it can never be the
+				# only way through.
+				if not _ringed_by_floor(c):
+					continue
 				map.set_tile(x, y, Tiles.CHEST)
 				placed = true
 				break
@@ -1025,6 +1036,25 @@ func _place_chest() -> void:
 			break
 	if not placed:
 		return
+
+## Is every one of the eight cells around this one standable?
+##
+## The test for "safe to make solid". Anything narrower than this -- a doorway,
+## a corridor, the mouth of a room -- is somewhere a chest could seal.
+func _ringed_by_floor(c: Vector2i) -> bool:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var n := Vector2i(c.x + dx, c.y + dy)
+			if not map.in_bounds(n.x, n.y):
+				return false
+			if not map.is_walkable(n.x, n.y):
+				return false
+			var t := map.get_tile(n.x, n.y)
+			if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+				return false
+	return true
 
 ## Lifting the lid.
 ##
