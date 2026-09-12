@@ -165,8 +165,9 @@ func _draw() -> void:
 		# The count belongs beside the reach, because they are read together:
 		# how far can I hit, and how many times. An empty quiver is tinted like
 		# a wound, since it means the next press of `f` does nothing.
-		_stat_row(y, "weapon", "%s r%d x%d"
-			% [held.display_name(), reach, held.ammo], held.ammo > 0)
+		_stat_row(y, "weapon",
+			_fit_counted("weapon", _gear_text(held), " r%d x%d" % [reach, held.ammo]),
+			held.ammo > 0)
 	elif held != null and held.charges > 0:
 		# A ring that burns down is a quiver that empties, so it is answered in
 		# the same place and the same way: how many more.
@@ -182,7 +183,8 @@ func _draw() -> void:
 		# does nothing; an empty ring means you stop being a rat wherever you
 		# are standing, which by construction is somewhere you chose to be
 		# unseen.
-		_stat_row(y, "weapon", "%s  x%d" % [held.display_name(), held.charges],
+		_stat_row(y, "weapon",
+			_fit_counted("weapon", _gear_text(held), "  x%d" % held.charges),
 			held.charges > GameState.RING_LOW)
 	elif reach > 1:
 		_stat_row(y, "weapon", "%s  r%d" % [_slot_name(p, Item.Slot.WEAPON), reach], true)
@@ -249,14 +251,40 @@ func _line(f: Font, y: float, text: String, color: Color) -> void:
 
 func _slot_name(p: Entity, slot: int) -> String:
 	var item = p.equipped.get(slot, null)
-	return "--" if item == null else item.display_name()
+	return "--" if item == null else _gear_text(item)
+
+## The picture for the kind, the word for which one.
+##
+## Brad's call, and it is the same trade `_skullify` already makes on the death
+## line: a glyph says "ring" in one cell where the words needed eleven, and the
+## eleven were what pushed "ring of the rat  x159" through the word "weapon".
+## Truncation then ate the answer to the only question the row was asked --
+## WHICH ring -- and left "ring of t..".
+##
+## The theme's glyph rather than a literal, so the panel follows the view mode
+## like everything else: an axe in icon mode, ")" in letters, "+" in symbols.
+## The row still reads in all three, because the word in brackets was always
+## carrying the distinction.
+func _gear_text(item: Item) -> String:
+	var art: Dictionary = RenderTheme.active().appearance(item.appearance)
+	var out: String = "%s (%s)" % [art.get("ch", "?"), item.tag()]
+	var up := item.upgrade_level()
+	if up > 0:
+		out += " +%d" % up
+	# A bound gem is the most consequential thing about a weapon and the one
+	# that cost a chest to get. It keeps its own word.
+	if item.element != &"":
+		out += " %s" % item.element
+	return out
 
 ## Label left, value right-aligned. `boosted` tints the value so a bonus from
 ## equipment is visible at a glance without reading the equipment lines.
 func _stat_row(y: float, label: String, value: String, boosted: bool) -> void:
 	draw_string(font, Vector2(PAD, y), label,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
-	draw_string(font, Vector2(PAD, y), _fit(value),
+	var taken := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
+		-1, font_size).x
+	draw_string(font, Vector2(PAD, y), _fit(value, taken),
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
 		Palette.HP_GOOD if boosted else Palette.UI_TEXT)
 
@@ -309,8 +337,15 @@ func _skullify(line: String) -> String:
 
 ## Same defence for the look panel, where a long item name would otherwise run
 ## through the frame.
-func _fit(text: String) -> String:
-	var limit := size.x - PAD * 2.0
+## `reserve` is whatever else is already drawn on this line.
+##
+## It defaulted to nothing, which meant a right-aligned value was fitted to the
+## WHOLE panel while a left-aligned label sat in the same row -- so a long
+## enough value walked straight over the label. Reported from play: "ring of
+## the rat  x159" overdrew the word "weapon". `_key_row` has always measured
+## its alignment for exactly this reason; `_stat_row` never did.
+func _fit(text: String, reserve: float = 0.0) -> String:
+	var limit := size.x - PAD * 2.0 - reserve
 	if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= limit:
 		return text
 	var out := text
@@ -318,6 +353,25 @@ func _fit(text: String) -> String:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > limit:
 		out = out.substr(0, out.length() - 1)
 	return out + ".."
+
+## A name and a number, where the NUMBER is the reason the row exists.
+##
+## Fitting the whole string would truncate from the right and eat the count --
+## "ring of the rat  x1.." throws away the only part worth drawing. So the
+## suffix is spoken for first and the name gets what is left.
+func _fit_counted(label: String, name: String, suffix: String) -> String:
+	var taken := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
+		-1, font_size).x
+	var limit := size.x - PAD * 2.0 - taken
+	var tail := font.get_string_size(suffix, HORIZONTAL_ALIGNMENT_LEFT,
+		-1, font_size).x
+	var out := name
+	while out.length() > 1 and font.get_string_size(out, HORIZONTAL_ALIGNMENT_LEFT,
+			-1, font_size).x + tail > limit:
+		out = out.substr(0, out.length() - 1)
+	if out.length() < name.length():
+		out = out.substr(0, maxi(1, out.length() - 2)) + ".."
+	return out + suffix
 
 func _describe() -> Array:
 	var m := state.map

@@ -484,12 +484,21 @@ func _test_threat_ceiling_holds() -> void:
 	check("no room exceeds its threat ceiling (%d rooms, depths 1-8)" % rooms_checked,
 		breaches == 0, "%d breaches, worst %d over" % [breaches, worst_over])
 
-	# Caves were never checked. They carry their own, higher ceiling -- wilder
-	# and unlit is worth a little more danger -- and an unchecked budget is not
-	# a budget.
+	# Caves were never checked, and an unchecked budget is not a budget.
+	#
+	# The comment here used to say caves carry a "higher" ceiling because they
+	# are wilder and unlit. They carry a LOWER one -- CAVE_THREAT_SCALE is 0.7 --
+	# which is the whole reason nothing named for a cave could afford to live in
+	# one. Two bounds now, because one cave a floor may be a den:
+	#
+	#   every cave  <= the ROOM ceiling      a cave is never deadlier than a room
+	#   all but one <= the CAVE ceiling      the den is the exception, and it is
+	#                                        one per floor, not one per cave
 	var cave_breaches := 0
 	var caves_checked := 0
 	var cave_worst := 0
+	var dens := 0
+	var many_dens := 0
 	for d in range(1, 9):
 		for i in 25:
 			var gs := GameState.new(21000 + d * 100 + i)
@@ -497,17 +506,28 @@ func _test_threat_ceiling_holds() -> void:
 			gs.depth = d
 			gs.build_level()
 			var ceiling := gs.cave_threat_ceiling()
+			var roof := gs.room_threat_ceiling()
+			var here := 0
 			for region in gs.cave_regions:
 				caves_checked += 1
 				var sum := 0
 				for e in gs.entities:
 					if not e.is_player and region.has_point(Vector2i(e.x, e.y)):
 						sum += e.threat
-				if sum > ceiling:
+				if sum > roof:
 					cave_breaches += 1
-					cave_worst = maxi(cave_worst, sum - ceiling)
-	check("no cave exceeds its threat ceiling (%d caves, depths 1-8)" % caves_checked,
+					cave_worst = maxi(cave_worst, sum - roof)
+				elif sum > ceiling:
+					here += 1
+			dens += here
+			if here > 1:
+				many_dens += 1
+	check("no cave is deadlier than a room (%d caves, depths 1-8)" % caves_checked,
 		cave_breaches == 0, "%d breaches, worst %d over" % [cave_breaches, cave_worst])
+	check("at most one den a floor", many_dens == 0, "%d floors with more" % many_dens)
+	# And the den actually happens -- a bound nothing ever reaches is not a rule,
+	# it is a coincidence, and this one exists precisely to be reached.
+	check("dens do occur (%d)" % dens, dens > 0)
 
 func _test_tiers_fade_with_depth() -> void:
 	var shallow_orcs := 0
@@ -2874,6 +2894,82 @@ func _test_panels_do_not_overflow() -> void:
 		worst_w + 8.0 <= side_limit,
 		"%.0f + gap > %.0f px -- %s" % [worst_w, side_limit, worst])
 
+	# The same collision, one helper over. STAT rows draw a label left and a
+	# value right against the same edge, exactly as key rows do, and only the
+	# key rows were ever checked -- so the weapon row overdrew the word "weapon"
+	# with "ring of the rat  x159" and nothing in 1024 tests noticed.
+	#
+	# The ring is the worst case by construction: the longest item name in the
+	# game sharing a row with a three-digit count.
+	var bar := Sidebar.new()
+	bar.font = Sidebar.ui_font()
+	bar.size = Vector2(float(widths.get("Sidebar", 256.0)), 720.0)
+	var rows := [
+		["weapon", Item.make(&"rat_ring").display_name(), "  x220"],
+		["weapon", Item.make(&"war_bow").display_name(), " r8 x40"],
+		["offhand", Item.make(&"tower_shield").display_name(), ""],
+	]
+	var spill := []
+	for row in rows:
+		var value: String = bar._fit_counted(row[0], row[1], row[2])
+		var lw := bar.font.get_string_size(row[0] + "  ",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+		var vw := bar.font.get_string_size(value,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+		if lw + vw > side_limit:
+			spill.append("%s / %s (%.0f > %.0f)" % [row[0], value, lw + vw, side_limit])
+		# Truncating the NAME is fine; truncating the number is not, because the
+		# count is the only reason the row exists.
+		if row[2] != "" and not value.ends_with(row[2]):
+			spill.append("%s lost its count: %s" % [row[0], value])
+	check("no stat row collides with its label", spill.is_empty(), str(spill))
+
+	# Glyph for the kind, word for which one.
+	#
+	# Every equippable item must answer with a tag that actually distinguishes
+	# it, because the glyph has already said the kind -- a ring row reading
+	# "(ring)" would be the picture twice and the answer never.
+	var want := {
+		&"rat_ring": "rat", &"dagger": "dagger", &"short_sword": "short",
+		&"war_axe": "war", &"mace": "mace", &"sling": "sling",
+		&"short_bow": "short", &"war_bow": "war", &"buckler": "buckler",
+		&"kite_shield": "kite", &"tower_shield": "tower",
+		&"leather_armour": "leather", &"chain_mail": "chain",
+		&"plate_mail": "plate",
+	}
+	var wrong := []
+	var untagged := []
+	for id in Item.CATALOGUE:
+		if Item.CATALOGUE[id].get("slot", Item.Slot.NONE) == Item.Slot.NONE:
+			continue
+		var made := Item.make(id)
+		if made.tag() == "":
+			untagged.append(id)
+		elif want.has(id) and made.tag() != want[id]:
+			wrong.append("%s -> %s, wanted %s" % [id, made.tag(), want[id]])
+		# The whole point of the ring's override: the rule alone would return
+		# the kind, which the glyph is already drawing.
+		if id == &"rat_ring" and made.tag() == "ring":
+			wrong.append("the ring tagged itself with its kind")
+	check("every equippable item has a tag", untagged.is_empty(), str(untagged))
+	check("and it is the distinguishing word", wrong.is_empty(), str(wrong))
+
+	# The sidebar draws these with the TEXT face, not the map's, so the icon
+	# fallback has to be wired -- the same failure that once left the shrine and
+	# brazier glyphs invisible, and the look panel's skull after them.
+	var missing_gear := []
+	for id in Item.CATALOGUE:
+		if Item.CATALOGUE[id].get("slot", Item.Slot.NONE) == Item.Slot.NONE:
+			continue
+		var app: StringName = Item.CATALOGUE[id].get("app", &"")
+		if not GlyphTheme.OVERRIDES.has(app):
+			continue
+		if not bar.font.has_char(int(GlyphTheme.OVERRIDES[app])):
+			missing_gear.append("%s (%s)" % [id, app])
+	check("the sidebar's font can draw every gear icon",
+		missing_gear.is_empty(), str(missing_gear))
+	bar.free()
+
 	# The record's two columns right-align their value against the same edge the
 	# label starts from, so the failure mode is the sidebar's: two strings
 	# meeting in the middle. Its HEIGHT needs no test -- the panel is sized from
@@ -4465,6 +4561,30 @@ func _test_binding_a_stone() -> void:
 		Item.from_dict(blade.to_dict()).element == &"fire")
 	check("and a plain weapon stays plain",
 		Item.from_dict(Item.make(&"dagger").to_dict()).element == &"")
+
+	# Never into something you cannot swing.
+	#
+	# The ring is Kind.WEAPON so the slot machinery understands it, and that
+	# spare part made it a legal target for every gem. Measured before the
+	# fix: a fire gem bound, was consumed, and left "ring of the rat (fire)"
+	# on an item that can never land a blow -- and binding is irreversible, so
+	# it cost a gem, the brazier's warmth and the brazier, for nothing.
+	for el in [&"fire", &"crag", &"leech", &"frost"]:
+		check("the ring refuses a %s gem" % el,
+			not Item.make(&"rat_ring").accepts_element(el))
+
+	var furred := _forge_arena()
+	var worn := Item.make(&"rat_ring")
+	furred.give_item(worn)
+	furred.player.equipped[Item.Slot.WEAPON] = worn
+	var wasted := Item.make(&"gem_fire")
+	furred.give_item(wasted)
+	var wi := furred.player.inventory.find(wasted)
+	# Twice: the first press only rakes the brazier down to coals.
+	furred.player_bind(wi)
+	check("and a rat at a forge cannot set one", not furred.player_bind(wi))
+	check("the gem is still in the pack", furred.player.inventory.has(wasted))
+	check("and the ring holds nothing", worn.element == &"")
 
 ## What a bound gem actually does when the blow lands.
 func _test_gems_bite() -> void:

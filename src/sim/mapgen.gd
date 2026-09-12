@@ -327,7 +327,20 @@ func _stamp_vaults(map: DungeonMap) -> void:
 func _connect_vaults(map: DungeonMap) -> void:
 	for spot in vault_spots:
 		var mouths := _vault_mouths(spot)
-		if mouths.is_empty() or rooms.is_empty():
+		if mouths.is_empty():
+			continue
+		# A floor with no rooms is a real floor, not a broken one.
+		#
+		# The caves band can generate as all cavern: caves are reserved before
+		# rooms and can leave nothing a room will fit in. This used to `continue`
+		# on that, so no vault got a corridor at all, no door could ever be live,
+		# and _seal_blind_doors then bailed and left every door opening onto
+		# rock. Traced from seed 66043 at depth 5 -- roughly one floor in 350,
+		# and the reason that seed had both symptoms at once.
+		#
+		# A cave is somewhere to walk from, so it is somewhere to connect to.
+		var targets: Array[Rect2i] = rooms if not rooms.is_empty() else caves
+		if targets.is_empty():
 			continue
 		# Every door against every room, and take the shortest pairing.
 		#
@@ -337,12 +350,12 @@ func _connect_vaults(map: DungeonMap) -> void:
 		# has to travel round the vault to reach it. Choosing the pair makes
 		# the run short, and a short run is one that cannot wander across the
 		# vault it is trying to reach.
-		var best_room := rooms[0].get_center()
+		var best_room := targets[0].get_center()
 		var best_mouth: Dictionary = mouths[0]
 		var best_d := 1 << 30
 		for mouth: Dictionary in mouths:
 			var m: Vector2i = mouth["out"]
-			for room in rooms:
+			for room in targets:
 				var c := room.get_center()
 				var d := absi(c.x - m.x) + absi(c.y - m.y)
 				if d < best_d:
@@ -421,8 +434,13 @@ func _vault_mouths(spot: Dictionary) -> Array:
 ##
 ## A door is live when it has walkable ground on two or more sides -- which
 ## covers both an interior door joining two halves of a vault and an exterior
-## one a corridor actually reached. The last live door is never sealed, so this
-## can never cut a vault off.
+## one a corridor actually reached.
+##
+## Sealing can never strand a vault, for two reasons rather than the one this
+## comment used to claim. A blind door is a dead end -- fewer than two walkable
+## sides -- so removing it disconnects nothing. And this pass runs before
+## _ensure_connected, which is the last word on walkability and will cut a way
+## in if a vault ends up sealed shut.
 func _seal_blind_doors(map: DungeonMap) -> void:
 	for spot in vault_spots:
 		var doors := []
@@ -442,8 +460,23 @@ func _seal_blind_doors(map: DungeonMap) -> void:
 				doors.append({"cell": cell, "live": touching >= 2})
 				if touching >= 2:
 					live += 1
-		if live == 0:
-			continue
+		# No live door at all: seal them ALL, and let the connectivity net cut a
+		# real way in.
+		#
+		# This used to `continue` here, which left every door on such a vault
+		# opening onto solid rock -- precisely the lie this pass exists to
+		# remove. It happens when _connect_vaults' corridor fails to land and
+		# _ensure_connected rescues the vault by breaching a WALL instead: the
+		# vault is reachable, and every authored door still faces stone.
+		#
+		# Measured at roughly one floor in 350, and both floors found were in
+		# the caves band, where a vault has the least room to route a corridor
+		# around. The 60-seed test in the suite had only ever passed by luck --
+		# widening it to 1200 seeds turned up the same fault on untouched code.
+		#
+		# Safe: a door with fewer than two walkable sides is a dead end by
+		# definition, so sealing one cannot disconnect anything, and this pass
+		# runs BEFORE _ensure_connected by design -- see generate().
 		for door in doors:
 			if not door["live"]:
 				var c: Vector2i = door["cell"]
@@ -460,7 +493,23 @@ func _ensure_connected(map: DungeonMap) -> void:
 	# protection rule. Without this the loop cheerfully carves the same
 	# ineffective corridor eight times and gives up.
 	var last_count := -1
-	for _attempt in 8:
+	# Enough attempts to finish the job, rather than eight and a shrug.
+	#
+	# Each pass merges about one region, and eight was fine for a built floor
+	# that starts with two or three. A caves-band floor is a different animal:
+	# traced on seed 66043 at depth 5, generation handed this pass SIX fragments
+	# [155, 141, 90, 90, 88, 75], it merged one per attempt, ran out at
+	# [761, 51] and returned a SEVERED MAP. The leftover fragment happened to be
+	# a vault, so none of its doors could be live, which is how it surfaced --
+	# as doors opening onto rock rather than as the connectivity failure it was.
+	#
+	# Measured at roughly one floor in 350, always in the caves band, and
+	# present in untouched code: the 60-seed door test had only ever passed by
+	# luck, and widening it to 1200 seeds reproduced it at HEAD.
+	#
+	# The loop returns the moment the map is whole, so a high cap costs nothing
+	# on the floors that never needed it -- which is nearly all of them.
+	for _attempt in 48:
 		var regions := _walkable_regions(map)
 		if regions.size() <= 1:
 			return
@@ -730,14 +779,28 @@ func _scatter_features(map: DungeonMap) -> void:
 	# That choice is the point. It has always been worth 1 hp and a glow, and
 	# on these floors the glow is finally worth more than the hit point.
 	var caveish := Bands.is_caves(depth)
-	var patches := rng.randi_range(3, 5) if caveish else rng.randi_range(1, 3)
+	var patches := rng.randi_range(4, 6) if caveish else rng.randi_range(1, 3)
 	for _patch in patches:
 		var seed_cell := _cave_cell() if caveish else Vector2i(-1, -1)
 		if seed_cell.x < 0:
 			seed_cell = _random_open(map)
 		if seed_cell.x < 0:
 			continue
-		for _cell in rng.randi_range(3, 7):
+		# Bigger BEDS in the caves band, not merely more of them.
+		#
+		# Measured: the band quadruples cave area while the patch count had only
+		# doubled, so fungus per cave cell came out at 0.50% against the upper
+		# band's 1.29% -- you met a mushroom less than half as often per step in
+		# the band built out of caves. Growing the bed as well as the count is
+		# the version that reads right in a big cavern, where four tiles of
+		# fungus in a 300-cell chamber looks like a rounding error rather than
+		# something growing.
+		#
+		# Safe to be generous because the resource cannot be hoarded: fungus is
+		# eaten on the spot for a hit point or carried as light, and nothing
+		# else. Use it or lose it, so more of it lengthens the dark band's
+		# rope without handing anyone a stockpile.
+		for _cell in (rng.randi_range(5, 11) if caveish else rng.randi_range(3, 7)):
 			var c := seed_cell + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
 			if map.get_tile(c.x, c.y) == Tiles.FLOOR \
 					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:

@@ -343,6 +343,27 @@ const ROOM_THREAT_PER_DEPTH := 2
 ## ceiling.
 const CAVE_THREAT_SCALE := 0.7
 
+## One cave a floor may be a DEN, and a den is budgeted like a room.
+##
+## Measured, and it is why "cave bear" was a joke: a cave's ceiling is 0.7 of a
+## room's, so at depth 5 a cave could spend 14 and a bear costs 17. Across 87
+## bears on depths 5 and 6 -- the band that is four fifths cavern -- exactly
+## ZERO stood in a cave. The five creatures with the strongest cave affinity in
+## the bestiary (bear 2.6, giant 2.4, troll 2.2, wyvern 2.2, dragon 2.0) were
+## each barred from caves until well past the caves band, so the weighting never
+## got consulted: they were rejected on price first. Three of them are NAMED for
+## the place they could not be.
+##
+## A den lifts that one cave to the ROOM ceiling and no further, so a cave is
+## never deadlier than a room -- the bound the old constant was really there to
+## keep. Raising CAVE_THREAT_SCALE itself was the other option and Brad's call
+## was against it: lifting every cave at once in the dark band is how you stop
+## people surviving it. One resident, not a wilder band.
+##
+## Once per FLOOR rather than per cave. The caves band fields six regions to a
+## floor and a per-cave roll would put three or four bears on it.
+const CAVE_DEN_CHANCE := 0.35
+
 ## How fast a monster stops appearing once the dungeon has moved past its tier.
 ## Without this, rats are as likely on depth 9 as on depth 1.
 const TIER_FADE := 0.22
@@ -494,6 +515,11 @@ func _scatter_bones_around(cell: Vector2i, grave_rng: RandomNumberGenerator) -> 
 ## of the two had woken -- the interesting information disappeared exactly when
 ## it became interesting.
 var risen_grave := Vector2i(-1, -1)
+
+## Whether this floor has already spent its one den. Generation-time only, so
+## it is deliberately not serialised: a restored floor keeps the monsters it
+## was built with and never re-runs the cave pass.
+var _den_placed := false
 
 ## One rising per floor, ever -- not one at a time.
 ##
@@ -832,18 +858,35 @@ func build_level() -> void:
 	_travel.clear()
 
 	var rooms := gen.rooms
-	if rooms.is_empty():
-		# Degenerate level; carve a fallback chamber so the game never wedges.
+	# A caves-band floor can come back with no ROOMS at all -- caves are
+	# reserved first and can leave nothing a room will fit in. A cave is still
+	# somewhere to stand, so it stands in for one.
+	#
+	# Without this the fallback below fired on a perfectly good level and carved
+	# its 11x7 chamber in the corner, unconnected to anything, then put the
+	# player AND the stairs inside it. Traced from seed 66043 at depth 5: an
+	# isolated 77-cell box against 821 cells of real dungeon the player could
+	# never reach. It passed the completability test because the stairs were in
+	# the box WITH you -- the floor was winnable and almost entirely invisible.
+	#
+	# Kept SEPARATE from `rooms` rather than substituted into it: the population
+	# pass below indexes gen.archetypes by room number, so handing it caves
+	# walks straight off the end of that array.
+	var spots: Array[Rect2i] = rooms if not rooms.is_empty() else gen.caves
+	if spots.is_empty():
+		# Genuinely degenerate: no rooms AND no caves. Carve a chamber so the
+		# game never wedges. This is now the last resort it was always meant to
+		# be, rather than the routine handling for an all-cave floor.
 		for y in range(1, 8):
 			for x in range(1, 12):
 				map.set_tile(x, y, Tiles.FLOOR)
-		rooms = [Rect2i(1, 1, 11, 7)] as Array[Rect2i]
+		spots = [Rect2i(1, 1, 11, 7)] as Array[Rect2i]
 
-	var start := _open_cell_in(rooms[0])
+	var start := _open_cell_in(spots[0])
 	player.x = start.x
 	player.y = start.y
 
-	stairs = _open_cell_in(rooms[-1])
+	stairs = _open_cell_in(spots[-1])
 	if ascending:
 		map.set_tile(stairs.x, stairs.y, Tiles.STAIRS_UP)
 	elif depth < MAX_DEPTH:
@@ -881,6 +924,7 @@ func build_level() -> void:
 	_place_graves()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
+	_den_placed = false
 	for region in gen.caves:
 		_populate_cave(region)
 	_place_vault_contents(gen)
@@ -1342,12 +1386,44 @@ func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
 	var count := rng.randi_range(1, 3 + effective_depth() / 3)
 	var spent := 0
-	var ceiling := cave_threat_ceiling()
+	# A den: this one cave is budgeted like a room, which is the only way
+	# anything named for a cave can afford to live in one. See CAVE_DEN_CHANCE.
+	var den := not _den_placed and rng.randf() < CAVE_DEN_CHANCE
+	if den:
+		_den_placed = true
+	var ceiling := room_threat_ceiling() if den else cave_threat_ceiling()
 	for _i in count:
 		var cost := _spawn_in(region, ceiling - spent)
 		if cost < 0:
 			break
 		spent += cost
+	_make_a_den(region)
+
+## Bones where a bear lives, and nowhere else in a cave.
+##
+## Brad's rule, and it is better than the one it replaced. Letting caves roll
+## BONEYARD the way rooms do would have made bones a texture -- scenery you
+## stop reading after the third floor. Tying them to the bear makes them a
+## TELL: litter in a cave means something large eats here, and you know that
+## before you can see what it is. Bears eat; what they eat does not walk out.
+##
+## It pays for itself twice, because bones are noise 7. Blunder through the
+## den and you announce yourself to the thing whose den it is -- so the warning
+## and the punishment for ignoring it are the same tiles.
+##
+## Deliberately not applied to every large predator. A troll or a giant in a
+## cave would spread this thin, and a tell that fits three creatures tells you
+## nothing about which one.
+func _make_a_den(region: Rect2i) -> void:
+	for e in entities:
+		if not e.alive or e.appearance != &"bear":
+			continue
+		if not region.has_point(Vector2i(e.x, e.y)):
+			continue
+		# Around the bear rather than over the whole cave: a den has a centre,
+		# and the litter thinning outwards is what says which way to back off.
+		_scatter_bones_around(Vector2i(e.x, e.y), rng)
+		return
 
 ## Returns the threat spent, or -1 if nothing was placed.
 func _spawn_in(area: Rect2i, remaining: int) -> int:

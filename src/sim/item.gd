@@ -189,6 +189,8 @@ const CATALOGUE := {
 	&"rat_ring": {
 		"name": "ring of the rat", "app": &"ring", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 0, "unique": true,
+		## The one name whose first word is not what distinguishes it. See tag().
+		"tag": "rat",
 		## Turns you may spend as a rat, across the whole run. Charged by the
 		## TURN rather than by transformation, so "change back, use the brazier,
 		## change again" stays viable -- per-use charges would punish the one
@@ -373,6 +375,20 @@ static func make(item_id: StringName) -> Item:
 func accepts_element(el: StringName) -> bool:
 	if not is_equipment() or kind != Kind.WEAPON:
 		return false
+	# Never into something you cannot swing.
+	#
+	# The ring is Kind.WEAPON so the slot machinery understands it, and that
+	# spare part let every gem bind to it: measured, a fire gem went in, was
+	# CONSUMED, and left "ring of the rat (fire)" -- an element on an item that
+	# can never land a blow. Binding is deliberately irreversible, so the cost
+	# was a gem (one per chest), the brazier's remaining warmth, and the
+	# brazier, in exchange for nothing. It even worked while you were a rat,
+	# standing at a forge, setting a stone into the ring you were wearing.
+	#
+	# Kind is the wrong question for this; whether you can FIGHT with it is the
+	# right one, and `transforms()` already answers that for the swap key.
+	if transforms():
+		return false
 	var ranged := range_bonus > 1
 	match el:
 		&"leech", &"frost":
@@ -490,6 +506,29 @@ func is_two_handed() -> bool:
 ## which item this is: `ratted()` asks the same question of the equipped slot.
 func transforms() -> bool:
 	return id == &"rat_ring"
+
+## The one word that says WHICH of its kind this is.
+##
+## The sidebar draws the picture for the kind and this for the rest, so a row
+## reads as an axe glyph and "(war)" rather than as the words "war axe" -- and
+## "ring of the rat" stops being truncated to "ring of t..", which threw away
+## the only part that mattered: which ring.
+##
+## The first word, because that is where English puts the distinguishing word in
+## every name this catalogue holds: short sword, war axe, kite shield, chain
+## mail, plate mail, leather armour, short bow, war bow. Items whose whole name
+## is the distinction -- dagger, mace, sling, buckler -- answer with themselves,
+## which is correct rather than a fallback.
+##
+## Thirteen of fourteen need no help. "ring of the rat" is the exception and
+## carries an explicit "tag", because the rule would hand back "ring" -- the
+## kind, which the glyph is already saying.
+func tag() -> String:
+	var data: Dictionary = CATALOGUE.get(id, {})
+	var named: String = data.get("tag", "")
+	if named != "":
+		return named
+	return name.split(" ")[0]
 
 ## What the item does when clicked, for messages and the inventory hint.
 ##
