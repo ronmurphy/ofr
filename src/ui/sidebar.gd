@@ -167,6 +167,23 @@ func _draw() -> void:
 		# a wound, since it means the next press of `f` does nothing.
 		_stat_row(y, "weapon", "%s r%d x%d"
 			% [held.display_name(), reach, held.ammo], held.ammo > 0)
+	elif held != null and held.charges > 0:
+		# A ring that burns down is a quiver that empties, so it is answered in
+		# the same place and the same way: how many more.
+		#
+		# Exact rather than "charged / low", because the only question anyone
+		# asks of it is quantitative -- can I cross this floor as a rat -- and
+		# 148 against 40 is that whole question. A band spanning 51 to 149
+		# cannot answer it. The highlight going out below RING_LOW is what a
+		# band would have bought, and it costs nothing the row was not already
+		# doing for a quiver.
+		#
+		# It matters more than ammo does. An empty quiver means the next `f`
+		# does nothing; an empty ring means you stop being a rat wherever you
+		# are standing, which by construction is somewhere you chose to be
+		# unseen.
+		_stat_row(y, "weapon", "%s  x%d" % [held.display_name(), held.charges],
+			held.charges > GameState.RING_LOW)
 	elif reach > 1:
 		_stat_row(y, "weapon", "%s  r%d" % [_slot_name(p, Item.Slot.WEAPON), reach], true)
 	else:

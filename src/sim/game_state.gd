@@ -290,6 +290,17 @@ const CHEST_TRAP_CHANCE := 0.75
 ## term in the detection formula, so being unlit already makes you harder to
 ## see. The real price of no torch is that you cannot SEE: navigation, and
 ## spotting what is ahead.
+## The two points at which the ring tells you it is running out.
+##
+## RING_LOW is ambient: the sidebar stops highlighting the count, because you
+## have less than a floor's crossing left and the number has stopped being
+## trivia and started being a decision. RING_WARNING is the alarm, once, in the
+## log. Two thresholds on purpose -- a warning that fires at the same moment
+## the colour changes is one signal wearing two coats, and the useful thing is
+## to see it coming BEFORE you are told.
+const RING_LOW := 60
+const RING_WARNING := 20
+
 const RAT_NOTICE := 0.35
 ## And on the climb, where nothing expects a rat because there are none.
 ## Brad's rule, and the best part of the design: the disguise fails because
@@ -2891,7 +2902,7 @@ func _burn_the_ring() -> void:
 		return
 	var ring: Item = player.equipped[Item.Slot.WEAPON]
 	ring.charges -= 1
-	if ring.charges == 20:
+	if ring.charges == RING_WARNING:
 		msg_log.add("The ring is growing cold on your paw.",
 			Color(0.75, 0.70, 0.80))
 	if ring.charges > 0:
