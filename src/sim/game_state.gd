@@ -248,6 +248,17 @@ const GEM_RETURN_STEPS := 5
 const GEM_PITY_FLOORS := [2, 3, 4]
 var gem_found := false
 
+## How far a chest's hinges carry. The existing ladder: combat 6, bones 7, a
+## banshee's wail 9, the forge 10, the vigil shrine 24. Eight puts it above an
+## accident and above the fight that earned it, below sustained hammering --
+## the reward announces itself more loudly than the work did.
+const CHEST_NOISE := 8
+## Three quarters. High enough that you should ASSUME the lid is trapped and
+## read the room before lifting it, short of certain so the quiet quarter is a
+## relief rather than something to plan around. Same reasoning as the graves'
+## 45%: a rule that always fires stops being tense and becomes arithmetic.
+const CHEST_TRAP_CHANCE := 0.75
+
 const HP_WARN_FRACTION := 0.30
 
 ## The threat ceiling.
@@ -810,6 +821,7 @@ func build_level() -> void:
 		_populate_cave(region)
 	_place_vault_contents(gen)
 	_place_first_gem()
+	_place_chest()
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
@@ -963,6 +975,58 @@ func cave_threat_ceiling() -> int:
 ## Runs after the ordinary loot has been scattered, and only if that loot did
 ## not already produce one -- so on a lucky floor this does nothing at all and
 ## the guarantee is invisible.
+## One chest per band, on the band's middle floor.
+##
+## Brad's rarity call, and it is what stops a pack filling with gems: at a gem
+## a floor they were loot, and the inventory was what suffered. A chest is a
+## landmark instead -- you see it, you go to it.
+##
+## Keyed on the MIRRORED depth so the climb gets its own without a second
+## table: effective 5 and effective 15 are both the cave band.
+func _place_chest() -> void:
+	var mirrored := Bands.mirrored(effective_depth())
+	# The middle floor of each band, so you are never handed one on arrival
+	# and never miss it by taking the stairs early.
+	if not [2, 5, 8, 10].has(mirrored):
+		return
+	if room_rects.is_empty():
+		return
+	var at := _open_cell_in(room_rects[room_rects.size() - 1])
+	if at.x < 0 or at == stairs or at == Vector2i(player.x, player.y):
+		return
+	if not _can_rest_on(at.x, at.y) or entity_at(at.x, at.y) != null:
+		return
+	map.set_tile(at.x, at.y, Tiles.CHEST)
+
+## Lifting the lid.
+##
+## No lock, because there are no keys -- and adding them means world generation
+## that guarantees a key is reachable BEFORE its door, a constraint problem
+## whose failure mode is a floor you cannot finish. Brad: "no one leaves a
+## chest just open, that's the dungeon master leaving a cursed item disguised
+## as a good one." So the price is noise rather than a key.
+func _open_chest(at: Vector2i) -> void:
+	map.set_tile(at.x, at.y, Tiles.FLOOR)
+	pathfinder = Pathfinder.new(map)
+	_travel.clear()
+	events.append({"kind": &"forge", "to": at})
+
+	var prize := Item.roll_gem(rng, effective_depth())
+	if prize != null:
+		_drop_item_at(prize, at)
+		gem_found = true
+		msg_log.add("The lid gives. A %s lies inside." % prize.name,
+			Color(0.90, 0.85, 0.60))
+	else:
+		msg_log.add("The lid gives. Whatever was in it is long gone.",
+			Color(0.70, 0.66, 0.60))
+
+	# Louder than the fight that earned it. The ladder: combat 6, bones 7, a
+	# banshee 9, the forge 10.
+	if rng.randf() < CHEST_TRAP_CHANCE:
+		msg_log.add("The hinges shriek. That carried.", Color(0.95, 0.70, 0.40))
+		_make_noise(at, CHEST_NOISE, &"forge")
+
 func _place_first_gem() -> void:
 	if gem_found or ascending:
 		return
@@ -986,12 +1050,7 @@ func _place_first_gem() -> void:
 	# hand-picked favourite, so which element you meet first is still yours to
 	# discover. Retried because the roll is weighted across the whole catalogue
 	# and most of it is not a gem.
-	var gem: Item = null
-	for _try in 200:
-		var pick := Item.roll(rng, effective_depth())
-		if pick != null and pick.kind == Item.Kind.GEM:
-			gem = pick
-			break
+	var gem := Item.roll_gem(rng, effective_depth())
 	if gem == null:
 		return
 	gem.x = at.x
@@ -1769,6 +1828,13 @@ func player_move(dx: int, dy: int) -> bool:
 		_end_player_turn()
 		return true
 
+	# Opened by walking into it, the way a door is. No key, and the act is
+	# unmistakably deliberate -- you cannot cross a chest by accident.
+	if map.get_tile(nx, ny) == Tiles.CHEST:
+		_open_chest(Vector2i(nx, ny))
+		_end_player_turn()
+		return true
+
 	if map.get_tile(nx, ny) == Tiles.DOOR_CLOSED:
 		map.set_tile(nx, ny, Tiles.DOOR_OPEN)
 		pathfinder.set_solid(nx, ny, false)
@@ -2210,8 +2276,10 @@ func _forge_site(item: Item) -> Dictionary:
 ## the mechanic advertises itself instead of relying on the player guessing
 ## which of the two items involved is the one to click.
 func can_forge_item(item: Item) -> bool:
-	return item_can_upgrade(item) and _find_duplicate(item) != null \
-		and not _forge_site(item).is_empty()
+	var donor := _find_duplicate(item)
+	if donor == null or donor.upgrade_level() > item.upgrade_level():
+		return false
+	return item_can_upgrade(item) and not _forge_site(item).is_empty()
 
 ## Merge the item at `index` with an identical one from the pack, at a brazier.
 func player_merge(index: int) -> bool:
@@ -2238,6 +2306,21 @@ func player_merge(index: int) -> bool:
 	if donor == null:
 		msg_log.add("You have nothing else like the %s." % item.name,
 			Color(0.7, 0.6, 0.4))
+		return false
+	# Never spend a better piece to make a worse one equal.
+	#
+	# `_find_duplicate` already prefers the LEAST upgraded donor, which is
+	# right when there is a choice. With exactly one of each there is none: a
+	# leather +1 and a plain leather, clicking the plain one, and the +1 is the
+	# only thing that can be fed to it. The result was one leather +1 where
+	# there had been two pieces -- an item gone and the upgrade bought nothing.
+	#
+	# Refused rather than redirected, because the player asked for something
+	# specific and quietly improving the OTHER item would be a different act
+	# than the one they clicked.
+	if donor.upgrade_level() > item.upgrade_level():
+		msg_log.add("The %s is the better piece. Work that one instead."
+			% donor.display_name(), Color(0.7, 0.6, 0.4))
 		return false
 
 	_travel.clear()
@@ -2285,14 +2368,24 @@ func player_merge(index: int) -> bool:
 ## warm yourself at a brazier for the ten hit points you wanted anyway, then
 ## have twenty turns and ONE working to decide between an edge and an element,
 ## carrying both the stone and the weapon before you start.
-func player_bind(index: int) -> bool:
+func player_bind(index: int, target: int = -1) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
 		return false
 	var gem: Item = player.inventory[index]
 	if gem.kind != Item.Kind.GEM:
 		return false
 
-	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	# The weapon is CHOSEN, not assumed. Defaulting to whatever is in hand
+	# forced the gem into the wrong blade for anyone carrying two: a dagger and
+	# a short sword, and no way to say which. -1 still means "the one in hand",
+	# which is what the rake-down path and the tests use.
+	var blade: Variant = null
+	if target >= 0 and target < player.inventory.size():
+		blade = player.inventory[target]
+		if not blade.is_equipment() or blade.kind != Item.Kind.WEAPON:
+			return false
+	else:
+		blade = player.equipped.get(Item.Slot.WEAPON, null)
 	if blade == null:
 		msg_log.add("You have nothing in hand to set it into.",
 			Color(0.7, 0.6, 0.4))

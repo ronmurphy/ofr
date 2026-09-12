@@ -12,6 +12,7 @@ signal use_requested(index: int)
 signal drop_requested(index: int)
 signal merge_requested(index: int)
 signal throw_requested(index: int)
+signal bind_requested(index: int)
 signal close_requested()
 
 ## GEMS is last so the existing order is untouched -- `cycle_filter` wraps on
@@ -58,6 +59,16 @@ var filter: int = Filter.ALL
 ## Off-hand mode: the pack opens filtered to what can be hurled, and a choice
 ## here hands straight to the targeting cursor.
 var throw_mode := false
+## Setting a gem: the pack opens filtered to the weapons that will TAKE it, and
+## a choice here is the weapon it goes into.
+##
+## The same shape as throw_mode above, deliberately. It answers the question
+## binding could not before -- a player with a dagger and a short sword had the
+## gem forced into whichever was in hand, and "logic says the sword but I want
+## it in the dagger" had no way to be expressed.
+var bind_mode := false
+## Which gem is being placed, as an index into the pack.
+var bind_gem := -1
 var _hover_index := -1
 
 const PANEL_W := 620.0
@@ -79,6 +90,16 @@ func _ready() -> void:
 
 func open_for_throw() -> void:
 	throw_mode = true
+	bind_mode = false
+	visible = true
+	filter = Filter.ALL
+	_hover_index = -1
+	queue_redraw()
+
+func open_for_bind(gem_index: int) -> void:
+	bind_mode = true
+	bind_gem = gem_index
+	throw_mode = false
 	visible = true
 	filter = Filter.ALL
 	_hover_index = -1
@@ -86,6 +107,8 @@ func open_for_throw() -> void:
 
 func open() -> void:
 	throw_mode = false
+	bind_mode = false
+	bind_gem = -1
 	visible = true
 	# Reset to ALL on open. A sticky filter means reopening later and finding
 	# your potions "missing", which is a worse bug than an extra keystroke.
@@ -96,6 +119,8 @@ func open() -> void:
 func close() -> void:
 	visible = false
 	throw_mode = false
+	bind_mode = false
+	bind_gem = -1
 	_hover_index = -1
 
 func cycle_filter(step: int = 1) -> void:
@@ -105,6 +130,13 @@ func cycle_filter(step: int = 1) -> void:
 
 ## Letter lookup runs against the pack, not the visible rows, so an item stays
 ## reachable by its letter even while filtered out of view.
+## Would this item accept the gem currently being placed?
+func _takes_the_gem(it: Item) -> bool:
+	if bind_gem < 0 or bind_gem >= state.player.inventory.size():
+		return false
+	var gem: Item = state.player.inventory[bind_gem]
+	return it.element == &"" and it.accepts_element(gem.element)
+
 func letter_to_index(key: int) -> int:
 	if key < KEY_A or key > KEY_Z or state == null:
 		return -1
@@ -149,9 +181,11 @@ func _build_rows() -> Array:
 		var it: Item = state.player.inventory[i]
 		if throw_mode and not it.is_throwable():
 			continue
+		if bind_mode and not _takes_the_gem(it):
+			continue
 		entries.append({"item": it, "index": i})
 
-	if throw_mode:
+	if throw_mode or bind_mode:
 		return _sorted(entries)
 
 	if filter != Filter.ALL:
@@ -250,6 +284,10 @@ func _gui_input(event: InputEvent) -> void:
 		if click.button_index == MOUSE_BUTTON_LEFT:
 			throw_requested.emit(hit)
 		return
+	if bind_mode:
+		if click.button_index == MOUSE_BUTTON_LEFT:
+			bind_requested.emit(hit)
+		return
 
 	if click.button_index == MOUSE_BUTTON_LEFT:
 		if click.shift_pressed:
@@ -308,6 +346,11 @@ func _draw() -> void:
 	var hint := "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
 	if throw_mode:
 		hint = "pick something to hurl  ·  click or press its letter  ·  esc cancel"
+	elif bind_mode:
+		var g: String = "the gem"
+		if bind_gem >= 0 and bind_gem < state.player.inventory.size():
+			g = state.player.inventory[bind_gem].display_name()
+		hint = "set %s into which weapon?  ·  click or press its letter  ·  esc cancel" % g
 	elif state.can_forge_here():
 		hint = "shift+click a ● item to FORGE it with a spare  ·  click use  ·  esc"
 		# Embers get their own line. The two costs are nothing alike -- one
@@ -341,6 +384,30 @@ func _draw_header(r: Rect2, text: String) -> void:
 		font_size - 3).x
 	draw_line(Vector2(r.position.x + tw + 10.0, y - 4.0),
 		Vector2(r.end.x, y - 4.0), Color(Palette.UI_FRAME, 0.7), 1.0)
+
+## What clicking this row would do right now, named, or "" for the ordinary
+## verbs the player already knows.
+##
+## Only the acts that are ambiguous or destructive get a line. "wield" on every
+## sword would be noise; "bind -> dagger +2" is the one the player cannot work
+## out from the row itself.
+func _action_hint(item: Item) -> String:
+	if item.kind == Item.Kind.GEM:
+		var blade: Variant = state.player.equipped.get(Item.Slot.WEAPON, null)
+		if blade == null:
+			return "needs a weapon in hand"
+		if blade.element != &"":
+			return "%s is already set" % blade.display_name()
+		if not blade.accepts_element(item.element):
+			return "%s will not take it" % blade.name
+		if state._adjacent_embers().x >= 0:
+			return "set into %s" % blade.display_name()
+		if state._adjacent_brazier().x >= 0:
+			return "rake the fire down first"
+		return "needs a guttering brazier"
+	if state.can_forge_item(item):
+		return "merge -> +%d" % (item.upgrade_level() + 1)
+	return ""
 
 func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	if index == _hover_index:
@@ -377,6 +444,23 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	if equipped:
 		status = ("%s  ·  %s" % [status, item.equipped_text()]) if status != "" \
 			else item.equipped_text()
-	if status != "":
+	# What the click will DO takes the right-hand slot when there is something
+	# worth saying, and the stat line keeps it otherwise.
+	#
+	# The dot in the margin says only that something can happen here, which was
+	# enough when one thing could. It now stands for two unrelated acts --
+	# merging a twin and setting a gem -- and a player binding a gem has no way
+	# to know WHICH weapon received it until the log scrolls, under a panel that
+	# is covering the log. Brad set frost into a dagger +2, equipped a dagger +4
+	# moments later, and fought a floor with the wrong blade.
+	#
+	# On the same line rather than a second one because `_hover_index` is set
+	# by mouse motion alone: a hint shown only on the row under the cursor is
+	# invisible to anyone playing by letter keys, which is half the players.
+	var doing := _action_hint(item)
+	if doing != "":
+		draw_string(font, base, doing, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x,
+			font_size - 2, Palette.STAIRS)
+	elif status != "":
 		draw_string(font, base, status, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x,
 			font_size, Palette.HP_GOOD if equipped else Palette.UI_DIM)

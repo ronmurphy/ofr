@@ -89,6 +89,7 @@ func _ready() -> void:
 	inventory.drop_requested.connect(_drop_item)
 	inventory.merge_requested.connect(_merge_item)
 	inventory.throw_requested.connect(_on_throw_chosen)
+	inventory.bind_requested.connect(_on_bind_chosen)
 	menu.resume_requested.connect(_close_menu)
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
@@ -170,6 +171,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				var chosen: int = inventory.letter_to_index(key)
 				if chosen >= 0:
 					_on_throw_chosen(chosen)
+			return
+		if inventory.bind_mode:
+			# Same keys as the throw picker, because it is the same act: the
+			# pack is showing a shortlist and asking which one.
+			if key == KEY_ESCAPE:
+				_close_inventory()
+			else:
+				var target: int = inventory.letter_to_index(key)
+				if target >= 0:
+					_on_bind_chosen(target)
 			return
 		if key == KEY_TAB:
 			inventory.cycle_filter(-1 if key_event.shift_pressed else 1)
@@ -531,9 +542,22 @@ func _merge_item(index: int) -> void:
 	var item: Item = state.player.inventory[index] if index >= 0 \
 		and index < state.player.inventory.size() else null
 	if item != null and item.kind == Item.Kind.GEM:
-		state.player_bind(index)
+		# At the coals, ask which weapon. Anywhere else the call itself has
+		# something to say -- raking a lit fire down, or naming what is wrong --
+		# and there is nothing to choose between yet.
+		if state.can_bind_gem(item) and state._adjacent_embers().x >= 0:
+			inventory.open_for_bind(index)
+		else:
+			state.player_bind(index)
 	else:
 		state.player_merge(index)
+	_refresh()
+
+## The weapon chosen from the bind shortlist.
+func _on_bind_chosen(target: int) -> void:
+	var gem: int = inventory.bind_gem
+	inventory.close()
+	state.player_bind(gem, target)
 	_refresh()
 
 func _drop_item(index: int) -> void:

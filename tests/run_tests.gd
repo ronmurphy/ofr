@@ -122,6 +122,9 @@ func _initialize() -> void:
 	_test_binding_a_stone()
 	_test_gems_bite()
 	_test_gem_of_returning()
+	_test_choosing_the_bound_weapon()
+	_test_the_better_piece_is_kept()
+	_test_chests()
 	_test_the_first_gem_is_certain()
 	_test_every_kind_is_listed()
 	_test_cave_bear()
@@ -4388,6 +4391,15 @@ func _test_binding_a_stone() -> void:
 	check("dying coals will", gs.can_bind_gem(gem))
 	check("and it takes", gs.player_bind(gs.player.inventory.find(gem)))
 	check("the blade holds the element", blade.element == &"fire")
+	check("and says so in its name (%s)" % blade.display_name(),
+		blade.display_name().contains("("))
+	check("a plain weapon says nothing extra",
+		not Item.make(&"dagger").display_name().contains("("))
+	# The tag means "this weapon has been given an element". On the gem itself
+	# the element IS the name, and "gem of frost (frost)" stutters.
+	check("and a gem does not repeat itself (%s)"
+		% Item.make(&"gem_frost").display_name(),
+		Item.make(&"gem_frost").display_name() == "gem of frost")
 	check("the gem is spent", not gs.player.inventory.has(gem))
 	check("and the brazier is black for good",
 		gs.map.get_tile(6, 4) == Tiles.BRAZIER_DEAD)
@@ -4676,6 +4688,141 @@ func _test_every_kind_is_listed() -> void:
 	check("without catching anything else",
 		not panel._matches(Item.make(&"dagger"), InventoryPanel.Filter.GEMS))
 	panel.free()
+
+## The gem goes into the weapon you CHOOSE, not the one in your hand.
+func _test_choosing_the_bound_weapon() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+
+	var sword := Item.make(&"short_sword")
+	var dagger := Item.make(&"dagger")
+	var bow := Item.make(&"short_bow")
+	gs.player.inventory.append(sword)
+	gs.player.inventory.append(dagger)
+	gs.player.inventory.append(bow)
+	gs.player.equipped[Item.Slot.WEAPON] = sword
+
+	var gem := Item.make(&"gem_frost")
+	gs.player.inventory.append(gem)
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(6, 4)] = gs.turns + GameState.EMBER_TURNS
+
+	# The whole point: the sword is in hand, and the dagger gets it anyway.
+	var gi := gs.player.inventory.find(gem)
+	var di := gs.player.inventory.find(dagger)
+	check("binding takes a chosen target", gs.player_bind(gi, di))
+	check("the dagger holds it", dagger.element == &"frost")
+	check("and the wielded sword does not", sword.element == &"")
+
+	# A target that cannot take it is refused rather than silently redirected.
+	var gem2 := Item.make(&"gem_frost")
+	gs.player.inventory.append(gem2)
+	gs.map.set_tile(4, 4, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(4, 4)] = gs.turns + GameState.EMBER_TURNS
+	var gi2 := gs.player.inventory.find(gem2)
+	var bi := gs.player.inventory.find(bow)
+	check("a bow will not take frost", not gs.player_bind(gi2, bi))
+	check("and the gem is not spent on the attempt",
+		gs.player.inventory.has(gem2))
+	check("a weapon that already holds one is refused",
+		not gs.player_bind(gi2, gs.player.inventory.find(dagger)))
+
+	# The shortlist only offers weapons that would actually take it.
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	panel.open_for_bind(gi2)
+	check("the shortlist takes a bare sword", panel._takes_the_gem(sword))
+	check("but not the bow", not panel._takes_the_gem(bow))
+	check("nor the dagger it is already in", not panel._takes_the_gem(dagger))
+	check("nor a potion", not panel._takes_the_gem(Item.make(&"potion_healing")))
+	panel.free()
+
+## Merging must never spend a better piece to make a worse one its equal.
+func _test_the_better_piece_is_kept() -> void:
+	var gs := _forge_arena()
+	gs.brazier_charge = {Vector2i(6, 4): 100}
+	var good := Item.make(&"leather_armour")
+	good.upgrade()
+	var plain := Item.make(&"leather_armour")
+	gs.give_item(good)
+	gs.give_item(plain)
+
+	# Clicking the plain one when the only donor is the +1 used to consume the
+	# +1 and hand back a +1 -- two pieces became one and the forging bought
+	# nothing at all.
+	check("the forge does not offer a losing merge", not gs.can_forge_item(plain))
+	check("and refuses one asked for", not gs.player_merge(
+		gs.player.inventory.find(plain)))
+	check("both pieces are still in the pack",
+		gs.player.inventory.has(good) and gs.player.inventory.has(plain))
+	check("and neither changed",
+		good.upgrade_level() == 1 and plain.upgrade_level() == 0)
+
+	# The other way round is the sensible merge and still works.
+	check("working the better one is offered", gs.can_forge_item(good))
+	check("and it takes", gs.player_merge(gs.player.inventory.find(good)))
+	check("the good piece improved", good.upgrade_level() == 2)
+	check("and the plain one was spent", not gs.player.inventory.has(plain))
+
+## Chests: one a band, opened by walking into them, and the only source of gems.
+func _test_chests() -> void:
+	# Gems are off the loot table entirely now.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var loose := 0
+	for i in 3000:
+		var it := Item.roll(rng, 9)
+		if it != null and it.kind == Item.Kind.GEM:
+			loose += 1
+	check("gems are not floor loot any more (%d of 3000)" % loose, loose == 0)
+	check("but a chest can still find one",
+		Item.roll_gem(rng, 9) != null)
+	check("and none exist above their depth",
+		Item.roll_gem(rng, 1) == null)
+
+	# One per band, on the band's middle floor, both directions.
+	var with_chest := {}
+	for d in [1, 2, 3, 5, 8, 10]:
+		var seen := 0
+		for i in 20:
+			var gs := GameState.new(8800 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			for y in gs.map.height:
+				for x in gs.map.width:
+					if gs.map.get_tile(x, y) == Tiles.CHEST:
+						seen += 1
+		with_chest[d] = seen
+	check("the band's middle floors carry one (d2 %d, d5 %d, d8 %d)"
+		% [with_chest[2], with_chest[5], with_chest[8]],
+		with_chest[2] > 0 and with_chest[5] > 0 and with_chest[8] > 0)
+	check("and the others carry none (d1 %d, d3 %d)"
+		% [with_chest[1], with_chest[3]],
+		with_chest[1] == 0 and with_chest[3] == 0)
+	check("never more than one on a floor",
+		with_chest[2] <= 20 and with_chest[5] <= 20)
+
+	# Walking into it opens it, and it gives up a gem.
+	var gs2 := _arena(21, 9)
+	gs2.player.x = 5
+	gs2.player.y = 4
+	gs2.map.set_tile(6, 4, Tiles.CHEST)
+	gs2.pathfinder = Pathfinder.new(gs2.map)
+	gs2.ground = []
+	check("a chest is solid", not gs2.map.is_walkable(6, 4))
+	gs2.player_move(1, 0)
+	check("walking into it opens it",
+		gs2.map.get_tile(6, 4) != Tiles.CHEST)
+	check("and you do not step onto it", gs2.player.x == 5)
+	var found := 0
+	for it in gs2.ground:
+		if it.kind == Item.Kind.GEM:
+			found += 1
+	check("it held a gem (%d)" % found, found == 1)
+	check("and that counts as the run's first",
+		gs2.gem_found)
 
 func _test_cave_bear() -> void:
 	var gs := _arena(21, 9)

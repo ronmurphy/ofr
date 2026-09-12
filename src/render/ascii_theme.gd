@@ -31,6 +31,9 @@ const TABLE := {
 	# A headstone shape, and reachable now that the map font falls back to the
 	# full text face -- see GlyphGrid.map_font().
 	&"grave":         {"ch": "Π", "fg": Palette.GRAVE, "bg": Color("15161b")},
+	## Brad's pick. A cent sign reads as a lidded box at map size and nothing
+	## else in the game uses it.
+	&"chest":         {"ch": "¢", "fg": Palette.CHEST, "bg": Color("1d1710")},
 
 	# Classic item glyphs: ! is a flask, ? is a rolled scroll.
 	&"potion":      {"ch": "!", "fg": Palette.POTION},

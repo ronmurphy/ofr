@@ -72,6 +72,9 @@ const ARMOUR        := Color("a89a7c")
 ## coloured stones would put colour in charge of identity across six items and
 ## hand check_palette.py real work for no gain.
 const GEM           := Color("dfe4ea")
+## A chest, unopened. Warm and worked, against the cold stone and the colder
+## gems -- it is the one thing on a floor that was MADE rather than found.
+const CHEST         := Color("c9953f")
 
 ## Material tints, applied to terrain base colours -- deliberately NOT to the
 ## light.

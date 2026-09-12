@@ -50,6 +50,7 @@ const OVERRIDES := {
 	&"troll":    HEAVY_FIGURE,
 	&"giant":    HEAVY_FIGURE,
 	&"gem":      0xF01C8,   # md-diamond_stone
+	&"chest":    0xF0726,   # md-treasure_chest
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent

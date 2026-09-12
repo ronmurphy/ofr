@@ -32,6 +32,9 @@ enum {
 	TRAP,
 	BRAZIER_DEAD,
 	GRAVE,
+	## A chest. Appended last -- tiles are saved as integers, so inserting
+	## would rewrite what every existing suspend means.
+	CHEST,
 }
 
 ## walk  = an actor may stand here
@@ -89,6 +92,10 @@ const DATA := {
 	# stand and cannot block a route by construction. Standing on the grave to
 	# read it is also the better image.
 	GRAVE:       {"id": &"grave",        "walk": true,  "clear": true},
+	## Solid on purpose: you open it by walking INTO it, the way a door works,
+	## so no key is needed and the act is unmistakably deliberate. A walkable
+	## chest would be one you could cross without noticing.
+	CHEST:       {"id": &"chest",        "walk": false, "clear": true},
 }
 
 static func is_walkable(t: int) -> bool:

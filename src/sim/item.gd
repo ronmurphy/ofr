@@ -113,6 +113,14 @@ const CATALOGUE := {
 
 	# Elemental gems.
 	#
+	# WEIGHT ZERO: gems are not floor loot.
+	#
+	# They dropped like ordinary items while the system was being built, which
+	# was right for testing and wrong for the game -- about fifteen a run, and
+	# the pack was what suffered. A chest is the source now: one per band, a
+	# landmark you walk to. `min_depth` is kept for the guaranteed first one and
+	# for what a chest can contain at that depth.
+	#
 	# GEM rather than "stone": this codebase already calls two other things
 	# stone -- the wall material in materials.gd and the sling's ammunition --
 	# and a third meaning would have been one too many. The glyph was always a
@@ -133,15 +141,15 @@ const CATALOGUE := {
 	# distance, survival, ground.
 	&"gem_fire": {
 		"name": "gem of fire", "app": &"gem", "kind": Kind.GEM,
-		"element": &"fire", "min_depth": 2, "weight": 4,
+		"element": &"fire", "min_depth": 2, "weight": 0,
 	},
 	&"gem_frost": {
 		"name": "gem of frost", "app": &"gem", "kind": Kind.GEM,
-		"element": &"frost", "min_depth": 2, "weight": 4,
+		"element": &"frost", "min_depth": 2, "weight": 0,
 	},
 	&"gem_leech": {
 		"name": "gem of thirst", "app": &"gem", "kind": Kind.GEM,
-		"element": &"leech", "min_depth": 3, "weight": 3,
+		"element": &"leech", "min_depth": 3, "weight": 0,
 	},
 	## Bow only. Slings knap their ammunition out of rubble, so a sling that
 	## also called its stones back would be answering a question it does not
@@ -150,12 +158,12 @@ const CATALOGUE := {
 	## for the run.
 	&"gem_return": {
 		"name": "gem of returning", "app": &"gem", "kind": Kind.GEM,
-		"element": &"return", "min_depth": 3, "weight": 3,
+		"element": &"return", "min_depth": 3, "weight": 0,
 	},
 
 	&"gem_crag": {
 		"name": "gem of the crag", "app": &"gem", "kind": Kind.GEM,
-		"element": &"crag", "min_depth": 3, "weight": 3,
+		"element": &"crag", "min_depth": 3, "weight": 0,
 	},
 
 	&"potion_healing": {
@@ -386,7 +394,20 @@ func effective_magnitude() -> int:
 ## Name as the player should see it, carrying any upgrades.
 func display_name() -> String:
 	var up := upgrade_level()
-	return name if up == 0 else "%s +%d" % [name, up]
+	var base := name if up == 0 else "%s +%d" % [name, up]
+	# A binding is permanent and invisible everywhere else. Brad set frost into
+	# a dagger +2, equipped a dagger +4 a moment later, and spent a floor
+	# swinging the wrong one -- nothing on the item said which was which.
+	#
+	# Put on display_name rather than on the inventory row so it reaches all
+	# nineteen places a name is printed at once: the pack, the look panel, every
+	# log line, and the morgue's record of what you died carrying.
+	# Weapons only. On a gem the suffix stutters -- "gem of frost (frost)" --
+	# because the element is already the whole name. The tag means "this has
+	# been GIVEN an element", which is only ever news about a weapon.
+	if element != &"" and kind != Kind.GEM:
+		base += " (%s)" % element
+	return base
 
 func is_throwable() -> bool:
 	return throw_range > 0
@@ -510,6 +531,28 @@ static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: in
 	return make(pool[-1]["id"])
 
 ## Weighted pick from everything legal at this depth.
+## A gem, from the gems alone.
+##
+## Gems carry weight 0 so the ordinary loot roll cannot produce them -- they
+## come from chests now. That means `roll()` can never return one, so the two
+## places that DO hand them out need a table of their own rather than spinning
+## the main one and hoping.
+##
+## Even odds across whatever the depth allows, so which element a chest holds
+## is a genuine surprise rather than a weighted favourite.
+static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
+	var pool: Array[StringName] = []
+	for key in CATALOGUE:
+		var data: Dictionary = CATALOGUE[key]
+		if data.get("kind", -1) != Kind.GEM:
+			continue
+		if int(data.get("min_depth", 999)) > depth:
+			continue
+		pool.append(key)
+	if pool.is_empty():
+		return null
+	return make(pool[rng.randi_range(0, pool.size() - 1)])
+
 static func roll(rng: RandomNumberGenerator, depth: int) -> Item:
 	var pool := []
 	var total := 0
