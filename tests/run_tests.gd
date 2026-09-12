@@ -1557,6 +1557,40 @@ func _test_difficult_ground() -> void:
 	check("levels have water on them (%d cells / 40)" % wet_floors, wet_floors > 0)
 	check("and mud (%d cells / 40)" % muddy, muddy > 0)
 
+	# Rubble, IN A CAVE, on the band made of caves.
+	#
+	# The assertion the old census was missing, and the gap is why this went
+	# unnoticed: `_roll_ground` is called only in the rooms loop, so RUBBLED was
+	# unreachable in a cave and every rubble tile in the game stood on a floor
+	# somebody built. The band that is four fifths cavern carried the LEAST
+	# rubble in the dungeon -- 10 tiles a floor against 33 up top -- while being
+	# the band whose economy is knapping stones for a sling.
+	#
+	# Counted on CAVERN material rather than anywhere on a cave-band floor,
+	# because a caves-band floor still has rooms and rubble in one of those
+	# would pass a weaker check while the bug was fully intact.
+	var scree := 0
+	var scree_floors := 0
+	for i in 30:
+		var level := GameState.new(46000 + i)
+		level.new_game()
+		level.depth = 5
+		level.build_level()
+		var here := 0
+		for y in level.map.height:
+			for x in level.map.width:
+				if level.map.get_tile(x, y) == Tiles.RUBBLE \
+						and level.map.material_at(x, y) == Materials.CAVERN:
+					here += 1
+		scree += here
+		if here > 0:
+			scree_floors += 1
+	check("caves grow scree (%d cells / 30 floors)" % scree, scree > 0)
+	# Not merely non-zero: one lucky floor in thirty would satisfy that while
+	# the band stayed barren, which is exactly the shape of the original bug.
+	check("on most cave-band floors, not one lucky one (%d/30)" % scree_floors,
+		scree_floors >= 20, "%d floors" % scree_floors)
+
 ## Noise is the second thing that can give you away. Until now the awareness
 ## system had exactly one input: light.
 func _test_bones_are_loud() -> void:

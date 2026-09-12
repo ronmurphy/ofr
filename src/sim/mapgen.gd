@@ -787,6 +787,23 @@ func _random_open(map: DungeonMap) -> Vector2i:
 			return Vector2i(x, y)
 	return Vector2i(-1, -1)
 
+## A scree fall, not a floor covering.
+##
+## A cave region runs to 330 cells and rubble costs 130 energy to cross, so a
+## cave painted wall to wall in it would be a slog rather than a feature. A
+## patch is something you walk into, around, or across on purpose for the
+## stones -- a choice, which is what difficult ground is for.
+const CAVE_SCREE_CHANCE := 0.55
+const SCREE_SPAN := 0.45
+
+## Somewhere inside the cave for the roof to have come down.
+func _scree_patch(region: Rect2i) -> Rect2i:
+	var w := maxi(3, int(round(float(region.size.x) * SCREE_SPAN)))
+	var h := maxi(3, int(round(float(region.size.y) * SCREE_SPAN)))
+	var x := rng.randi_range(region.position.x, maxi(region.position.x, region.end.x - w))
+	var y := rng.randi_range(region.position.y, maxi(region.position.y, region.end.y - h))
+	return Rect2i(x, y, w, h)
+
 func _roll_ground() -> int:
 	var r := rng.randf()
 	if r < 0.60: return Ground.DRY
@@ -808,6 +825,18 @@ func _lay_terrain(map: DungeonMap) -> void:
 		if rng.randf() < 0.45:
 			_paint_ground(map, region,
 				Ground.MUDDY if rng.randf() < 0.55 else Ground.DAMP)
+		# Rocks, in the one place guaranteed to have them.
+		#
+		# `_roll_ground` is rooms-only, so RUBBLED was unreachable in a cave and
+		# every rubble tile in the game stood in a room someone built. Measured
+		# consequence: the caves band, which is four fifths cavern, carried 10
+		# rubble tiles a floor against 33 in the upper band -- the least in the
+		# dungeon, in the band whose whole economy was supposed to include it.
+		# Knapping rubble is where a sling gets its stones, and the sling is the
+		# blunt weapon that answers skeletons, so the shortage landed exactly
+		# where it hurt most.
+		if rng.randf() < CAVE_SCREE_CHANCE:
+			_paint_ground(map, _scree_patch(region), Ground.RUBBLED)
 
 func _paint_ground(map: DungeonMap, area: Rect2i, g: int) -> void:
 	var tile := Tiles.WATER
