@@ -2471,6 +2471,72 @@ func _test_map_always_connected() -> void:
 	check("dungeon is always completable (%d seeds)" % trials, bad == 0,
 		"%d unreachable" % bad)
 
+	# Completable is not the same as PLAYABLE, and that gap hid a severe bug.
+	#
+	# The check above asks whether the stairs can be reached. On seed 66043 at
+	# depth 5 the answer was yes, and the floor was still broken: a caves-band
+	# level generated with no rooms, GameState treated that as degenerate and
+	# carved an isolated 11x7 chamber in the corner, then put the player AND the
+	# stairs inside it. Seventy-seven cells of blank box against eight hundred
+	# and twenty-one cells of dungeon nobody could ever walk to. Completable,
+	# winnable, and almost entirely invisible.
+	#
+	# So this asks the whole-floor question instead: of everything you could
+	# stand on, how much can you actually get to from where you woke up?
+	#
+	# Measured before choosing the bar -- 960 floors across both directions came
+	# back at exactly 1.0000, none below. So the bar is ALL of it. A softer 90%
+	# would have tolerated a tenth of the dungeon going missing, which is the
+	# same mistake as asking only about the stairs, wearing a percentage.
+	#
+	# Four-way rather than eight, deliberately: movement is eight-way, so this
+	# can only ever under-report. A test that occasionally complains about a
+	# floor that is fine costs a look; one that misses a stranded region costs
+	# somebody their run.
+	#
+	# And measured from the PLAYER's cell, not from the largest region. "Is the
+	# map one connected space?" passed on seed 66043 -- the map was fine, the
+	# player was outside it.
+	var cut_off := []
+	for i in 30:
+		for d in [1, 5, 6, 8, 10, 15]:
+			var gs := GameState.new(70000 + i)
+			gs.use_scratch_files("reach%d_%d" % [i, d])
+			gs.new_game()
+			gs.depth = d
+			gs.ascending = d > GameState.MAX_DEPTH
+			gs.build_level()
+			var total := 0
+			for y in gs.map.height:
+				for x in gs.map.width:
+					if gs.map.is_walkable(x, y) \
+							and not Tiles.is_avoided(gs.map.get_tile(x, y)):
+						total += 1
+			var seen := {}
+			var start := Vector2i(gs.player.x, gs.player.y)
+			var stack := [start]
+			seen[start] = true
+			var got := 0
+			while not stack.is_empty():
+				var c: Vector2i = stack.pop_back()
+				got += 1
+				for dd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = c + dd
+					if seen.has(n) or not gs.map.in_bounds(n.x, n.y):
+						continue
+					if not gs.map.is_walkable(n.x, n.y) \
+							or Tiles.is_avoided(gs.map.get_tile(n.x, n.y)):
+						continue
+					seen[n] = true
+					stack.append(n)
+			if got < total:
+				cut_off.append("seed %d d%d: %d of %d (%.0f%%)"
+					% [70000 + i, d, got, total, 100.0 * float(got) / float(maxi(total, 1))])
+			gs.clear_scratch_files()
+	check("every walkable cell is reachable from where you start (%d floors)"
+		% (30 * 6), cut_off.is_empty(),
+		"%d stranded: %s" % [cut_off.size(), str(cut_off.slice(0, 4))])
+
 	# Every BAND, not just depth 1.
 	#
 	# The check above only ever called new_game(), which builds the first floor
