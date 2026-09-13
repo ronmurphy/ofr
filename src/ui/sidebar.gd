@@ -165,8 +165,8 @@ func _draw() -> void:
 		# The count belongs beside the reach, because they are read together:
 		# how far can I hit, and how many times. An empty quiver is tinted like
 		# a wound, since it means the next press of `f` does nothing.
-		_icon_row(y, "weapon", _gear_glyph(held),
-			_gear_words(held) + " r%d x%d" % [reach, held.ammo], held.ammo > 0)
+		_gear_row(y, "weapon", held, " r%d x%d" % [reach, held.ammo],
+			held.ammo > 0)
 	elif held != null and held.charges > 0:
 		# A ring that burns down is a quiver that empties, so it is answered in
 		# the same place and the same way: how many more.
@@ -182,14 +182,12 @@ func _draw() -> void:
 		# does nothing; an empty ring means you stop being a rat wherever you
 		# are standing, which by construction is somewhere you chose to be
 		# unseen.
-		_icon_row(y, "weapon", _gear_glyph(held),
-			_gear_words(held) + "  x%d" % held.charges,
+		_gear_row(y, "weapon", held, "  x%d" % held.charges,
 			held.charges > GameState.RING_LOW)
 	elif held != null and reach > 1:
-		_icon_row(y, "weapon", _gear_glyph(held),
-			_gear_words(held) + "  r%d" % reach, true)
+		_gear_row(y, "weapon", held, "  r%d" % reach, true)
 	elif held != null:
-		_icon_row(y, "weapon", _gear_glyph(held), _gear_words(held), false)
+		_gear_row(y, "weapon", held, "", false)
 	else:
 		_stat_row(y, "weapon", "--", false)
 	y += LINE
@@ -271,7 +269,7 @@ func _gear_slot_row(y: float, label: String, p: Entity, slot: int,
 	if item == null:
 		_stat_row(y, label, "--", boosted)
 		return
-	_icon_row(y, label, _gear_glyph(item), _gear_words(item), boosted)
+	_gear_row(y, label, item, "", boosted)
 
 func _slot_name(p: Entity, slot: int) -> String:
 	var item = p.equipped.get(slot, null)
@@ -295,46 +293,62 @@ func _gear_glyph(item: Item) -> String:
 ## Everything except the picture. Separate so the picture can be drawn at icon
 ## size beside it rather than squashed to letter size inside it.
 func _gear_words(item: Item) -> String:
-	var out: String = " (%s)" % item.tag()
+	return " (%s)" % item.tag()
+
+## The facts about a piece that cannot be recovered by looking at it.
+##
+## Kept apart from the tag because they are protected from truncation and the
+## tag is not. Which bow you hold is already said twice over -- by the glyph and
+## by the reach -- so the tag is the cheapest thing on the row to lose. A "+2"
+## and a bound gem are not recoverable from anything else on screen, and the gem
+## cost a chest.
+func _gear_up(item: Item) -> String:
 	var up := item.upgrade_level()
-	if up > 0:
-		out += " +%d" % up
-	# A bound gem is the most consequential thing about a weapon and the one
-	# that cost a chest to get. It keeps its own word.
-	if item.element != &"":
-		out += " %s" % item.element
-	return out
+	return "" if up <= 0 else " +%d" % up
+
+func _gear_el(item: Item) -> String:
+	return "" if item.element == &"" else " %s" % item.element
+
+func _gear_extra(item: Item) -> String:
+	return _gear_up(item) + _gear_el(item)
 
 func _gear_text(item: Item) -> String:
-	return _gear_glyph(item) + _gear_words(item)
+	return _gear_glyph(item) + _gear_words(item) + _gear_extra(item)
 
-## Label left, value right-aligned. `boosted` tints the value so a bonus from
-## equipment is visible at a glance without reading the equipment lines.
-## A stat row whose value begins with an ICON, drawn at icon size.
+## One equipment row: the picture, then whatever of the words will fit.
+func _gear_row(y: float, label: String, item: Item, numbers: String,
+		boosted: bool) -> void:
+	var glyph := _gear_glyph(item)
+	_draw_icon_row(y, label, glyph, gear_row_words(label, glyph,
+		_gear_words(item), _gear_up(item), _gear_el(item), numbers), boosted)
+
+## A row whose value begins with an ICON, for anything that is not gear.
+##
+## `keep` is a tail that must survive truncation. Without it the words are
+## trimmed from the right, which is where the numbers live.
+func _icon_row(y: float, label: String, glyph: String, text: String,
+		boosted: bool, keep: String = "") -> void:
+	_draw_icon_row(y, label, glyph, icon_row_words(label, glyph, text, keep),
+		boosted)
+
+## Label, icon and pre-fitted words, the last two right-aligned as a unit.
 ##
 ## The plain row draws label and value as two strings at font_size, and an icon
-## in that string comes out the size of a letter -- reported from play as the
-## gear glyphs being tiny next to the same pictures on the map, which are drawn
+## inside that string comes out the size of a letter -- reported from play as
+## the gear glyphs being tiny next to the same pictures on the map, which go
 ## through GlyphTheme.draw_size and are 1.55x a letter. The legend and the
-## inventory already draw theirs that way; the sidebar was the one panel that
+## inventory already drew theirs that way; the sidebar was the one panel that
 ## did not.
 ##
-## So the value is drawn in two pieces, right-aligned as a unit: the text
-## against the frame, the glyph immediately left of it at its own size. The
-## vertical nudge is the legend's, for the same reason -- an icon has no
+## The vertical nudge is the legend's, for the legend's reason: an icon has no
 ## x-height, so sitting it on the text baseline hangs it low.
-func _icon_row(y: float, label: String, glyph: String, text: String,
+func _draw_icon_row(y: float, label: String, glyph: String, shown: String,
 		boosted: bool) -> void:
 	draw_string(font, Vector2(PAD, y), label,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	var tint: Color = Palette.HP_GOOD if boosted else Palette.UI_TEXT
 	var gs := GlyphTheme.draw_size(glyph, font_size)
 	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
-	# The label and the icon are both already spoken for, so the words get what
-	# is left. Without this the row walks over its own label again -- the bug
-	# this panel was just fixed for, and drawing the icon LARGER makes it
-	# likelier rather than less.
-	var shown := icon_row_words(label, glyph, text)
 	var tw := font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var right := size.x - PAD
 	draw_string(font, Vector2(right - tw, y), shown,
@@ -342,6 +356,8 @@ func _icon_row(y: float, label: String, glyph: String, text: String,
 	draw_string(font, Vector2(right - tw - gw, y + (font_size - gs) * 0.35), glyph,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
 
+## Label left, value right-aligned. `boosted` tints the value so a bonus from
+## equipment is visible at a glance without reading the equipment lines.
 func _stat_row(y: float, label: String, value: String, boosted: bool) -> void:
 	draw_string(font, Vector2(PAD, y), label,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
@@ -423,20 +439,60 @@ func _fit(text: String, reserve: float = 0.0) -> String:
 ## Public and pure so the suite can check it without a canvas: the previous
 ## version of this was a helper only the tests called, which is dead code with a
 ## passing check in front of it. This one is what the row actually draws.
-func icon_row_words(label: String, glyph: String, text: String) -> String:
+func icon_row_words(label: String, glyph: String, text: String,
+		keep: String = "") -> String:
+	var avail := _room_for(label, glyph)
+	if keep == "":
+		return _fit(text, size.x - PAD * 2.0 - avail)
+	var kw := font.get_string_size(keep, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	if kw >= avail:
+		# Even the protected part does not fit; it alone gets the room.
+		return _fit(keep, size.x - PAD * 2.0 - avail)
+	return _fit(text, size.x - PAD * 2.0 - avail + kw) + keep
+
+## How much width the words have left, once the label and the icon have taken
+## theirs.
+func _room_for(label: String, glyph: String) -> float:
 	var gs := GlyphTheme.draw_size(glyph, font_size)
 	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
-	return _fit(text, lw + gw)
+	return size.x - PAD * 2.0 - lw - gw
+
+## A gear row, assembled by dropping the least valuable part first.
+##
+## A fully worked bow carrying a gem wants glyph, tag, "+2", the element, the
+## reach and the ammo count, and that does not fit a 256px panel at any icon
+## size. So the row is built from what matters rather than truncated from
+## whichever end the text happens to run out of:
+##
+##     numbers   reach, ammo, charges -- the reason the row carries a suffix,
+##               and what you act on
+##     upgrade   "+2" -- not recoverable by looking at anything else
+##     element   a bound gem cost a chest and shows up nowhere else on screen
+##     tag       which one it is -- already said by the glyph, and for a
+##               launcher said again by the reach. The cheapest thing to lose.
+##
+## Truncating from the right got this exactly backwards: it ate the ammo count
+## to save the word "short", when the picture beside it already said "bow".
+func gear_row_words(label: String, glyph: String, tag: String, up: String,
+		el: String, numbers: String) -> String:
+	var avail := _room_for(label, glyph)
+	for candidate in [tag + up + el + numbers, up + el + numbers,
+			up + numbers, numbers]:
+		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT,
+				-1, font_size).x <= avail:
+			return candidate
+	return _fit(numbers, size.x - PAD * 2.0 - avail)
 
 ## The full width a gear row would occupy: label, icon and words together.
-func icon_row_width(label: String, glyph: String, text: String) -> float:
+func icon_row_width(label: String, glyph: String, text: String,
+		keep: String = "") -> float:
 	var gs := GlyphTheme.draw_size(glyph, font_size)
 	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
-	var shown := icon_row_words(label, glyph, text)
+	var shown := icon_row_words(label, glyph, text, keep)
 	return lw + gw + font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
 

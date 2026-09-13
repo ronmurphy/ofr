@@ -2978,13 +2978,41 @@ func _test_panels_do_not_overflow() -> void:
 	for id in Item.CATALOGUE:
 		if Item.CATALOGUE[id].get("slot", Item.Slot.NONE) == Item.Slot.NONE:
 			continue
+		# The WIDEST this row can ever get: fully upgraded, and carrying a gem
+		# if the piece will take one. Testing a fresh item measures the easy
+		# case and leaves the row that actually overflows uninspected.
+		# The WIDEST this row can ever get: fully upgraded, and carrying a gem
+		# if the piece will take one. Testing a fresh item measures the easy
+		# case and leaves the row that actually overflows uninspected.
 		var piece := Item.make(id)
+		piece.boosts = Item.MAX_UPGRADES
+		for el in [&"fire", &"frost", &"leech", &"crag", &"return"]:
+			if piece.accepts_element(el):
+				piece.element = el
+				break
 		var glyph := bar._gear_glyph(piece)
-		for suffix in ["", "  x220", " r8 x40"]:
-			var words: String = bar._gear_words(piece) + suffix
-			var w: float = bar.icon_row_width("offhand", glyph, words)
+		var gsz := GlyphTheme.draw_size(glyph, bar.font_size)
+		var glyph_w := bar.font.get_string_size(glyph,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, gsz).x
+		var label_w := bar.font.get_string_size("weapon  ",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+		for numbers in ["", "  x220", " r8 x40"]:
+			var shown: String = bar.gear_row_words("weapon", glyph,
+				bar._gear_words(piece), bar._gear_up(piece),
+				bar._gear_el(piece), numbers)
+			var w: float = label_w + glyph_w + bar.font.get_string_size(shown,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
 			if w > side_limit:
-				spill.append("%s%s (%.0f > %.0f)" % [id, suffix, w, side_limit])
+				spill.append("%s%s (%.0f > %.0f)" % [id, numbers, w, side_limit])
+			# The NUMBERS have to survive. Trimming from the right ate them
+			# once already: a war bow came out "(short) +1 r7.." after the icons
+			# were enlarged, deleting the reach and the ammo count -- what the
+			# row is FOR -- to preserve the word telling you which bow it is,
+			# when the picture beside it already said "bow" and the reach says
+			# which one. The tag is the cheapest thing on the row to lose, so it
+			# is what goes.
+			if numbers != "" and not shown.ends_with(numbers):
+				spill.append("%s lost its numbers: %s" % [id, shown])
 	check("no gear row collides with its label", spill.is_empty(), str(spill))
 
 	# The LOOK panel, which had no test at all until its describer changed shape.
