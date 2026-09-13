@@ -360,28 +360,22 @@ const ROOM_THREAT_PER_DEPTH := 2
 ## Caverns are open ground, so a lone character cannot use a doorway to turn
 ## being outnumbered into a series of duels. Less forgiving terrain, smaller
 ## ceiling.
+## What a cave is allowed to hold, as a share of a room's budget -- for a cave
+## of TYPICAL size. Bigger caverns scale up from here, smaller ones down.
 const CAVE_THREAT_SCALE := 0.7
 
-## One cave a floor may be a DEN, and a den is budgeted like a room.
-##
-## Measured, and it is why "cave bear" was a joke: a cave's ceiling is 0.7 of a
-## room's, so at depth 5 a cave could spend 14 and a bear costs 17. Across 87
-## bears on depths 5 and 6 -- the band that is four fifths cavern -- exactly
-## ZERO stood in a cave. The five creatures with the strongest cave affinity in
-## the bestiary (bear 2.6, giant 2.4, troll 2.2, wyvern 2.2, dragon 2.0) were
-## each barred from caves until well past the caves band, so the weighting never
-## got consulted: they were rejected on price first. Three of them are NAMED for
-## the place they could not be.
-##
-## A den lifts that one cave to the ROOM ceiling and no further, so a cave is
-## never deadlier than a room -- the bound the old constant was really there to
-## keep. Raising CAVE_THREAT_SCALE itself was the other option and Brad's call
-## was against it: lifting every cave at once in the dark band is how you stop
-## people surviving it. One resident, not a wilder band.
-##
-## Once per FLOOR rather than per cave. The caves band fields six regions to a
-## floor and a per-cave roll would put three or four bears on it.
-const CAVE_DEN_CHANCE := 0.35
+## The walkable cells in an average cave, measured across 388 of them. The
+## scale above is expressed against this number so that an average cave keeps
+## exactly the budget it always had: this redistributes danger by size, it does
+## not add any.
+const CAVE_TYPICAL_CELLS := 113
+
+## Floor and ceiling on that scaling. The upper bound is the thing that matters:
+## a cave is never deadlier than a room, which is the bound the old flat 0.7 was
+## really there to keep.
+const CAVE_SCALE_MIN := 0.5
+const CAVE_SCALE_MAX := 1.0
+
 
 ## How fast a monster stops appearing once the dungeon has moved past its tier.
 ## Without this, rats are as likely on depth 9 as on depth 1.
@@ -535,10 +529,6 @@ func _scatter_bones_around(cell: Vector2i, grave_rng: RandomNumberGenerator) -> 
 ## it became interesting.
 var risen_grave := Vector2i(-1, -1)
 
-## Whether this floor has already spent its one den. Generation-time only, so
-## it is deliberately not serialised: a restored floor keeps the monsters it
-## was built with and never re-runs the cave pass.
-var _den_placed := false
 
 ## One rising per floor, ever -- not one at a time.
 ##
@@ -952,7 +942,6 @@ func build_level() -> void:
 	_place_graves()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
-	_den_placed = false
 	for region in gen.caves:
 		_populate_cave(region)
 	_place_vault_contents(gen)
@@ -1111,8 +1100,53 @@ func move_cost_for(actor: Entity, x: int, y: int) -> int:
 func room_threat_ceiling() -> int:
 	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
 
+## What a TYPICAL cave can hold. Kept for callers that are asking about caves in
+## general rather than about one particular cave.
 func cave_threat_ceiling() -> int:
 	return int(round(room_threat_ceiling() * CAVE_THREAT_SCALE))
+
+## The walkable cavern inside a cave's bounding box.
+##
+## The box is not the cave -- a region is a rectangle with a cave carved through
+## it, so the box overstates a narrow winding cavern badly. Counting the cells
+## is the only honest measure of how much space is actually in there.
+func cave_cells(region: Rect2i) -> int:
+	var n := 0
+	for y in range(region.position.y, region.end.y):
+		for x in range(region.position.x, region.end.x):
+			if map.in_bounds(x, y) and map.is_walkable(x, y) \
+					and map.material_at(x, y) == Materials.CAVERN:
+				n += 1
+	return n
+
+## What THIS cave can hold, by how big it is.
+##
+## The flat 0.7 was backwards on its face, and measurement is what showed it: an
+## average room is 79 cells and an average cave is 113 -- so a cave was 43%
+## LARGER than a room and got 30% LESS danger budget. Per square of floor a cave
+## was about half as dangerous as a room, while `_populate_cave`'s own comment
+## claimed caves were "wilder than rooms, worth a little more danger". The
+## constant and the comment had pointed opposite ways since they were written.
+##
+## The consequence was a whole class of creature quietly locked out of the place
+## it is named for. A cave ceiling of 14 at depth 5 cannot afford a cave bear at
+## 17, a cave troll at 16, a wyvern at 20 or a cave giant at 26 -- so the five
+## entries carrying the strongest cave weightings in the bestiary were rejected
+## on price before the weighting was ever consulted. Measured across rotated
+## seeds, the creatures MOST flagged for caves turned up in them least: ogre and
+## orc at 1.3-1.6 weight were in caves 43-46% of the time, while cave bear and
+## cave troll at 2.2-2.6 managed 13%.
+##
+## Scaling by size fixes that without making the dark band harder, which was
+## Brad's objection to simply raising the number: an average cave lands on 0.7
+## exactly as before, so the band's total danger does not move. What moves is
+## WHERE it sits. A big cavern can hold something big; a cramped one cannot.
+## A floor typically carries one large cave, one small and a couple of ordinary
+## ones, so this sorts them rather than lifting them.
+func cave_threat_ceiling_for(cells: int) -> int:
+	var scale := CAVE_THREAT_SCALE * float(cells) / float(CAVE_TYPICAL_CELLS)
+	return int(round(room_threat_ceiling()
+		* clampf(scale, CAVE_SCALE_MIN, CAVE_SCALE_MAX)))
 
 ## Makes sure the player meets a gem at least once, early.
 ##
@@ -1121,7 +1155,7 @@ func cave_threat_ceiling() -> int:
 ## the guarantee is invisible.
 ## Which room the generator marked as this band's hoard, or -1.
 ##
-## Generation-time only, like _den_placed: a restored save keeps the map it was
+## Generation-time only: a restored save keeps the map it was
 ## built with and never re-runs this pass, so serialising it would store a fact
 ## about a floor that will never be generated again.
 var hoard_room := -1
@@ -1475,12 +1509,11 @@ func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
 	var count := rng.randi_range(1, 3 + effective_depth() / 3)
 	var spent := 0
-	# A den: this one cave is budgeted like a room, which is the only way
-	# anything named for a cave can afford to live in one. See CAVE_DEN_CHANCE.
-	var den := not _den_placed and rng.randf() < CAVE_DEN_CHANCE
-	if den:
-		_den_placed = true
-	var ceiling := room_threat_ceiling() if den else cave_threat_ceiling()
+	# Budgeted by how big this cave actually is. The one-den-per-floor boost
+	# this replaces was a patch on the same wound: it let exactly one cave a
+	# floor afford a bear, which moved the bear from 0% of caves to 13% and left
+	# the other five caves as unable to hold one as before.
+	var ceiling := cave_threat_ceiling_for(cave_cells(region))
 	for _i in count:
 		var cost := _spawn_in(region, ceiling - spent)
 		if cost < 0:

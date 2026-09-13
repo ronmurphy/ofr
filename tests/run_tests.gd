@@ -508,29 +508,33 @@ func _test_threat_ceiling_holds() -> void:
 	# Caves were never checked, and an unchecked budget is not a budget.
 	#
 	# The comment here used to say caves carry a "higher" ceiling because they
-	# are wilder and unlit. They carry a LOWER one -- CAVE_THREAT_SCALE is 0.7 --
-	# which is the whole reason nothing named for a cave could afford to live in
-	# one. Two bounds now, because one cave a floor may be a den:
+	# are wilder and unlit. They carried a LOWER one, a flat 0.7 of a room's --
+	# and measurement showed that was backwards on its face: an average room is
+	# 79 cells and an average cave 113, so the bigger space got the smaller
+	# budget. A cave's ceiling now scales with how big that cave actually is.
 	#
-	#   every cave  <= the ROOM ceiling      a cave is never deadlier than a room
-	#   all but one <= the CAVE ceiling      the den is the exception, and it is
-	#                                        one per floor, not one per cave
+	#   every cave <= the ROOM ceiling     never deadlier than a room, which is
+	#                                      the bound the flat 0.7 really kept
+	#   every cave <= its OWN ceiling      and its own is set by its size
 	var cave_breaches := 0
+	var own_breaches := 0
 	var caves_checked := 0
 	var cave_worst := 0
-	var dens := 0
-	var many_dens := 0
+	var biggest_ceiling := 0
+	var smallest_ceiling := 1 << 30
 	for d in range(1, 9):
 		for i in 25:
 			var gs := GameState.new(21000 + d * 100 + i)
+			gs.use_scratch_files("ceil%d_%d" % [d, i])
 			gs.new_game()
 			gs.depth = d
 			gs.build_level()
-			var ceiling := gs.cave_threat_ceiling()
 			var roof := gs.room_threat_ceiling()
-			var here := 0
 			for region in gs.cave_regions:
 				caves_checked += 1
+				var mine := gs.cave_threat_ceiling_for(gs.cave_cells(region))
+				biggest_ceiling = maxi(biggest_ceiling, mine)
+				smallest_ceiling = mini(smallest_ceiling, mine)
 				var sum := 0
 				for e in gs.entities:
 					if not e.is_player and region.has_point(Vector2i(e.x, e.y)):
@@ -538,17 +542,40 @@ func _test_threat_ceiling_holds() -> void:
 				if sum > roof:
 					cave_breaches += 1
 					cave_worst = maxi(cave_worst, sum - roof)
-				elif sum > ceiling:
-					here += 1
-			dens += here
-			if here > 1:
-				many_dens += 1
+				elif sum > mine:
+					own_breaches += 1
+			gs.clear_scratch_files()
 	check("no cave is deadlier than a room (%d caves, depths 1-8)" % caves_checked,
 		cave_breaches == 0, "%d breaches, worst %d over" % [cave_breaches, cave_worst])
-	check("at most one den a floor", many_dens == 0, "%d floors with more" % many_dens)
-	# And the den actually happens -- a bound nothing ever reaches is not a rule,
-	# it is a coincidence, and this one exists precisely to be reached.
-	check("dens do occur (%d)" % dens, dens > 0)
+	check("and none exceeds the ceiling its own size earns it",
+		own_breaches == 0, "%d over" % own_breaches)
+	# The scaling has to actually VARY, or it is a flat number with extra steps.
+	check("a big cave earns more than a small one (%d vs %d)"
+		% [biggest_ceiling, smallest_ceiling],
+		biggest_ceiling > smallest_ceiling)
+
+	# And the point of all of it: a cave big enough can hold the animal the band
+	# is named for. A cave bear costs 17, which the old flat ceiling could not
+	# afford until depth 7 -- by which point the caves band is over.
+	var roomy := 0
+	var bear_capable := 0
+	for i in 40:
+		var gs := GameState.new(58000 + i)
+		gs.use_scratch_files("bearfit%d" % i)
+		gs.new_game()
+		gs.depth = 5
+		gs.build_level()
+		for region in gs.cave_regions:
+			roomy += 1
+			if gs.cave_threat_ceiling_for(gs.cave_cells(region)) >= 17:
+				bear_capable += 1
+		gs.clear_scratch_files()
+	check("some caves can afford a cave bear at depth 5 (%d of %d)"
+		% [bear_capable, roomy], bear_capable > 0,
+		"none of %d caves" % roomy)
+	# But not all of them, or this is just a raise wearing a formula.
+	check("and not all of them can", bear_capable < roomy,
+		"%d of %d" % [bear_capable, roomy])
 
 func _test_tiers_fade_with_depth() -> void:
 	var shallow_orcs := 0
