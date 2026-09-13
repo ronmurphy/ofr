@@ -2970,25 +2970,80 @@ func _test_panels_do_not_overflow() -> void:
 	var bar := Sidebar.new()
 	bar.font = Sidebar.ui_font()
 	bar.size = Vector2(float(widths.get("Sidebar", 256.0)), 720.0)
-	var rows := [
-		["weapon", Item.make(&"rat_ring").display_name(), "  x220"],
-		["weapon", Item.make(&"war_bow").display_name(), " r8 x40"],
-		["offhand", Item.make(&"tower_shield").display_name(), ""],
-	]
+	# Every equippable item, in the widest state it can reach: fully upgraded,
+	# carrying a gem, and with a count beside it. The icon is drawn LARGER than
+	# the text now, which makes collision likelier rather than less, so this
+	# measures the real draw path rather than a helper written for it.
 	var spill := []
-	for row in rows:
-		var value: String = bar._fit_counted(row[0], row[1], row[2])
-		var lw := bar.font.get_string_size(row[0] + "  ",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
-		var vw := bar.font.get_string_size(value,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
-		if lw + vw > side_limit:
-			spill.append("%s / %s (%.0f > %.0f)" % [row[0], value, lw + vw, side_limit])
-		# Truncating the NAME is fine; truncating the number is not, because the
-		# count is the only reason the row exists.
-		if row[2] != "" and not value.ends_with(row[2]):
-			spill.append("%s lost its count: %s" % [row[0], value])
-	check("no stat row collides with its label", spill.is_empty(), str(spill))
+	for id in Item.CATALOGUE:
+		if Item.CATALOGUE[id].get("slot", Item.Slot.NONE) == Item.Slot.NONE:
+			continue
+		var piece := Item.make(id)
+		var glyph := bar._gear_glyph(piece)
+		for suffix in ["", "  x220", " r8 x40"]:
+			var words: String = bar._gear_words(piece) + suffix
+			var w: float = bar.icon_row_width("offhand", glyph, words)
+			if w > side_limit:
+				spill.append("%s%s (%.0f > %.0f)" % [id, suffix, w, side_limit])
+	check("no gear row collides with its label", spill.is_empty(), str(spill))
+
+	# The LOOK panel, which had no test at all until its describer changed shape.
+	#
+	# `_describe()` used to answer in plain strings. It now answers in a mix:
+	# gear and loot come back as {glyph, text} so they can be drawn with their
+	# picture, everything else stays words. Nothing in the suite called it, so
+	# getting that wrong would have surfaced as a crash the first time somebody
+	# hovered over an armed monster -- in play, not here.
+	var look := _arena(21, 9)
+	look.player.x = 3
+	look.player.y = 4
+	var seen_at := Vector2i(9, 4)
+	var armed := _spawn(look, "orc", seen_at.x, seen_at.y)
+	armed.equipped[Item.Slot.WEAPON] = Item.make(&"war_axe")
+	var dropped := Item.make(&"chain_mail")
+	dropped.x = seen_at.x
+	dropped.y = seen_at.y
+	look.ground.append(dropped)
+	look.torch_lit = true
+	look.update_vision()
+
+	var panel := Sidebar.new()
+	panel.font = Sidebar.ui_font()
+	panel.size = Vector2(float(widths.get("Sidebar", 256.0)), 720.0)
+	panel.state = look
+	panel.hovered = seen_at
+	var lines: Array = panel._describe()
+	var pictured := 0
+	var worded := 0
+	var broken := []
+	for line in lines:
+		if line is Dictionary:
+			pictured += 1
+			if String(line.get("glyph", "")) == "":
+				broken.append("picture line with no glyph: %s" % str(line))
+			if String(line.get("text", "")) == "":
+				broken.append("picture line with no words: %s" % str(line))
+		elif line is String:
+			worded += 1
+		else:
+			broken.append("line is neither words nor a picture: %s" % str(line))
+	check("the look panel describes something", not lines.is_empty())
+	check("every look line is words or a picture", broken.is_empty(), str(broken))
+	# The axe it carries and the mail on the floor: two things with pictures.
+	check("gear and loot get their glyph (%d)" % pictured, pictured >= 2,
+		"%d of %d lines" % [pictured, lines.size()])
+	# The orc itself, and the ground it stands on: still words.
+	check("the creature and the tile stay words (%d)" % worded, worded >= 2,
+		"%d of %d lines" % [worded, lines.size()])
+	panel.free()
+
+	# And the icon really is drawn bigger than a letter, which is the point of
+	# routing these rows through GlyphTheme.draw_size at all.
+	var ring_glyph: String = bar._gear_glyph(Item.make(&"rat_ring"))
+	if GlyphTheme.is_icon(ring_glyph):
+		check("sidebar icons are drawn at icon size",
+			GlyphTheme.draw_size(ring_glyph, bar.font_size) > bar.font_size,
+			"%d vs %d" % [GlyphTheme.draw_size(ring_glyph, bar.font_size), bar.font_size])
 
 	# Glyph for the kind, word for which one.
 	#

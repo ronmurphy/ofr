@@ -145,6 +145,38 @@ const OVERRIDES := {
 ## a picture floating in one.
 const ICON_SCALE := 1.55
 
+## Per-glyph correction, because the font does not normalise icon heights.
+##
+## SHAPE CARRIES RANK is the whole architecture of this mode, and it was running
+## BACKWARDS. Measured from the shipped font, in em units:
+##
+##     md-human_child   (kobold, goblin)   556 x 928   <- tallest
+##     md-human         (orc, wight)       600 x 666
+##     md-weight_lifter (ogre, troll)      600 x 662   <- smallest
+##
+## The child figure stood 39% taller than the adult and the heavy figure was the
+## smallest of the three, so the ladder that is supposed to read "nuisance /
+## man-sized / this one hurts" said the kobold was the biggest thing on the
+## floor. Reported from play as the small figures looking too big, which is the
+## visible half of it.
+##
+## Nerd Font draws most Material icons into a 600x666 box and leaves outliers
+## alone, so no choice of glyph produces a size ladder -- the sizes have to come
+## from here. These numbers target an apparent 0.78 / 1.00 / 1.25 progression
+## against the adult figure, worked back through each glyph's own height:
+##
+##     small  520/928 = 0.56      armed small  520/700 = 0.74
+##     adult  666/666 = 1.00      heavy        833/662 = 1.26
+##
+## The player is deliberately absent. cod-person is 926 tall and stays that way:
+## being able to find yourself instantly is worth more than consistency with a
+## ladder you are not part of.
+const GLYPH_SCALE := {
+	SMALL_FIGURE: 0.56,
+	ARMED_SMALL:  0.74,
+	HEAVY_FIGURE: 1.26,
+}
+
 ## Icons live in the private use area, and that is how everything that draws
 ## one knows to draw it larger.
 static func is_icon(ch: String) -> bool:
@@ -156,7 +188,10 @@ static func is_icon(ch: String) -> bool:
 ## each: the legend is where the icons are LEARNED, so icons that are tiny
 ## there defeat the mode more thoroughly than icons that are tiny on the map.
 static func draw_size(ch: String, base: int) -> int:
-	return int(round(float(base) * ICON_SCALE)) if is_icon(ch) else base
+	if not is_icon(ch):
+		return base
+	var scale := ICON_SCALE * float(GLYPH_SCALE.get(ch.unicode_at(0), 1.0))
+	return int(round(float(base) * scale))
 
 func appearance(id: StringName) -> Dictionary:
 	var base: Dictionary = AsciiTheme.TABLE.get(id, AsciiTheme.FALLBACK)

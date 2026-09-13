@@ -165,9 +165,8 @@ func _draw() -> void:
 		# The count belongs beside the reach, because they are read together:
 		# how far can I hit, and how many times. An empty quiver is tinted like
 		# a wound, since it means the next press of `f` does nothing.
-		_stat_row(y, "weapon",
-			_fit_counted("weapon", _gear_text(held), " r%d x%d" % [reach, held.ammo]),
-			held.ammo > 0)
+		_icon_row(y, "weapon", _gear_glyph(held),
+			_gear_words(held) + " r%d x%d" % [reach, held.ammo], held.ammo > 0)
 	elif held != null and held.charges > 0:
 		# A ring that burns down is a quiver that empties, so it is answered in
 		# the same place and the same way: how many more.
@@ -183,19 +182,22 @@ func _draw() -> void:
 		# does nothing; an empty ring means you stop being a rat wherever you
 		# are standing, which by construction is somewhere you chose to be
 		# unseen.
-		_stat_row(y, "weapon",
-			_fit_counted("weapon", _gear_text(held), "  x%d" % held.charges),
+		_icon_row(y, "weapon", _gear_glyph(held),
+			_gear_words(held) + "  x%d" % held.charges,
 			held.charges > GameState.RING_LOW)
-	elif reach > 1:
-		_stat_row(y, "weapon", "%s  r%d" % [_slot_name(p, Item.Slot.WEAPON), reach], true)
+	elif held != null and reach > 1:
+		_icon_row(y, "weapon", _gear_glyph(held),
+			_gear_words(held) + "  r%d" % reach, true)
+	elif held != null:
+		_icon_row(y, "weapon", _gear_glyph(held), _gear_words(held), false)
 	else:
-		_stat_row(y, "weapon", _slot_name(p, Item.Slot.WEAPON), false)
+		_stat_row(y, "weapon", "--", false)
 	y += LINE
-	_stat_row(y, "armour", _slot_name(p, Item.Slot.ARMOR), false)
+	_gear_slot_row(y, "armour", p, Item.Slot.ARMOR, false)
 	y += LINE
 	# Shown even when empty, so the slot's existence is discoverable without
 	# having to find a shield first.
-	_stat_row(y, "offhand", _slot_name(p, Item.Slot.OFFHAND),
+	_gear_slot_row(y, "offhand", p, Item.Slot.OFFHAND,
 		p.equipped.has(Item.Slot.OFFHAND))
 	y += LINE
 	# Footing, because the energy cost of mud was working perfectly and was
@@ -230,8 +232,20 @@ func _draw() -> void:
 	else:
 		_line(font_bold, y, "UNDER CURSOR", Palette.UI_DIM)
 	y += LINE
-	for text in _describe():
-		_line(font, y, _fit(text), Palette.UI_TEXT)
+	for entry in _describe():
+		# A line is either words, or a picture and words. Gear and loot get the
+		# picture; creatures, terrain and epitaphs stay text.
+		#
+		# Brad's call, and the reason is that the alternative is a parser: to
+		# glyph EVERYTHING here you would have to pick the pictures back out of
+		# sentences like "orc  16/16 hp" and "long dead, and still angry". Some
+		# lines are simply easier to read as words, and a creature's glyph is
+		# already on the map under the cursor you are pointing with.
+		if entry is Dictionary:
+			_icon_line(y, String(entry["glyph"]), String(entry["text"]),
+				float(entry.get("indent", 0.0)))
+		else:
+			_line(font, y, _fit(String(entry)), Palette.UI_TEXT)
 		y += LINE
 
 	# Derived from the list, not a hand-counted constant. Adding a row to KEYS
@@ -249,6 +263,16 @@ func _draw() -> void:
 func _line(f: Font, y: float, text: String, color: Color) -> void:
 	draw_string(f, Vector2(PAD, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
+## An equipment slot, drawn with its picture at picture size -- or "--" when
+## the slot is empty, which has no picture to draw.
+func _gear_slot_row(y: float, label: String, p: Entity, slot: int,
+		boosted: bool) -> void:
+	var item = p.equipped.get(slot, null)
+	if item == null:
+		_stat_row(y, label, "--", boosted)
+		return
+	_icon_row(y, label, _gear_glyph(item), _gear_words(item), boosted)
+
 func _slot_name(p: Entity, slot: int) -> String:
 	var item = p.equipped.get(slot, null)
 	return "--" if item == null else _gear_text(item)
@@ -265,9 +289,13 @@ func _slot_name(p: Entity, slot: int) -> String:
 ## like everything else: an axe in icon mode, ")" in letters, "+" in symbols.
 ## The row still reads in all three, because the word in brackets was always
 ## carrying the distinction.
-func _gear_text(item: Item) -> String:
-	var art: Dictionary = RenderTheme.active().appearance(item.appearance)
-	var out: String = "%s (%s)" % [art.get("ch", "?"), item.tag()]
+func _gear_glyph(item: Item) -> String:
+	return String(RenderTheme.active().appearance(item.appearance).get("ch", "?"))
+
+## Everything except the picture. Separate so the picture can be drawn at icon
+## size beside it rather than squashed to letter size inside it.
+func _gear_words(item: Item) -> String:
+	var out: String = " (%s)" % item.tag()
 	var up := item.upgrade_level()
 	if up > 0:
 		out += " +%d" % up
@@ -277,8 +305,43 @@ func _gear_text(item: Item) -> String:
 		out += " %s" % item.element
 	return out
 
+func _gear_text(item: Item) -> String:
+	return _gear_glyph(item) + _gear_words(item)
+
 ## Label left, value right-aligned. `boosted` tints the value so a bonus from
 ## equipment is visible at a glance without reading the equipment lines.
+## A stat row whose value begins with an ICON, drawn at icon size.
+##
+## The plain row draws label and value as two strings at font_size, and an icon
+## in that string comes out the size of a letter -- reported from play as the
+## gear glyphs being tiny next to the same pictures on the map, which are drawn
+## through GlyphTheme.draw_size and are 1.55x a letter. The legend and the
+## inventory already draw theirs that way; the sidebar was the one panel that
+## did not.
+##
+## So the value is drawn in two pieces, right-aligned as a unit: the text
+## against the frame, the glyph immediately left of it at its own size. The
+## vertical nudge is the legend's, for the same reason -- an icon has no
+## x-height, so sitting it on the text baseline hangs it low.
+func _icon_row(y: float, label: String, glyph: String, text: String,
+		boosted: bool) -> void:
+	draw_string(font, Vector2(PAD, y), label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+	var tint: Color = Palette.HP_GOOD if boosted else Palette.UI_TEXT
+	var gs := GlyphTheme.draw_size(glyph, font_size)
+	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	# The label and the icon are both already spoken for, so the words get what
+	# is left. Without this the row walks over its own label again -- the bug
+	# this panel was just fixed for, and drawing the icon LARGER makes it
+	# likelier rather than less.
+	var shown := icon_row_words(label, glyph, text)
+	var tw := font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var right := size.x - PAD
+	draw_string(font, Vector2(right - tw, y), shown,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
+	draw_string(font, Vector2(right - tw - gw, y + (font_size - gs) * 0.35), glyph,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
+
 func _stat_row(y: float, label: String, value: String, boosted: bool) -> void:
 	draw_string(font, Vector2(PAD, y), label,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
@@ -354,24 +417,51 @@ func _fit(text: String, reserve: float = 0.0) -> String:
 		out = out.substr(0, out.length() - 1)
 	return out + ".."
 
-## A name and a number, where the NUMBER is the reason the row exists.
+## What a gear row's words come out as, once the label and the icon have taken
+## their share of the line.
 ##
-## Fitting the whole string would truncate from the right and eat the count --
-## "ring of the rat  x1.." throws away the only part worth drawing. So the
-## suffix is spoken for first and the name gets what is left.
-func _fit_counted(label: String, name: String, suffix: String) -> String:
-	var taken := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
+## Public and pure so the suite can check it without a canvas: the previous
+## version of this was a helper only the tests called, which is dead code with a
+## passing check in front of it. This one is what the row actually draws.
+func icon_row_words(label: String, glyph: String, text: String) -> String:
+	var gs := GlyphTheme.draw_size(glyph, font_size)
+	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
-	var limit := size.x - PAD * 2.0 - taken
-	var tail := font.get_string_size(suffix, HORIZONTAL_ALIGNMENT_LEFT,
+	return _fit(text, lw + gw)
+
+## The full width a gear row would occupy: label, icon and words together.
+func icon_row_width(label: String, glyph: String, text: String) -> float:
+	var gs := GlyphTheme.draw_size(glyph, font_size)
+	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
-	var out := name
-	while out.length() > 1 and font.get_string_size(out, HORIZONTAL_ALIGNMENT_LEFT,
-			-1, font_size).x + tail > limit:
-		out = out.substr(0, out.length() - 1)
-	if out.length() < name.length():
-		out = out.substr(0, maxi(1, out.length() - 2)) + ".."
-	return out + suffix
+	var shown := icon_row_words(label, glyph, text)
+	return lw + gw + font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT,
+		-1, font_size).x
+
+## One look-panel line that leads with a picture.
+##
+## Same bargain as the gear rows in the stats block: the glyph at icon size
+## because that is how it is drawn everywhere else, and the words fitted to
+## whatever is left so a long name cannot run through the frame.
+func _icon_line(y: float, glyph: String, text: String, indent: float) -> void:
+	var gs := GlyphTheme.draw_size(glyph, font_size)
+	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var x := PAD + indent
+	draw_string(font, Vector2(x, y + (font_size - gs) * 0.35), glyph,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, Palette.UI_TEXT)
+	draw_string(font, Vector2(x + gw + 4.0, y),
+		_fit(text, indent + gw + 4.0), HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, Palette.UI_TEXT)
+
+## A carryable, as a picture and its name.
+func _item_line(item: Item, indent: float) -> Dictionary:
+	return {
+		"glyph": String(RenderTheme.active().appearance(item.appearance).get("ch", "?")),
+		"text": item.display_name(),
+		"indent": indent,
+	}
 
 func _describe() -> Array:
 	var m := state.map
@@ -390,9 +480,9 @@ func _describe() -> Array:
 				# One line per piece. Comma-joining them overran the panel and
 				# came out as "short sword, leather ..".
 				for slot in e.equipped:
-					out.append("  " + e.equipped[slot].display_name())
+					out.append(_item_line(e.equipped[slot], 10.0))
 		for it in state.items_at(hovered.x, hovered.y):
-			out.append(it.name)
+			out.append(_item_line(it, 0.0))
 	else:
 		out.append("(remembered)")
 	var tile := m.get_tile(hovered.x, hovered.y)

@@ -33,7 +33,18 @@ const MODE_NAMES := {
 
 const SETTINGS := "user://settings.cfg"
 
-static var _mode: int = Mode.ASCII
+## Pictures, not letters.
+##
+## It shipped as ASCII for the retro look, and two of the three people playing
+## asked why the picture mode was not the default. The retro look is still one
+## keypress away and the setting is remembered, so defaulting to letters was
+## costing every new player the mode most likely to make the game legible to
+## them in order to protect a preference they can express in a second.
+##
+## Only affects players with no saved setting -- load_settings() overrides this
+## from user://settings.cfg, so anyone who has already chosen keeps their
+## choice.
+static var _mode: int = Mode.ICONS
 static var _instances := {}
 
 static func active() -> RenderTheme:
@@ -70,7 +81,7 @@ static func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS) != OK:
 		return
-	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ASCII)), mode_count())
+	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
 
 static func _save() -> void:
 	var cfg := ConfigFile.new()
