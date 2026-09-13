@@ -122,6 +122,7 @@ func _initialize() -> void:
 	_test_binding_a_stone()
 	_test_gems_bite()
 	_test_gem_of_returning()
+	_test_a_rat_may_creep_past()
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
 	_test_chests()
@@ -4513,6 +4514,57 @@ func _test_graves_raise_the_dead() -> void:
 	resumed.apply_dict(mid.to_dict())
 	check("an unfinished fight remembers its stone",
 		resumed.risen_grave == Vector2i(8, 6))
+
+## A rat may walk past a sleeper. Nothing else may.
+##
+## Reported from play as "I cannot click to move in rat form". Travel refused
+## for ANY visible monster, asleep included, while telling you something was
+## watching -- and rat form is precisely when you are creeping past sleepers,
+## so the one journey the ring exists for was the one travel would not make.
+func _test_a_rat_may_creep_past() -> void:
+	for as_rat in [false, true]:
+		var gs := _arena(31, 9)
+		gs.player.x = 2
+		gs.player.y = 4
+		gs.map.explored.fill(1)
+		# Within DOUSED_RADIUS (3) and OFF the route, because a rat sees three
+		# cells and the first draft put the monster four away -- so the rat saw
+		# nothing, travel proceeded for want of anything to stop for, and the
+		# check passed without exercising the rule at all.
+		var sleeper := _spawn(gs, "orc", 4, 2)
+		sleeper.alertness = Entity.Alert.ASLEEP
+		if as_rat:
+			var ring := Item.make(&"rat_ring")
+			gs.give_item(ring)
+			gs.player.equipped[Item.Slot.WEAPON] = ring
+		gs.torch_lit = true
+		gs.update_vision()
+		check("the sleeper is in sight (rat=%s)" % as_rat,
+			not gs.visible_monsters().is_empty())
+		var walked := gs.begin_travel(Vector2i(8, 4))
+		if as_rat:
+			check("a rat walks past a sleeping monster", walked)
+		else:
+			check("on two feet you stop for it", not walked)
+
+	# Awake stops BOTH, because an awake thing can act and a rat has no hands.
+	for as_rat in [false, true]:
+		var gs2 := _arena(31, 9)
+		gs2.player.x = 2
+		gs2.player.y = 4
+		gs2.map.explored.fill(1)
+		var hunter := _spawn(gs2, "orc", 4, 2)
+		hunter.alertness = Entity.Alert.AWAKE
+		if as_rat:
+			var ring2 := Item.make(&"rat_ring")
+			gs2.give_item(ring2)
+			gs2.player.equipped[Item.Slot.WEAPON] = ring2
+		gs2.torch_lit = true
+		gs2.update_vision()
+		check("the hunter is in sight (rat=%s)" % as_rat,
+			not gs2.visible_monsters().is_empty())
+		check("an awake monster stops travel (rat=%s)" % as_rat,
+			not gs2.begin_travel(Vector2i(8, 4)))
 
 ## The legend shows what you have MET, and nothing else.
 func _test_bestiary_is_earned() -> void:

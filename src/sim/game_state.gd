@@ -2043,6 +2043,30 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 	_end_player_turn()
 	return true
 
+## What a queued mouse-walk refuses to keep walking past.
+##
+## Every visible monster, EXCEPT that eight inches of rat may pass a sleeper.
+##
+## Brad's rule, and the reasoning is about noise rather than about sight. On
+## two feet, walking past a sleeping thing genuinely risks waking it: every
+## step calls _make_noise with the tile's radius, and auto-walking blind past
+## something you are making noise beside is exactly when you want the game to
+## stop and let you look. `ratted()` skips _make_noise entirely, so a rat
+## cannot wake it by walking -- the guard was protecting against a risk that
+## does not exist in that form, on the one journey the ring exists to make.
+##
+## A sleeper is still the ONLY exemption. Anything suspicious or awake stops
+## you in either form, because those can act, and a rat that gets noticed has
+## no hands to answer with.
+func _travel_stoppers() -> Array:
+	if not ratted():
+		return visible_monsters()
+	var out := []
+	for e in visible_monsters():
+		if e.alertness != Entity.Alert.ASLEEP:
+			out.append(e)
+	return out
+
 func visible_monsters() -> Array:
 	var out := []
 	for e in entities:
@@ -3309,7 +3333,7 @@ func travelling() -> bool:
 func step_travel() -> bool:
 	if _travel.is_empty() or game_over:
 		return false
-	if not visible_monsters().is_empty():
+	if not _travel_stoppers().is_empty():
 		_travel.clear()
 		msg_log.add("You stop -- something is watching.", Color(0.9, 0.55, 0.35))
 		return false
