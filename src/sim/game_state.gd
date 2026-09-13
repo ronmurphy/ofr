@@ -231,6 +231,25 @@ const RESISTED := 0.70
 ## is the REWARD for carrying the right one that was too thin to notice.
 const VULNERABLE := 1.60
 
+## What a prayer is worth beyond the boon itself.
+##
+## Gems carry weight 0, so the ordinary loot roll cannot produce one -- they came
+## from chests and from a single pity placement, and nowhere else. That put gems
+## and uniques down the same pipe: every unique added to the game takes a chest
+## slot a gem would have had, so a growing list of uniques would quietly starve
+## the descent of the one system you build a character with.
+##
+## Giving shrines their own gem stream separates the two for good. Chests become
+## unambiguously the run-defining find; shrines stay the gamble, with a gem as
+## one of the good ways a gamble can land. Uniques can now be added forever
+## without touching the gem economy, because they no longer share a source.
+##
+## Rolled on USE and dropped at your feet, not placed in the room. A gem lying
+## in a shrine room before you touch anything would be a tell -- and a tell that
+## leaks whether the shrine is worth using destroys the only thing shrines are:
+## an unknown you pay to learn.
+const GEM_SHRINE_CHANCE := 0.30
+
 const GEM_FIRE_SHARE := 0.35
 ## Leech is deliberately stingier, and it is measured against the BRAZIER's ten
 ## hit points rather than against the health bar. D&D's vampiric touch is half
@@ -1254,8 +1273,14 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 				ground.append(loot)
 
 	# A shrine keeps a guardian; a collapsed room is where things nest.
+	#
+	# The shrine keeps a heavier one since prayers started paying twice. It was
+	# already a boon you gamble for; it is now a boon AND a three-in-ten chance
+	# of a gem, and a room worth visiting more should cost more to stand in.
 	var bonus := 0
-	if archetype == MapGen.Archetype.SHRINE or archetype == MapGen.Archetype.COLLAPSED:
+	if archetype == MapGen.Archetype.SHRINE:
+		bonus = 2
+	elif archetype == MapGen.Archetype.COLLAPSED:
 		bonus = 1
 	# The count roll is unchanged -- density is intentional. The ceiling only
 	# stops that count from landing on something unsurvivable.
@@ -2171,8 +2196,30 @@ func player_pray() -> bool:
 		shrine_hue(kind))
 	events.append({"kind": &"pray", "to": here})
 	_invoke_shrine(kind)
+	_answer_the_prayer(here)
 	_end_player_turn()
 	return true
+
+## The gem a shrine may leave behind, whatever else it just did to you.
+##
+## Rolled for EVERY shrine, kind regardless -- including the ones that hurt.
+## A shrine that empties the floor's lungs at you and then leaves a stone is a
+## better story than a shrine that only pays when it was already being kind, and
+## it keeps the gamble honest: a bad outcome you can still walk away from with
+## something is a risk worth taking twice.
+func _answer_the_prayer(at: Vector2i) -> void:
+	if rng.randf() >= GEM_SHRINE_CHANCE:
+		msg_log.add("Your whispered prayer falls on deaf stone.",
+			Color(0.62, 0.60, 0.66))
+		return
+	var gem := Item.roll_gem(rng, effective_depth())
+	if gem == null:
+		msg_log.add("Your whispered prayer falls on deaf stone.",
+			Color(0.62, 0.60, 0.66))
+		return
+	_drop_item_at(gem, at)
+	gem_found = true
+	msg_log.add("The shrine has heard your prayer.", Color(0.85, 0.80, 0.95))
 
 func _invoke_shrine(kind: int) -> void:
 	match kind:

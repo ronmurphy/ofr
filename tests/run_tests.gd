@@ -78,6 +78,7 @@ func _initialize() -> void:
 	_test_morgue_line()
 	_test_shrines_appear()
 	_test_shrine_effects()
+	_test_a_prayer_may_be_answered()
 	_test_shrine_identity_is_shuffled()
 	_test_torch_flare()
 	_test_difficult_ground()
@@ -1469,6 +1470,61 @@ func _test_shrine_effects() -> void:
 		if call.entities[i].alertness != Entity.Alert.AWAKE:
 			all_awake = false
 	check("and it arrives already looking for you", all_awake)
+
+## A prayer may leave a gem, whatever else the shrine just did.
+##
+## Gems carry weight 0 and so cannot come from the ordinary loot roll. Before
+## this they came from chests and one pity placement -- the same pipe uniques
+## use, which meant every unique added to the game would quietly take a gem off
+## the descent. Shrines are the separate stream that makes uniques free to grow.
+func _test_a_prayer_may_be_answered() -> void:
+	# Rolled for EVERY kind, including the ones that hurt: a shrine that punishes
+	# you and still leaves a stone keeps the gamble worth taking twice.
+	var answered := 0
+	var prayers := 0
+	var examined := 0
+	for kind in Shrines.COUNT:
+		for i in 60:
+			var gs := _shrine_arena(kind)
+			# Deep enough that every gem is legal. The arena leaves you on
+			# depth 1 and the shallowest gem is min_depth 2, so the first draft
+			# of this ran 480 prayers, rolled the 30% honestly every time, found
+			# nothing legal to hand over, and reported nought for nought.
+			gs.depth = 4
+			gs.rng.seed = 3000 + kind * 500 + i
+			var before: int = gs.ground.size()
+			if not gs.player_pray():
+				continue
+			prayers += 1
+			if gs.ground.size() > before:
+				answered += 1
+				var left: Item = gs.ground[gs.ground.size() - 1]
+				examined += 1
+				check_silent(left.kind == Item.Kind.GEM)
+				check_silent(left.x == gs.player.x and left.y == gs.player.y)
+	# Gathered checks pass when nothing was gathered -- `_silent_ok` starts true
+	# -- so the count has to be asserted or the report above is a guaranteed
+	# green. That is exactly how the first draft of this reported success over
+	# zero gems.
+	check("there were gems to examine (%d)" % examined, examined > 0)
+	check_gathered("what a prayer leaves is a gem, at your feet")
+	check("every kind of shrine can answer (%d of %d prayers)"
+		% [answered, prayers], answered > 0)
+	# Three in ten, within the slop of the sample. A rate check rather than
+	# "it happened once" -- the number is the design, and a drift to 3% or 80%
+	# would still satisfy a non-zero test.
+	var rate := float(answered) / float(maxi(prayers, 1))
+	check("about three prayers in ten are answered (%.0f%%)" % (rate * 100.0),
+		rate > 0.20 and rate < 0.42, "%.3f" % rate)
+
+	# A shrine that answers is not a shrine that skipped its effect: the boon
+	# and the gem are independent, and the punishing kinds pay too.
+	var harsh := _shrine_arena(Shrines.VIGIL)
+	harsh.rng.seed = 99
+	var woke := _spawn(harsh, "orc", 12, 6)
+	woke.alertness = Entity.Alert.ASLEEP
+	check("a prayer still does what the shrine does", harsh.player_pray()
+		and woke.alertness != Entity.Alert.ASLEEP)
 
 func _test_shrine_identity_is_shuffled() -> void:
 	# Same seed, same secret. Different seed, usually a different one.
