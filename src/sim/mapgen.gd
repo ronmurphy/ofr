@@ -9,7 +9,7 @@ extends RefCounted
 ## punch through whatever the cave automaton left behind -- which is what keeps
 ## the level connected without any special-case repair logic.
 
-enum Archetype { PLAIN, PILLARED, SHRINE, COLLAPSED, POOL }
+enum Archetype { PLAIN, PILLARED, SHRINE, COLLAPSED, POOL, HOARD }
 
 ## Ground is rolled separately from archetype, so the same room shape plays
 ## differently between levels. Two orthogonal axes multiply the variety instead
@@ -69,6 +69,15 @@ func generate(map: DungeonMap) -> void:
 	_stamp_vaults(map)
 	_connect_vaults(map)
 	_place_doors(map)
+	# The hoard picks BEFORE the sanctums.
+	#
+	# It was the other way round, and the shrines got first refusal on the far
+	# rooms -- so when one took the farthest, the hoard fell back to whatever
+	# was left and occasionally landed NEARER than an average room, which is the
+	# one thing it exists not to do. Measured at 4 floors in 138. Shrines are
+	# chosen at random from whatever qualifies, so they lose nothing by going
+	# second; the hoard has exactly one room it wants.
+	_ensure_hoard()
 	_ensure_sanctums()
 	_decorate(map)
 	_lay_terrain(map)
@@ -739,7 +748,8 @@ func _ensure_sanctums():
 	for i in range(1, rooms.size()):
 		# 6x6 rather than 7x7: vaults now compete for the large rooms, and a
 		# slightly cramped sanctum beats a floor with no shrine on it.
-		if archetypes[i] != Archetype.SHRINE and rooms[i].size.x >= 6 and rooms[i].size.y >= 6:
+		if archetypes[i] != Archetype.SHRINE and archetypes[i] != Archetype.HOARD \
+				and rooms[i].size.x >= 6 and rooms[i].size.y >= 6:
 			candidates.append(i)
 	# NOT candidates.shuffle(): Array.shuffle() draws on Godot's GLOBAL rng, so
 	# it made level generation unreproducible from a seed. The same seed built
@@ -754,6 +764,42 @@ func _ensure_sanctums():
 	while have < want and not candidates.is_empty():
 		archetypes[candidates.pop_back()] = Archetype.SHRINE
 		have += 1
+
+## The band's hoard: one room, far from the door, worth the walk.
+##
+## The chest was already the band's landmark -- one per band, uniques first,
+## gems after -- and it had no PLACE. `_place_chest` dropped it on any cell that
+## happened to be ringed by floor, so the best object in the band arrived with
+## no ceremony and no cost, which is how you turn a reward into a thing you
+## stumble over.
+##
+## FARTHEST FROM THE START, measured room-centre to room-centre. Because this is
+## one room per BAND rather than per floor, "walk away from the entrance" is a
+## landmark rather than a routine -- you get four of these on the way down and
+## four on the way back, not one every floor to tick off.
+##
+## The room is guarded harder than a shrine in _populate_room. That is the whole
+## bargain: a reward that costs nothing to take reads as an apology, which is
+## exactly what the pity gem sitting in the starting room turned out to be.
+##
+## Rooms only, never a cave. A hoard is something somebody PUT somewhere, and a
+## cave is the one place in this dungeon nobody built.
+func _ensure_hoard() -> void:
+	if not [2, 5, 8, 10].has(Bands.mirrored(depth)):
+		return
+	if rooms.size() < 2:
+		return
+	var home := rooms[0].get_center()
+	var best := -1
+	var best_d := -1
+	for i in range(1, rooms.size()):
+		var c := rooms[i].get_center()
+		var d := absi(c.x - home.x) + absi(c.y - home.y)
+		if d > best_d:
+			best_d = d
+			best = i
+	if best >= 0:
+		archetypes[best] = Archetype.HOARD
 
 ## Somewhere inside a cavern, for things that belong to the dark rather than to
 ## the masonry. Empty result if this floor has no caves.
@@ -941,6 +987,7 @@ func _paint_materials(map: DungeonMap) -> void:
 			Archetype.POOL:      m = Materials.FLOODED
 			Archetype.COLLAPSED: m = Materials.RUIN
 			Archetype.SHRINE:    m = Materials.SANCTUM
+			Archetype.HOARD:     m = Materials.HOARD
 		map.paint_material(rooms[i], m)
 
 # ------------------------------------------------------------- decoration ---

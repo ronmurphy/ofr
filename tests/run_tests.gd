@@ -79,6 +79,7 @@ func _initialize() -> void:
 	_test_shrines_appear()
 	_test_shrine_effects()
 	_test_a_prayer_may_be_answered()
+	_test_the_hoard_room()
 	_test_shrine_identity_is_shuffled()
 	_test_torch_flare()
 	_test_difficult_ground()
@@ -155,8 +156,11 @@ func _initialize() -> void:
 	quit(1 if _failed > 0 else 0)
 
 var _silent_ok := true
+## How many check_silent calls the current gathered block has actually made.
+var _silent_seen := 0
 
 func check_silent(condition: bool) -> void:
+	_silent_seen += 1
 	if not condition:
 		_silent_ok = false
 
@@ -169,9 +173,24 @@ func check_silent(condition: bool) -> void:
 ## result. And it has to be reported at all -- the band-folding block gathered
 ## eighteen assertions and then called `check(..., true)`, so none of them
 ## could fail the suite.
+## A gathered report over ZERO gathered checks is a guaranteed pass, because
+## `_silent_ok` starts true. That is not a theoretical hazard: the prayer-gem
+## test reported "what a prayer leaves is a gem, at your feet" in green having
+## examined no gems at all, because every prayer in it ran at depth 1 where no
+## gem is legal and the loop body never executed.
+##
+## Swept afterwards, every other gathered block in this file turned out safe --
+## they all iterate literal arrays or fixed counts, so their bodies always run.
+## But that is luck rather than design, so the helper enforces it instead of
+## trusting whoever writes the next one to notice.
 func check_gathered(name: String, detail: String = "") -> void:
-	check(name, _silent_ok, detail)
+	if _silent_seen == 0:
+		check("%s -- NOTHING WAS CHECKED" % name, false,
+			"check_gathered reported over zero check_silent calls")
+	else:
+		check(name, _silent_ok, detail)
 	_silent_ok = true
+	_silent_seen = 0
 
 func check(name: String, condition: bool, detail: String = "") -> void:
 	if condition:
@@ -4637,6 +4656,75 @@ func _test_a_rat_may_creep_past() -> void:
 			not gs2.visible_monsters().is_empty())
 		check("an awake monster stops travel (rat=%s)" % as_rat,
 			not gs2.begin_travel(Vector2i(8, 4)))
+
+## The band's hoard: one room, far from the door, guarded, holding the chest.
+##
+## The chest was already the band's landmark and had no PLACE -- _place_chest
+## scanned from the LAST room, which is where the stairs go, so the best object
+## in the band tended to turn up beside the exit you were already walking to.
+func _test_the_hoard_room() -> void:
+	var floors := 0
+	var with_hoard := 0
+	var chest_in_hoard := 0
+	var chests := 0
+	var lit := 0
+	var near := 0
+	var far_total := 0.0
+	for i in 30:
+		for spec in [[2, false], [5, false], [8, false], [10, false], [5, true]]:
+			var gs := GameState.new(64000 + i * 17 + int(spec[0]))
+			gs.use_scratch_files("hoard%d_%d" % [i, int(spec[0])])
+			gs.new_game()
+			gs.ascending = spec[1]
+			gs.depth = spec[0]
+			gs.build_level()
+			floors += 1
+			if gs.hoard_room < 0:
+				continue
+			with_hoard += 1
+			var room: Rect2i = gs.room_rects[gs.hoard_room]
+			# Never the room you start in.
+			check_silent(gs.hoard_room != 0)
+			# Farther from the start than the average room, which is the whole
+			# point of picking it.
+			var home: Vector2i = gs.room_rects[0].get_center()
+			var c := room.get_center()
+			var mine := absi(c.x - home.x) + absi(c.y - home.y)
+			var avg := 0.0
+			for r in gs.room_rects:
+				var rc := r.get_center()
+				avg += absi(rc.x - home.x) + absi(rc.y - home.y)
+			avg /= float(maxi(gs.room_rects.size(), 1))
+			far_total += float(mine) - avg
+			if float(mine) < avg:
+				near += 1
+			# A fire to work at.
+			var has_fire := false
+			for y in range(room.position.y, room.end.y):
+				for x in range(room.position.x, room.end.x):
+					if gs.map.get_tile(x, y) == Tiles.BRAZIER:
+						has_fire = true
+			if has_fire:
+				lit += 1
+			# And the chest it exists to hold.
+			for y in range(gs.map.height):
+				for x in range(gs.map.width):
+					if gs.map.get_tile(x, y) == Tiles.CHEST:
+						chests += 1
+						if room.has_point(Vector2i(x, y)):
+							chest_in_hoard += 1
+			gs.clear_scratch_files()
+	check("chest floors get a hoard room (%d of %d)" % [with_hoard, floors],
+		with_hoard > floors / 2, "%d of %d" % [with_hoard, floors])
+	check_gathered("and it is never the room you start in")
+	check("it is farther out than an average room (avg +%.1f cells, %d nearer)"
+		% [far_total / float(maxi(with_hoard, 1)), near], near == 0,
+		"%d hoards closer than average" % near)
+	check("it holds a fire to work at (%d of %d)" % [lit, with_hoard],
+		lit == with_hoard, "%d unlit" % (with_hoard - lit))
+	check("and the chest is in it (%d of %d chests)" % [chest_in_hoard, chests],
+		chests > 0 and chest_in_hoard == chests,
+		"%d chests elsewhere" % (chests - chest_in_hoard))
 
 ## The legend shows what you have MET, and nothing else.
 func _test_bestiary_is_earned() -> void:

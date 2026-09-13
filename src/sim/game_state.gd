@@ -929,6 +929,11 @@ func build_level() -> void:
 	stats["deepest"] = maxi(int(stats.get("deepest", 0)), depth)
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
+	hoard_room = -1
+	for i in gen.archetypes.size():
+		if gen.archetypes[i] == MapGen.Archetype.HOARD:
+			hoard_room = i
+			break
 	brazier_charge.clear()
 	ember_until.clear()
 	grave_at.clear()
@@ -939,6 +944,10 @@ func build_level() -> void:
 		for x in map.width:
 			if map.get_tile(x, y) == Tiles.BRAZIER:
 				brazier_charge[Vector2i(x, y)] = BRAZIER_CHARGE
+	# Before the lights are gathered, because the hoard's brazier has to be one
+	# of them -- static_lights is derived from the map in _gather_lights and
+	# nothing re-derives it afterwards.
+	_stock_the_hoard()
 	_gather_lights()
 	_place_graves()
 	for i in range(1, rooms.size()):
@@ -1110,6 +1119,42 @@ func cave_threat_ceiling() -> int:
 ## Runs after the ordinary loot has been scattered, and only if that loot did
 ## not already produce one -- so on a lucky floor this does nothing at all and
 ## the guarantee is invisible.
+## Which room the generator marked as this band's hoard, or -1.
+##
+## Generation-time only, like _den_placed: a restored save keeps the map it was
+## built with and never re-runs this pass, so serialising it would store a fact
+## about a floor that will never be generated again.
+var hoard_room := -1
+
+## What the band's hoard holds besides the chest: a fire to work at, and
+## something to work on.
+##
+## The brazier is what makes it a room you STOP in rather than a container you
+## empty. Measured before adding it, braziers already run about 5.4 a floor, so
+## a guaranteed one here is a landmark rather than a power spike -- and it is
+## the difference between "open chest, leave" and "this is where I forge the
+## thing I just found".
+func _stock_the_hoard() -> void:
+	if hoard_room < 0 or hoard_room >= room_rects.size():
+		return
+	var room: Rect2i = room_rects[hoard_room]
+	var lit := false
+	# Off-centre on purpose: the middle is where _place_chest looks first, and
+	# a brazier standing on the chest's cell would cost the room its chest.
+	for y in range(room.position.y + 1, room.end.y - 1):
+		for x in range(room.position.x + 1, room.end.x - 1):
+			var c := Vector2i(x, y)
+			if lit or c == room.get_center() or protected_cell(c):
+				continue
+			if map.get_tile(x, y) != Tiles.FLOOR:
+				continue
+			map.set_tile(x, y, Tiles.BRAZIER)
+			brazier_charge[c] = BRAZIER_CHARGE
+			lit = true
+	var prize := Item.roll(rng, effective_depth())
+	if prize != null:
+		_drop_item_at(prize, _open_cell_in(room))
+
 ## One chest per band, on the band's middle floor.
 ##
 ## Brad's rarity call, and it is what stops a pack filling with gems: at a gem
@@ -1133,10 +1178,22 @@ func _place_chest() -> void:
 	# already been populated, so the middle of a room is exactly where a monster
 	# or a piece of loot is standing. Measured: zero chests placed, on every
 	# floor that should have carried one.
-	var placed := false
+	# The hoard room first, then everything else.
+	#
+	# The scan used to start from the LAST room, which is where the stairs are
+	# put -- so the band's landmark tended to land beside the exit, the one
+	# place you were already going. Trying the hoard first is what gives the
+	# chest a destination instead of a location.
+	var order: Array[int] = []
+	if hoard_room >= 0 and hoard_room < room_rects.size():
+		order.append(hoard_room)
 	for attempt in room_rects.size():
-		var room: Rect2i = room_rects[(room_rects.size() - 1 + attempt)
-			% room_rects.size()]
+		var idx := (room_rects.size() - 1 + attempt) % room_rects.size()
+		if idx != hoard_room:
+			order.append(idx)
+	var placed := false
+	for which in order:
+		var room: Rect2i = room_rects[which]
 		for y in range(room.position.y, room.end.y):
 			for x in range(room.position.x, room.end.x):
 				var c := Vector2i(x, y)
@@ -1278,7 +1335,14 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 	# already a boon you gamble for; it is now a boon AND a three-in-ten chance
 	# of a gem, and a room worth visiting more should cost more to stand in.
 	var bonus := 0
-	if archetype == MapGen.Archetype.SHRINE:
+	if archetype == MapGen.Archetype.HOARD:
+		# The heaviest room on the floor, because it is the one worth crossing
+		# the floor for. A reward that costs nothing to take reads as an
+		# apology -- which is exactly what the pity gem lying in the starting
+		# room turned out to be, and this is the same mistake at four times the
+		# scale if the room is left undefended.
+		bonus = 3
+	elif archetype == MapGen.Archetype.SHRINE:
 		bonus = 2
 	elif archetype == MapGen.Archetype.COLLAPSED:
 		bonus = 1

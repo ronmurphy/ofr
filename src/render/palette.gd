@@ -93,6 +93,13 @@ const MATERIAL_TINT := {
 	Materials.RUIN:    Color(1.12, 0.88, 0.70),
 	Materials.SANCTUM: Color(1.10, 1.01, 0.76),
 	Materials.CAVERN:  Color(1.05, 0.93, 0.80),
+	## The band's hoard. Violet because nothing else here is: sanctum is pale
+	## gold, ruin is tan, cavern warm brown and flooded a cold blue, so a cool
+	## purple is the one direction left that cannot be mistaken for any of them
+	## at a glance across a remembered map. A hoard room and a shrine room must
+	## never read as each other -- one is a gamble and one is a guarded reward,
+	## and confusing them would cost a player either a risk or a fight.
+	Materials.HOARD:   Color(1.02, 0.86, 1.14),
 }
 
 ## Explored-but-unlit terrain. Cold and desaturated, so memory reads as memory

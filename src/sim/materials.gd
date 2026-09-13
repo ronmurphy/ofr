@@ -10,7 +10,7 @@ extends RefCounted
 ## The point is navigation, not decoration. On a 96x54 map every remembered
 ## room previously looked like every other remembered room.
 
-enum { STONE, FLOODED, RUIN, SANCTUM, CAVERN }
+enum { STONE, FLOODED, RUIN, SANCTUM, CAVERN, HOARD }
 
 const NAMES := {
 	STONE:   &"stone",
@@ -18,4 +18,5 @@ const NAMES := {
 	RUIN:    &"ruin",
 	SANCTUM: &"sanctum",
 	CAVERN:  &"cavern",
+	HOARD:   &"hoard",
 }
