@@ -6,6 +6,23 @@ extends Control
 ## surface rather than a game with a GUI bolted beside it.
 
 @export var font: Font
+## The icon face, loaded DIRECTLY rather than reached through font fallbacks.
+##
+## Reported from the itch build: every glyph in this panel came out as a tofu
+## box spelling its own codepoint -- "0F0A7B" where the shirt should be -- while
+## the map, the legend and the inventory drew theirs correctly.
+##
+## The asymmetry is the diagnosis. GlyphGrid.map_font() loads ofr_icons.ttf as
+## the PRIMARY face; the legend and the inventory keep a separate `icon_font`
+## and draw glyphs straight from it. Only this panel asked a text font to reach
+## the icons through `fallbacks`, and only this panel failed -- so the font
+## ships in the export (the map proves it) and it is fallback RESOLUTION that
+## does not survive the web build for astral-plane codepoints.
+##
+## Desktop resolves those fallbacks happily, which is why the suite never saw
+## it: `ui_font().has_char(SKULL)` passes headless and the exported game still
+## draws a box.
+@export var icon_font: Font
 @export var font_bold: Font
 @export var font_size: int = 15
 
@@ -62,6 +79,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if font == null:
 		font = ui_font()
+	if icon_font == null:
+		icon_font = load("res://assets/fonts/ofr_icons.ttf")
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
@@ -331,6 +350,13 @@ func _icon_row(y: float, label: String, glyph: String, text: String,
 	_draw_icon_row(y, label, glyph, icon_row_words(label, glyph, text, keep),
 		boosted)
 
+## Which face can actually draw this character.
+##
+## Every measurement and every draw of a glyph goes through here, so a width
+## computed for one face can never be used to position text drawn in another.
+func _face_for(ch: String) -> Font:
+	return icon_font if GlyphTheme.is_icon(ch) and icon_font != null else font
+
 ## Label, icon and pre-fitted words, the last two right-aligned as a unit.
 ##
 ## The plain row draws label and value as two strings at font_size, and an icon
@@ -348,13 +374,13 @@ func _draw_icon_row(y: float, label: String, glyph: String, shown: String,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	var tint: Color = Palette.HP_GOOD if boosted else Palette.UI_TEXT
 	var gs := GlyphTheme.draw_size(glyph, font_size)
-	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var tw := font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var right := size.x - PAD
 	draw_string(font, Vector2(right - tw, y), shown,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
-	draw_string(font, Vector2(right - tw - gw, y + (font_size - gs) * 0.35), glyph,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
+	draw_string(_face_for(glyph), Vector2(right - tw - gw, y + (font_size - gs) * 0.35),
+		glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
 
 ## Label left, value right-aligned. `boosted` tints the value so a bonus from
 ## equipment is visible at a glance without reading the equipment lines.
@@ -408,10 +434,22 @@ static func ui_font() -> Font:
 ## fonts or codepoints -- it answers in words, and what those words look like
 ## is this side's problem. Only the "killed by" causes are touched; a fall or a
 ## walk back into daylight reads fine as written.
-func _skullify(line: String) -> String:
+## Answers a picture-line for a death cause, or the words unchanged.
+##
+## It used to return ONE STRING with the skull inside it, which meant the skull
+## could only ever be drawn with whatever face drew the sentence -- the text
+## face, reaching the icon through fallbacks. That is exactly the resolution
+## that fails in the web export, so "killed by" has been a tofu box on itch
+## since the day it shipped, and nobody saw it because you only meet that line
+## when you die and you are reading the cause, not the picture.
+##
+## As a {glyph, text} line the panel draws the skull from the icon face
+## directly, the same way the map and the legend always have.
+func _skullify(line: String) -> Variant:
 	for prefix in ["killed by a ", "killed by an ", "killed by "]:
 		if line.begins_with(prefix):
-			return char(SKULL) + " " + line.substr(prefix.length())
+			return {"glyph": char(SKULL), "text": line.substr(prefix.length()),
+				"indent": 0.0}
 	return line
 
 ## Same defence for the look panel, where a long item name would otherwise run
@@ -454,7 +492,7 @@ func icon_row_words(label: String, glyph: String, text: String,
 ## theirs.
 func _room_for(label: String, glyph: String) -> float:
 	var gs := GlyphTheme.draw_size(glyph, font_size)
-	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
 	return size.x - PAD * 2.0 - lw - gw
@@ -489,7 +527,7 @@ func gear_row_words(label: String, glyph: String, tag: String, up: String,
 func icon_row_width(label: String, glyph: String, text: String,
 		keep: String = "") -> float:
 	var gs := GlyphTheme.draw_size(glyph, font_size)
-	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
 		-1, font_size).x
 	var shown := icon_row_words(label, glyph, text, keep)
@@ -503,9 +541,9 @@ func icon_row_width(label: String, glyph: String, text: String,
 ## whatever is left so a long name cannot run through the frame.
 func _icon_line(y: float, glyph: String, text: String, indent: float) -> void:
 	var gs := GlyphTheme.draw_size(glyph, font_size)
-	var gw := font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+	var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 	var x := PAD + indent
-	draw_string(font, Vector2(x, y + (font_size - gs) * 0.35), glyph,
+	draw_string(_face_for(glyph), Vector2(x, y + (font_size - gs) * 0.35), glyph,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, Palette.UI_TEXT)
 	draw_string(font, Vector2(x + gw + 4.0, y),
 		_fit(text, indent + gw + 4.0), HORIZONTAL_ALIGNMENT_LEFT, -1,

@@ -6423,14 +6423,47 @@ func _test_icon_theme() -> void:
 	# "killed by a kobold slinger" is 26 characters against a panel about 24
 	# wide, and arrived truncated in play as "killed by a kobold slin..".
 	var bar := Sidebar.new()
-	check("the skull replaces the words",
-		bar._skullify("killed by a kobold slinger") == char(Sidebar.SKULL) + " kobold slinger")
-	check("and handles an, too",
-		bar._skullify("killed by an orc") == char(Sidebar.SKULL) + " orc")
+	bar.font = Sidebar.ui_font()
+	bar.icon_font = load("res://assets/fonts/ofr_icons.ttf")
+	# A picture-line now, not a string with a picture buried in it. The skull has
+	# to be drawable from the ICON face -- reaching it through the text font's
+	# fallbacks is what left it a tofu box in the web export.
+	var slain: Variant = bar._skullify("killed by a kobold slinger")
+	check("the skull replaces the words", slain is Dictionary
+		and String(slain["glyph"]) == char(Sidebar.SKULL)
+		and String(slain["text"]) == "kobold slinger")
+	var orc_death: Variant = bar._skullify("killed by an orc")
+	check("and handles an, too", orc_death is Dictionary
+		and String(orc_death["text"]) == "orc")
 	check("a fall is left as written",
 		bar._skullify("broken by a fall") == "broken by a fall")
 	check("and so is walking out",
 		bar._skullify("left the dungeon on depth 4") == "left the dungeon on depth 4")
+
+	# The face the panel will actually DRAW that skull with, asked directly.
+	#
+	# The old check asked ui_font().has_char(SKULL), which passes on desktop
+	# because fallbacks resolve there -- and the exported web build still drew a
+	# box. Asking the icon face itself is the question that travels.
+	check("the sidebar's icon face carries the skull",
+		bar.icon_font != null and bar.icon_font.has_char(Sidebar.SKULL))
+	check("and the panel reaches for that face, not the text one",
+		bar._face_for(char(Sidebar.SKULL)) == bar.icon_font
+			and bar._face_for("k") == bar.font)
+
+	# Every gear glyph, from the icon face rather than through a fallback.
+	var unreachable := []
+	for id in Item.CATALOGUE:
+		if Item.CATALOGUE[id].get("slot", Item.Slot.NONE) == Item.Slot.NONE:
+			continue
+		var app: StringName = Item.CATALOGUE[id].get("app", &"")
+		if not GlyphTheme.OVERRIDES.has(app):
+			continue
+		var cp := int(GlyphTheme.OVERRIDES[app])
+		if not bar.icon_font.has_char(cp):
+			unreachable.append("%s (%s U+%X)" % [id, app, cp])
+	check("the icon face carries every gear glyph",
+		unreachable.is_empty(), str(unreachable))
 	bar.free()
 	check("ascii survived the subset", font.has_char(65) and font.has_char(64))
 	check("and so did the symbol mode's characters",
