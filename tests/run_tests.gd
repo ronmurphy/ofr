@@ -2498,14 +2498,29 @@ func _test_map_always_connected() -> void:
 	# And measured from the PLAYER's cell, not from the largest region. "Is the
 	# map one connected space?" passed on seed 66043 -- the map was fine, the
 	# player was outside it.
+	# Depth plus a direction, NOT an effective depth.
+	#
+	# The first version of this loop passed 15 as a depth with ascending set,
+	# and effective_depth() is MAX_DEPTH + (MAX_DEPTH - depth) -- so 15 came out
+	# as effective FIVE. It probed the descent caves band twice and never
+	# touched the climb, while the comment claimed it swept both directions. The
+	# band sweep further down has always done this correctly; this one invented
+	# its own convention and got it backwards.
+	#
+	# [depth, climbing]: the last pair is depth 5 on the way UP, which is
+	# effective 15 -- the caves band on the climb, where yesterday's sealed-room
+	# bug lived and where nothing had actually been looking.
 	var cut_off := []
 	for i in 30:
-		for d in [1, 5, 6, 8, 10, 15]:
+		for spec in [[1, false], [5, false], [6, false], [8, false],
+				[10, false], [5, true]]:
+			var d: int = spec[0]
+			var climbing: bool = spec[1]
 			var gs := GameState.new(70000 + i)
-			gs.use_scratch_files("reach%d_%d" % [i, d])
+			gs.use_scratch_files("reach%d_%d_%s" % [i, d, climbing])
 			gs.new_game()
+			gs.ascending = climbing
 			gs.depth = d
-			gs.ascending = d > GameState.MAX_DEPTH
 			gs.build_level()
 			var total := 0
 			for y in gs.map.height:
@@ -2531,8 +2546,9 @@ func _test_map_always_connected() -> void:
 					seen[n] = true
 					stack.append(n)
 			if got < total:
-				cut_off.append("seed %d d%d: %d of %d (%.0f%%)"
-					% [70000 + i, d, got, total, 100.0 * float(got) / float(maxi(total, 1))])
+				cut_off.append("seed %d d%d%s: %d of %d (%.0f%%)"
+					% [70000 + i, d, " up" if climbing else "", got, total,
+					100.0 * float(got) / float(maxi(total, 1))])
 			gs.clear_scratch_files()
 	check("every walkable cell is reachable from where you start (%d floors)"
 		% (30 * 6), cut_off.is_empty(),
