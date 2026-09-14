@@ -120,6 +120,7 @@ func _initialize() -> void:
 	_test_effects_modes()
 	_test_rabbit()
 	_test_banshee()
+	_test_a_side_of_your_own()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -5837,6 +5838,82 @@ func _test_cave_giant() -> void:
 				if e.name == "cave giant":
 					seen_down += 1
 	check("no giant on the way down", seen_down == 0, str(seen_down))
+
+## The targeting layer, written before there is anything to point it at.
+##
+## Every check below would pass trivially with the ally left out -- monsters
+## do find the player, and always did. So the ally is BUILT here, and its
+## preconditions are asserted before each exclusion: that it is alive, that it
+## is in view, that it is in range. Otherwise this would be a test that cannot
+## fail, which this suite has been bitten by before.
+##
+## An ally is an ordinary Entity whose faction happens to be PLAYER. That is
+## the promise Entity's own header makes -- "when a party arrives later, it is
+## four of these in a list rather than a new concept" -- and this is the test
+## that holds it to it.
+func _test_a_side_of_your_own() -> void:
+	var gs := _arena(30, 14)
+	gs.player.x = 4
+	gs.player.y = 7
+	var goblin := _spawn(gs, "goblin", 20, 7)
+	var mate := _spawn(gs, "goblin", 21, 7)
+	var ally := _spawn(gs, "skeleton", 19, 7)
+	ally.faction = Entity.Faction.PLAYER
+	ally.name = "bone ally"
+	ally.max_hp = 200
+	ally.hp = 200
+
+	check("a monster fights the player", goblin.hostile_to(gs.player))
+	check("and fights what walks with them", goblin.hostile_to(ally))
+	check("the ally does not fight the player", not ally.hostile_to(gs.player))
+	check("nor the player the ally", not gs.player.hostile_to(ally))
+	check("and nothing fights itself", not goblin.hostile_to(goblin))
+	# Neutral is unused so far. Asserted anyway, because the enum names it and
+	# an unexercised branch is where the next wrong answer hides.
+	mate.faction = Entity.Faction.NEUTRAL
+	check("a neutral fights nobody", not mate.hostile_to(gs.player)
+		and not goblin.hostile_to(mate))
+	mate.faction = Entity.Faction.MONSTER
+
+	# Precondition first. Without these three lines the exclusions below would
+	# hold for an ally that was dead, off-screen or out of range -- which is to
+	# say for no reason at all.
+	check("the ally is alive and in view",
+		ally.alive and gs.map.is_visible(ally.x, ally.y))
+	var seen := gs.visible_monsters()
+	check("it is not counted as a monster in view", not seen.has(ally),
+		"%d seen" % seen.size())
+	check("while the goblins still are", seen.has(goblin) and seen.has(mate))
+
+	var shots := gs.firing_targets(20)
+	check("the goblin is a legal shot", shots.has(goblin))
+	check("the ally is not, at the same range", not shots.has(ally))
+
+	# The nerve check reads its OWN side. One goblin beside another is company;
+	# a goblin beside your ally is alone.
+	check("a goblin counts its own kind (%d)" % gs._allies_near(goblin, 5),
+		gs._allies_near(goblin, 5) == 1)
+	check("the ally is not company for it",
+		gs._allies_near(ally, 5) == 0, str(gs._allies_near(ally, 5)))
+
+	# Nearest hostile, and the ally is sixteen cells nearer than the player.
+	check("a monster picks the nearer enemy", gs._foe_for(goblin) == ally)
+	check("and the ally picks the monster",
+		gs._foe_for(ally) == goblin or gs._foe_for(ally) == mate)
+
+	# End to end, through the real turn: the goblin is beside the ally and
+	# should hit it. This is the check the whole refactor exists for -- before
+	# it, the goblin walked past the ally to reach the player.
+	var before := ally.hp
+	gs._take_ai_turn(goblin)
+	check("and swings at it rather than walking past",
+		ally.hp < before, "%d -> %d" % [before, ally.hp])
+
+	# With the ally gone the world goes back to exactly what it was, which is
+	# what makes this refactor safe to ship before the ally exists.
+	ally.alive = false
+	check("and falls back to the player when alone",
+		gs._foe_for(goblin) == gs.player)
 
 func _test_banshee() -> void:
 	# The learning floors stay clean, and then it never ages out -- min_depth

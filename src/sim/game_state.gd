@@ -2076,7 +2076,11 @@ func firing_targets(reach: int = -1) -> Array:
 	if r <= 1:
 		return out
 	for e in entities:
-		if e.is_player or not e.alive:
+		# Hostility, not "is it me". An ally in the firing cycle means the
+		# cursor offers it as a shot and tab-targeting walks onto it -- the
+		# player would eventually put an arrow through their own bone ally by
+		# pressing tab one time too many.
+		if not e.alive or not e.hostile_to(player):
 			continue
 		if can_reach(Vector2i(e.x, e.y), r):
 			out.append(e)
@@ -2230,7 +2234,11 @@ func _travel_stoppers() -> Array:
 func visible_monsters() -> Array:
 	var out := []
 	for e in entities:
-		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
+		# Hostile ones only. This list is what stops click-to-travel and what
+		# the "you cannot rest with monsters about" checks read, so an ally
+		# counted here would halt every journey and forbid every rest simply by
+		# walking beside you -- the thing it was summoned to do.
+		if e.alive and e.hostile_to(player) and map.is_visible(e.x, e.y):
 			out.append(e)
 	return out
 
@@ -3957,18 +3965,58 @@ func _take_ai_turn(actor: Entity) -> int:
 
 	_update_morale(actor)
 	_last_move_cost = Scheduler.ACTION_COST
+
+	# Decided ONCE per turn and handed down, rather than each behaviour asking
+	# for `player` by name. Every AI below used to name the player directly,
+	# which is why an ally would have been invisible: a goblin would walk past
+	# the thing hitting it to reach you.
+	var foe := _foe_for(actor)
+	if foe == null:
+		return _last_move_cost
+
 	if actor.fleeing:
-		_ai_flee(actor)
+		_ai_flee(actor, foe)
 		return _last_move_cost
 
 	match actor.ai:
-		&"erratic": _ai_erratic(actor)
-		&"forager": _ai_forager(actor)
-		&"banshee": _ai_banshee(actor)
-		&"ranged":  _ai_ranged(actor)
-		&"pack":    _ai_pack(actor)
-		_:          _ai_hunter(actor)
+		&"erratic": _ai_erratic(actor, foe)
+		&"forager": _ai_forager(actor, foe)
+		&"banshee": _ai_banshee(actor, foe)
+		&"ranged":  _ai_ranged(actor, foe)
+		&"pack":    _ai_pack(actor, foe)
+		_:          _ai_hunter(actor, foe)
 	return _last_move_cost
+
+## What this creature is trying to reach: the nearest thing it would fight.
+##
+## Today this is always the player, because the player is the only thing on
+## the player's side -- so threading it through changes no behaviour at all
+## until an ally exists. That is deliberate. The targeting layer lands as a
+## refactor that the suite can prove inert, and the ally lands on top of a
+## seam that already works.
+##
+## NO RNG, and no shuffle. Ties break on position in `entities`, which is
+## stable across a save and a load, so two equidistant targets never make the
+## same seed play out differently.
+##
+## Awareness is NOT consulted here, and that is the current rule rather than an
+## oversight: a monster still has to notice YOU before it acts at all
+## (`_update_awareness` runs first and is built on your torchlight and your
+## stealth). So an ally cannot pull a sleeping monster out of the dark. It can
+## only be fought by something already hunting. Whether an ally should be able
+## to draw attention on its own is the open design question, and it belongs
+## with the confusion beat rather than here.
+func _foe_for(actor: Entity) -> Entity:
+	var best: Entity = null
+	var best_d := 0
+	for e in entities:
+		if not e.alive or not actor.hostile_to(e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if best == null or d < best_d:
+			best = e
+			best_d = d
+	return best
 
 func _update_awareness(actor: Entity) -> void:
 	var d := Los.steps(actor.x, actor.y, player.x, player.y)
@@ -4057,28 +4105,28 @@ func _update_morale(actor: Entity) -> void:
 	elif actor.fleeing and frac > actor.flee_below + 0.25:
 		actor.fleeing = false
 
-func _ai_hunter(actor: Entity) -> void:
-	if actor.is_adjacent(player):
-		_attack(actor, player)
+func _ai_hunter(actor: Entity, foe: Entity) -> void:
+	if actor.is_adjacent(foe):
+		_attack(actor, foe)
 		return
-	_step_toward(actor, Vector2i(player.x, player.y))
+	_step_toward(actor, Vector2i(foe.x, foe.y))
 
 ## Bites when it happens to be beside you, but will not hold a line -- so you
 ## cannot reliably disengage from one, and cannot reliably corner it either.
-func _ai_erratic(actor: Entity) -> void:
-	if actor.is_adjacent(player) and rng.randf() < 0.7:
-		_attack(actor, player)
+func _ai_erratic(actor: Entity, foe: Entity) -> void:
+	if actor.is_adjacent(foe) and rng.randf() < 0.7:
+		_attack(actor, foe)
 		return
 	if rng.randf() < 0.6:
 		_step_random(actor)
 		return
-	_step_toward(actor, Vector2i(player.x, player.y))
+	_step_toward(actor, Vector2i(foe.x, foe.y))
 
 ## The behaviour that makes pillars matter: it needs a clear line, so stepping
 ## behind cover genuinely stops it, and it backs off rather than letting you
 ## close to melee for free.
-func _ai_ranged(actor: Entity) -> void:
-	var dist := Los.steps(actor.x, actor.y, player.x, player.y)
+func _ai_ranged(actor: Entity, foe: Entity) -> void:
+	var dist := Los.steps(actor.x, actor.y, foe.x, foe.y)
 
 	if actor.blink_cool > 0:
 		actor.blink_cool -= 1
@@ -4086,21 +4134,21 @@ func _ai_ranged(actor: Entity) -> void:
 	# Too close for comfort. A slinger's comfort is one cell; a caster's is
 	# three, and the difference is the whole character of the fight.
 	if dist <= actor.standoff:
-		if actor.blink_range > 0 and actor.blink_cool <= 0 and _blink_away(actor):
+		if actor.blink_range > 0 and actor.blink_cool <= 0 and _blink_away(actor, foe):
 			return
-		if _step_away(actor):
+		if _step_away(actor, foe):
 			return
 		# Cornered, with nowhere left to give. Now it has to fight, and a
 		# caster in melee is exactly as frail as its hit points suggest.
 		if dist <= 1:
-			_attack(actor, player)
+			_attack(actor, foe)
 			return
 
-	if dist <= actor.total_range() and Los.clear(map, actor.x, actor.y, player.x, player.y):
-		_attack(actor, player, true)
+	if dist <= actor.total_range() and Los.clear(map, actor.x, actor.y, foe.x, foe.y):
+		_attack(actor, foe, true)
 		return
 
-	_step_toward(actor, Vector2i(player.x, player.y))
+	_step_toward(actor, Vector2i(foe.x, foe.y))
 
 ## How long after a blink before it can blink again.
 ##
@@ -4112,7 +4160,7 @@ func _ai_ranged(actor: Entity) -> void:
 const BLINK_COOLDOWN := 8
 
 ## Somewhere else on the floor, out of arm's reach and preferably out of sight.
-func _blink_away(actor: Entity) -> bool:
+func _blink_away(actor: Entity, foe: Entity) -> bool:
 	var spots := []
 	var r := actor.blink_range
 	for y in range(maxi(1, actor.y - r), mini(map.height - 1, actor.y + r + 1)):
@@ -4121,8 +4169,8 @@ func _blink_away(actor: Entity) -> bool:
 				continue
 			if entity_at(x, y) != null:
 				continue
-			# No point reappearing inside the player's reach.
-			if Los.steps(x, y, player.x, player.y) <= actor.standoff:
+			# No point reappearing inside its quarry's reach.
+			if Los.steps(x, y, foe.x, foe.y) <= actor.standoff:
 				continue
 			spots.append(Vector2i(x, y))
 	if spots.is_empty():
@@ -4143,28 +4191,32 @@ func _blink_away(actor: Entity) -> bool:
 
 ## Bold with company, hesitant alone -- so a lone goblin hangs back and a pair
 ## of them commit, which makes thinning a group worth doing.
-func _ai_pack(actor: Entity) -> void:
-	if actor.is_adjacent(player):
-		_attack(actor, player)
+func _ai_pack(actor: Entity, foe: Entity) -> void:
+	if actor.is_adjacent(foe):
+		_attack(actor, foe)
 		return
 	if _allies_near(actor, 5) > 0 or rng.randf() < 0.45:
-		_step_toward(actor, Vector2i(player.x, player.y))
+		_step_toward(actor, Vector2i(foe.x, foe.y))
 
 func _allies_near(actor: Entity, radius: int) -> int:
 	var n := 0
 	for e in entities:
-		if e == actor or not e.alive or e.is_player:
+		# Its OWN side. Reading this as "everything that is not the player"
+		# meant your ally counted as company for the goblins standing near it:
+		# summoning help would have made the pack braver, which is precisely
+		# backwards and would have been very hard to see in play.
+		if e == actor or not e.alive or e.faction != actor.faction:
 			continue
 		if Los.steps(actor.x, actor.y, e.x, e.y) <= radius:
 			n += 1
 	return n
 
-func _ai_flee(actor: Entity) -> void:
-	if _step_away(actor):
+func _ai_flee(actor: Entity, foe: Entity) -> void:
+	if _step_away(actor, foe):
 		return
 	# Cornered. A trapped animal fights.
-	if actor.is_adjacent(player):
-		_attack(actor, player)
+	if actor.is_adjacent(foe):
+		_attack(actor, foe)
 
 func _step_toward(actor: Entity, target: Vector2i) -> void:
 	var route := pathfinder.path(Vector2i(actor.x, actor.y), target)
@@ -4193,16 +4245,16 @@ const RABBIT_NOSE := 14
 ## The order matters: fleeing beats feeding. A rabbit that finished its mouthful
 ## while you closed would be catchable by walking, which is precisely what the
 ## speed is there to prevent.
-func _ai_forager(actor: Entity) -> void:
+func _ai_forager(actor: Entity, foe: Entity) -> void:
 	if actor.busy > 0:
 		actor.busy -= 1
 		if actor.busy == 0:
 			_rabbit_swallows(actor)
 		return
 
-	var d := Los.steps(actor.x, actor.y, player.x, player.y)
-	if d <= RABBIT_NOSE and Los.clear(map, actor.x, actor.y, player.x, player.y):
-		if _step_away(actor):
+	var d := Los.steps(actor.x, actor.y, foe.x, foe.y)
+	if d <= RABBIT_NOSE and Los.clear(map, actor.x, actor.y, foe.x, foe.y):
+		if _step_away(actor, foe):
 			return
 
 	# Head down, if it is standing on supper.
@@ -4308,7 +4360,7 @@ const WAIL_EVERY := 3
 ## The absence of an attack is the design, not an oversight: everything it costs
 ## you is measured in what else on the floor is now awake, which makes "how many
 ## turns can I spare to shut it up" the entire decision.
-func _ai_banshee(actor: Entity) -> void:
+func _ai_banshee(actor: Entity, foe: Entity) -> void:
 	if actor.wail_cool > 0:
 		actor.wail_cool -= 1
 	elif actor.wail_radius > 0:
@@ -4330,9 +4382,9 @@ func _ai_banshee(actor: Entity) -> void:
 	# through walls, because the behaviour was welded to the AI kind. A flag
 	# nothing consults is a lie in the save file.
 	if actor.phasing:
-		_step_phasing(actor, Vector2i(player.x, player.y))
+		_step_phasing(actor, Vector2i(foe.x, foe.y))
 	else:
-		_step_toward(actor, Vector2i(player.x, player.y))
+		_step_toward(actor, Vector2i(foe.x, foe.y))
 
 ## A step toward the target that ignores walls entirely.
 ##
@@ -4384,8 +4436,8 @@ func _step_random(actor: Entity) -> void:
 	actor.y = pick.y
 
 ## Returns false when there is nowhere further from the player to go.
-func _step_away(actor: Entity) -> bool:
-	var here := Los.steps(actor.x, actor.y, player.x, player.y)
+func _step_away(actor: Entity, foe: Entity) -> bool:
+	var here := Los.steps(actor.x, actor.y, foe.x, foe.y)
 	var best := Vector2i(actor.x, actor.y)
 	var best_d := here
 	for dy in [-1, 0, 1]:
@@ -4396,7 +4448,7 @@ func _step_away(actor: Entity) -> bool:
 			var ny: int = actor.y + dy
 			if not can_step(actor.x, actor.y, nx, ny) or entity_at(nx, ny) != null:
 				continue
-			var d := Los.steps(nx, ny, player.x, player.y)
+			var d := Los.steps(nx, ny, foe.x, foe.y)
 			if d > best_d:
 				best_d = d
 				best = Vector2i(nx, ny)

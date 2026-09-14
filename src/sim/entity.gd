@@ -7,6 +7,27 @@ extends RefCounted
 
 enum Faction { PLAYER, MONSTER, NEUTRAL }
 
+## Whether these two would fight, which is NOT the same question as "is one of
+## them the player".
+##
+## Three places in the game asked `not e.is_player` and meant "is it an enemy":
+## the shooting target list, the visible-monster list that stops click-travel,
+## and the pack AI's nerve check. They agreed only because the player was the
+## only thing on the player's side. The first ally would have appeared in the
+## firing cycle, stopped travel every turn just by standing there, and made
+## nearby goblins braver by counting as one of THEIR allies -- three different
+## symptoms of one wrong question.
+##
+## NEUTRAL fights nobody. Nothing is neutral yet; it is here because the enum
+## already named it and a rabbit that minds its own business is the obvious
+## first customer.
+func hostile_to(other: Entity) -> bool:
+	if other == null or other == self:
+		return false
+	if faction == Faction.NEUTRAL or other.faction == Faction.NEUTRAL:
+		return false
+	return faction != other.faction
+
 ## Three states rather than two. A binary asleep/awake makes stealth feel
 ## arbitrary -- you are either invisible or caught, with no warning. The middle
 ## state is the tell that lets a player back off before it is too late.
