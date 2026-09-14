@@ -100,7 +100,14 @@ func _draw() -> void:
 
 	var y := PAD + font.get_ascent(font_size)
 
-	_line(font_bold, y, "OFR", Palette.STAIRS)
+	# Who you are, where the game's own name used to be.
+	#
+	# "OFR" told you something you already knew. A name earns the line because
+	# it is the only place the name is visible during a run -- and because the
+	# name matters later: it goes on your gravestone, and a future run's bone
+	# ally will carry it.
+	_line(font_bold, y, state.player_name if state.player_name != "" else "OFR",
+		Palette.STAIRS)
 	y += LINE
 	if state.won:
 		_line(font_bold, y, "ESCAPED  turn %d" % state.turns, Palette.STAIRS)

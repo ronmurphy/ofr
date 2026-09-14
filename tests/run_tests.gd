@@ -80,6 +80,8 @@ func _initialize() -> void:
 	_test_shrine_effects()
 	_test_a_prayer_may_be_answered()
 	_test_the_hoard_room()
+	_test_the_pity_gem_is_earned()
+	_test_the_dead_have_names()
 	_test_shrine_identity_is_shuffled()
 	_test_torch_flare()
 	_test_difficult_ground()
@@ -4752,6 +4754,182 @@ func _test_the_hoard_room() -> void:
 	check("and the chest is in it (%d of %d chests)" % [chest_in_hoard, chests],
 		chests > 0 and chest_in_hoard == chests,
 		"%d chests elsewhere" % (chests - chest_in_hoard))
+
+## The early gem is a safety net, not a gift.
+##
+## It exists because roughly half of depth-2 floors generate with no gem at all,
+## which can leave the elemental system unseen for a third of a run. But it was
+## placed in room_rects[0] -- the room you START in, and the one room
+## _populate_room deliberately leaves unpopulated -- so it arrived unguarded and
+## underfoot. Reported from play as "there is a gem waiting for me right when I
+## start", which is what a guarantee looks like when it forgets to hide.
+func _test_the_pity_gem_is_earned() -> void:
+	var placed := 0
+	var in_start := 0
+	var nearer := 0
+	for i in 60:
+		for d in GameState.GEM_PITY_FLOORS:
+			var gs := GameState.new(23000 + i * 29 + int(d))
+			gs.use_scratch_files("pity%d_%d" % [i, int(d)])
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			if gs.room_rects.size() < 2:
+				gs.clear_scratch_files()
+				continue
+			var gem: Item = null
+			for it in gs.ground:
+				if it.kind == Item.Kind.GEM:
+					gem = it
+					break
+			if gem == null:
+				gs.clear_scratch_files()
+				continue
+			placed += 1
+			var home: Rect2i = gs.room_rects[0]
+			if home.has_point(Vector2i(gem.x, gem.y)):
+				in_start += 1
+			# And it should be out at the far end, not merely elsewhere.
+			var hc := home.get_center()
+			var mine := absi(gem.x - hc.x) + absi(gem.y - hc.y)
+			var avg := 0.0
+			for r in gs.room_rects:
+				var rc := r.get_center()
+				avg += absi(rc.x - hc.x) + absi(rc.y - hc.y)
+			avg /= float(gs.room_rects.size())
+			if float(mine) < avg:
+				nearer += 1
+			gs.clear_scratch_files()
+	check("early gems get placed at all (%d)" % placed, placed > 0)
+	check("and never in the room you start in", in_start == 0,
+		"%d of %d in the starting room" % [in_start, placed])
+	# Not a strict zero: a gem already lying on the floor counts as the pity
+	# gem being satisfied, and that one can be anywhere. This checks the
+	# PLACED ones are out at the far end on the whole.
+	check("they sit farther out than an average room (%d of %d nearer)"
+		% [nearer, placed], float(nearer) < float(placed) * 0.35,
+		"%d of %d" % [nearer, placed])
+
+## A name on the dead, and the old dead keeping theirs.
+##
+## The morgue is a file the PLAYER owns, with real deaths in it that the risen
+## system reads back. Adding a field to it is the one change in this project
+## that can destroy something irreplaceable, so the only acceptable shape is an
+## optional trailing clause -- the same way `slain`, `gear` and `reclaimed` were
+## each added.
+func _test_the_dead_have_names() -> void:
+	# A line from before names existed. This is the shape sitting in a real
+	# morgue right now, and it has to keep working exactly as it did.
+	var old_line := "2026-09-01 12:00:00  level 7  killed by a wight on depth 5, empty-handed, after 900 turns; 12 slain, most often goblin; bearing war axe +1"
+	var old_rec := Morgue.parse(old_line)
+	check("a line written before names still parses", not old_rec.is_empty())
+	# `gear` comes back as an ARRAY of pieces -- the parser splits it so each
+	# one can be drawn on its own line -- not as the written string.
+	check("and keeps every field it had",
+		int(old_rec.get("level", 0)) == 7 and int(old_rec.get("turns", 0)) == 900
+			and old_rec.get("gear", []) == ["war axe +1"],
+		str(old_rec))
+	check("it carries no name", not old_rec.has("name"))
+
+	# The nameless get called something, and it must be the SAME something
+	# every time or the stone and the skeleton disagree about who is buried.
+	old_rec["line"] = old_line
+	var first := Morgue.name_of(old_rec)
+	check("the nameless are named", first != "")
+	var stable := true
+	for _i in 50:
+		if Morgue.name_of(old_rec) != first:
+			stable = false
+	check("and named the same way every time (%s)" % first, stable)
+	# Different dead get different names, or it is one name with extra steps.
+	var spread := {}
+	for i in 200:
+		spread[Morgue.name_of({"line": "grave number %d" % i})] = true
+	check("different dead draw different names (%d distinct)" % spread.size(),
+		spread.size() > 1)
+
+	# A named line round-trips.
+	var named := old_line + "; known as Brad"
+	var rec := Morgue.parse(named)
+	check("a named line parses", not rec.is_empty())
+	check("and the name comes back", str(rec.get("name", "")) == "Brad",
+		str(rec.get("name", "")))
+	check("without disturbing the gear",
+		rec.get("gear", []) == ["war axe +1"], str(rec.get("gear", [])))
+	check("and name_of prefers the real one", Morgue.name_of(rec) == "Brad")
+
+	# Reclaimed still parses when a name is present -- mark_reclaimed appends
+	# after everything, so the two optional clauses have to coexist.
+	var both := Morgue.parse(named + "; reclaimed")
+	check("a named, reclaimed line parses", not both.is_empty()
+		and str(both.get("name", "")) == "Brad"
+		and both.has("reclaimed"), str(both))
+
+	# The line a live run writes carries the name it was given.
+	var gs := _arena(21, 9)
+	gs.player_name = "Brad"
+	gs.player.level = 3
+	gs.death_cause = "killed by a rat"
+	var line := gs.morgue_line()
+	check("a run writes its name into the morgue", line.contains("; known as Brad"),
+		line)
+	var back := Morgue.parse(line)
+	check("and that line reads back", not back.is_empty()
+		and str(back.get("name", "")) == "Brad", line)
+
+	# A semicolon in a name would split the record in half on the way back.
+	var odd := _arena(21, 9)
+	odd.player_name = "Bra;d"
+	odd.death_cause = "killed by a rat"
+	var safe := Morgue.parse(odd.morgue_line())
+	check("a semicolon in a name cannot break the record",
+		not safe.is_empty() and str(safe.get("name", "")).contains("Bra"),
+		odd.morgue_line())
+
+	# A run is always named now: rolled if nothing was typed.
+	var rolled := GameState.new(4242)
+	rolled.new_game()
+	check("a run with no chosen name gets one", rolled.player_name != "",
+		rolled.player_name)
+	check("and it is short enough for the sidebar (%s)" % rolled.player_name,
+		rolled.player_name.length() <= Morgue.NAME_MAX)
+	# Rolled through the RUN's rng, so a seed names the same character -- which
+	# is what keeps seeded tests and resumed saves honest.
+	var twin := GameState.new(4242)
+	twin.new_game()
+	check("a seed names the same character", twin.player_name == rolled.player_name,
+		"%s vs %s" % [twin.player_name, rolled.player_name])
+	# And the pool actually varies, or it is one name with extra steps.
+	var pool := {}
+	for i in 120:
+		var g := GameState.new(9000 + i)
+		g.new_game()
+		pool[g.player_name] = true
+	check("the pool varies (%d distinct names)" % pool.size(), pool.size() > 5)
+
+	# A chosen name is never overwritten by a rolled one.
+	var chosen := GameState.new(7)
+	chosen.player_name = "Brad"
+	chosen.new_game()
+	check("a chosen name survives new_game", chosen.player_name == "Brad",
+		chosen.player_name)
+
+	# What a player can type is bounded, because it has to fit a sidebar header
+	# and survive a round trip through a "; "-separated record.
+	check("a long name is cut to fit",
+		Morgue.clean_name("Bartholomew the Extremely Verbose").length()
+			<= Morgue.NAME_MAX)
+	check("and a semicolon never reaches the file",
+		not Morgue.clean_name("Bra;d").contains(";"))
+
+	# And it survives a suspend, or a resumed run forgets who it is.
+	var keep := _arena(21, 9)
+	keep.player_name = "Gabe"
+	var restored := GameState.new(1)
+	restored.new_game()
+	restored.apply_dict(keep.to_dict())
+	check("a name survives a suspend", restored.player_name == "Gabe",
+		restored.player_name)
 
 ## The legend shows what you have MET, and nothing else.
 func _test_bestiary_is_earned() -> void:

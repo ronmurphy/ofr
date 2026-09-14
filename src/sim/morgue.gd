@@ -22,7 +22,87 @@ extends RefCounted
 ## from before the run recorder, lines from before gear was logged, and lines
 ## with either or both. `nemesis` is `[^;]+?` rather than `.+?` so it cannot
 ## swallow the clause that follows it.
-const PATTERN := "level (?<level>\\d+)\\s+(?<cause>.+?) on depth (?<depth>\\d+), (?<carried>[^,]*), after (?<turns>\\d+) turns(?:; (?<slain>\\d+) slain(?:, most often (?<nemesis>[^;]+?))?)?(?:; bearing (?<gear>[^;]+?))?(?:; (?<reclaimed>reclaimed))?\\s*$"
+const PATTERN := "level (?<level>\\d+)\\s+(?<cause>.+?) on depth (?<depth>\\d+), (?<carried>[^,]*), after (?<turns>\\d+) turns(?:; (?<slain>\\d+) slain(?:, most often (?<nemesis>[^;]+?))?)?(?:; bearing (?<gear>[^;]+?))?(?:; known as (?<name>[^;]+?))?(?:; (?<reclaimed>reclaimed))?\\s*$"
+
+## Names for the dead who never gave one.
+##
+## Every line written before names existed has no name in it, and this project
+## has a standing rule about not orphaning a player's own files -- there are
+## real deaths in that morgue and the risen-dead system reads them back. So the
+## field is optional and the nameless get called something.
+##
+## Weighted so the plain ones are ordinary and the references are a find. An
+## easter egg you meet once in twenty graves is a delight; one you meet at every
+## stone is furniture.
+const NAMELESS := ["Nameless", "Nameless", "Nameless", "Unknown", "Unknown",
+	"Forgotten", "Forgotten",
+	## Dragon Warrior's hero, Brad's reference.
+	"Erdrick",
+	## The wizard from Rogue, which given this game's name and its amulet is
+	## the right ghost to have wandering its graveyard.
+	"Rodney"]
+
+## Names the dungeon gives you when you do not give one.
+##
+## Distinct from NAMELESS above, and the difference matters. NAMELESS is for
+## records written before names existed -- there is no name to report, so the
+## stone says so. These are for a LIVING character who declined to type one:
+## they get a real name, rolled, and find out what it is from the sidebar. A run
+## from now on is always named; only the old dead are anonymous.
+##
+## Short on purpose. This sits above the HP bar in a 256px sidebar and goes into
+## a morgue line that has to parse back, so NAME_MAX caps what a player can type
+## and these stay well inside it.
+const NAME_MAX := 16
+
+const ROLLED := ["Bram", "Edda", "Hale", "Mira", "Nell", "Osric", "Pike",
+	"Sten", "Tam", "Wynn", "Corin", "Della", "Fenn", "Hob", "Jory", "Rowan",
+	"Thane", "Wren"]
+
+## Rare finds, kept few. An easter egg you meet every run is furniture.
+##
+## Erdrick is Dragon Warrior's hero, Brad's reference. Rodney is the wizard from
+## Rogue -- the right ghost to haunt a game called "old fashioned roguelike" --
+## and Yendor is his amulet, which is also his name backwards, so the two are
+## secretly the same joke.
+const ROLLED_RARE := ["Erdrick", "Rodney", "Yendor"]
+
+## One in this many rolled names is a rare one.
+const RARE_ONE_IN := 12
+
+static func roll_name(rng: RandomNumberGenerator) -> String:
+	if rng.randi_range(1, RARE_ONE_IN) == 1:
+		return ROLLED_RARE[rng.randi_range(0, ROLLED_RARE.size() - 1)]
+	return ROLLED[rng.randi_range(0, ROLLED.size() - 1)]
+
+## What a typed name is allowed to be.
+##
+## Semicolons and newlines would split a morgue record in half on the way back
+## in -- the format is "; "-separated and read a line at a time -- so they are
+## replaced rather than rejected, and the whole thing is capped to what the
+## sidebar can draw.
+static func clean_name(raw: String) -> String:
+	var out := raw.strip_edges().replace(";", ",").replace("\n", " ")
+	if out.length() > NAME_MAX:
+		out = out.substr(0, NAME_MAX).strip_edges()
+	return out
+
+## The name on a record, or a stable invented one.
+##
+## DETERMINISTIC, and that is the whole point. Rolled fresh each call, the same
+## grave would read "Nameless" when you looked at it and raise "Erdrick" a turn
+## later -- the stone and the skeleton disagreeing about who is buried there.
+## Hashing the record's own line means a given dead adventurer is named once and
+## forever, without storing anything new.
+static func name_of(rec: Dictionary) -> String:
+	var given := String(rec.get("name", "")).strip_edges()
+	if given != "":
+		return given
+	var seed_text := String(rec.get("line", ""))
+	if seed_text == "":
+		seed_text = "%s|%s|%s" % [str(rec.get("level", 0)),
+			str(rec.get("turns", 0)), str(rec.get("cause", ""))]
+	return NAMELESS[absi(seed_text.hash()) % NAMELESS.size()]
 
 ## Every death the log holds. Escapes are skipped -- someone who walked out
 ## into daylight is not buried in the dungeon.
@@ -71,12 +151,18 @@ static func parse(line: String) -> Dictionary:
 	# catalogue -- and a grave that only ever gets READ should not have to.
 	if m.get_string("reclaimed") != "":
 		rec["reclaimed"] = true
+	# Adding a group to PATTERN is only half of adding a field: nothing reaches
+	# the record unless it is pulled out here. The first version of the name
+	# matched perfectly and never appeared, because this block did not know to
+	# ask for it.
+	if m.get_string("name") != "":
+		rec["name"] = m.get_string("name")
 	if m.get_string("gear") != "":
 		var worn: Array[String] = []
 		for part in m.get_string("gear").split(","):
-			var name := String(part).strip_edges()
-			if name != "":
-				worn.append(name)
+			var piece := String(part).strip_edges()
+			if piece != "":
+				worn.append(piece)
 		if not worn.is_empty():
 			rec["gear"] = worn
 	return rec
@@ -85,7 +171,15 @@ static func parse(line: String) -> Dictionary:
 ## because the widest thing that shows them is the cursor panel.
 static func epitaph(rec: Dictionary) -> Array:
 	var out: Array = ["a grave"]
-	out.append("one who reached level %d" % int(rec.get("level", 1)))
+	# The name gets its own line rather than sharing one with the level.
+	#
+	# "Erdrick, who reached level 7" is 28 characters against a panel that fits
+	# 26, and this stone is drawn in the same cursor panel that once cut "killed
+	# by a kobold slinger" in half. One short line per fact is how the rest of
+	# this epitaph is already built -- the gear puts each piece on its own line
+	# for exactly the same reason.
+	out.append(name_of(rec))
+	out.append("reached level %d" % int(rec.get("level", 1)))
 	out.append(String(rec.get("cause", "died here")))
 	if rec.has("slain"):
 		out.append("%d died first" % int(rec["slain"]))
@@ -186,8 +280,9 @@ static func mark_reclaimed(path: String, raw_line: String) -> bool:
 
 ## One sentence, for the log line printed on stepping onto it.
 static func inscription(rec: Dictionary) -> String:
-	var s := "Here lies one who reached level %d, %s." % [
-		int(rec.get("level", 1)), String(rec.get("cause", "and died here"))]
+	var s := "Here lies %s, who reached level %d, %s." % [
+		name_of(rec), int(rec.get("level", 1)),
+		String(rec.get("cause", "and died here"))]
 	if rec.has("slain"):
 		s += " %d things died first." % int(rec["slain"])
 	if rec.has("gear"):

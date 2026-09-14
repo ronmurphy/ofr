@@ -398,6 +398,13 @@ var static_lights: Array = []
 ## builds thousands of them -- a file read and a regex pass per level would put
 ## real time on a suite that already takes minutes. Cached on the instance, not
 ## statically, because `use_scratch_files` moves the path underneath the tests.
+## What this character is called, or "" for the nameless.
+##
+## Written into the morgue on death, which is the only place it matters: a name
+## you never see again is decoration, but a name that comes back three runs
+## later attached to a skeleton carrying the gear you died in is a mechanic.
+var player_name := ""
+
 var _morgue_cache: Array = []
 var _morgue_read := false
 
@@ -836,6 +843,12 @@ func new_game() -> void:
 	gem_found = false
 	uniques_found.clear()
 	player = Entity.new("you", &"player", 0, 0)
+	# Always named from here on. If nothing was chosen, the dungeon picks one
+	# and the player meets it in the sidebar -- the same bargain the shrines
+	# make, where you learn what you have by looking rather than by being told.
+	#
+	# Rolled through the RUN's rng so a seeded game names the same character,
+	# which keeps seeded tests and resumed saves honest.
 	player.is_player = true
 	player.faction = Entity.Faction.PLAYER
 	player.max_hp = 30
@@ -844,6 +857,8 @@ func new_game() -> void:
 	player.defense = 1
 	player.light = LightSource.new(0, 0, TORCH_RADIUS,
 		Color(1.00, 0.72, 0.36), Color(0.30, 0.34, 0.55), 1.0, true)
+	if player_name.strip_edges() == "":
+		player_name = Morgue.roll_name(rng)
 	_shuffle_shrines()
 	build_level()
 	msg_log.add("You descend into the dark, torch guttering.", Color(0.85, 0.72, 0.45))
@@ -1336,8 +1351,31 @@ func _place_first_gem() -> void:
 				gem_found = true
 				return
 
-	var at := _open_cell_in(room_rects[0] if not room_rects.is_empty()
-		else Rect2i(1, 1, map.width - 2, map.height - 2))
+	# The FARTHEST room from where you woke up, and never room 0.
+	#
+	# It used to go in room_rects[0], which is the room you start in -- and
+	# `_populate_room` deliberately skips index 0, so the pity gem landed in the
+	# one room on the floor guaranteed to hold no monsters, a few paces from
+	# your feet. Reported from play as "there is a gem waiting for me when I
+	# start", which is exactly what it was.
+	#
+	# That turned a safety net into a gift. A gem you find in a room you cleared
+	# reads as loot; a gem lying beside you on arrival reads as the game
+	# apologising for its own drop rates. Same item, opposite meaning -- and the
+	# placement is the whole difference.
+	var where := Rect2i(1, 1, map.width - 2, map.height - 2)
+	if room_rects.size() > 1:
+		var home := room_rects[0].get_center()
+		var best := -1
+		for i in range(1, room_rects.size()):
+			var c := room_rects[i].get_center()
+			var d := absi(c.x - home.x) + absi(c.y - home.y)
+			if d > best:
+				best = d
+				where = room_rects[i]
+	elif not room_rects.is_empty():
+		where = room_rects[0]
+	var at := _open_cell_in(where)
 	if at.x < 0:
 		return
 	# Drawn from the same table as everything else rather than from a
@@ -2543,7 +2581,13 @@ func _raise_from(cell: Vector2i) -> void:
 	var risen := monster_from(entry, spot.x, spot.y)
 	risen.risen = true
 	risen.alertness = Entity.Alert.AWAKE
-	risen.name = "risen dead"
+	# Named, because the stone beside it is named. A skeleton called "risen dead"
+	# standing over a grave that says "Erdrick, who reached level 7" reads as two
+	# unrelated things; naming it is what makes the fight ABOUT somebody.
+	#
+	# Morgue.name_of invents a stable one for the older dead, who were buried
+	# before names were written down.
+	risen.name = "risen %s" % Morgue.name_of(rec)
 	# Wearing what the run died in, and charged for it.
 	#
 	# The threat ceiling is a survivability promise, and gear is exactly why
@@ -3640,6 +3684,7 @@ func to_dict() -> Dictionary:
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
 		"gem_found": gem_found,
+		"player_name": player_name,
 		"uniques": uniques_found.keys(),
 		"risen_grave": [risen_grave.x, risen_grave.y],
 		"hues": shrine_hues,
@@ -3704,6 +3749,7 @@ func apply_dict(d: Dictionary) -> bool:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
 	grave_risen = d.get("grave_risen", false)
 	gem_found = d.get("gem_found", false)
+	player_name = String(d.get("player_name", ""))
 	uniques_found.clear()
 	for k in d.get("uniques", []):
 		uniques_found[StringName(k)] = true
@@ -3811,6 +3857,15 @@ func morgue_line() -> String:
 		line += "; %d slain" % slain
 		if nemesis != "":
 			line += ", most often %s" % nemesis
+	# Appended, never inserted. PATTERN is not anchored to the start of the
+	# line, so a leading group risks eating part of the timestamp -- and every
+	# line already in a player's morgue has to keep parsing. Trailing optional
+	# groups are how `slain`, `gear` and `reclaimed` were each added without
+	# orphaning what came before, and this follows them.
+	#
+	# Where it is STORED is not where it is read: the epitaph puts the name
+	# first, because "Brad, who reached level 7" is the sentence a gravestone
+	# wants and "level 7 ... known as Brad" is not.
 
 	# What they were wearing when it happened.
 	#
@@ -3829,6 +3884,9 @@ func morgue_line() -> String:
 			worn.append(it.display_name())
 	if not worn.is_empty():
 		line += "; bearing %s" % ", ".join(worn)
+	var called := Morgue.clean_name(player_name)
+	if called != "":
+		line += "; known as %s" % called
 	return line
 
 ## JSON has no integers -- every number comes back a double, including the ones

@@ -12,6 +12,7 @@ extends Control
 @onready var log_view: MessageView = $Log
 @onready var inventory: InventoryPanel = $Inventory
 @onready var menu: MenuPanel = $Menu
+@onready var name_entry: NamePanel = $NameEntry
 @onready var legend: LegendPanel = $Legend
 @onready var summary: SummaryPanel = $Summary
 @onready var sound: SoundDeck = $Sound
@@ -73,9 +74,11 @@ func _ready() -> void:
 	# A suspended run resumes straight into itself. Loading destroys the file,
 	# so there is nothing left to fall back to if this run goes badly.
 	var fresh := GameState.load_suspend()
+	var asking := false
 	if fresh == null:
 		fresh = GameState.new()
 		fresh.new_game()
+		asking = true
 	else:
 		fresh.msg_log.add("You take up where you left off.", Color(0.80, 0.85, 0.95))
 		# The consequence, not just the fact. Someone who assumes the slot
@@ -83,6 +86,11 @@ func _ready() -> void:
 		fresh.msg_log.add("That suspend is gone -- save again before you stop.",
 			Color(0.95, 0.80, 0.45))
 	_bind_state(fresh)
+	# Only for a genuinely new run. A resumed save already has a name, and
+	# asking again would be asking someone mid-run who they are.
+	if asking:
+		name_entry.open()
+		_refresh()
 	grid.cell_clicked.connect(_on_cell_clicked)
 	grid.cell_right_clicked.connect(_on_cell_right_clicked)
 	inventory.use_requested.connect(_use_item)
@@ -93,6 +101,7 @@ func _ready() -> void:
 	menu.resume_requested.connect(_close_menu)
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
+	name_entry.chosen.connect(_on_name_chosen)
 	inventory.close_requested.connect(_close_inventory)
 	summary.close_requested.connect(summary.close)
 
@@ -142,6 +151,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if key_event == null or not key_event.pressed or key_event.echo:
 		return
 	var key: int = key_event.keycode
+
+	# Asked before the run begins, so it takes keys ahead of every other panel.
+	# It needs the EVENT rather than the keycode: a keycode cannot tell "a" from
+	# "A", and a player who capitalises their own name should get what they
+	# typed.
+	if name_entry.visible:
+		name_entry.handle_key(key_event)
+		_refresh()
+		return
 
 	if summary.visible:
 		# Anything dismisses it except the keys that mean something else here:
@@ -371,6 +389,14 @@ func _end_look() -> void:
 ## The single place that points every panel at a GameState. Having this wiring
 ## copied into _ready, the restart path and the capture tool is exactly how the
 ## inventory ended up rendering a stale, empty pack.
+## A blank answer is a real answer: GameState rolls one and the player meets it
+## above the HP bar.
+func _on_name_chosen(chosen_name: String) -> void:
+	state.player_name = chosen_name
+	if state.player_name.strip_edges() == "":
+		state.player_name = Morgue.roll_name(state.rng)
+	_refresh()
+
 func _close_menu() -> void:
 	menu.close()
 	_refresh()
@@ -404,6 +430,8 @@ func _start_new_run() -> void:
 	var fresh := GameState.new()
 	fresh.new_game()
 	_bind_state(fresh)
+	name_entry.open()
+	_refresh()
 
 func _bind_state(s: GameState) -> void:
 	state = s
