@@ -1109,7 +1109,11 @@ func _upload_cells() -> void:
 	if m == null:
 		return
 	m.set_shader_parameter("cell_data", _cell_tex)
-	m.set_shader_parameter("control_origin", global_position)
+	# No origin is sent any more. The shader reads its own local position out of
+	# the vertex stage, which is the space this control draws in -- see the
+	# comment above `varying local_px`. Passing global_position was the bug:
+	# it is in stretch space and the shader was comparing it against real
+	# framebuffer pixels, which only agree at exactly 1600x900.
 	m.set_shader_parameter("camera_cell", _camera_visual)
 	m.set_shader_parameter("cell_size", float(cell_size))
 	m.set_shader_parameter("map_size", Vector2(map.width, map.height))

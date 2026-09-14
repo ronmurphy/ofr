@@ -24,7 +24,6 @@ shader_type canvas_item;
 //                          the nearest flickering light, torch included
 //   a = 1 if visible       animation only runs on what you can actually see
 uniform sampler2D cell_data : filter_nearest, repeat_disable;
-uniform vec2 control_origin;
 uniform vec2 camera_cell;
 uniform float cell_size;
 uniform vec2 map_size;
@@ -66,8 +65,31 @@ const float ID_BRAZIER = 6.0;
 const float ID_WATER   = 9.0;
 const float ID_FUNGUS  = 18.0;
 
+// Where this fragment is INSIDE THE GRID CONTROL, in the same pixels
+// `cell_size` is measured in.
+//
+// This started as `FRAGCOORD.xy - control_origin`, which is a different space
+// and only looked right by coincidence. FRAGCOORD is in real framebuffer
+// pixels; the control's position and cell_size are in the project's 1600x900
+// stretch space, and `stretch/mode = canvas_items` makes those two the same
+// thing ONLY when the window is exactly 1600x900. Every desktop launch is, and
+// no browser is -- the web export sizes its canvas to the page -- so the bug
+// was invisible in the editor and shipped to itch, where the water and ember
+// effects sat measurably off their own tiles. Measured on desktop at 1200x675:
+// the animated region moved from x 0.060-0.241 of the width to 0.069-0.298.
+//
+// VERTEX in a canvas_item vertex shader is already in the CanvasItem's local
+// space, before the stretch transform is applied -- exactly the space
+// _screen_f() draws in. So it needs no origin uniform and no correction, and
+// it is right at any canvas size rather than right at one of them.
+varying vec2 local_px;
+
+void vertex() {
+	local_px = VERTEX;
+}
+
 void fragment() {
-	vec2 cell = (FRAGCOORD.xy - control_origin) / cell_size + camera_cell;
+	vec2 cell = local_px / cell_size + camera_cell;
 	vec2 uv = cell / map_size;
 
 	if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
