@@ -121,6 +121,7 @@ func _initialize() -> void:
 	_test_rabbit()
 	_test_banshee()
 	_test_a_side_of_your_own()
+	_test_the_bone_ally()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -4536,8 +4537,27 @@ func _test_graves_raise_the_dead() -> void:
 	dead.hp = 0
 	dead.alive = false
 	gs2._drop_loot(dead)
-	check("it hands back everything it carried (%d items)" % gs2.ground.size(),
-		gs2.ground.size() == 2, "%d" % gs2.ground.size())
+	# Counted by KIND rather than by total. This check read `size() == 2` and
+	# failed the moment a risen grave also left a bone -- correctly, but the
+	# number alone could not say whether the bone had appeared or a piece of
+	# armour had gone missing. Naming both makes the next change to this drop
+	# report which half of it moved.
+	var gear_back := 0
+	var bones_back := 0
+	for it in gs2.ground:
+		if it.id == &"bone":
+			bones_back += 1
+		else:
+			gear_back += 1
+	# The gear does NOT fall here any more. It goes onto the bone, so that
+	# exactly one copy of it exists from this moment on -- the player gets it
+	# back when the ally carrying it falls. Asserted as zero rather than left
+	# unmentioned, because "nothing dropped" is precisely the thing a future
+	# change to this path would break silently.
+	check("a risen grave drops no gear of its own (%d)" % gear_back,
+		gear_back == 0, "%d" % gear_back)
+	check("it leaves only the bone to raise them by", bones_back == 1,
+		"%d" % bones_back)
 
 	# Put down, and the stone settles -- but the morgue line is untouched.
 	gs2._settle_the_grave()
@@ -5851,6 +5871,162 @@ func _test_cave_giant() -> void:
 ## the promise Entity's own header makes -- "when a party arrives later, it is
 ## four of these in a list rather than a new concept" -- and this is the test
 ## that holds it to it.
+## The bone ally, end to end.
+##
+## Built as one test rather than six because the mechanic is a chain -- a
+## grave becomes a bone becomes a companion becomes nothing at the stairs --
+## and every link is a place the previous version of this feature could have
+## quietly dropped something. Two of the checks below exist only because the
+## obvious implementation duplicates items, and one because it steals the
+## player's experience.
+func _test_the_bone_ally() -> void:
+	var gs := _arena(30, 14)
+	gs.player.x = 4
+	gs.player.y = 7
+
+	# A risen grave, armed the way _raise_from arms one.
+	var risen := _spawn(gs, "skeleton", 5, 7)
+	risen.risen = true
+	risen.name = "risen Erdrick"
+	for want in [&"short_sword", &"leather_armour"]:
+		var kit := Item.make(want)
+		risen.equipped[kit.slot] = kit
+		risen.inventory.append(kit)
+	risen.hp = 1
+	gs._attack(gs.player, risen)
+	check("putting a risen grave down kills it", not risen.alive)
+
+	var bone: Item = null
+	for it in gs.ground:
+		if it.id == &"bone":
+			bone = it
+	check("and leaves a bone behind", bone != null)
+	if bone == null:
+		return
+	check("which remembers whose it is", bone.bone_name == "Erdrick",
+		bone.bone_name)
+	check("and what they were buried in (%d)" % bone.bone_gear.size(),
+		bone.bone_gear.size() == 2)
+	# And the gear does NOT also drop. One copy of that kit exists from here:
+	# it is on the bone, and it comes back when the ally carrying it falls.
+	var loot := 0
+	for it in gs.ground:
+		if it.id == &"short_sword" or it.id == &"leather_armour":
+			loot += 1
+	check("the gear goes with the bone, not onto the floor (%d)" % loot,
+		loot == 0)
+
+	# --- carried, saved, and still somebody ---------------------------------
+	var back := Item.from_dict(bone.to_dict())
+	check("a bone survives a suspend", back != null
+		and back.bone_name == "Erdrick" and back.bone_gear.size() == 2)
+	check("and is still named for them after loading",
+		back != null and back.name.contains("Erdrick"), back.name if back else "null")
+
+	# --- raised -------------------------------------------------------------
+	gs.ground.erase(bone)
+	gs.give_item(bone)
+	var idx := gs.player.inventory.find(bone)
+	check("the bone is carryable", idx >= 0)
+	check("raising it spends the bone", gs.player_use(idx)
+		and not gs.player.inventory.has(bone))
+
+	var ally: Entity = null
+	for e in gs.entities:
+		if e.faction == Entity.Faction.PLAYER and not e.is_player:
+			ally = e
+	check("and somebody is standing there", ally != null)
+	if ally == null:
+		return
+	check("wearing what they were buried in",
+		ally.equipped.size() == 2, str(ally.equipped.size()))
+	check("named for the dead, not for the bone", ally.name == "Erdrick",
+		ally.name)
+	check("and it is not counted as a monster",
+		not gs.visible_monsters().has(ally))
+
+	# --- it fights ----------------------------------------------------------
+	var orc := _spawn(gs, "orc", 6, 7)
+	ally.x = 5
+	ally.y = 7
+	var hurt := orc.hp
+	gs._take_ai_turn(ally)
+	check("the ally swings at what is beside it", orc.hp < hurt,
+		"%d -> %d" % [hurt, orc.hp])
+
+	# --- and its kills are yours --------------------------------------------
+	var xp_was := gs.player.xp
+	orc.hp = 1
+	gs._attack(ally, orc)
+	check("a kill of its own earns the run experience",
+		not orc.alive and gs.player.xp > xp_was,
+		"%d -> %d" % [xp_was, gs.player.xp])
+
+	# --- the leash ----------------------------------------------------------
+	var far := _spawn(gs, "goblin", 25, 12)
+	ally.x = 5
+	ally.y = 7
+	check("something that far off is beyond the leash",
+		Los.steps(gs.player.x, gs.player.y, far.x, far.y) > GameState.ALLY_LEASH)
+	gs._take_ai_turn(ally)
+	check("so the ally stays near you rather than chasing it",
+		Los.steps(ally.x, ally.y, gs.player.x, gs.player.y) <= 2,
+		"%d away" % Los.steps(ally.x, ally.y, gs.player.x, gs.player.y))
+
+	# --- swapping, not swinging ---------------------------------------------
+	gs.player.x = 4
+	gs.player.y = 7
+	ally.x = 5
+	ally.y = 7
+	var ally_hp := ally.hp
+	gs.player_move(1, 0)
+	check("walking into your own ally changes places with it",
+		gs.player.x == 5 and ally.x == 4 and ally.y == 7,
+		"player %d,%d ally %d,%d" % [gs.player.x, gs.player.y, ally.x, ally.y])
+	check("and does not hit it", ally.hp == ally_hp)
+
+	# --- it follows you down -------------------------------------------------
+	# Through the real path: build_level replaces `entities` wholesale, which
+	# is exactly where an ally would be lost.
+	var deep := GameState.new(31337)
+	deep.new_game()
+	var tagalong := GameState.monster_from(GameState.BESTIARY[0], 1, 1)
+	tagalong.faction = Entity.Faction.PLAYER
+	tagalong.name = "Erdrick"
+	deep.entities.append(tagalong)
+	deep.depth += 1
+	deep.build_level()
+	check("an ally follows you to the next floor",
+		deep.entities.has(tagalong) and tagalong.alive)
+	check("and arrives beside you rather than where it stood",
+		Los.steps(tagalong.x, tagalong.y, deep.player.x, deep.player.y) <= 2,
+		"%d away" % Los.steps(tagalong.x, tagalong.y, deep.player.x, deep.player.y))
+
+	# --- and nothing ever mends it -------------------------------------------
+	# The rule that makes following safe. Given a regen an ally must still not
+	# use it, so this sets one deliberately rather than trusting a skeleton's
+	# zero -- a coincidence somebody could tune away without noticing.
+	tagalong.regen = 5
+	tagalong.max_hp = 40
+	tagalong.hp = 10
+	deep._take_ai_turn(tagalong)
+	check("an ally cannot be healed, even given regeneration",
+		tagalong.hp == 10, str(tagalong.hp))
+
+	# --- it hands the kit back when it falls ---------------------------------
+	# The other half of conservation: one copy of that gear exists, and this is
+	# where the player gets it back.
+	var before := gs.ground.size()
+	ally.hp = 1
+	gs._attack(_spawn(gs, "orc", ally.x + 1, ally.y), ally)
+	var handed := 0
+	for it in gs.ground:
+		if it.id == &"short_sword" or it.id == &"leather_armour":
+			handed += 1
+	check("a fallen ally hands its kit back (%d)" % handed,
+		not ally.alive and handed == 2,
+		"%d items, ground %d -> %d" % [handed, before, gs.ground.size()])
+
 func _test_a_side_of_your_own() -> void:
 	var gs := _arena(30, 14)
 	gs.player.x = 4

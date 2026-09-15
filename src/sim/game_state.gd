@@ -876,6 +876,20 @@ func build_level() -> void:
 	gen.library = _vault_library
 	gen.generate(map)
 
+	# Whoever is walking with you comes along. Captured before `entities` is
+	# replaced, and put back once the player has somewhere to stand.
+	#
+	# An ally used to end at the stairs, and every awkward rule around this
+	# feature grew out of that one boundary: a forfeit clause, a speech about
+	# being bound to the floor, and a cash-out hole underneath both. Letting
+	# them follow deletes all three. What keeps it honest is that an ally
+	# cannot be healed by anything -- see `_take_ai_turn` -- so it is a
+	# decaying resource with a guaranteed end rather than a permanent party.
+	var following: Array[Entity] = []
+	for e in entities:
+		if e.alive and not e.is_player and e.faction == Entity.Faction.PLAYER:
+			following.append(e)
+
 	entities = [player]
 	ground = []
 	static_lights = []
@@ -971,6 +985,18 @@ func build_level() -> void:
 	# keep out of authored rooms. Called any earlier and it would be checking
 	# the previous floor's vaults.
 	_place_corrupted()
+
+	# AFTER the floor is populated, so `_nearest_restable` routes them around
+	# whatever is already standing there. They arrive beside the player rather
+	# than where they were: an ally that was across the map when you took the
+	# stairs should not be lost for it.
+	for ally in following:
+		var spot := _nearest_restable(Vector2i(player.x, player.y))
+		if spot.x < 0:
+			continue
+		ally.x = spot.x
+		ally.y = spot.y
+		entities.append(ally)
 
 	pathfinder = Pathfinder.new(map)
 	update_vision()
@@ -1724,16 +1750,36 @@ func _drop_loot(victim: Entity) -> void:
 			victim.equipped.clear()
 			victim.inventory.clear()
 			return
+	# A risen grave leaves exactly one thing: the bone.
+	#
+	# Its gear goes ONTO the bone rather than onto the floor, so that from here
+	# on exactly one copy of that kit exists anywhere in the world. You get it
+	# back when whoever is carrying it finally falls -- which they will, because
+	# an ally cannot be healed.
+	#
+	# This is the rule that dissolved a whole family of problems. While the
+	# gear dropped here AND the ally wore a remembered copy, the same chain
+	# mail was being worn twice; closing that at the stairs needed a forfeit
+	# rule, and the forfeit rule opened a cash-out (summon on the staircase,
+	# descend, keep the plate). Conserving the kit from the start means none of
+	# those rules have to exist.
+	if victim.risen:
+		_leave_a_bone(victim, at)
+		victim.equipped.clear()
+		victim.inventory.clear()
+		return
 	for slot in victim.equipped:
 		var it: Item = victim.equipped[slot]
-		# A risen grave hands back ALL of it. Everything else rolls per item.
+		# An ally hands back ALL of it, because what it is wearing is the only
+		# copy there is. Everything else rolls per item.
 		#
 		# This gear is the player's own, lost on this floor in an earlier run,
-		# and the whole point of the fight is reclaiming it. A per-item roll
+		# and the whole point of the mechanic is reclaiming it. A per-item roll
 		# would turn "beat your own corpse and get your bow back" into "beat
 		# your own corpse and maybe get nothing", which is a worse offer than
 		# not having the mechanic.
-		if not victim.risen and rng.randf() > LOOT_DROP_CHANCE:
+		if victim.faction != Entity.Faction.PLAYER \
+				and rng.randf() > LOOT_DROP_CHANCE:
 			continue
 		it.x = at.x
 		it.y = at.y
@@ -1742,6 +1788,42 @@ func _drop_loot(victim: Entity) -> void:
 		msg_log.add("It drops the %s." % it.display_name(), Color(0.72, 0.78, 0.90))
 	victim.equipped.clear()
 	victim.inventory.clear()
+
+## What is left of somebody you put back down.
+##
+## Dropped on the floor rather than handed straight to the pack, so it obeys
+## every rule an item already has: it can be left behind, it shows in the look
+## panel, and a full inventory is a real decision rather than a silent loss.
+##
+## The gear is copied by NAME, the same words the morgue writes, so that
+## rebuilding the ally later goes through `Item.from_display_name` -- the one
+## path that already turns those words back into items. Nothing here needs to
+## know what a chain mail is.
+func _leave_a_bone(victim: Entity, at: Vector2i) -> void:
+	var bone := Item.make(&"bone")
+	# "risen Erdrick" was named from the stone; the bone is Erdrick's.
+	bone.bone_name = victim.name.trim_prefix("risen ").strip_edges()
+	if bone.bone_name == "":
+		bone.bone_name = "Nameless"
+	for slot in victim.equipped:
+		var it: Item = victim.equipped[slot]
+		bone.bone_gear.append(it.display_name())
+	bone.name = Item.bone_label(bone.bone_name)
+	bone.x = at.x
+	bone.y = at.y
+	bone.letter = ""
+	ground.append(bone)
+	msg_log.add("Among the bones, one is still warm. What they carried "
+		+ "went with it.", Color(0.70, 0.85, 0.75))
+
+## How far from the player an ally will chase something before it gives up and
+## comes back.
+##
+## A leash, and the reason for one is not balance but legibility: an unleashed
+## ally walks off after the nearest thing on the floor, and the player loses
+## track of where their help is. Eight is the same order as a monster's notice
+## range, so the ally ranges about as far as the things it is fighting.
+const ALLY_LEASH := 8
 
 ## Weighted by tier, and filtered to what still fits under the ceiling.
 ##
@@ -2256,6 +2338,20 @@ func player_move(dx: int, dy: int) -> bool:
 	var ny := player.y + dy
 
 	var target := entity_at(nx, ny)
+	# Change places with it rather than hitting it. An autonomous ally WILL
+	# end up in the corridor you are backing down -- that is not an edge case,
+	# it is most corridors -- and the alternatives are both bad: bumping it
+	# costs you the escape, and attacking it costs you the ally. Swapping is
+	# the only version where the help you summoned is not also the thing that
+	# traps you. It is free, deliberately: the ally moves on its own turn.
+	if target != null and target != player and not target.hostile_to(player):
+		var from := Vector2i(player.x, player.y)
+		player.x = nx
+		player.y = ny
+		target.x = from.x
+		target.y = from.y
+		_end_player_turn(move_cost_for(player, nx, ny))
+		return true
 	if target != null and target != player:
 		if ratted():
 			msg_log.add("You have no hands. Whatever you meant to do, you cannot.",
@@ -2620,6 +2716,55 @@ func _raise_from(cell: Vector2i) -> void:
 	events.append({"kind": &"noise", "to": spot, "radius": 4, "cause": &"rise"})
 	msg_log.add("The stone shifts. Something you buried stands up.",
 		Color(0.85, 0.90, 0.95))
+
+## Calls somebody back up, on your side this time.
+##
+## Built the same way `_raise_from` builds the enemy: the bestiary's skeleton,
+## wearing what the morgue says this character was buried in. That is what
+## makes an ally's strength the strength of the run that died -- a shallow
+## death lends you a skeleton in a dagger, a depth-10 death lends you one in
+## plate. Nothing balances that by hand, and nothing needs to.
+##
+## Returns false without spending the bone when there is nowhere to stand.
+## Refusing costs neither the item nor the turn, which is the rule every other
+## consumable already follows.
+func _summon_ally(bone: Item) -> bool:
+	var spot := _nearest_restable(Vector2i(player.x, player.y))
+	if spot.x < 0:
+		msg_log.add("There is no room here for anyone else.", Color(0.7, 0.6, 0.4))
+		return false
+	var entry := {}
+	for e in BESTIARY:
+		if e["name"] == "skeleton":
+			entry = e
+	if entry.is_empty():
+		return false
+
+	var ally := monster_from(entry, spot.x, spot.y)
+	ally.faction = Entity.Faction.PLAYER
+	ally.appearance = &"bone_ally"
+	ally.ai = &"ally"
+	# Always up. An ally has no awareness state -- see `_take_ai_turn` -- but
+	# the field is read in enough places that leaving it ASLEEP would be a trap
+	# for whoever touches this next.
+	ally.alertness = Entity.Alert.AWAKE
+	ally.risen = false
+	var who := bone.bone_name if bone.bone_name != "" else "Nameless"
+	ally.name = who
+	for text in bone.bone_gear:
+		var it := Item.from_display_name(String(text))
+		if it == null:
+			continue
+		ally.equipped[it.slot] = it
+		ally.inventory.append(it)
+		ally.threat += it.power_bonus + it.defense_bonus
+	entities.append(ally)
+	# Starts with a full turn's worth owed, like anything else that arrives
+	# mid-fight, so summoning does not hand you a free extra attack this turn.
+	Scheduler.spend(ally, Scheduler.ACTION_COST)
+	events.append({"kind": &"notice", "to": spot})
+	msg_log.add("%s rises, and stands with you." % who, Color(0.70, 0.90, 0.78))
+	return true
 
 ## Announces a change of footing, once, when it changes.
 func _note_footing() -> void:
@@ -3449,6 +3594,9 @@ func player_drop(index: int) -> bool:
 ## Returns false if the item declined to be used, in which case it is not spent.
 func _apply_effect(item: Item) -> bool:
 	match item.effect:
+		&"summon":
+			return _summon_ally(item)
+
 		&"heal":
 			if player.hp >= player.max_hp:
 				msg_log.add("You are already whole.", Color(0.7, 0.6, 0.4))
@@ -3952,11 +4100,31 @@ func _take_ai_turn(actor: Entity) -> int:
 
 	# Regeneration ticks even while asleep, so a troll you wounded and fled
 	# from is whole again when you come back. That is the point of it.
-	if actor.regen > 0 and actor.hp < actor.max_hp:
+	#
+	# Never for an ally, and stated here rather than left to the fact that a
+	# skeleton's regen happens to be zero. "An ally cannot be healed" is the
+	# rule that makes a companion who follows you across floors safe -- it is
+	# what turns it from a permanent party member into something that only ever
+	# wears down -- so it belongs in the code rather than in a coincidence
+	# somebody could later tune away.
+	if actor.faction != Entity.Faction.PLAYER and actor.regen > 0 \
+			and actor.hp < actor.max_hp:
 		actor.hp = mini(actor.max_hp, actor.hp + actor.regen)
 
 	if actor.chilled > 0:
 		actor.chilled -= 1
+
+	# An ally never sleeps, never loses your trail and cannot be snuck up on,
+	# so it skips the awareness system entirely rather than being handed a
+	# special case inside it. That system is built on YOUR torchlight and YOUR
+	# stealth -- `_notices_player` reads the light at the player's feet and
+	# rolls against the rat ring -- and every line of it would be measuring the
+	# wrong thing for something standing next to you on purpose.
+	if actor.faction == Entity.Faction.PLAYER:
+		var quarry := _foe_for(actor)
+		_ai_ally(actor, quarry)
+		return _last_move_cost
+
 	_update_awareness(actor)
 	# Asleep, or merely stirring: it spends its turn not acting. That pause is
 	# the player's window to withdraw, and it is the point of the middle state.
@@ -4110,6 +4278,33 @@ func _ai_hunter(actor: Entity, foe: Entity) -> void:
 		_attack(actor, foe)
 		return
 	_step_toward(actor, Vector2i(foe.x, foe.y))
+
+## Fights what is near you, and otherwise keeps up.
+##
+## Deliberately simple, and deliberately NOT commandable. The design rule Brad
+## set is that the player controls the TIMING -- when the bone is spent -- and
+## nothing after that. An ally you steer is a second character to play, which
+## doubles the keys and halves the tension; an ally that just fights is a
+## decision you made one turn ago and now have to live with.
+##
+## The leash is what stops it being annoying. Without it the ally walks off
+## after whatever is nearest on the floor, and the player spends the fight
+## wondering where their help went.
+func _ai_ally(actor: Entity, quarry: Entity) -> void:
+	# Something to fight, and near enough to YOU to be worth fighting. Measured
+	# from the player rather than from the ally, so it never strays further
+	# than the leash however far it has already wandered.
+	if quarry != null and Los.steps(player.x, player.y, quarry.x, quarry.y) <= ALLY_LEASH:
+		if actor.is_adjacent(quarry):
+			_attack(actor, quarry)
+			return
+		_step_toward(actor, Vector2i(quarry.x, quarry.y))
+		return
+	# Nothing worth doing: come back. Stops at arm's length rather than trying
+	# to stand on you -- a companion that crowds the doorway you are backing
+	# through is a companion that gets you killed.
+	if Los.steps(actor.x, actor.y, player.x, player.y) > 1:
+		_step_toward(actor, Vector2i(player.x, player.y))
 
 ## Bites when it happens to be beside you, but will not hold a line -- so you
 ## cannot reliably disengage from one, and cannot reliably corner it either.
@@ -4741,6 +4936,11 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			_drop_loot(defender)
 			if defender.risen:
 				_settle_the_grave()
-			if attacker.is_player:
+			# Your side's kills, not just your own. An ally that stole your
+			# experience would be a reward you are punished for spending --
+			# the same mistake as taxing the threat ceiling when one arrives.
+			# Its kills are credited to the run because the run paid a grave
+			# for them, permanently, and there is no getting that back.
+			if attacker.faction == Entity.Faction.PLAYER:
 				award_xp(defender.threat)
 				_tally_in("kills", defender.name)

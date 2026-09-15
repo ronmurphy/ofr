@@ -58,6 +58,10 @@ const OVERRIDES := {
 	&"bat":      0xF0B5F,   # md-bat
 	&"harpy":    0xF15C6,   # md-bird
 	&"skeleton": 0xF068C,   # md-skull
+	## Deliberately the SAME skull as the skeleton, recoloured by the ascii
+	## table. Giving the ally its own picture would say it is a different kind
+	## of creature, and it is not -- it is the same creature, on your side.
+	&"bone_ally": 0xF068C,  # md-skull
 	# A man, until he is not. The wizard keeps the adult figure because that is
 	# what he still is; the lich gets a silhouette of its own, because the whole
 	# point of the thing is that it stopped being one. A second ghost was the
@@ -114,6 +118,9 @@ const OVERRIDES := {
 	&"armour":   0xF0A7B,   # md-tshirt_crew
 	&"shield":   0xF0498,   # md-shield
 	&"amulet":   0xF0F0B,   # md-necklace
+	## Already in the subset -- the floor litter uses it -- so this costs no
+	## font rebuild. Colour is what separates the carried bone from the litter.
+	&"bone":     0xF00B9,   # md-bone
 
 	# --- ground and features ------------------------------------------------
 	&"brazier":       0xF0238,   # md-fire

@@ -46,6 +46,10 @@ const TABLE := {
 	&"gem":         {"ch": "$", "fg": Palette.GEM},
 	## A ring. `=` is the roguelike's own mark for one and nothing here uses it.
 	&"ring":        {"ch": "=", "fg": Palette.RING},
+	## A carried bone, not the litter on the floor -- that is &"bones" with a
+	## comma. `/` is free, and a long thin mark is the right silhouette for a
+	## femur you are keeping.
+	&"bone":        {"ch": "/", "fg": Palette.ALLY},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
 	## The mace and the axe carry their damage type in the PICTURE modes,
 	## where a silhouette can say "blunt" at a glance. Here they stay ")"
@@ -67,6 +71,10 @@ const TABLE := {
 	&"goblin":      {"ch": "g", "fg": Color("2f6b4f")},
 	&"bat":         {"ch": "b", "fg": Color("8e6fa8")},
 	&"skeleton":    {"ch": "s", "fg": Color("d6d2c4")},
+	## The same letter as the skeleton it used to be, in the ally colour. It is
+	## a skeleton; what changed is whose side it is on, and side is a colour
+	## question in every mode this game draws.
+	&"bone_ally":   {"ch": "s", "fg": Palette.ALLY},
 	&"orc":         {"ch": "o", "fg": Color("b5643c")},
 	# Capital marks the ranged variant of a family -- it shoots back.
 	&"slinger":     {"ch": "K", "fg": Color("d8a04a")},

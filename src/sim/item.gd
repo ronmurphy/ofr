@@ -38,6 +38,21 @@ var use_verb: String = ""
 ## resisted by nothing.
 var damage_type: StringName = &""
 
+## Which dead character a knucklebone belongs to, and what they were buried
+## wearing. Empty on everything else.
+##
+## Per-INSTANCE, and it has to be: two bones are two different people, and the
+## catalogue can only ever describe one item. This is the same shape of problem
+## meat already has -- a haunch's worth is written when it drops, not in the
+## catalogue -- and it is saved for the same reason. A suspended run that gave
+## back an anonymous bone would have quietly lost somebody.
+##
+## The dead character's own words are stored rather than a pointer into the
+## morgue. A bone is a physical object the player is carrying; it must not stop
+## working because the file it came from was edited, rotated, or reclaimed.
+var bone_name: String = ""
+var bone_gear: Array[String] = []
+
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
 var charges := 0
@@ -208,6 +223,14 @@ const CATALOGUE := {
 		"name": "scroll of light", "app": &"scroll", "kind": Kind.SCROLL,
 		"effect": &"light", "magnitude": 16, "forge": 4,
 		"min_depth": 1, "weight": 6,
+	},
+	## Never rolled as loot -- weight 0, the same way gems are kept out of the
+	## ordinary roll. The only source is a risen grave that has been put back
+	## down, which is what makes it a trophy rather than an item.
+	&"bone": {
+		"name": "knucklebone", "app": &"bone", "kind": Kind.SCROLL,
+		"effect": &"summon", "verb": "raise",
+		"min_depth": 1, "weight": 0,
 	},
 	&"scroll_blink": {
 		"name": "scroll of blink", "app": &"scroll", "kind": Kind.SCROLL,
@@ -588,6 +611,11 @@ func to_dict() -> Dictionary:
 		# discovered later: a suspended run must not hand back a plain sword.
 		"element": String(element),
 		"charges": charges,
+		# Who this bone is. Absent on every other item, and absent in every
+		# save written before allies existed -- both of which read back as
+		# "nobody", which is exactly right for a scroll and for an old save.
+		"bone_name": bone_name,
+		"bone_gear": bone_gear,
 	}
 
 static func from_dict(d: Dictionary) -> Item:
@@ -611,7 +639,21 @@ static func from_dict(d: Dictionary) -> Item:
 	# Saves written before launchers held ammunition come back loaded rather
 	# than empty: a resumed run should not find its bow inexplicably dry.
 	it.ammo = int(d.get("ammo", it.ammo_max))
+	it.bone_name = String(d.get("bone_name", ""))
+	it.bone_gear.clear()
+	for g in d.get("bone_gear", []):
+		it.bone_gear.append(String(g))
+	# `make` rebuilt the catalogue name, which for a bone is the generic one.
+	# Without this a saved run gives back "knucklebone" where it had "the bones
+	# of Erdrick" -- the item still works and the player can no longer tell two
+	# of them apart.
+	if it.bone_name != "":
+		it.name = bone_label(it.bone_name)
 	return it
+
+## What a bone is called once it belongs to somebody.
+static func bone_label(who: String) -> String:
+	return "the bones of %s" % who
 
 ## Weighted pick from the equipment only, for one slot. Used to arm monsters,
 ## which must not be handed a potion.

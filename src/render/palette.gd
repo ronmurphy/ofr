@@ -151,6 +151,18 @@ const CRITICAL := Color("d43b2f")
 const BLOODIED_WASH := 0.30
 const CRITICAL_WASH := 0.52
 
+## Something fighting on YOUR side.
+##
+## A warm green, chosen against the monster palette rather than for its own
+## sake: nothing hostile in this game is green, so the colour alone answers
+## "is that thing mine" from across a dark room, which is the only question
+## that matters in the half-second before you swing at it.
+##
+## The ally keeps the SHAPE of a skeleton, because it is one. Shape carries
+## rank and colour carries family -- the rule the icon theme is built on -- and
+## a risen ally is the same rank of thing as a risen enemy.
+const ALLY := Color("7fd69a")
+
 ## A creature that has given up and is running. Cool rather than hot, because
 ## it is the one alertness state that means you are winning.
 const FLEEING := Color("6fb3c4")

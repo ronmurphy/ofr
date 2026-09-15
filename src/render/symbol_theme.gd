@@ -56,6 +56,9 @@ const OVERRIDES := {
 	&"potion":   {"ch": "◔"},
 	&"scroll":   {"ch": "≡"},
 	&"amulet":   {"ch": "◎"},
+	## Inverted against the floor litter's "∴", so a bone you can pick up and a
+	## bone you are standing on are never the same mark.
+	&"bone":     {"ch": "∵"},
 	&"weapon":   {"ch": "†"},
 	&"mace":     {"ch": "†"},
 	&"axe":      {"ch": "†"},
