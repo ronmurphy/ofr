@@ -50,6 +50,8 @@ const TABLE := {
 	## comma. `/` is free, and a long thin mark is the right silhouette for a
 	## femur you are keeping.
 	&"bone":        {"ch": "/", "fg": Palette.ALLY},
+	## A haft and a blade. `|` was free and reads as a tool stood on its end.
+	&"shovel":      {"ch": "|", "fg": Palette.ALLY},
 	&"weapon":      {"ch": ")", "fg": Palette.WEAPON},
 	## The mace and the axe carry their damage type in the PICTURE modes,
 	## where a silhouette can say "blunt" at a glance. Here they stay ")"

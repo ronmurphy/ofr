@@ -564,6 +564,14 @@ func _draw() -> void:
 			# of theme entries, because there is nothing per-creature to say.
 			if e.corrupted:
 				_draw_glyph_tinted(e.appearance, _visual_cell(e), Palette.CORRUPTED)
+			elif e.faction == Entity.Faction.PLAYER:
+				# The same bargain the ratted player strikes below: the glyph
+				# says WHAT it is, the colour says whose it is. A troll dug up
+				# with the shovel keeps the troll's shape, because knowing you
+				# have a troll is the whole point of having raised one -- and
+				# without the tint it would be indistinguishable from the troll
+				# about to hit you.
+				_draw_glyph_tinted(e.appearance, _visual_cell(e), Palette.ALLY)
 			else:
 				_draw_glyph(e.appearance, _visual_cell(e))
 	if state.player.alive:

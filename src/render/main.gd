@@ -357,6 +357,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_P:
 			if state.player_pray():
 				_refresh()
+		# Free, and it does not end the turn -- see player_ally_stance. The
+		# refresh is still needed, because the sidebar line changes.
+		KEY_A:
+			if state.player_ally_stance():
+				_refresh()
 
 func _on_cell_clicked(cell: Vector2i) -> void:
 	_end_look()

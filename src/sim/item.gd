@@ -236,6 +236,13 @@ const CATALOGUE := {
 		"effect": &"summon", "verb": "raise",
 		"min_depth": 1, "weight": 0,
 	},
+	## The second unique. One use, and the whole item is the timing of it: the
+	## better the thing you have just killed, the better what stands up.
+	&"shovel": {
+		"name": "undertaker's shovel", "app": &"shovel", "kind": Kind.SCROLL,
+		"effect": &"raise_corpse", "verb": "dig with", "unique": true,
+		"min_depth": 4, "weight": 0,
+	},
 	&"scroll_blink": {
 		"name": "scroll of blink", "app": &"scroll", "kind": Kind.SCROLL,
 		"effect": &"blink", "magnitude": 12, "min_depth": 2, "weight": 6,
@@ -442,6 +449,30 @@ static func from_display_name(text: String) -> Item:
 	var trimmed := text.strip_edges()
 	if trimmed == "":
 		return null
+	# THE BINDING COMES OFF FIRST, because `display_name` writes it last:
+	# "short sword +2 (frost)".
+	#
+	# This was a real bug for nineteen commits and it ate whole weapons. This
+	# reader was written with the morgue (the risen-dead work); the "(element)"
+	# suffix was added to the writer five commits later, to fix a different
+	# problem entirely -- Brad had bound frost into a dagger +2, equipped a
+	# dagger +4, and spent a floor swinging the wrong one. Nothing told the
+	# reader. Walked through, "short sword +2 (frost)" found " +", took the
+	# tail as "2 (frost)", failed `is_valid_int`, silently gave up on the
+	# upgrade, and then matched no catalogue name at all -- so the function
+	# returned NULL and the grave rose unarmed. Not a lost enchantment: a lost
+	# sword, and only ever for players who use gems.
+	#
+	# The lesson is the one the morgue regex already learned when `name` was
+	# added: a format has TWO ends, and teaching one of them a new field is
+	# half a change.
+	var bound := &""
+	if trimmed.ends_with(")"):
+		var open_at := trimmed.rfind(" (")
+		if open_at > 0:
+			bound = StringName(trimmed.substr(open_at + 2,
+				trimmed.length() - open_at - 3))
+			trimmed = trimmed.substr(0, open_at)
 	var ups := 0
 	var plus := trimmed.rfind(" +")
 	if plus > 0:
@@ -455,6 +486,12 @@ static func from_display_name(text: String) -> Item:
 		var it := make(item_id)
 		for _i in clampi(ups, 0, MAX_UPGRADES):
 			it.upgrade()
+		# Restored without asking `accepts_element` again. It was bound once,
+		# by a player who was allowed to; re-judging it here would mean a
+		# balance change to the binding rules could silently disarm graves that
+		# were legal when they were dug.
+		if bound != &"":
+			it.element = bound
 		return it
 	return null
 

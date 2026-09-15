@@ -121,6 +121,9 @@ const OVERRIDES := {
 	## Already in the subset -- the floor litter uses it -- so this costs no
 	## font rebuild. Colour is what separates the carried bone from the litter.
 	&"bone":     0xF00B9,   # md-bone
+	## Read out of the source font rather than remembered -- see the note on
+	## md-paw below about what a wrong number here costs.
+	&"shovel":   0xF0710,   # md-shovel
 
 	# --- ground and features ------------------------------------------------
 	&"brazier":       0xF0238,   # md-fire

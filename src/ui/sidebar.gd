@@ -55,6 +55,10 @@ const KEYS := [
 	["t", "torch", false],
 	["f / right-click", "shoot", true],
 	["w", "swap reach / blade", true],
+	# Essential only while somebody is standing with you, which the sidebar
+	# cannot express -- so it lives in the full list, where a player goes
+	# looking the first time an ally does something they did not want.
+	["a", "ally: heel / loose", false],
 	["f (no bow)", "throw", false],
 	["p", "pray at a shrine", false],
 	["m  - +", "sound", false],
@@ -245,7 +249,37 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	draw_string(font, Vector2(PAD, y), torch_text,
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
-	y += LINE * 1.7
+	y += LINE
+
+	# The party, and ONLY when there is one. A row that is empty nine tenths of
+	# the time is furniture; this costs no space at all until somebody is
+	# standing with you.
+	#
+	# A LINE, NOT A BAR, and that is the point of it. Your own HP gets a bar
+	# because a bar means "this refills". An ally's does not -- nothing in the
+	# game heals one -- so it is a budget being spent, closer to torch turns or
+	# arrows than to health, and a bare number reads as the countdown it is.
+	# The map already says WOUNDED: `_draw_wound` washes any entity orange and
+	# then red, allies included. What it cannot say is how much is left.
+	var party := state.allies()
+	if not party.is_empty():
+		y += LINE * 0.7
+		_line(font_bold, y, "STANDING WITH YOU", Palette.UI_DIM)
+		y += LINE
+		for mate in party:
+			var stance_text := "heel" if mate.stance == Entity.Stance.HEEL \
+				else "loose"
+			# Their own colour, so the line and the figure on the map are
+			# obviously the same creature.
+			draw_string(font, Vector2(PAD, y),
+				_fit("%s  %s" % [mate.name, stance_text]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.ALLY)
+			draw_string(font, Vector2(PAD, y), "%d/%d" % [mate.hp, mate.max_hp],
+				HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
+				Palette.ALLY if mate.wound() == Entity.Wound.WHOLE
+				else Palette.BLOODIED)
+			y += LINE
+	y += LINE * 0.7
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
 	# driving a cursor rather than the player.

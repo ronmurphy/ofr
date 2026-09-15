@@ -31,7 +31,38 @@ func hostile_to(other: Entity) -> bool:
 ## Three states rather than two. A binary asleep/awake makes stealth feel
 ## arbitrary -- you are either invisible or caught, with no warning. The middle
 ## state is the tell that lets a player back off before it is too late.
-enum Alert { ASLEEP, SUSPICIOUS, AWAKE }
+## PATROL is APPENDED, never inserted. `alertness` is saved as a plain integer,
+## so putting a new value in the middle would silently re-read every monster in
+## every existing save as a different state -- the same reason Item.Kind says
+## "GEM is last on purpose".
+##
+## And it is a fourth STATE rather than a fifth `ai` kind, because the thing it
+## changes is whether the creature is interested in you, not how it fights. A
+## patroller that spots you becomes AWAKE and hunts with whatever `ai` it
+## already had; a patroller that loses you goes back to its rounds instead of
+## lying down. "Awake" in this game has always meant "coming for you", and this
+## is the state that was missing: busy, but not with you.
+enum Alert { ASLEEP, SUSPICIOUS, AWAKE, PATROL }
+
+## How an ally carries itself. Meaningless on anything hostile.
+##
+## TWO states, not a cycle of many. The player is setting a posture, not
+## driving a second character -- the design rule is that they control the
+## timing and nothing else -- and a toggle can be read from one sidebar line
+## and learned in one press. The obvious temptation is to cycle the existing
+## `ai` kinds instead; they are monster personalities built around hunting the
+## player (`forager` eats fungus and flees you, `banshee` phases through walls)
+## and would be nonsense worn by something on your side.
+enum Stance { LOOSE, HEEL }
+
+var stance: int = Stance.LOOSE
+
+## Whether this thing walks a beat. Separate from `alertness`, which is only
+## where it is RIGHT NOW: without a standing flag, a guard that chased you and
+## lost you would fall asleep on the spot and never patrol again.
+var patrols := false
+## Which post on the circuit it is walking towards.
+var patrol_at: int = 0
 
 var name: String = "thing"
 var appearance: StringName = &"unknown"
@@ -257,6 +288,8 @@ func to_dict() -> Dictionary:
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
 		"lost_turns": lost_turns, "calm_turns": calm_turns,
 		"notice_block": notice_block, "alive": alive,
+		"stance": stance,
+		"patrols": patrols, "patrol_at": patrol_at,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
 	}
@@ -297,6 +330,9 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.lost_turns = int(d.get("lost_turns", 0))
 	e.calm_turns = int(d.get("calm_turns", 0))
 	e.notice_block = int(d.get("notice_block", 0))
+	e.stance = int(d.get("stance", Stance.LOOSE))
+	e.patrols = bool(d.get("patrols", false))
+	e.patrol_at = int(d.get("patrol_at", 0))
 	e.flying = d.get("flying", false)
 	e.heavy = d.get("heavy", false)
 	e.knockback = int(d.get("knockback", 0))

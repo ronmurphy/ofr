@@ -132,6 +132,7 @@ func _initialize() -> void:
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
 	_test_chests()
+	_test_the_floor_is_busy()
 	_test_the_dead_are_marked()
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
@@ -5583,27 +5584,151 @@ func _test_chests() -> void:
 	check("the first chest holds the unique (%s)" % prize, prize == "rat_ring")
 	check("and the run remembers it", gs2.uniques_found.has(&"rat_ring"))
 
-	# A second chest, with the ring already found, gives a gem instead.
-	gs2.ground = []
-	gs2.map.set_tile(4, 4, Tiles.CHEST)
-	gs2.pathfinder = Pathfinder.new(gs2.map)
-	gs2.player.x = 5
-	gs2.player.y = 4
-	gs2.player_move(-1, 0)
-	var gems := 0
-	for it in gs2.ground:
-		if it.kind == Item.Kind.GEM:
-			gems += 1
-	check("a later chest holds a gem (%d)" % gems, gems == 1)
+	# Chests keep paying uniques until the run has seen every one legal at this
+	# depth, and only then start paying gems.
+	#
+	# Written as the RULE rather than as "the second chest gives a gem", which
+	# is what it used to say. That was true while the ring was the only unique
+	# and became false the moment a second one existed -- a test that has to be
+	# edited every time content is added is a tripwire, not a check. This
+	# version survives the fourth unique without being touched.
+	var legal := Item.uniques(gs2.effective_depth()).size()
+	check("there is more than one unique to hand out now (%d)" % legal,
+		legal >= 2)
+	var seen_gem := false
+	var handed: Array[StringName] = [&"rat_ring"]
+	var at_x := 4
+	for _chest in legal + 1:
+		gs2.ground = []
+		gs2.map.set_tile(at_x, 4, Tiles.CHEST)
+		gs2.pathfinder = Pathfinder.new(gs2.map)
+		gs2.player.x = at_x + 1
+		gs2.player.y = 4
+		gs2.player_move(-1, 0)
+		for it in gs2.ground:
+			if it.kind == Item.Kind.GEM:
+				seen_gem = true
+			else:
+				check_silent(not handed.has(it.id))
+				handed.append(it.id)
+		at_x -= 1
+		if at_x < 1:
+			break
+	check_gathered("no unique is ever handed out twice")
+	check("once the uniques run out, chests pay gems again", seen_gem)
 	check("and that counts as the run's first gem", gs2.gem_found)
-	check("and the ring is never handed out twice",
-		gs2.uniques_found.size() == 1)
+	check("every unique legal here was handed out (%d of %d)"
+		% [gs2.uniques_found.size(), legal],
+		gs2.uniques_found.size() == legal)
 
 ## Who counts as dead, and who does not.
 ##
 ## Written alongside its first consumer rather than ahead of it -- a flag
 ## nothing reads is a lie in the save file, and this project has shipped two of
 ## those already.
+## Guards walk, rabbits eat, and neither needs the player to exist first.
+##
+## Both halves of this are the same bug seen from two sides: "awake" meant
+## "coming for you", so anything that was not coming for you did nothing at
+## all. A floor was not a place until you entered it.
+func _test_the_floor_is_busy() -> void:
+	# --- the beat ------------------------------------------------------------
+	var keep := _arena(30, 14)
+	keep.player.x = 2
+	keep.player.y = 12
+	for post in [Vector2i(5, 3), Vector2i(20, 3), Vector2i(20, 10)]:
+		keep.map.set_tile(post.x, post.y, Tiles.BRAZIER)
+	keep._lay_the_beat()
+	check("a floor with fires has a round to walk (%d posts)"
+		% keep.patrol_route.size(), keep.patrol_route.size() == 3)
+
+	var guard := _spawn(keep, "skeleton", 6, 3)
+	check("a skeleton is a kept thing and walks one", guard.patrols)
+	# _spawn wakes what it makes, for the behaviour tests. Put it back on duty.
+	guard.alertness = Entity.Alert.PATROL
+
+	# The player is far away, in the dark, and does nothing at all. Asserted,
+	# because the whole claim is that the floor moves without them.
+	check("and the player is nowhere near it",
+		Los.steps(guard.x, guard.y, keep.player.x, keep.player.y)
+			> guard.notice_range)
+	var began := Vector2i(guard.x, guard.y)
+	var walked := 0
+	for _i in 40:
+		keep._take_ai_turn(guard)
+		if Vector2i(guard.x, guard.y) != began:
+			walked += 1
+	check("it walks its round unwatched (%d turns moved)" % walked, walked > 0)
+	check("and is still on patrol, not hunting",
+		guard.alertness == Entity.Alert.PATROL)
+	check("and reached a post it was not standing on",
+		guard.patrol_at != 0 or Vector2i(guard.x, guard.y) != began,
+		"at %d,%d post %d" % [guard.x, guard.y, guard.patrol_at])
+
+	# Seeing you ends the round. Losing you resumes it -- without the standing
+	# flag a guard would lie down where it lost you and never walk again.
+	keep.wake(guard)
+	check("spotting you makes it hunt", guard.alertness == Entity.Alert.AWAKE)
+	# Stood well out of range rather than blinded with `notice_block`. That
+	# field is checked BEFORE the calm-down branch and returns early, so the
+	# first version of this setup blocked the very path it meant to exercise --
+	# the guard never reached the line under test and the check reported a bug
+	# in the code instead of in itself.
+	guard.x = 20
+	guard.y = 3
+	guard.alertness = Entity.Alert.SUSPICIOUS
+	guard.calm_turns = 99
+	guard.notice_block = 0
+	check("it is far enough out that nothing will re-alert it",
+		Los.steps(guard.x, guard.y, keep.player.x, keep.player.y)
+			> guard.notice_range)
+	keep._update_awareness(guard)
+	check("and giving up puts it back on its round",
+		guard.alertness == Entity.Alert.PATROL, str(guard.alertness))
+
+	# A floor with nothing to guard leaves it standing, not crashing.
+	var bare := _arena(20, 12)
+	bare._lay_the_beat()
+	check("a floor with no fires has no round", bare.patrol_route.is_empty())
+	var idle := _spawn(bare, "skeleton", 5, 5)
+	idle.alertness = Entity.Alert.PATROL
+	bare._take_ai_turn(idle)
+	check("and a guard there simply holds its post",
+		idle.x == 5 and idle.y == 5)
+
+	# --- the rabbit ----------------------------------------------------------
+	# Never seen in play: everything started ASLEEP, so a rabbit did not eat
+	# until the player arrived, and then it flees anything within RABBIT_NOSE.
+	var warren := _arena(30, 14)
+	warren.player.x = 28
+	warren.player.y = 12
+	var bun := _spawn(warren, "rabbit", 4, 4)
+	bun.alertness = Entity.Alert.ASLEEP
+	for at in [Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4)]:
+		warren.map.set_tile(at.x, at.y, Tiles.FUNGUS)
+	warren._gather_lights()
+	check("the rabbit is asleep and the player is far off",
+		bun.alertness == Entity.Alert.ASLEEP
+			and Los.steps(bun.x, bun.y, warren.player.x, warren.player.y)
+				> GameState.RABBIT_NOSE)
+	var fungus_before := 0
+	for y in warren.map.height:
+		for x in warren.map.width:
+			if warren.map.get_tile(x, y) == Tiles.FUNGUS:
+				fungus_before += 1
+	for _i in 60:
+		warren._take_ai_turn(bun)
+	var fungus_after := 0
+	for y in warren.map.height:
+		for x in warren.map.width:
+			if warren.map.get_tile(x, y) == Tiles.FUNGUS:
+				fungus_after += 1
+	check("it eats while nobody is watching (%d -> %d)"
+		% [fungus_before, fungus_after], fungus_after < fungus_before)
+	check("and enough mouthfuls make it something else",
+		bun.appearance == &"killer_rabbit", String(bun.appearance))
+	check("which stops foraging once it turns", bun.ai == &"hunter")
+
 func _test_the_dead_are_marked() -> void:
 	var gs := _arena(21, 9)
 	var dead := ["skeleton", "wight", "shadow", "banshee", "arch lich"]
@@ -5988,6 +6113,112 @@ func _test_the_bone_ally() -> void:
 		"player %d,%d ally %d,%d" % [gs.player.x, gs.player.y, ally.x, ally.y])
 	check("and does not hit it", ally.hp == ally_hp)
 
+	# --- a bound weapon survives the morgue ----------------------------------
+	# Nineteen commits of silent loss. `display_name` gained "(frost)" five
+	# commits after `from_display_name` was written, and nothing told the
+	# reader -- so a gem-bound weapon matched no catalogue name and the whole
+	# SWORD came back null, not just its binding. Tested as a ROUND TRIP rather
+	# than against a literal string, because the bug was precisely the two ends
+	# of one format disagreeing.
+	# Upgrade counts stay inside MAX_UPGRADES. "dagger +3" cannot round-trip
+	# because the game will not build one -- `from_display_name` clamps, and it
+	# is right to. Asserting an illegal item came back unchanged was testing
+	# the test, not the code.
+	for spec in [[&"short_sword", Item.MAX_UPGRADES, &"frost"],
+			[&"war_axe", 0, &"fire"], [&"dagger", 1, &""], [&"mace", 0, &""]]:
+		var made := Item.make(spec[0])
+		for _i in int(spec[1]):
+			made.upgrade()
+		made.element = spec[2]
+		var written := made.display_name()
+		var read_back := Item.from_display_name(written)
+		check("\"%s\" survives the morgue and back" % written,
+			read_back != null and read_back.id == made.id
+				and read_back.upgrade_level() == made.upgrade_level()
+				and read_back.element == made.element,
+			"got %s" % (read_back.display_name() if read_back else "null"))
+
+	# And in situ: the grave this actually broke.
+	var bound_tomb := _arena(30, 14)
+	bound_tomb.player.x = 4
+	bound_tomb.player.y = 7
+	bound_tomb.grave_at[Vector2i(8, 7)] = {
+		"level": 12, "cause": "killed by a wight", "depth": 8, "turns": 90,
+		"gear": ["short sword +2 (frost)", "chain mail"], "line": "y",
+	}
+	bound_tomb.map.set_tile(8, 7, Tiles.GRAVE)
+	bound_tomb._raise_from(Vector2i(8, 7))
+	var bound_dead: Entity = null
+	for e in bound_tomb.entities:
+		if e.risen:
+			bound_dead = e
+	check("a grave whose weapon was bound still rises armed",
+		bound_dead != null and bound_dead.equipped.size() == 2,
+		str(bound_dead.equipped.size()) if bound_dead else "no riser")
+	if bound_dead != null:
+		var blade: Item = bound_dead.equipped.get(Item.Slot.WEAPON, null)
+		check("still carrying the binding it was buried with",
+			blade != null and blade.element == &"frost",
+			blade.display_name() if blade else "nothing")
+
+	# --- the undertaker's shovel ----------------------------------------------
+	var dig := _arena(30, 14)
+	dig.player.x = 6
+	dig.player.y = 7
+	var shovel := Item.make(&"shovel")
+	dig.give_item(shovel)
+	check("digging with nothing dead does nothing",
+		not dig.player_use(dig.player.inventory.find(shovel)))
+	check("and the shovel is still in your hands",
+		dig.player.inventory.has(shovel))
+
+	var ogre := _spawn(dig, "ogre", 7, 7)
+	var ogre_hp := ogre.max_hp
+	ogre.hp = 1
+	dig._attack(dig.player, ogre)
+	check("the ogre is down", not ogre.alive)
+	check("and the ground remembers it", dig.recent_dead.size() == 1)
+	# The memory rides along with a suspend -- a save in the five turns after a
+	# big kill must not quietly cost the dig. (`GameState.new()` alone has no
+	# map, so `to_dict` cannot be called on one; the earlier version of this
+	# line crashed inside the serialiser and took thirteen checks with it.)
+	var packed := dig.to_dict()
+	check("and the memory survives a suspend",
+		packed.has("recent_dead")
+			and int((packed["recent_dead"] as Array).size()) == 1)
+
+	check("digging raises it", dig.player_use(dig.player.inventory.find(shovel)))
+	check("and spends the shovel", not dig.player.inventory.has(shovel))
+	var raised: Entity = null
+	for e in dig.entities:
+		if e.faction == Entity.Faction.PLAYER and not e.is_player:
+			raised = e
+	check("somebody is standing there", raised != null)
+	if raised != null:
+		check("it is the ogre, keeping its own shape",
+			raised.appearance == &"ogre", String(raised.appearance))
+		check("named for what it was", raised.name.contains("ogre"), raised.name)
+		check("at half of what it was (%d of %d)" % [raised.max_hp, ogre_hp],
+			raised.max_hp == maxi(1, ogre_hp / 2))
+		check("and it is not counted as a monster",
+			not dig.visible_monsters().has(raised))
+
+	# The window is the item. A corpse gone cold answers nothing.
+	var cold := _arena(30, 14)
+	cold.player.x = 6
+	cold.player.y = 7
+	var spade := Item.make(&"shovel")
+	cold.give_item(spade)
+	var rat := _spawn(cold, "giant rat", 7, 7)
+	rat.hp = 1
+	cold._attack(cold.player, rat)
+	check("something died", cold.recent_dead.size() == 1)
+	cold.turns += GameState.SHOVEL_WINDOW + 1
+	check("but once it is cold the shovel finds nothing",
+		not cold.player_use(cold.player.inventory.find(spade)))
+	check("and is not spent on the attempt",
+		cold.player.inventory.has(spade))
+
 	# --- a shade of the hero, not a skeleton in their coat --------------------
 	# The morgue never recorded hit points, only the level reached, so this is
 	# the one number the ally's toughness can be rebuilt from. Asserted against
@@ -6125,6 +6356,85 @@ func _test_the_bone_ally() -> void:
 		check("but still carries the bow, so it still drops",
 			archer_dead.inventory.size() == 2,
 			str(archer_dead.inventory.size()))
+
+	# --- heel and loose --------------------------------------------------------
+	# Built because play, not argument, produced the case: the first ally to
+	# reach the endgame charged a dragon and died, because nothing could tell
+	# it not to. The stance is one distance, so these checks are about how far
+	# it is willing to go, not about two separate behaviours.
+	var yard := _arena(30, 14)
+	yard.player.x = 6
+	yard.player.y = 7
+	var hound := _spawn(yard, "skeleton", 7, 7)
+	hound.faction = Entity.Faction.PLAYER
+	hound.ai = &"ally"
+	hound.name = "Rodney"
+	# Far enough to be inside the leash but well outside heel's reach, which is
+	# the whole span the stance decides. Asserted, so this cannot quietly
+	# become a test of two identical distances.
+	var quarry := _spawn(yard, "orc", 12, 7)
+	quarry.max_hp = 400
+	quarry.hp = 400
+	var gap := Los.steps(yard.player.x, yard.player.y, quarry.x, quarry.y)
+	check("the target sits between heel and loose (%d)" % gap,
+		gap > GameState.ALLY_HEEL_REACH and gap <= GameState.ALLY_LEASH)
+
+	check("an ally starts off the leash", hound.stance == Entity.Stance.LOOSE)
+	yard._take_ai_turn(hound)
+	check("and loose, it goes after something across the room",
+		Los.steps(hound.x, hound.y, quarry.x, quarry.y) < gap - 1,
+		"%d away" % Los.steps(hound.x, hound.y, quarry.x, quarry.y))
+
+	# Called to heel: it should come back and stay.
+	check("calling them to heel works", yard.player_ally_stance())
+	check("and they are at heel", hound.stance == Entity.Stance.HEEL)
+	for _i in 8:
+		yard._take_ai_turn(hound)
+	check("it returns to you rather than pressing the attack",
+		Los.steps(hound.x, hound.y, yard.player.x, yard.player.y) <= 1,
+		"%d away" % Los.steps(hound.x, hound.y, yard.player.x, yard.player.y))
+	check("and the thing across the room is untouched",
+		quarry.hp == quarry.max_hp, str(quarry.hp))
+
+	# But a bodyguard still guards: something that comes to YOU gets answered,
+	# including from the far side, which is why heel reaches two and not one.
+	#
+	# Positions set EXPLICITLY on both sides of the player rather than moved
+	# relative to wherever the previous loop left the ally. The first version
+	# dropped the orc on `player.x - 1` after eight turns of heeling, and the
+	# ally had settled on exactly that cell -- so the two occupied one square,
+	# `is_adjacent` measured zero rather than one, and the guard stood there
+	# looking like a bug in the stance. Nothing in the game places an entity by
+	# assignment; only this test did.
+	hound.x = yard.player.x + 1
+	hound.y = yard.player.y
+	quarry.x = yard.player.x - 1
+	quarry.y = yard.player.y
+	check("the intruder is at your side, and not inside your ally",
+		Vector2i(quarry.x, quarry.y) != Vector2i(hound.x, hound.y)
+			and Los.steps(yard.player.x, yard.player.y, quarry.x, quarry.y)
+				<= GameState.ALLY_HEEL_REACH)
+	var unhurt := quarry.hp
+	# Four, because it has to come round the player to reach the far side.
+	for _i in 4:
+		yard._take_ai_turn(hound)
+	check("yet it answers what reaches you", quarry.hp < unhurt,
+		"%d -> %d, ally at %d,%d orc at %d,%d" % [unhurt, quarry.hp,
+			hound.x, hound.y, quarry.x, quarry.y])
+
+	check("and the key toggles back off", yard.player_ally_stance()
+		and hound.stance == Entity.Stance.LOOSE)
+	# A stance survives a suspend, or a resumed run quietly slips its leash.
+	var kept := Entity.from_dict(hound.to_dict())
+	check("the stance survives a suspend",
+		kept.stance == hound.stance, str(kept.stance))
+	hound.stance = Entity.Stance.HEEL
+	check("and so does heel",
+		Entity.from_dict(hound.to_dict()).stance == Entity.Stance.HEEL)
+
+	# Nobody to command: the key must not pretend it did something.
+	var alone := _arena(20, 12)
+	check("with no allies the key does nothing", not alone.player_ally_stance())
 
 	# --- it follows you down -------------------------------------------------
 	# Through the real path: build_level replaces `entities` wholesale, which

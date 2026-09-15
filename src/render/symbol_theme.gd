@@ -59,6 +59,9 @@ const OVERRIDES := {
 	## Inverted against the floor litter's "∴", so a bone you can pick up and a
 	## bone you are standing on are never the same mark.
 	&"bone":     {"ch": "∵"},
+	## An L of haft and blade. Greek is known-present in the source face --
+	## Pi and Omega are already load-bearing in the letters mode.
+	&"shovel":   {"ch": "Γ"},
 	&"weapon":   {"ch": "†"},
 	&"mace":     {"ch": "†"},
 	&"axe":      {"ch": "†"},

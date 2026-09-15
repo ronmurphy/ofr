@@ -686,7 +686,11 @@ const BESTIARY := [
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
 	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
-	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4, "unliving": true, "resists": ["slash", "pierce"], "weak_to": ["blunt"]},
+	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4, "unliving": true, "resists": ["slash", "pierce"], "weak_to": ["blunt"],
+	 ## It was set to guard something and never stopped. The two patrollers are
+	 ## both MADE things rather than living ones -- a beast has no reason to
+	 ## walk a beat, and a floor where the wildlife marches would read as wrong.
+	 "patrol": true},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3},
 
@@ -730,7 +734,7 @@ const BESTIARY := [
 	# felt.
 	{"name": "stone golem", "app": &"golem", "hp": 42, "power": 10, "def": 7,
 	 "speed": 70, "ai": &"ranged", "range": 6, "standoff": 2, "flee": 0.0,
-	 "heavy": true, "min_depth": 8, "threat": 24, "caves": 0.5,
+	 "heavy": true, "min_depth": 8, "threat": 24, "caves": 0.5, "patrol": true,
 	 "resists": ["slash", "pierce"], "weak_to": ["blunt"]},
 	{"name": "shadow", "app": &"shadow", "hp": 20, "power": 13, "def": 1,
 	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0, "unliving": true},
@@ -985,6 +989,9 @@ func build_level() -> void:
 	# nothing re-derives it afterwards.
 	_stock_the_hoard()
 	_gather_lights()
+	# After the hoard's brazier exists and before anything is placed, so a
+	# guard spawned this turn already has somewhere to walk.
+	_lay_the_beat()
 	_place_graves()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
@@ -1669,6 +1676,10 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.defense = entry["def"]
 	m.speed = entry["speed"]
 	m.ai = entry.get("ai", &"hunter")
+	# A kept thing starts its rounds rather than lying in the dark.
+	m.patrols = entry.get("patrol", false)
+	if m.patrols:
+		m.alertness = Entity.Alert.PATROL
 	m.attack_range = entry.get("range", 1)
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
@@ -1845,6 +1856,22 @@ func _leave_a_bone(victim: Entity, at: Vector2i) -> void:
 ## track of where their help is. Eight is the same order as a monster's notice
 ## range, so the ally ranges about as far as the things it is fighting.
 const ALLY_LEASH := 8
+
+## How long a corpse stays warm enough for the shovel.
+##
+## Five turns, and the window IS the item. It is short enough that you are
+## digging the thing you just killed rather than shopping a battlefield, and it
+## makes the order you kill things in matter at the end of a fight: finish the
+## troll last, or raise the rat.
+const SHOVEL_WINDOW := 5
+
+## How far from the PLAYER an ally at heel will reach to strike.
+##
+## Two, not one. At one it would only hit what is already beside it, which
+## means something attacking you from your far side goes unanswered while your
+## bodyguard stands there -- a guard that cannot step around you is not
+## guarding. Two lets it cover the cells around you without ever leaving them.
+const ALLY_HEEL_REACH := 2
 
 ## Weighted by tier, and filtered to what still fits under the ceiling.
 ##
@@ -2334,6 +2361,14 @@ func _travel_stoppers() -> Array:
 			out.append(e)
 	return out
 
+## Everyone fighting on your side, in the order they were raised.
+func allies() -> Array:
+	var out := []
+	for e in entities:
+		if e.alive and not e.is_player and e.faction == Entity.Faction.PLAYER:
+			out.append(e)
+	return out
+
 func visible_monsters() -> Array:
 	var out := []
 	for e in entities:
@@ -2411,6 +2446,105 @@ func player_move(dx: int, dy: int) -> bool:
 	player.x = nx
 	player.y = ny
 	_end_player_turn(cost)
+	return true
+
+## The last few things you killed, newest last, pruned as they cool.
+##
+## Stored as dictionaries rather than Entities so it serialises with the run
+## for free, and so nothing here can hold a reference to a corpse the rest of
+## the game thinks it has finished with.
+var recent_dead: Array = []
+
+func _remember_the_dead(victim: Entity) -> void:
+	if victim.is_player or victim.faction == Entity.Faction.PLAYER:
+		return
+	recent_dead.append({"turn": turns, "e": victim.to_dict()})
+	var still: Array = []
+	for rec in recent_dead:
+		if turns - int(rec["turn"]) <= SHOVEL_WINDOW:
+			still.append(rec)
+	recent_dead = still
+
+## Digs the newest corpse back up, on your side.
+##
+## THE NEWEST, not the strongest. "Raise what you just killed" is one sentence
+## and needs no interface; "raise the best thing within five turns" is a hidden
+## rule the player has to reverse-engineer, and it would quietly remove the
+## decision that makes the window interesting -- which order you finish a fight
+## in. Flip this if it plays badly; it is one loop.
+##
+## It keeps its OWN shape and its own gear: a raised troll is a troll, and the
+## grid draws it in the ally colour so you can still tell whose it is.
+func _raise_the_recent_dead() -> bool:
+	var pick: Dictionary = {}
+	for i in range(recent_dead.size() - 1, -1, -1):
+		var rec: Dictionary = recent_dead[i]
+		if turns - int(rec["turn"]) <= SHOVEL_WINDOW:
+			pick = rec
+			break
+	if pick.is_empty():
+		msg_log.add("Nothing here is fresh enough to answer.",
+			Color(0.7, 0.6, 0.4))
+		return false
+	var spot := _nearest_restable(Vector2i(player.x, player.y))
+	if spot.x < 0:
+		msg_log.add("There is no room here for anyone else.", Color(0.7, 0.6, 0.4))
+		return false
+
+	var risen := Entity.from_dict(pick["e"])
+	if risen == null:
+		return false
+	risen.x = spot.x
+	risen.y = spot.y
+	risen.alive = true
+	risen.faction = Entity.Faction.PLAYER
+	risen.ai = &"ally"
+	risen.stance = Entity.Stance.LOOSE
+	risen.alertness = Entity.Alert.AWAKE
+	risen.fleeing = false
+	# Half of what it was, the same bargain the bone ally strikes. Whole, a
+	# raised young dragon would simply be a second player character.
+	risen.max_hp = maxi(1, risen.max_hp / 2)
+	risen.hp = risen.max_hp
+	risen.name = "risen %s" % risen.name
+	entities.append(risen)
+	Scheduler.spend(risen, Scheduler.ACTION_COST)
+	recent_dead.erase(pick)
+	events.append({"kind": &"notice", "to": spot})
+	msg_log.add("You turn the earth. The %s rises, and it is yours."
+		% String(pick["e"].get("name", "dead")), Color(0.70, 0.90, 0.78))
+	return true
+
+## Calls your dead to heel, or lets them off it.
+##
+## FREE, unlike the torch below, and the difference is deliberate. Dousing the
+## torch buys stealth, so charging a turn for it makes it a decision. This buys
+## nothing by itself -- it only says where your allies should stand -- and a
+## turn's cost would mean nobody ever changed stance mid-fight, which is the
+## only moment it matters. The same reasoning that kept the threat ceiling off
+## an ally: do not tax the thing you want people to use.
+##
+## Sets them ALL, because they are one party and the key is one press. Answers
+## false when there is nobody to command, so the keypress does not pretend.
+func player_ally_stance() -> bool:
+	var told := []
+	for e in entities:
+		if e.alive and not e.is_player and e.faction == Entity.Faction.PLAYER:
+			told.append(e)
+	if told.is_empty():
+		return false
+	# Typed through a local rather than inferred from `told[0]`, which is a
+	# Variant out of an untyped Array and cannot give `:=` anything to infer.
+	var lead: Entity = told[0]
+	var to_heel := lead.stance != Entity.Stance.HEEL
+	for e in told:
+		e.stance = Entity.Stance.HEEL if to_heel else Entity.Stance.LOOSE
+	if to_heel:
+		msg_log.add("\"Stay close.\" The dead draw in around you.",
+			Color(0.70, 0.90, 0.78))
+	else:
+		msg_log.add("\"Go.\" The dead spread out ahead of you.",
+			Color(0.70, 0.90, 0.78))
 	return true
 
 ## Costs a turn on purpose. Going dark is a decision, not a free toggle.
@@ -3644,6 +3778,8 @@ func _apply_effect(item: Item) -> bool:
 	match item.effect:
 		&"summon":
 			return _summon_ally(item)
+		&"raise_corpse":
+			return _raise_the_recent_dead()
 
 		&"heal":
 			if player.hp >= player.max_hp:
@@ -3887,6 +4023,7 @@ func to_dict() -> Dictionary:
 		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
+		"recent_dead": recent_dead,
 		"gem_found": gem_found,
 		"player_name": player_name,
 		"uniques": uniques_found.keys(),
@@ -3952,6 +4089,10 @@ func apply_dict(d: Dictionary) -> bool:
 		if bits.size() == 2:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
 	grave_risen = d.get("grave_risen", false)
+	recent_dead = d.get("recent_dead", [])
+	# Derived from the map rather than saved, so a resumed run does not depend
+	# on a route written by an older version of this code.
+	_lay_the_beat()
 	gem_found = d.get("gem_found", false)
 	player_name = String(d.get("player_name", ""))
 	uniques_found.clear()
@@ -4174,13 +4315,34 @@ func _take_ai_turn(actor: Entity) -> int:
 		return _last_move_cost
 
 	_update_awareness(actor)
+	_last_move_cost = Scheduler.ACTION_COST
+
+	# On its rounds. Anything it was going to notice, it noticed above.
+	if actor.alertness == Entity.Alert.PATROL:
+		_ai_patrol(actor)
+		return _last_move_cost
+
 	# Asleep, or merely stirring: it spends its turn not acting. That pause is
 	# the player's window to withdraw, and it is the point of the middle state.
 	if actor.alertness != Entity.Alert.AWAKE:
+		# EXCEPT a forager, which is not waiting for you at all.
+		#
+		# Everything starts ASLEEP and nothing acted until it noticed the
+		# player, so a rabbit did not eat until you turned up -- and by then
+		# `_ai_forager` prioritises fleeing anything within RABBIT_NOSE, which
+		# is fourteen cells. Becoming a killer rabbit needed three meals inside
+		# a window that barely existed, which is why nobody had ever seen one.
+		# The tuning comment on RABBIT_TURNS had already measured the fungus per
+		# floor and picked three on the assumption the thing forages freely; the
+		# awareness gate quietly made that measurement meaningless.
+		if actor.ai == &"forager":
+			var near := _foe_for(actor)
+			if near != null:
+				_ai_forager(actor, near)
+				return _last_move_cost
 		return Scheduler.ACTION_COST
 
 	_update_morale(actor)
-	_last_move_cost = Scheduler.ACTION_COST
 
 	# Decided ONCE per turn and handed down, rather than each behaviour asking
 	# for `player` by name. Every AI below used to name the player directly,
@@ -4202,6 +4364,63 @@ func _take_ai_turn(actor: Entity) -> int:
 		&"pack":    _ai_pack(actor, foe)
 		_:          _ai_hunter(actor, foe)
 	return _last_move_cost
+
+## The posts on this floor, in the order a guard walks them.
+##
+## Braziers, because they are the only thing on a floor that reads as somewhere
+## a guard would BE -- a lit fire is a post, and the route between them is the
+## shape of the built part of the level. Ordered by a greedy nearest-neighbour
+## tour from the topmost post, which is deterministic (no rng, fixed scan
+## order) and looks like a round rather than the zig-zag that sorting by
+## coordinate would give.
+##
+## Spent braziers stay on the circuit. A guard's post does not move because the
+## fire went out, and dropping them would make a route quietly reshape itself
+## mid-run as fires burn down.
+var patrol_route: Array = []
+
+func _lay_the_beat() -> void:
+	patrol_route = []
+	var posts: Array[Vector2i] = []
+	for y in map.height:
+		for x in map.width:
+			var t := map.get_tile(x, y)
+			if t == Tiles.BRAZIER or t == Tiles.BRAZIER_SPENT:
+				posts.append(Vector2i(x, y))
+	if posts.size() < 2:
+		# One post is a vigil, not a round; none at all is a floor with nothing
+		# worth guarding. Either way there is no route, and `_ai_patrol` leaves
+		# the guard standing where it is -- still watching, still able to see
+		# you, simply not walking.
+		return
+	var here: Vector2i = posts[0]
+	patrol_route.append(here)
+	posts.remove_at(0)
+	while not posts.is_empty():
+		var best := 0
+		var best_d := Los.steps(here.x, here.y, posts[0].x, posts[0].y)
+		for i in posts.size():
+			var d := Los.steps(here.x, here.y, posts[i].x, posts[i].y)
+			if d < best_d:
+				best_d = d
+				best = i
+		here = posts[best]
+		patrol_route.append(here)
+		posts.remove_at(best)
+
+## Walking the round. It is NOT looking for you -- `_update_awareness` has
+## already run and would have made it AWAKE if it had seen you -- so this is
+## only ever "keep going".
+func _ai_patrol(actor: Entity) -> void:
+	if patrol_route.is_empty():
+		return
+	var goal: Vector2i = patrol_route[actor.patrol_at % patrol_route.size()]
+	# Arrived: take the next post. Done before moving, so a guard that starts
+	# its life standing on a brazier still sets off.
+	if Vector2i(actor.x, actor.y) == goal:
+		actor.patrol_at = (actor.patrol_at + 1) % patrol_route.size()
+		goal = patrol_route[actor.patrol_at]
+	_step_toward(actor, goal)
 
 ## What this creature is trying to reach: the nearest thing it would fight.
 ##
@@ -4250,6 +4469,17 @@ func _update_awareness(actor: Entity) -> void:
 				actor.calm_turns = 0
 		return
 
+	# A guard that gives up goes back to work. Without this a patroller that
+	# chased you once would lie down where it lost you and never walk again --
+	# the flag is what makes the state recoverable.
+	if actor.alertness == Entity.Alert.PATROL:
+		if actor.notice_block > 0:
+			actor.notice_block -= 1
+			return
+		if _notices_player(actor, d):
+			wake(actor)
+		return
+
 	if actor.notice_block > 0:
 		actor.notice_block -= 1
 		return
@@ -4265,7 +4495,8 @@ func _update_awareness(actor: Entity) -> void:
 	if actor.alertness == Entity.Alert.SUSPICIOUS:
 		actor.calm_turns += 1
 		if actor.calm_turns > 6:
-			actor.alertness = Entity.Alert.ASLEEP
+			actor.alertness = Entity.Alert.PATROL if actor.patrols \
+				else Entity.Alert.ASLEEP
 
 ## Light dominates the roll. Carrying a torch is both how you see and how you
 ## are seen, which is the trade the whole mechanic rests on.
@@ -4380,8 +4611,15 @@ func _ready_weapon(actor: Entity, dist: int) -> bool:
 func _ai_ally(actor: Entity, quarry: Entity) -> void:
 	# Something to fight, and near enough to YOU to be worth fighting. Measured
 	# from the player rather than from the ally, so it never strays further
-	# than the leash however far it has already wandered.
-	if quarry != null and Los.steps(player.x, player.y, quarry.x, quarry.y) <= ALLY_LEASH:
+	# than its reach however far it has already wandered.
+	#
+	# The stance is only this number. At heel it will not cross the room for
+	# something; loose, it works the whole leash. That one distance is the
+	# entire difference between a bodyguard and a hunting dog, and writing it
+	# as two behaviours instead would have been two things to keep in step.
+	var range_out := ALLY_HEEL_REACH if actor.stance == Entity.Stance.HEEL \
+		else ALLY_LEASH
+	if quarry != null and Los.steps(player.x, player.y, quarry.x, quarry.y) <= range_out:
 		var dist := Los.steps(actor.x, actor.y, quarry.x, quarry.y)
 		# Arming itself costs the turn, exactly as the player's swap key does.
 		if _ready_weapon(actor, dist):
@@ -4517,18 +4755,74 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	if route.is_empty():
 		return
 	var step: Vector2i = route[0]
-	if entity_at(step.x, step.y) != null:
-		return
+	var blocker := entity_at(step.x, step.y)
+	if blocker != null:
+		# YOUR OWN SIDE IS NOT A WALL.
+		#
+		# The pathfinder routes over ground and knows nothing about creatures,
+		# so the shortest line from an ally to its target runs straight through
+		# whoever is in the way -- and that is USUALLY THE PLAYER, because
+		# standing between your bodyguard and the thing it is fighting is the
+		# ordinary geometry of having a bodyguard. Found by a test: an ally at
+		# heel sat still for four turns while an orc hit the player from the
+		# far side, because its one step was onto the player's cell and it gave
+		# up rather than going round.
+		#
+		# Deliberately narrowed to the same faction. A monster blocked by
+		# another monster keeps today's behaviour of simply waiting, which
+		# reads fine in a corridor and -- more to the point -- is a difficulty
+		# question nobody has measured. Teaching every creature in the game to
+		# flow around its neighbours is a real change to how packs reach you,
+		# and it does not belong in a bug fix for allies.
+		if blocker.faction != actor.faction:
+			return
+		step = _around(actor, target)
+		if step.x < 0:
+			return
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
 
+## A way past a friend: the free neighbour that gets closest to `target`.
+##
+## Must get STRICTLY closer, or two allies either side of the player would
+## shuffle back and forth forever trading the same two cells. No rng and a
+## fixed scan order, so a seed replays identically.
+func _around(actor: Entity, target: Vector2i) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := Los.steps(actor.x, actor.y, target.x, target.y)
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var nx: int = actor.x + dx
+			var ny: int = actor.y + dy
+			if not can_step(actor.x, actor.y, nx, ny):
+				continue
+			if entity_at(nx, ny) != null:
+				continue
+			var d := Los.steps(nx, ny, target.x, target.y)
+			if d < best_d:
+				best_d = d
+				best = Vector2i(nx, ny)
+	return best
+
 ## Mouthfuls before a rabbit stops being one.
 ##
-## Three, not five. A floor grows 5.3 fungus on average (measured), so five
-## meant eating essentially every mushroom on the level and the transformation
-## would almost never have fired. Three makes it a thing that happens.
-const RABBIT_TURNS := 3
+## Two, and the history here is worth keeping because the first number was
+## measured honestly and still did nothing.
+##
+## It was five, then three: a floor grows 5.3 fungus on average (measured), so
+## five meant eating essentially every mushroom on the level. Three was meant
+## to make the transformation "a thing that happens" -- and it never happened
+## once in play, because the tuning was not the binding constraint. Everything
+## started ASLEEP and no creature acted until it noticed the player, so a rabbit
+## did not eat at all until you arrived, and by then it is busy fleeing you.
+## Foragers now forage whether or not anyone is watching (see `_take_ai_turn`),
+## which is what makes ANY number here mean something. Two, because the rabbit
+## is now competing with the player for the same mushrooms and the race should
+## be losable.
+const RABBIT_TURNS := 2
 ## Turns spent with its head down, unable to react. The window.
 const RABBIT_MEAL := 2
 ## How far it will look for a mushroom.
@@ -5032,6 +5326,11 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
 			events.append({"kind": &"kill",
 				"to": Vector2i(defender.x, defender.y)})
+			# Remembered BEFORE the loot drop empties it, so what stands up
+			# again is wearing what it fought you in. Serialised with the run,
+			# because a suspend in the five turns after a big kill must not
+			# quietly cost you the dig.
+			_remember_the_dead(defender)
 			_drop_loot(defender)
 			if defender.risen:
 				_settle_the_grave()
