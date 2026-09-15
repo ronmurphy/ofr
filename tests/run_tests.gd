@@ -5920,6 +5920,9 @@ func _test_the_bone_ally() -> void:
 	var back := Item.from_dict(bone.to_dict())
 	check("a bone survives a suspend", back != null
 		and back.bone_name == "Erdrick" and back.bone_gear.size() == 2)
+	check("carrying the level it was raised from",
+		back != null and back.bone_level == bone.bone_level,
+		"%d vs %d" % [back.bone_level if back else -1, bone.bone_level])
 	check("and is still named for them after loading",
 		back != null and back.name.contains("Erdrick"), back.name if back else "null")
 
@@ -5984,6 +5987,144 @@ func _test_the_bone_ally() -> void:
 		gs.player.x == 5 and ally.x == 4 and ally.y == 7,
 		"player %d,%d ally %d,%d" % [gs.player.x, gs.player.y, ally.x, ally.y])
 	check("and does not hit it", ally.hp == ally_hp)
+
+	# --- a shade of the hero, not a skeleton in their coat --------------------
+	# The morgue never recorded hit points, only the level reached, so this is
+	# the one number the ally's toughness can be rebuilt from. Asserted against
+	# the curve rather than against a literal, so a balance pass on LEVEL_HP
+	# cannot leave this test asserting a number the game no longer uses.
+	check("the hp curve is the one the player actually starts on",
+		GameState.hp_at_level(1) == 30, str(GameState.hp_at_level(1)))
+	check("and it grows by the level bonus",
+		GameState.hp_at_level(5) == 30 + GameState.LEVEL_HP * 4,
+		str(GameState.hp_at_level(5)))
+
+	var hero_bone := Item.make(&"bone")
+	hero_bone.bone_name = "Solo"
+	hero_bone.bone_level = 19
+	var deep_gs := _arena(30, 14)
+	deep_gs.player.x = 6
+	deep_gs.player.y = 7
+	check("a deep grave raises a real fighter", deep_gs._summon_ally(hero_bone))
+	var shade: Entity = null
+	for e in deep_gs.entities:
+		if e.faction == Entity.Faction.PLAYER and not e.is_player:
+			shade = e
+	check("with half of what that character could take (%d)"
+		% (shade.max_hp if shade else 0),
+		shade != null and shade.max_hp == GameState.hp_at_level(19) / 2,
+		str(shade.max_hp) if shade else "none")
+	check("and it arrives whole", shade != null and shade.hp == shade.max_hp)
+
+	# A grave from the learning floors must still stand up, rather than coming
+	# back weaker than an ordinary skeleton.
+	var shallow := Item.make(&"bone")
+	shallow.bone_name = "Nameless"
+	shallow.bone_level = 1
+	var shallow_gs := _arena(30, 14)
+	shallow_gs.player.x = 6
+	shallow_gs.player.y = 7
+	check("a shallow grave still raises somebody",
+		shallow_gs._summon_ally(shallow))
+	var weakling: Entity = null
+	for e in shallow_gs.entities:
+		if e.faction == Entity.Faction.PLAYER and not e.is_player:
+			weakling = e
+	check("never weaker than a plain skeleton (%d)"
+		% (weakling.max_hp if weakling else 0),
+		weakling != null and weakling.max_hp >= 12, str(weakling.max_hp) if weakling else "none")
+
+	# --- the right weapon for the range --------------------------------------
+	# Brad carries one ranged and one melee at all times, so his graves hold
+	# both -- which is the case that made this worth writing. The gear IS the
+	# record of how somebody fought; nothing has to ask the morgue how they
+	# got their kills.
+	var archer := _arena(30, 14)
+	archer.player.x = 4
+	archer.player.y = 7
+	var bowman := _spawn(archer, "skeleton", 6, 7)
+	bowman.faction = Entity.Faction.PLAYER
+	bowman.ai = &"ally"
+	bowman.name = "Rodney"
+	for want in [&"war_bow", &"war_axe"]:
+		var kit := Item.make(want)
+		bowman.inventory.append(kit)
+	bowman.equipped[Item.Slot.WEAPON] = bowman.inventory[1]  # starts on the axe
+	var mark := _spawn(archer, "orc", 11, 7)
+	mark.max_hp = 500
+	mark.hp = 500
+
+	# PRECONDITION, asserted rather than assumed. The first version of this put
+	# the target 10 cells from the player -- outside ALLY_LEASH -- so the ally
+	# correctly ignored it and followed the player instead, and all three
+	# checks below failed while the code under test was perfectly right. A test
+	# that sets up the wrong situation reports a bug in the wrong place.
+	check("the target is inside the leash, so the ally will engage it",
+		Los.steps(archer.player.x, archer.player.y, mark.x, mark.y)
+			<= GameState.ALLY_LEASH,
+		"%d away" % Los.steps(archer.player.x, archer.player.y, mark.x, mark.y))
+
+	# Five cells off: it should arm itself with the bow, and that is its whole
+	# turn -- it does not get to swap and shoot in the same breath.
+	archer._take_ai_turn(bowman)
+	var held: Item = bowman.equipped.get(Item.Slot.WEAPON, null)
+	check("an ally at range takes up the bow",
+		held != null and held.id == &"war_bow", held.name if held else "nothing")
+	check("and that swap was its turn -- it has not fired yet",
+		mark.hp == mark.max_hp, str(mark.hp))
+
+	# Now it shoots, rather than walking a bow into melee.
+	var wounded := mark.hp
+	archer._take_ai_turn(bowman)
+	check("and shoots with it rather than closing", mark.hp < wounded,
+		"%d -> %d" % [wounded, mark.hp])
+
+	# Something reaches it: the bow goes away and the axe comes out.
+	mark.x = bowman.x + 1
+	mark.y = bowman.y
+	archer._take_ai_turn(bowman)
+	held = bowman.equipped.get(Item.Slot.WEAPON, null)
+	check("and takes the axe when something closes",
+		held != null and held.id == &"war_axe", held.name if held else "nothing")
+	var bled := mark.hp
+	archer._take_ai_turn(bowman)
+	check("then swings it", mark.hp < bled, "%d -> %d" % [bled, mark.hp])
+
+	# An archer with no blade still swings the bow rather than standing there.
+	var lonely := _spawn(archer, "skeleton", 20, 3)
+	lonely.faction = Entity.Faction.PLAYER
+	lonely.ai = &"ally"
+	var only_bow := Item.make(&"war_bow")
+	lonely.inventory.append(only_bow)
+	lonely.equipped[Item.Slot.WEAPON] = only_bow
+	check("an ally with nothing else keeps the bow in hand",
+		not archer._ready_weapon(lonely, 1))
+
+	# --- and a risen grave keeps the old promise ------------------------------
+	# _arm_monster refuses to hand a launcher to a melee brain. Grave gear used
+	# to slip past that, so a risen archer charged swinging a bow.
+	var tomb := _arena(30, 14)
+	tomb.player.x = 4
+	tomb.player.y = 7
+	tomb.grave_at[Vector2i(8, 7)] = {
+		"level": 9, "cause": "killed by an ogre", "depth": 9, "turns": 100,
+		"gear": ["war bow", "war axe"], "line": "x",
+	}
+	tomb.map.set_tile(8, 7, Tiles.GRAVE)
+	tomb._raise_from(Vector2i(8, 7))
+	var archer_dead: Entity = null
+	for e in tomb.entities:
+		if e.risen:
+			archer_dead = e
+	check("a risen grave rises", archer_dead != null)
+	if archer_dead != null:
+		var hand: Item = archer_dead.equipped.get(Item.Slot.WEAPON, null)
+		check("and holds the blade, not the bow",
+			hand != null and hand.id == &"war_axe",
+			hand.name if hand else "nothing")
+		check("but still carries the bow, so it still drops",
+			archer_dead.inventory.size() == 2,
+			str(archer_dead.inventory.size()))
 
 	# --- it follows you down -------------------------------------------------
 	# Through the real path: build_level replaces `entities` wholesale, which

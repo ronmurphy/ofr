@@ -52,6 +52,10 @@ var damage_type: StringName = &""
 ## working because the file it came from was edited, rotated, or reclaimed.
 var bone_name: String = ""
 var bone_gear: Array[String] = []
+## What level that character reached. Zero on everything else, and on bones
+## from saves written before an ally's strength depended on it -- which read
+## back as "level 1" and get a plain skeleton, the behaviour they already had.
+var bone_level: int = 0
 
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
@@ -616,6 +620,7 @@ func to_dict() -> Dictionary:
 		# "nobody", which is exactly right for a scroll and for an old save.
 		"bone_name": bone_name,
 		"bone_gear": bone_gear,
+		"bone_level": bone_level,
 	}
 
 static func from_dict(d: Dictionary) -> Item:
@@ -640,6 +645,7 @@ static func from_dict(d: Dictionary) -> Item:
 	# than empty: a resumed run should not find its bow inexplicably dry.
 	it.ammo = int(d.get("ammo", it.ammo_max))
 	it.bone_name = String(d.get("bone_name", ""))
+	it.bone_level = int(d.get("bone_level", 0))
 	it.bone_gear.clear()
 	for g in d.get("bone_gear", []):
 		it.bone_gear.append(String(g))

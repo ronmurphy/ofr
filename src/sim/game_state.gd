@@ -192,6 +192,23 @@ const XP_CURVE_B := 42
 
 const LEVEL_HP := 5
 
+## What the player starts with, and the other half of the curve above.
+##
+## Named rather than written as a literal in `new_game` because something else
+## now has to reproduce it: the morgue records the LEVEL a dead character
+## reached but never their hit points, and `hp_at_level` rebuilds those from
+## this pair. Two copies of a growth curve is exactly the sort of thing that
+## drifts apart quietly, one balance pass at a time.
+const START_HP := 30
+
+## The hit points a hero of this level had.
+##
+## Deterministic, which is the only reason a bone ally can be as tough as the
+## run that died: nothing about max HP is written into the morgue, so it is
+## reconstructed from the one number that is.
+static func hp_at_level(lvl: int) -> int:
+	return START_HP + LEVEL_HP * maxi(0, lvl - 1)
+
 ## The least a blow can be reduced to, as a fraction of the attacker's power.
 ##
 ## Flat damage reduction has a known failure mode: negligible while small, then
@@ -851,8 +868,8 @@ func new_game() -> void:
 	# which keeps seeded tests and resumed saves honest.
 	player.is_player = true
 	player.faction = Entity.Faction.PLAYER
-	player.max_hp = 30
-	player.hp = 30
+	player.max_hp = hp_at_level(1)
+	player.hp = player.max_hp
 	player.power = 5
 	player.defense = 1
 	player.light = LightSource.new(0, 0, TORCH_RADIUS,
@@ -1805,9 +1822,13 @@ func _leave_a_bone(victim: Entity, at: Vector2i) -> void:
 	bone.bone_name = victim.name.trim_prefix("risen ").strip_edges()
 	if bone.bone_name == "":
 		bone.bone_name = "Nameless"
-	for slot in victim.equipped:
-		var it: Item = victim.equipped[slot]
+	# The PACK, not just the hands. A character buried with a bow and an axe
+	# has only one of them equipped, and recording the equipped slots alone
+	# would quietly lose the other -- which is exactly the second weapon the
+	# ally needs in order to have a choice at all.
+	for it in victim.inventory:
 		bone.bone_gear.append(it.display_name())
+	bone.bone_level = victim.level
 	bone.name = Item.bone_label(bone.bone_name)
 	bone.x = at.x
 	bone.y = at.y
@@ -2692,6 +2713,9 @@ func _raise_from(cell: Vector2i) -> void:
 	# Morgue.name_of invents a stable one for the older dead, who were buried
 	# before names were written down.
 	risen.name = "risen %s" % Morgue.name_of(rec)
+	# Carried so it can reach the bone, and from the bone the ally. The morgue
+	# knows what level this character reached; nothing else does.
+	risen.level = maxi(1, int(rec.get("level", 1)))
 	# Wearing what the run died in, and charged for it.
 	#
 	# The threat ceiling is a survivability promise, and gear is exactly why
@@ -2704,7 +2728,16 @@ func _raise_from(cell: Vector2i) -> void:
 		var it := Item.from_display_name(String(text))
 		if it == null:
 			continue
-		risen.equipped[it.slot] = it
+		# A launcher goes in the PACK, not the hands.
+		#
+		# `_arm_monster` already refuses to arm a melee brain with reach it
+		# will never use, and grave gear was slipping past that rule: a risen
+		# archer charged into melee swinging its bow. The risen is a plain
+		# hunter -- only the ally learned to swap -- so it is given the blade
+		# and keeps the bow, which still drops, and still reaches the bone.
+		var held: Item = risen.equipped.get(it.slot, null)
+		if it.slot != Item.Slot.WEAPON or it.range_bonus <= 1 or held == null:
+			risen.equipped[it.slot] = it
 		risen.inventory.append(it)
 		risen.threat += it.power_bonus + it.defense_bonus
 	entities.append(risen)
@@ -2741,6 +2774,21 @@ func _summon_ally(bone: Item) -> bool:
 		return false
 
 	var ally := monster_from(entry, spot.x, spot.y)
+	# A SHADE OF THE HERO, not a skeleton wearing their coat.
+	#
+	# Twelve hit points is what the bestiary gives a skeleton, and it made the
+	# ally a speed bump at the depths where you most want one: a level-19 grave
+	# lent you plate armour on a twelve-point frame, and the first dragon it met
+	# ended it. Half of what that character could take is the compromise --
+	# enough that a deep grave is worth more than a shallow one, short of
+	# raising the dead at full strength.
+	#
+	# Never WEAKER than a plain skeleton, so a grave from the learning floors
+	# still stands up. Armour and shield need no help here: `total_defense`
+	# already sums whatever an entity has equipped, whoever it is.
+	ally.max_hp = maxi(ally.max_hp, hp_at_level(maxi(1, bone.bone_level)) / 2)
+	ally.hp = ally.max_hp
+	ally.level = maxi(1, bone.bone_level)
 	ally.faction = Entity.Faction.PLAYER
 	ally.appearance = &"bone_ally"
 	ally.ai = &"ally"
@@ -4279,6 +4327,45 @@ func _ai_hunter(actor: Entity, foe: Entity) -> void:
 		return
 	_step_toward(actor, Vector2i(foe.x, foe.y))
 
+## Puts the right weapon in a creature's hands for the range it is fighting at.
+##
+## `_arm_monster` refuses to hand a launcher to a melee brain, because "a
+## goblin handed a bow would carry reach its `pack` AI never uses, which reads
+## as a bug rather than a surprise". GRAVE GEAR BYPASSES THAT GUARD ENTIRELY:
+## nothing filters what the morgue says a character was buried in, so an ally
+## raised from an archer's grave used to charge into melee swinging a war bow.
+##
+## Rather than filtering the bow out, this teaches the ally to do what the
+## player does -- reach at distance, blade in hand when something closes. The
+## player pays a turn for that swap, so the ally pays one too: changing weapons
+## IS its action, which is what stops an archer from backing off and shooting
+## in the same breath.
+##
+## Answers whether the swap happened, because that is the whole turn.
+func _ready_weapon(actor: Entity, dist: int) -> bool:
+	var held: Item = actor.equipped.get(Item.Slot.WEAPON, null)
+	var want_reach := dist > 1
+	var has_reach := held != null and held.range_bonus > 1
+	if want_reach == has_reach:
+		return false
+	var swap: Item = null
+	for it in actor.inventory:
+		if it.slot != Item.Slot.WEAPON or it == held:
+			continue
+		if (it.range_bonus > 1) == want_reach:
+			swap = it
+			break
+	# Nothing else to hold. It fights with what it has rather than standing
+	# there empty-handed -- an archer with no blade still swings the bow, which
+	# is what a real person cornered with a bow does.
+	if swap == null:
+		return false
+	actor.equipped[Item.Slot.WEAPON] = swap
+	if map.is_visible(actor.x, actor.y):
+		msg_log.add("%s takes up the %s." % [actor.name, swap.name],
+			Color(0.70, 0.85, 0.78))
+	return true
+
 ## Fights what is near you, and otherwise keeps up.
 ##
 ## Deliberately simple, and deliberately NOT commandable. The design rule Brad
@@ -4295,8 +4382,20 @@ func _ai_ally(actor: Entity, quarry: Entity) -> void:
 	# from the player rather than from the ally, so it never strays further
 	# than the leash however far it has already wandered.
 	if quarry != null and Los.steps(player.x, player.y, quarry.x, quarry.y) <= ALLY_LEASH:
+		var dist := Los.steps(actor.x, actor.y, quarry.x, quarry.y)
+		# Arming itself costs the turn, exactly as the player's swap key does.
+		if _ready_weapon(actor, dist):
+			return
 		if actor.is_adjacent(quarry):
 			_attack(actor, quarry)
+			return
+		# Shoots if it is holding something that shoots and can see to do it.
+		# It still closes the distance rather than keeping station: an ally
+		# that kites would walk itself off the leash, and the leash is what
+		# keeps your help where you can see it.
+		if dist <= actor.total_range() \
+				and Los.clear(map, actor.x, actor.y, quarry.x, quarry.y):
+			_attack(actor, quarry, true)
 			return
 		_step_toward(actor, Vector2i(quarry.x, quarry.y))
 		return
