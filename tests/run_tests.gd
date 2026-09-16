@@ -279,6 +279,10 @@ func _test_sleeping_monsters_do_not_act() -> void:
 
 	var m := _spawn(gs, "kobold", 20, 6)
 	m.alertness = Entity.Alert.ASLEEP
+	# BOTH axes, now that they are separate. Setting alertness alone no longer
+	# means "asleep" -- a kobold is the sort of thing that may be walking a
+	# beat, and this test is about the ones that are not.
+	m.activity = Entity.Activity.SLEEPING
 	var where := Vector2i(m.x, m.y)
 	var hp := gs.player.hp
 	for _i in 10:
@@ -4713,6 +4717,9 @@ func _test_a_rat_may_creep_past() -> void:
 		# check passed without exercising the rule at all.
 		var sleeper := _spawn(gs, "orc", 4, 2)
 		sleeper.alertness = Entity.Alert.ASLEEP
+		# Genuinely asleep on both axes -- a patrolling orc is awake enough to
+		# see you, and creeping past one should not be free.
+		sleeper.activity = Entity.Activity.SLEEPING
 		if as_rat:
 			var ring := Item.make(&"rat_ring")
 			gs.give_item(ring)
@@ -5681,11 +5688,13 @@ func _test_the_floor_is_busy() -> void:
 		% keep.patrol_route.size(), keep.patrol_route.size() == 3)
 
 	var guard := _spawn(keep, "skeleton", 6, 3)
-	check("a skeleton is a kept thing and walks one", guard.patrols)
-	check("and its ACTIVITY says so, not its alertness",
-		guard.activity == Entity.Activity.PATROLLING)
-	# _spawn wakes what it makes, for the behaviour tests. Put it back on duty.
+	check("a skeleton is the sort of thing that walks a beat", guard.patrols)
+	# CAPABILITY, not state: `monster_from` no longer decides. Whether a given
+	# guard is walking tonight is rolled at spawn, so a hand-placed one has to
+	# be put on duty deliberately -- which is also what stops this test
+	# depending on a dice roll.
 	guard.alertness = Entity.Alert.ASLEEP
+	guard.activity = Entity.Activity.PATROLLING
 
 	# The player is far away, in the dark, and does nothing at all. Asserted,
 	# because the whole claim is that the floor moves without them.
@@ -5750,6 +5759,34 @@ func _test_the_floor_is_busy() -> void:
 	check("and a guard there simply holds its post",
 		idle.x == 5 and idle.y == 5)
 
+	# The roll itself, through a REAL floor: some walk and some sleep. This is
+	# the assertion the fix exists for -- setting every biped patrolling
+	# measured at half the dungeon awake, which retires the first rung of the
+	# awareness ladder and most of what the rat ring is for.
+	var walk := 0
+	var doze := 0
+	for i in 12:
+		var live := GameState.new(8800 + i)
+		live.new_game()
+		live.depth = 8
+		live.build_level()
+		for e in live.entities:
+			if e.is_player or not e.patrols:
+				continue
+			if e.activity == Entity.Activity.PATROLLING:
+				walk += 1
+			else:
+				doze += 1
+	check("some of the watch is walking (%d)" % walk, walk > 0)
+	check("and some of it is asleep (%d)" % doze, doze > 0)
+
+	# And the bands differ, which is the point of keying it on Bands.of.
+	check("a fortress is watched more closely than a cave",
+		float(GameState.PATROL_CHANCE[Bands.FORTRESS])
+			> float(GameState.PATROL_CHANCE[Bands.CAVES]))
+	check("and the climb inherits it without a second table",
+		Bands.of(15) == Bands.of(5) and Bands.of(12) == Bands.of(8))
+
 	# A save from the one evening PATROL was an alertness must still walk.
 	# Reading `alertness: 3` as a plain ASLEEP monster would stop the guard for
 	# good, silently, in a suspended run that already exists on disk.
@@ -5765,6 +5802,90 @@ func _test_the_floor_is_busy() -> void:
 		"x": 3, "y": 3, "alertness": Entity.Alert.AWAKE, "patrols": true})
 	check("a guard saved mid-chase remembers its beat too",
 		chasing.activity == Entity.Activity.PATROLLING)
+
+	# --- the floor arms the dungeon ------------------------------------------
+	# The reason this exists is not the monster, it is the DECISION: gear you
+	# leave behind stops being free.
+	var midden := _arena(30, 14)
+	midden.player.x = 25
+	midden.player.y = 12
+	var thief := _spawn(midden, "goblin", 5, 5)
+	thief.alertness = Entity.Alert.ASLEEP
+	check("a goblin has hands and the wit to use them", thief.scavenges)
+	check("a cave bear does not", not _spawn(midden, "cave bear", 20, 5).scavenges)
+
+	var dropped := Item.make(&"war_axe")
+	dropped.x = 7
+	dropped.y = 5
+	midden.ground.append(dropped)
+	var was_threat := thief.threat
+	check("it starts bare-handed",
+		not thief.equipped.has(Item.Slot.WEAPON))
+	for _i in 8:
+		midden._take_ai_turn(thief)
+	check("it crosses to the axe and takes it",
+		thief.equipped.get(Item.Slot.WEAPON, null) == dropped,
+		"at %d,%d holding %s" % [thief.x, thief.y,
+			thief.equipped.get(Item.Slot.WEAPON, null)])
+	check("the axe is off the floor", not midden.ground.has(dropped))
+	check("and it is worth more to face now (%d -> %d)"
+		% [was_threat, thief.threat], thief.threat > was_threat)
+
+	# Upgrading puts the old one back -- a goblin trading up must not delete a
+	# weapon from the world.
+	var better := Item.make(&"war_axe")
+	better.upgrade()
+	better.upgrade()
+	better.x = thief.x
+	better.y = thief.y
+	midden.ground.append(better)
+	midden._take_ai_turn(thief)
+	check("it trades up when something better turns up",
+		thief.equipped.get(Item.Slot.WEAPON, null) == better)
+	check("and drops what it was holding rather than eating it",
+		midden.ground.has(dropped), str(midden.ground.size()))
+
+	# Killing the thief gives it back FOR CERTAIN. An item on the floor is a
+	# sure thing and an item on a monster is a coin flip, so without this the
+	# scavenger would quietly destroy half of everything it picked up --
+	# measured at 43 taken per 20 floors on depth 2, about 21 of them gone.
+	check("what it stole is marked as stolen", better.scavenged)
+	check("and gear it spawned with is not",
+		not Item.make(&"dagger").scavenged)
+	var returned := 0
+	for _try in 30:
+		var payback := _arena(20, 12)
+		payback.player.x = 2
+		payback.player.y = 2
+		var mugger := _spawn(payback, "goblin", 5, 5)
+		var mine := Item.make(&"war_axe")
+		mine.scavenged = true
+		mugger.equipped[Item.Slot.WEAPON] = mine
+		mugger.inventory.append(mine)
+		mugger.alive = false
+		payback._drop_loot(mugger)
+		if payback.ground.has(mine):
+			returned += 1
+	check("a stolen axe comes back every single time (%d of 30)" % returned,
+		returned == 30)
+
+	# What it must NEVER take.
+	var forbidden := _arena(20, 12)
+	forbidden.player.x = 18
+	forbidden.player.y = 10
+	var picky := _spawn(forbidden, "goblin", 5, 5)
+	picky.alertness = Entity.Alert.ASLEEP
+	for bad_id in [&"rat_ring", &"shovel", &"war_bow", &"potion_healing"]:
+		var bad := Item.make(bad_id)
+		bad.x = 5
+		bad.y = 5
+		forbidden.ground.append(bad)
+	for _i in 4:
+		forbidden._take_ai_turn(picky)
+	check("it leaves the uniques, the bow and the potion alone (%d left)"
+		% forbidden.ground.size(),
+		forbidden.ground.size() == 4 and picky.equipped.is_empty(),
+		"holding %d" % picky.equipped.size())
 
 	# --- the rabbit ----------------------------------------------------------
 	# Never seen in play: everything started ASLEEP, so a rabbit did not eat

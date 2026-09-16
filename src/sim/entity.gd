@@ -83,6 +83,14 @@ enum Stance { LOOSE, HEEL }
 
 var stance: int = Stance.LOOSE
 
+## Whether this thing picks up what it finds and puts it on.
+##
+## NOT an Activity, deliberately. Scavenging is opportunistic -- you do not
+## take it up as an occupation, you notice a sword on your way somewhere -- so
+## a guard can walk its round AND stoop for a blade, which a single activity
+## field could never express. It is a trait, like `patrols`.
+var scavenges := false
+
 ## Whether this thing walks a beat. Separate from `alertness`, which is only
 ## where it is RIGHT NOW: without a standing flag, a guard that chased you and
 ## lost you would fall asleep on the spot and never patrol again.
@@ -316,6 +324,7 @@ func to_dict() -> Dictionary:
 		"notice_block": notice_block, "alive": alive,
 		"stance": stance,
 		"patrols": patrols, "patrol_at": patrol_at,
+		"scavenges": scavenges,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
@@ -359,6 +368,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.notice_block = int(d.get("notice_block", 0))
 	e.stance = int(d.get("stance", Stance.LOOSE))
 	e.patrols = bool(d.get("patrols", false))
+	e.scavenges = bool(d.get("scavenges", false))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#

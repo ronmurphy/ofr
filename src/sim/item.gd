@@ -57,6 +57,22 @@ var bone_gear: Array[String] = []
 ## back as "level 1" and get a plain skeleton, the behaviour they already had.
 var bone_level: int = 0
 
+## Taken off the floor by something that scavenges.
+##
+## The dungeon may TAKE your things; it may not EAT them. An item lying on the
+## ground is certain, and the same item in a goblin's hands is a coin flip --
+## `LOOT_DROP_CHANCE` is 0.5 -- so without this, scavenging quietly destroys
+## half of everything it picks up. Measured at depth 2: 43 items taken per 20
+## floors, about 21 of them gone from the run for good.
+##
+## The rule is the one `_drop_loot` already applies to a risen grave, for the
+## same stated reason: a per-item roll turns "kill it and get your sword back"
+## into "kill it and maybe get nothing", which is a worse offer than not having
+## the mechanic at all. Gear a monster SPAWNED with still rolls -- that was
+## never on the floor, and the flood the roll exists to prevent is made of
+## exactly those.
+var scavenged := false
+
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
 var charges := 0
@@ -658,6 +674,7 @@ func to_dict() -> Dictionary:
 		"bone_name": bone_name,
 		"bone_gear": bone_gear,
 		"bone_level": bone_level,
+		"scavenged": scavenged,
 	}
 
 static func from_dict(d: Dictionary) -> Item:
@@ -683,6 +700,7 @@ static func from_dict(d: Dictionary) -> Item:
 	it.ammo = int(d.get("ammo", it.ammo_max))
 	it.bone_name = String(d.get("bone_name", ""))
 	it.bone_level = int(d.get("bone_level", 0))
+	it.scavenged = bool(d.get("scavenged", false))
 	it.bone_gear.clear()
 	for g in d.get("bone_gear", []):
 		it.bone_gear.append(String(g))

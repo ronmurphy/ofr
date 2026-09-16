@@ -673,26 +673,42 @@ static var _vault_library: Array[Vault] = []
 ##
 ## Capital glyphs mark the dangerous variant of a family -- K is a kobold that
 ## shoots back.
+## WHO WALKS A BEAT, and who picks things up.
+##
+## `"patrol": true` goes on anything BIPEDAL -- kobolds, goblins, orcs, ogres,
+## trolls, wights, wizards, giants, skeletons, golems. The rule is Brad's and
+## it is about disposition, not danger: wildlife does not march (rat, bat,
+## bear, rabbit, harpy, wyvern), and the apex things cannot be bothered -- a
+## dragon and an arch lich do not walk rounds, because players come to them
+## rather than the other way about. Shadow and banshee are left out for a
+## different reason: a creature that walks through walls has no use for a route
+## between doors.
+##
+## `"scavenge": true` is the narrower set -- hands AND the wit to use what it
+## finds. The undead keep what they were buried in, and a golem is not going to
+## try on a hat.
+##
+## An earlier version of this note claimed the patrollers were "made things
+## rather than living ones", which was true for exactly one evening and was
+## never the actual rule.
 const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
 	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2, "caves": 1.8},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5},
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2,
-	 "threat": 6, "caves": 0.5},
+	 "threat": 6, "caves": 0.5, "patrol": true, "scavenge": true},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
 	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
-	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0},
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0, "patrol": true, "scavenge": true},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4, "unliving": true, "resists": ["slash", "pierce"], "weak_to": ["blunt"],
-	 ## It was set to guard something and never stopped. The two patrollers are
-	 ## both MADE things rather than living ones -- a beast has no reason to
-	 ## walk a beat, and a floor where the wildlife marches would read as wrong.
+	 ## It was set to guard something and never stopped.
 	 "patrol": true},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3, "patrol": true, "scavenge": true},
 
 	# --- deep tiers -------------------------------------------------------
 	# Power from 7 upward, because below that a levelled character in chain
@@ -700,12 +716,12 @@ const BESTIARY := [
 	# deeper. These also carry the whole ascent, which runs at effective
 	# depths of 10 to 19.
 	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14, "caves": 1.6},
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14, "caves": 1.6, "patrol": true, "scavenge": true},
 	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
 	 "speed": 160, "ai": &"erratic", "flee": 0.25, "flying": true, "min_depth": 5, "threat": 12, "caves": 1.8},
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "regen": 2, "heavy": true, "min_depth": 6,
-	 "threat": 16, "caves": 2.2},
+	 "threat": 16, "caves": 2.2, "patrol": true, "scavenge": true},
 	# The cave band's heavy. Not the hardest thing down there -- what it does
 	# instead is MOVE you, which nothing else in the bestiary can. A corridor
 	# mouth you were holding, a doorway you backed into, the two cells between
@@ -716,7 +732,7 @@ const BESTIARY := [
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
 	 "threat": 17, "knockback": 2, "caves": 2.6},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
-	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"]},
+	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "patrol": true},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
 	 "speed": 140, "ai": &"hunter", "flee": 0.10, "flying": true, "min_depth": 7, "threat": 20, "caves": 2.2},
 	# It throws its own rubble, and that is the fix for a monster you could
@@ -811,7 +827,7 @@ const BESTIARY := [
 	# walk.
 	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
 	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
-	 "min_depth": 8, "threat": 22, "caves": 0.4},
+	 "min_depth": 8, "threat": 22, "caves": 0.4, "patrol": true, "scavenge": true},
 	# What the caves have in them on the way back out.
 	#
 	# Only the SECOND ascent-only creature in the bestiary -- the climb has
@@ -828,7 +844,7 @@ const BESTIARY := [
 	{"name": "cave giant", "app": &"giant", "hp": 48, "power": 13, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "heavy": true, "min_depth": 10,
 	 "ascent_from": 14, "threat": 26, "knockback": 3, "charges": true,
-	 "caves": 2.4},
+	 "caves": 2.4, "patrol": true, "scavenge": true},
 	# Ascent-only, and late on it. `min_depth` stays at the dragon's tier so the
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
@@ -1509,6 +1525,7 @@ func _place_corrupted() -> void:
 		if entity_at(at.x, at.y) != null:
 			continue
 		var m := monster_from(entry, at.x, at.y)
+		_set_the_watch(m)
 		_corrupt(m)
 		entities.append(m)
 		pool -= m.threat
@@ -1652,6 +1669,7 @@ func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
 	if pick.is_empty():
 		return -1
 	var m := monster_from(pick, mx, my)
+	_set_the_watch(m)
 	# Gear raises what a monster is actually worth facing, so it must raise the
 	# threat too. Otherwise a room of armed orcs quietly costs more than its
 	# ceiling claims, and the survivability guarantee becomes a lie.
@@ -1676,12 +1694,17 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.defense = entry["def"]
 	m.speed = entry["speed"]
 	m.ai = entry.get("ai", &"hunter")
-	# What it is BUSY with. Awareness is left alone -- everything still starts
-	# unaware of the player, which is what the stealth system rests on.
+	# CAPABILITY, not state. `patrols` says this kind of creature is the sort
+	# that walks a beat; whether THIS one currently is gets rolled at spawn --
+	# see `_set_the_watch`. Setting it here made every kobold, goblin and orc
+	# in the dungeon patrol, which measured at 39-59% of all monsters awake and
+	# moving, halved the value of the rat ring and quietly raised difficulty at
+	# an unchanged threat ceiling.
+	#
+	# Foraging is not rolled: a rabbit is always a rabbit.
 	m.patrols = entry.get("patrol", false)
-	if m.patrols:
-		m.activity = Entity.Activity.PATROLLING
-	elif m.ai == &"forager":
+	m.scavenges = entry.get("scavenge", false)
+	if m.ai == &"forager":
 		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
 	m.standoff = entry.get("standoff", 1)
@@ -1809,7 +1832,7 @@ func _drop_loot(victim: Entity) -> void:
 		# would turn "beat your own corpse and get your bow back" into "beat
 		# your own corpse and maybe get nothing", which is a worse offer than
 		# not having the mechanic.
-		if victim.faction != Entity.Faction.PLAYER \
+		if victim.faction != Entity.Faction.PLAYER and not it.scavenged \
 				and rng.randf() > LOOT_DROP_CHANCE:
 			continue
 		it.x = at.x
@@ -4333,6 +4356,13 @@ func _take_ai_turn(actor: Entity) -> int:
 	_update_awareness(actor)
 	_last_move_cost = Scheduler.ACTION_COST
 
+	# Opportunistic, and checked BEFORE the activity below rather than being one
+	# of them: a guard can walk its round and still stoop for a blade. Only
+	# while unaware -- nothing stops mid-fight to try on armour.
+	if actor.alertness != Entity.Alert.AWAKE and actor.scavenges \
+			and _scavenge(actor):
+		return _last_move_cost
+
 	# TWO QUESTIONS, ASKED IN ORDER. Has it noticed you -- and if not, what was
 	# it doing anyway?
 	#
@@ -4381,6 +4411,129 @@ func _take_ai_turn(actor: Entity) -> int:
 		&"pack":    _ai_pack(actor, foe)
 		_:          _ai_hunter(actor, foe)
 	return _last_move_cost
+
+## How many of the creatures that COULD walk a beat actually are.
+##
+## Not all of them, and the difference matters more than it sounds. Setting
+## every biped patrolling measured at roughly half of everything in the dungeon
+## awake and moving -- which retires the first rung of the awareness ladder,
+## halves what the ring of the rat is for, and raises difficulty without the
+## threat ceiling noticing.
+##
+## Rolled per creature rather than per floor, so you cannot learn "this level is
+## a patrol level". Two goblins in the same room may differ, which is what
+## makes the "z" and the "..." worth reading: the marker is now information
+## rather than decoration.
+## BY BAND, because where you are should say something about who is awake.
+##
+## A fortress is built and garrisoned and ought to feel watched; a cave is
+## natural and dark and the humanoids in it are squatters rather than a watch.
+## Keyed on the band rather than the depth so the climb inherits it for free --
+## `Bands.of` folds around the bottom, so effective 15 is caves exactly as 5 is.
+const PATROL_CHANCE := {
+	Bands.UPPER: 0.35,
+	Bands.CAVES: 0.15,
+	Bands.FORTRESS: 0.65,
+	Bands.DEEP: 0.50,
+}
+
+## Decides whether this particular guard is walking tonight.
+func _set_the_watch(m: Entity) -> void:
+	if not m.patrols:
+		return
+	var chance: float = PATROL_CHANCE.get(Bands.of(effective_depth()), 0.35)
+	if rng.randf() < chance:
+		m.activity = Entity.Activity.PATROLLING
+
+## How far a scavenger will go out of its way for something lying on the floor.
+##
+## Short. It is meant to pick up what it nearly walked over, not to sweep the
+## level -- a goblin that crosses two rooms for a dagger stops reading as a
+## goblin and starts reading as a magnet.
+const SCAVENGE_REACH := 6
+
+## Picks up and puts on anything better than what it already has.
+##
+## The point of this is not the monster, it is the FLOOR: gear you leave behind
+## arms the dungeon. Dropping a short sword because you found a better one
+## stops being free, which turns a screen you look at twenty times a run into a
+## decision.
+##
+## Answers whether it spent the turn.
+func _scavenge(actor: Entity) -> bool:
+	var here := _better_item_at(actor, Vector2i(actor.x, actor.y))
+	if here != null:
+		ground.erase(here)
+		# Marked so killing the thief gives it back for certain. See
+		# Item.scavenged -- the dungeon may take your things, not eat them.
+		here.scavenged = true
+		var shed: Item = actor.equipped.get(here.slot, null)
+		actor.equipped[here.slot] = here
+		actor.inventory.append(here)
+		# Charged to its threat, for the same reason `_arm_monster` charges
+		# what it hands out: a better-armed monster is worth more to face, and
+		# the number has to keep meaning that or the XP it pays is a lie.
+		actor.threat += here.power_bonus + here.defense_bonus
+		if shed != null:
+			actor.threat -= shed.power_bonus + shed.defense_bonus
+			# What it took off goes back on the floor. It is still loot, and a
+			# goblin upgrading should not delete a sword from the world.
+			shed.x = actor.x
+			shed.y = actor.y
+			shed.letter = ""
+			ground.append(shed)
+		if map.is_visible(actor.x, actor.y):
+			msg_log.add("The %s takes up the %s." % [actor.name, here.name],
+				Color(0.85, 0.78, 0.55))
+		return true
+
+	# Nothing underfoot: go and get the nearest thing worth having.
+	var want := Vector2i(-1, -1)
+	var best := SCAVENGE_REACH + 1
+	for it in ground:
+		var d := Los.steps(actor.x, actor.y, it.x, it.y)
+		if d > SCAVENGE_REACH or d >= best:
+			continue
+		if _better_item_at(actor, Vector2i(it.x, it.y)) == null:
+			continue
+		best = d
+		want = Vector2i(it.x, it.y)
+	if want.x < 0:
+		return false
+	_step_toward(actor, want)
+	return true
+
+## The best thing on that cell this creature would rather be wearing, or null.
+func _better_item_at(actor: Entity, at: Vector2i) -> Item:
+	var best: Item = null
+	var best_gain := 0
+	for it in items_at(at.x, at.y):
+		if not it.is_equipment() or it.unique or it.transforms():
+			continue
+		# The same rule `_arm_monster` keeps: never hand reach to a brain that
+		# will not use it. Only the ally learned to swap weapons.
+		if it.range_bonus > 1 and actor.ai != &"ranged":
+			continue
+		# A shield is no use to something already holding a bow, and a
+		# two-hander means dropping the shield -- neither is a judgement a
+		# scavenger should be making.
+		if it.is_two_handed() and actor.equipped.has(Item.Slot.OFFHAND):
+			continue
+		if it.slot == Item.Slot.OFFHAND:
+			var held: Item = actor.equipped.get(Item.Slot.WEAPON, null)
+			if held != null and held.is_two_handed():
+				continue
+		var mine: Item = actor.equipped.get(it.slot, null)
+		# Typed, not inferred. `items_at` hands back an untyped Array, so `it`
+		# is a Variant and `:=` has nothing to work from -- the same parse
+		# error `player_ally_stance` hit reaching into `entities`.
+		var gain: int = it.power_bonus + it.defense_bonus
+		if mine != null:
+			gain -= mine.power_bonus + mine.defense_bonus
+		if gain > best_gain:
+			best_gain = gain
+			best = it
+	return best
 
 ## The posts on this floor, in the order a guard walks them.
 ##
