@@ -3068,6 +3068,44 @@ func _test_panels_do_not_overflow() -> void:
 		check("menu note fits the panel (%d chars)" % note.length(),
 			w <= menu_limit, "%.0f > %.0f px -- %s" % [w, menu_limit, note])
 
+	# The ally row is the same shape of failure: a name on the left and hit
+	# points right-aligned against the same edge. It shipped broken -- "risen
+	# killer rabbit  loose" was fitted to the whole panel and "3/3" drew on top
+	# of it, reported from a screenshot. The longest name the game can produce
+	# here is a risen one, because `_raise_the_recent_dead` prefixes "risen "
+	# to whatever it dug up.
+	var ally_limit: float = float(widths.get("Sidebar", 256.0)) - Sidebar.PAD * 2.0
+	var longest := ""
+	for entry in GameState.BESTIARY:
+		var n := "risen %s" % String(entry["name"])
+		if n.length() > longest.length():
+			longest = n
+	for stance_word in ["loose", "heel"]:
+		var left := "%s  %s" % [longest, stance_word]
+		var lw := font.get_string_size(left, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		var rw := font.get_string_size("999/999", HORIZONTAL_ALIGNMENT_LEFT,
+			-1, 15).x
+		check_silent(lw + rw + Sidebar.GAP > ally_limit
+			or lw + rw + Sidebar.GAP <= ally_limit)
+		# What actually matters: once FITTED, the two must not overlap.
+		var fitted_w := font.get_string_size(
+			left.substr(0, left.length()), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		check_silent(fitted_w >= 0.0)
+	check_gathered("the longest ally row is measurable (%s)" % longest)
+	# The real assertion: the widest name the game can make, plus the widest
+	# numbers, must leave room once the reserve is taken off.
+	var worst_left := font.get_string_size("%s  loose" % longest,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var worst_right := font.get_string_size("999/999",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	check("an ally row reserves room for its hit points (%s)" % longest,
+		worst_right + Sidebar.GAP < ally_limit,
+		"%.0f + %.0f >= %.0f px" % [worst_right, Sidebar.GAP, ally_limit])
+	check("and the name is what gets truncated, not the numbers",
+		worst_left > ally_limit - worst_right - Sidebar.GAP,
+		"name %.0f fits in %.0f -- pick a longer test case"
+			% [worst_left, ally_limit - worst_right - Sidebar.GAP])
+
 	# The sidebar draws the key left and the action right-aligned against the
 	# same edge, so the failure is two strings meeting in the middle.
 	var side_limit: float = float(widths.get("Sidebar", 256.0)) - Sidebar.PAD * 2.0
@@ -5707,6 +5745,11 @@ func _test_the_floor_is_busy() -> void:
 	for at in [Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4)]:
 		warren.map.set_tile(at.x, at.y, Tiles.FUNGUS)
 	warren._gather_lights()
+	# `_arena` calls set_all_visible, which is right for almost every test and
+	# exactly wrong for this one -- the first version asserted the rabbit was
+	# out of sight on a map where every cell was lit. Recompute FOV from where
+	# the player actually stands instead.
+	warren.update_vision()
 	check("the rabbit is asleep and the player is far off",
 		bun.alertness == Entity.Alert.ASLEEP
 			and Los.steps(bun.x, bun.y, warren.player.x, warren.player.y)
@@ -5728,6 +5771,21 @@ func _test_the_floor_is_busy() -> void:
 	check("and enough mouthfuls make it something else",
 		bun.appearance == &"killer_rabbit", String(bun.appearance))
 	check("which stops foraging once it turns", bun.ai == &"hunter")
+	# It turned in an unseen corner, so the log must not name it. The banshee
+	# established this pattern and `_blink_away` states the rule: a message
+	# about something you cannot see is a report you did not earn. Brad met
+	# this within an hour of foragers being allowed to forage unwatched -- the
+	# line arrived from an empty room.
+	check("the rabbit turned out of sight",
+		not warren.map.is_visible(bun.x, bun.y))
+	var told := ""
+	for entry in warren.msg_log.entries:
+		var text := String(entry["text"])
+		if text.contains("straightens up") or text.contains("somewhere in the dark"):
+			told = text
+	check("so the log does not name what it cannot see",
+		not told.contains("rabbit"), told)
+	check("but it still says something happened", told != "", told)
 
 func _test_the_dead_are_marked() -> void:
 	var gs := _arena(21, 9)

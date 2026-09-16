@@ -96,6 +96,9 @@ func _process(_delta: float) -> void:
 		_hit_at = Time.get_ticks_msec() / 1000.0
 	_last_hp = hp
 
+## Breathing room between a row's left text and its right-aligned number.
+const GAP := 8.0
+
 func _draw() -> void:
 	if state == null:
 		return
@@ -269,12 +272,24 @@ func _draw() -> void:
 		for mate in party:
 			var stance_text := "heel" if mate.stance == Entity.Stance.HEEL \
 				else "loose"
+			# RESERVE the hit points before fitting the name.
+			#
+			# `_fit` takes that argument for exactly this shape of row and the
+			# first version of this line did not pass it, so a long name was
+			# fitted to the WHOLE panel and the right-aligned numbers drew on
+			# top of it: "risen killer rabbit" plus "loose" plus "3/3" came out
+			# as a collision, reported from play. The gear rows learned this
+			# once already -- a label measured against a limit that something
+			# else is also using is not measured at all.
+			var hp_text := "%d/%d" % [mate.hp, mate.max_hp]
+			var reserve := font.get_string_size(hp_text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + GAP
 			# Their own colour, so the line and the figure on the map are
 			# obviously the same creature.
 			draw_string(font, Vector2(PAD, y),
-				_fit("%s  %s" % [mate.name, stance_text]),
+				_fit("%s  %s" % [mate.name, stance_text], reserve),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.ALLY)
-			draw_string(font, Vector2(PAD, y), "%d/%d" % [mate.hp, mate.max_hp],
+			draw_string(font, Vector2(PAD, y), hp_text,
 				HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
 				Palette.ALLY if mate.wound() == Entity.Wound.WHOLE
 				else Palette.BLOODIED)

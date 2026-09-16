@@ -4898,9 +4898,22 @@ func _rabbit_turns(actor: Entity) -> void:
 	actor.power = 9
 	actor.threat = 12
 	actor.flee_below = 0.0
-	msg_log.add("The rabbit straightens up. Something has gone very wrong with it.",
-		Color(0.95, 0.72, 0.72))
-	events.append({"kind": &"notice", "to": Vector2i(actor.x, actor.y)})
+	# Said differently when it happens out of sight, the way the banshee's wail
+	# already is. `_blink_away` states the rule: a message about something you
+	# cannot see is a free report you did not earn.
+	#
+	# This announced itself unconditionally for the life of the project and it
+	# never mattered, because nothing acted until the player was near enough to
+	# see it -- so a rabbit could not transform off-screen. Teaching foragers to
+	# forage unwatched is what turned a dormant inconsistency into a message
+	# arriving from an empty room. Found in play, within an hour.
+	if map.is_visible(actor.x, actor.y):
+		msg_log.add("The rabbit straightens up. Something has gone very wrong with it.",
+			Color(0.95, 0.72, 0.72))
+		events.append({"kind": &"notice", "to": Vector2i(actor.x, actor.y)})
+	else:
+		msg_log.add("Something screams, somewhere in the dark. It does not stop.",
+			Color(0.95, 0.72, 0.72))
 
 ## Half a brazier, and a little more for every mushroom it got to first.
 ##
