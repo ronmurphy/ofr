@@ -4555,8 +4555,17 @@ func _lay_the_beat() -> void:
 	for y in map.height:
 		for x in map.width:
 			var t := map.get_tile(x, y)
-			if t == Tiles.BRAZIER or t == Tiles.BRAZIER_SPENT:
-				posts.append(Vector2i(x, y))
+			if t != Tiles.BRAZIER and t != Tiles.BRAZIER_SPENT:
+				continue
+			# BESIDE the fire, not in it. A brazier is `walk: false`, so a
+			# route made of brazier cells is a route to places nothing can
+			# stand -- `pathfinder.path` returns empty, `_step_toward` gives
+			# up, and every guard in the dungeon stands at attention forever.
+			# That is exactly what shipped, and it took Brad sitting in a
+			# corner pressing "." two hundred times to find it.
+			var beside := _beside(Vector2i(x, y))
+			if beside.x >= 0:
+				posts.append(beside)
 	if posts.size() < 2:
 		# One post is a vigil, not a round; none at all is a floor with nothing
 		# worth guarding. Either way there is no route, and `_ai_patrol` leaves
@@ -4577,6 +4586,22 @@ func _lay_the_beat() -> void:
 		here = posts[best]
 		patrol_route.append(here)
 		posts.remove_at(best)
+
+## A cell a creature can actually stand on, next to something it cannot.
+##
+## Fixed scan order and no rng, so a seed lays the same beat every time.
+func _beside(at: Vector2i) -> Vector2i:
+	# TYPED array, not a bare literal. An untyped `[...]` yields Variants, so
+	# `at + d` has no inferable type and `:=` is a parse error -- which fails
+	# the whole FILE, not the function. Third time this week.
+	var around: Array[Vector2i] = [
+		Vector2i(0, 1), Vector2i(1, 0), Vector2i(0, -1), Vector2i(-1, 0),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	for d in around:
+		var c := at + d
+		if map.is_walkable(c.x, c.y) and not Tiles.is_avoided(map.get_tile(c.x, c.y)):
+			return c
+	return Vector2i(-1, -1)
 
 ## Walking the round. It is NOT looking for you -- `_update_awareness` has
 ## already run and would have made it AWAKE if it had seen you -- so this is
@@ -5057,6 +5082,15 @@ func _rabbit_turns(actor: Entity) -> void:
 	actor.name = "killer rabbit"
 	actor.appearance = &"killer_rabbit"
 	actor.ai = &"hunter"
+	# And it stops FORAGING, which since the activity split is a separate fact
+	# from its `ai`. Setting `ai` alone left `activity` on FEEDING, so the turn
+	# loop kept sending it after mushrooms: Brad ate a haunch worth 14 hp,
+	# which is eight mouthfuls, from something that should have stopped at two.
+	#
+	# The test that was meant to catch this asserted `ai == &"hunter"` -- the
+	# old MECHANISM rather than the behaviour -- so it went on passing while
+	# the thing it described stopped being true.
+	actor.activity = Entity.Activity.SLEEPING
 	actor.power = 9
 	actor.threat = 12
 	actor.flee_below = 0.0

@@ -5681,13 +5681,30 @@ func _test_the_floor_is_busy() -> void:
 	var keep := _arena(30, 14)
 	keep.player.x = 2
 	keep.player.y = 12
-	for post in [Vector2i(5, 3), Vector2i(20, 3), Vector2i(20, 10)]:
+	# The round is kept in the FAR corner, and the torch is out.
+	#
+	# The first version put a post nine cells from the player, which was safe
+	# only while guards could not move -- the moment they actually walked, one
+	# strolled into notice range, woke up, and two checks about "still on
+	# patrol" failed because the fix worked. The precondition below asserts the
+	# whole ROUTE stays clear, not just the starting position.
+	keep.torch_lit = false
+	for post in [Vector2i(22, 3), Vector2i(27, 3), Vector2i(27, 10)]:
 		keep.map.set_tile(post.x, post.y, Tiles.BRAZIER)
+	# REBUILT, because `_arena` made the pathfinder before these tiles existed
+	# and a stale one still believes they are floor. That is precisely why this
+	# test passed while no guard in a real dungeon could move: braziers are
+	# `walk: false`, so the route was a list of places nothing can stand.
+	keep.pathfinder = Pathfinder.new(keep.map)
 	keep._lay_the_beat()
+	check("a post is somewhere a guard can actually stand",
+		not keep.patrol_route.is_empty()
+			and keep.map.is_walkable(keep.patrol_route[0].x,
+				keep.patrol_route[0].y))
 	check("a floor with fires has a round to walk (%d posts)"
 		% keep.patrol_route.size(), keep.patrol_route.size() == 3)
 
-	var guard := _spawn(keep, "skeleton", 6, 3)
+	var guard := _spawn(keep, "skeleton", 23, 3)
 	check("a skeleton is the sort of thing that walks a beat", guard.patrols)
 	# CAPABILITY, not state: `monster_from` no longer decides. Whether a given
 	# guard is walking tonight is rolled at spawn, so a hand-placed one has to
@@ -5696,11 +5713,16 @@ func _test_the_floor_is_busy() -> void:
 	guard.alertness = Entity.Alert.ASLEEP
 	guard.activity = Entity.Activity.PATROLLING
 
-	# The player is far away, in the dark, and does nothing at all. Asserted,
-	# because the whole claim is that the floor moves without them.
-	check("and the player is nowhere near it",
-		Los.steps(guard.x, guard.y, keep.player.x, keep.player.y)
-			> guard.notice_range)
+	# The player is far away, in the dark, and does nothing at all. Asserted
+	# over the ENTIRE route rather than the starting cell, because the whole
+	# claim is that the floor moves without them -- and a moving guard visits
+	# every post.
+	var nearest := 999
+	for post in keep.patrol_route:
+		nearest = mini(nearest, Los.steps(post.x, post.y,
+			keep.player.x, keep.player.y))
+	check("no post on the round comes near the player (%d cells)" % nearest,
+		nearest > guard.notice_range)
 	var began := Vector2i(guard.x, guard.y)
 	var walked := 0
 	for _i in 40:
@@ -5925,7 +5947,25 @@ func _test_the_floor_is_busy() -> void:
 		% [fungus_before, fungus_after], fungus_after < fungus_before)
 	check("and enough mouthfuls make it something else",
 		bun.appearance == &"killer_rabbit", String(bun.appearance))
-	check("which stops foraging once it turns", bun.ai == &"hunter")
+	# BEHAVIOUR, not mechanism. This used to assert `ai == &"hunter"`, which
+	# stayed true after the activity split while the rabbit went on eating --
+	# the test agreed with itself and disagreed with the game.
+	check("which stops hunting mushrooms once it turns",
+		bun.activity != Entity.Activity.FEEDING, str(bun.activity))
+	var left_after := 0
+	for y in warren.map.height:
+		for x in warren.map.width:
+			if warren.map.get_tile(x, y) == Tiles.FUNGUS:
+				left_after += 1
+	for _i in 40:
+		warren._take_ai_turn(bun)
+	var left_later := 0
+	for y in warren.map.height:
+		for x in warren.map.width:
+			if warren.map.get_tile(x, y) == Tiles.FUNGUS:
+				left_later += 1
+	check("and really does leave the rest alone (%d -> %d)"
+		% [left_after, left_later], left_later == left_after)
 	# It turned in an unseen corner, so the log must not name it. The banshee
 	# established this pattern and `_blink_away` states the rule: a message
 	# about something you cannot see is a report you did not earn. Brad met
