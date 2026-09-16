@@ -636,6 +636,29 @@ var game_over: bool = false
 var events: Array = []
 
 var _fov_buffer := PackedByteArray()
+## Everything the player has an unobstructed LINE to, however far. Masked by
+## light to produce the half of vision that is not about your own torch.
+var _sight_buffer := PackedByteArray()
+
+## How bright a cell must be before you can make it out from across a room.
+##
+## Ambient is Color(0.06, 0.07, 0.11), which is about 0.071 luminance, so this
+## has to sit clear of it -- otherwise "lit" means "exists" and the whole floor
+## is visible from the stairs.
+const LIT_ENOUGH := 0.12
+
+## A guard's lantern: small and dim.
+##
+## Deliberately weaker than a brazier (radius 6, 0.85) and than your own torch
+## (radius 8). It is meant to give the CARRIER away, not to light the room for
+## you -- a lantern that revealed the corridor it walks down would hand the
+## player a free map and make dousing strictly better than a torch.
+##
+## Bright enough to clear LIT_ENOUGH at its centre by a wide margin, so a
+## moving point of light is unmistakable in the dark; small enough that you
+## still cannot see what is holding it until it is inside your own reach.
+const LANTERN_REACH := 4
+const LANTERN_GLOW := 0.50
 ## A queued mouse-travel path. Consumed one step per turn, abandoned the
 ## instant something hostile comes into view.
 var _travel: Array[Vector2i] = []
@@ -904,6 +927,7 @@ func build_level() -> void:
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
 	_fov_buffer.resize(MAP_W * MAP_H)
+	_sight_buffer.resize(MAP_W * MAP_H)
 
 	var gen := MapGen.new(rng)
 	# Nothing below the bottom, and falling while climbing out would undo the
@@ -2167,10 +2191,6 @@ func update_vision() -> void:
 		# of it in the dark band: on a cave floor it does not merely double your
 		# sight, it gives you back the reach you lost and then some.
 		radius = TORCH_RADIUS * FLARE_MULTIPLIER
-	Fov.compute(map, player.x, player.y, radius, _fov_buffer)
-	map.visible_now = _fov_buffer.duplicate()
-	map.remember_visible()
-
 	player.light.x = player.x
 	player.light.y = player.y
 	if torch_flare > 0:
@@ -2190,7 +2210,65 @@ func update_vision() -> void:
 		player.light.color_far = Color(0.20, 0.24, 0.36)
 	var sources := [player.light]
 	sources.append_array(static_lights)
+	# CARRIED lights. Nothing but the player had one until now, and a monster
+	# does not need light to SEE -- `_notices_player` reads the luminance at
+	# YOUR cell, not its own. A guard's lantern exists entirely so that you can
+	# see it coming.
+	for e in entities:
+		if not e.alive or e.is_player:
+			continue
+		# A guard on its rounds carries a lantern, granted the first time it is
+		# needed rather than at spawn. Lazy on purpose: `LightSource` is not
+		# serialised, so a patroller restored from a save would otherwise come
+		# back dark, and this way it simply lights up again on the next turn.
+		#
+		# It KEEPS the lantern if it spots you and gives chase. A guard hunting
+		# you does not put its torch out, and being able to watch it come is
+		# the point.
+		if e.light == null and e.activity == Entity.Activity.PATROLLING:
+			e.light = LightSource.new(e.x, e.y, LANTERN_REACH,
+				Color(0.92, 0.64, 0.32), Color(0.26, 0.20, 0.26),
+				LANTERN_GLOW, true)
+		if e.light != null:
+			e.light.x = e.x
+			e.light.y = e.y
+			sources.append(e.light)
 	light_map.compute(map, sources)
+
+	# VISION, in two halves, and the second is new.
+	#
+	# The first is what it always was: a circle of your own reach, which is
+	# your torch, or arm's length when it is out.
+	#
+	# The second is everything you have a clear LINE to that is actually LIT --
+	# by a brazier, a fungus patch, or somebody else's lantern. That is how
+	# sight works, and until now this game did not do it: a fire burning in a
+	# room ten cells down a clear corridor was, to the player, perfectly dark.
+	#
+	# Deliberately ADDITIVE. The two are OR-ed, so nothing that was visible
+	# before can become invisible -- doused in a pitch-black room you still see
+	# your three cells, exactly as you did. This can only ever show you more.
+	#
+	# The gameplay reason, rather than the aesthetic one: dousing your torch
+	# cuts your sight to three cells and a kobold slinger shoots from six, so
+	# playing stealthily meant being shot by something you could not see. A
+	# carried light restores the warning without giving back the concealment.
+	# Sized HERE rather than only in `build_level`, because a GameState can
+	# also arrive through `apply_dict` or be assembled by hand in a test, and
+	# both hand `Fov.compute` a zero-length buffer otherwise. Cheap to check
+	# and it covers every path instead of the three I could think of.
+	if _sight_buffer.size() != map.width * map.height:
+		_sight_buffer.resize(map.width * map.height)
+	Fov.compute(map, player.x, player.y, radius, _fov_buffer)
+	Fov.compute(map, player.x, player.y, maxi(map.width, map.height),
+		_sight_buffer)
+	for i in _fov_buffer.size():
+		if _fov_buffer[i] != 0 or _sight_buffer[i] == 0:
+			continue
+		if light_map.values[i].get_luminance() >= LIT_ENOUGH:
+			_fov_buffer[i] = 1
+	map.visible_now = _fov_buffer.duplicate()
+	map.remember_visible()
 	_note_sightings()
 
 ## Anything the player can currently SEE goes in the record of what they have

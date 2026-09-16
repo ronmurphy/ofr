@@ -5921,6 +5921,13 @@ func _test_the_floor_is_busy() -> void:
 		bun.activity == Entity.Activity.FEEDING)
 	for at in [Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4)]:
 		warren.map.set_tile(at.x, at.y, Tiles.FUNGUS)
+	# A WALL between, because fungus is a light source and sight now reaches
+	# anything lit that you have a clear line to. In one open arena the player
+	# could see a glowing mushroom patch clean across the room -- correctly --
+	# so "out of sight" has to mean something line of sight actually blocks.
+	for y in warren.map.height:
+		warren.map.set_tile(15, y, Tiles.WALL)
+	warren.pathfinder = Pathfinder.new(warren.map)
 	warren._gather_lights()
 	# `_arena` calls set_all_visible, which is right for almost every test and
 	# exactly wrong for this one -- the first version asserted the rabbit was
