@@ -835,13 +835,29 @@ func _draw_wound(e: Entity) -> void:
 func _draw_awareness(e: Entity) -> void:
 	var text := ""
 	var colour := Palette.SLEEP
-	if e.alertness == Entity.Alert.ASLEEP:
+	# Unaware AND actually asleep. A patrolling guard has not noticed you
+	# either, but it is walking -- drawing "z" over something mid-stride would
+	# be the marker telling a plain lie, and the marker is how a player decides
+	# whether to sneak past.
+	if e.alertness == Entity.Alert.ASLEEP \
+			and e.activity == Entity.Activity.SLEEPING:
 		# Cycles z / zZ / zzZ so it reads as breathing rather than a label.
 		var phase := int(Time.get_ticks_msec() / 420.0) % 3 if Effects.any() else 1
 		text = ["z", "zZ", "zzZ"][phase]
 	elif e.alertness == Entity.Alert.SUSPICIOUS:
 		text = "?"
 		colour = Palette.ALERT
+	elif e.activity == Entity.Activity.PATROLLING:
+		# BUSY, AND NOT WITH YOU.
+		#
+		# Drawing nothing would be truthful but ambiguous -- an unmarked
+		# creature is one you have to work out for yourself, and the markers
+		# exist precisely so you do not have to. "z" was the first attempt and
+		# read as sleepwalking; this says "occupied" without claiming the thing
+		# is unaware, which is the honest state of a guard walking a beat.
+		var tick := int(Time.get_ticks_msec() / 380.0) % 3 if Effects.any() else 2
+		text = [".", "..", "..."][tick]
+		colour = Palette.SLEEP
 	elif e.fleeing:
 		# A creature running away looked exactly like one hunting you, which
 		# is the difference between spending three turns chasing and letting

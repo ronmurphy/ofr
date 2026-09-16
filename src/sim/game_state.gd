@@ -1676,10 +1676,13 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.defense = entry["def"]
 	m.speed = entry["speed"]
 	m.ai = entry.get("ai", &"hunter")
-	# A kept thing starts its rounds rather than lying in the dark.
+	# What it is BUSY with. Awareness is left alone -- everything still starts
+	# unaware of the player, which is what the stealth system rests on.
 	m.patrols = entry.get("patrol", false)
 	if m.patrols:
-		m.alertness = Entity.Alert.PATROL
+		m.activity = Entity.Activity.PATROLLING
+	elif m.ai == &"forager":
+		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
@@ -2357,7 +2360,13 @@ func _travel_stoppers() -> Array:
 		return visible_monsters()
 	var out := []
 	for e in visible_monsters():
-		if e.alertness != Entity.Alert.ASLEEP:
+		# Unaware AND idle. A patrolling guard is unaware of you but walking,
+		# and creeping past it as a rat should not be as free as creeping past
+		# something genuinely asleep. Before the activity split this read as
+		# "not ASLEEP", which covered patrollers only because patrolling WAS an
+		# alertness; keeping both halves preserves that exactly.
+		if e.alertness != Entity.Alert.ASLEEP \
+				or e.activity != Entity.Activity.SLEEPING:
 			out.append(e)
 	return out
 
@@ -2623,8 +2632,15 @@ func _invoke_shrine(kind: int) -> void:
 				if e.is_player or not e.alive:
 					continue
 				e.notice_block = QUIET_TURNS
-				if e.alertness != Entity.Alert.ASLEEP:
+				if e.alertness != Entity.Alert.ASLEEP \
+						or e.activity != Entity.Activity.SLEEPING:
 					e.alertness = Entity.Alert.ASLEEP
+					# Stops the round too, which is what it did before the
+					# split -- patrolling used to BE an alertness, so a hush
+					# ended it. Arguably a guard should keep walking and simply
+					# fail to notice you; that is a design change, and this
+					# refactor is meant to be invisible.
+					e.activity = Entity.Activity.SLEEPING
 					e.fleeing = false
 					n += 1
 			msg_log.add("A hush settles. %d things stop looking for you." % n,
@@ -4317,30 +4333,31 @@ func _take_ai_turn(actor: Entity) -> int:
 	_update_awareness(actor)
 	_last_move_cost = Scheduler.ACTION_COST
 
-	# On its rounds. Anything it was going to notice, it noticed above.
-	if actor.alertness == Entity.Alert.PATROL:
-		_ai_patrol(actor)
-		return _last_move_cost
-
-	# Asleep, or merely stirring: it spends its turn not acting. That pause is
-	# the player's window to withdraw, and it is the point of the middle state.
+	# TWO QUESTIONS, ASKED IN ORDER. Has it noticed you -- and if not, what was
+	# it doing anyway?
+	#
+	# Hunting is not an activity in the list below; it is what being AWARE
+	# means, and it overrides whatever the creature was busy with. A guard that
+	# spots you stops walking its round, and its ACTIVITY is left untouched, so
+	# when it loses your trail it simply goes back to it. Nothing has to
+	# remember to restore anything.
 	if actor.alertness != Entity.Alert.AWAKE:
-		# EXCEPT a forager, which is not waiting for you at all.
-		#
-		# Everything starts ASLEEP and nothing acted until it noticed the
-		# player, so a rabbit did not eat until you turned up -- and by then
-		# `_ai_forager` prioritises fleeing anything within RABBIT_NOSE, which
-		# is fourteen cells. Becoming a killer rabbit needed three meals inside
-		# a window that barely existed, which is why nobody had ever seen one.
-		# The tuning comment on RABBIT_TURNS had already measured the fungus per
-		# floor and picked three on the assumption the thing forages freely; the
-		# awareness gate quietly made that measurement meaningless.
-		if actor.ai == &"forager":
-			var near := _foe_for(actor)
-			if near != null:
-				_ai_forager(actor, near)
-				return _last_move_cost
-		return Scheduler.ACTION_COST
+		match actor.activity:
+			Entity.Activity.PATROLLING:
+				_ai_patrol(actor)
+			Entity.Activity.FEEDING:
+				# The player is passed as the thing to shy away from, not as a
+				# target: `_ai_forager` flees anything within RABBIT_NOSE and
+				# otherwise goes looking for mushrooms.
+				var near := _foe_for(actor)
+				if near != null:
+					_ai_forager(actor, near)
+			_:
+				# Asleep, or merely stirring: it spends its turn not acting.
+				# That pause is the player's window to withdraw, and it is the
+				# whole point of the middle state.
+				pass
+		return _last_move_cost
 
 	_update_morale(actor)
 
@@ -4469,17 +4486,6 @@ func _update_awareness(actor: Entity) -> void:
 				actor.calm_turns = 0
 		return
 
-	# A guard that gives up goes back to work. Without this a patroller that
-	# chased you once would lie down where it lost you and never walk again --
-	# the flag is what makes the state recoverable.
-	if actor.alertness == Entity.Alert.PATROL:
-		if actor.notice_block > 0:
-			actor.notice_block -= 1
-			return
-		if _notices_player(actor, d):
-			wake(actor)
-		return
-
 	if actor.notice_block > 0:
 		actor.notice_block -= 1
 		return
@@ -4495,8 +4501,11 @@ func _update_awareness(actor: Entity) -> void:
 	if actor.alertness == Entity.Alert.SUSPICIOUS:
 		actor.calm_turns += 1
 		if actor.calm_turns > 6:
-			actor.alertness = Entity.Alert.PATROL if actor.patrols \
-				else Entity.Alert.ASLEEP
+			# Back to unaware, and NOTHING else. Whatever it was doing before
+			# it noticed you is still recorded in `activity`, so a guard
+			# resumes its round on its own -- which is the whole reason the two
+			# were split apart.
+			actor.alertness = Entity.Alert.ASLEEP
 
 ## Light dominates the roll. Carrying a torch is both how you see and how you
 ## are seen, which is the trade the whole mechanic rests on.

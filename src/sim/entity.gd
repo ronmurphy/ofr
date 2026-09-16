@@ -44,6 +44,32 @@ func hostile_to(other: Entity) -> bool:
 ## is the state that was missing: busy, but not with you.
 enum Alert { ASLEEP, SUSPICIOUS, AWAKE, PATROL }
 
+## WHAT IT IS DOING, which is a different question from what it knows.
+##
+## `alertness` above answers "what does this creature know about the player".
+## This answers "what is it busy with". They are orthogonal, and conflating
+## them is what made the dungeon a diorama: ASLEEP meant both "has not noticed
+## you" (the stealth system) and "is not doing anything" (the world), so
+## nothing could be busy without also being alert.
+##
+## PATROL was bolted onto `Alert` because that was the only axis there was, and
+## foragers needed a special case in `_take_ai_turn` checking their `ai` kind.
+## Both were patches over this missing concept. With two axes a bear can hunt a
+## rabbit while entirely unaware of you, and a guard that loses your trail goes
+## back to its round automatically -- its ACTIVITY never changed, only what it
+## knew.
+##
+## SLEEPING is first so it is the zero value: anything that does not say
+## otherwise does nothing, which is what every monster did before this existed.
+##
+## APPEND new activities, never insert -- this saves as a plain integer. There
+## is no IDLE here on purpose: it was written, set by nothing and read by
+## nothing, which this project has twice found to be worse than a missing
+## feature. Wandering will add it, and adding it then is free.
+enum Activity { SLEEPING, PATROLLING, FEEDING }
+
+var activity: int = Activity.SLEEPING
+
 ## How an ally carries itself. Meaningless on anything hostile.
 ##
 ## TWO states, not a cycle of many. The player is setting a posture, not
@@ -290,6 +316,7 @@ func to_dict() -> Dictionary:
 		"notice_block": notice_block, "alive": alive,
 		"stance": stance,
 		"patrols": patrols, "patrol_at": patrol_at,
+		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
 	}
@@ -333,6 +360,20 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.stance = int(d.get("stance", Stance.LOOSE))
 	e.patrols = bool(d.get("patrols", false))
 	e.patrol_at = int(d.get("patrol_at", 0))
+	# MIGRATION, and it has to be here rather than left to the default.
+	#
+	# `Alert.PATROL` shipped for one evening as a fourth alertness, so saves
+	# exist -- including a suspended run -- holding `alertness: 3` and no
+	# `activity` at all. Reading those as a plain ASLEEP monster would stop the
+	# guard walking for good, silently. The flag covers the other case: a
+	# patroller saved mid-chase was AWAKE, so its alertness says nothing about
+	# whether it walks a beat.
+	if d.has("activity"):
+		e.activity = int(d["activity"])
+	elif int(d.get("alertness", Alert.ASLEEP)) == Alert.PATROL or e.patrols:
+		e.activity = Activity.PATROLLING
+	if e.alertness == Alert.PATROL:
+		e.alertness = Alert.ASLEEP
 	e.flying = d.get("flying", false)
 	e.heavy = d.get("heavy", false)
 	e.knockback = int(d.get("knockback", 0))

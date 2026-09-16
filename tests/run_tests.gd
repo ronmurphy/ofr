@@ -5682,8 +5682,10 @@ func _test_the_floor_is_busy() -> void:
 
 	var guard := _spawn(keep, "skeleton", 6, 3)
 	check("a skeleton is a kept thing and walks one", guard.patrols)
+	check("and its ACTIVITY says so, not its alertness",
+		guard.activity == Entity.Activity.PATROLLING)
 	# _spawn wakes what it makes, for the behaviour tests. Put it back on duty.
-	guard.alertness = Entity.Alert.PATROL
+	guard.alertness = Entity.Alert.ASLEEP
 
 	# The player is far away, in the dark, and does nothing at all. Asserted,
 	# because the whole claim is that the floor moves without them.
@@ -5698,7 +5700,8 @@ func _test_the_floor_is_busy() -> void:
 			walked += 1
 	check("it walks its round unwatched (%d turns moved)" % walked, walked > 0)
 	check("and is still on patrol, not hunting",
-		guard.alertness == Entity.Alert.PATROL)
+		guard.activity == Entity.Activity.PATROLLING
+			and guard.alertness != Entity.Alert.AWAKE)
 	check("and reached a post it was not standing on",
 		guard.patrol_at != 0 or Vector2i(guard.x, guard.y) != began,
 		"at %d,%d post %d" % [guard.x, guard.y, guard.patrol_at])
@@ -5707,6 +5710,8 @@ func _test_the_floor_is_busy() -> void:
 	# flag a guard would lie down where it lost you and never walk again.
 	keep.wake(guard)
 	check("spotting you makes it hunt", guard.alertness == Entity.Alert.AWAKE)
+	check("but it has not forgotten it walks a beat",
+		guard.activity == Entity.Activity.PATROLLING)
 	# Stood well out of range rather than blinded with `notice_block`. That
 	# field is checked BEFORE the calm-down branch and returns early, so the
 	# first version of this setup blocked the very path it meant to exercise --
@@ -5721,18 +5726,45 @@ func _test_the_floor_is_busy() -> void:
 		Los.steps(guard.x, guard.y, keep.player.x, keep.player.y)
 			> guard.notice_range)
 	keep._update_awareness(guard)
-	check("and giving up puts it back on its round",
-		guard.alertness == Entity.Alert.PATROL, str(guard.alertness))
+	check("and giving up simply makes it unaware again",
+		guard.alertness == Entity.Alert.ASLEEP, str(guard.alertness))
+	# The point of the split: NOTHING had to restore the round. It was never
+	# lost, because losing your trail is a fact about awareness and walking a
+	# beat is a fact about what it is doing.
+	var moved_again := false
+	var was := Vector2i(guard.x, guard.y)
+	for _i in 10:
+		keep._take_ai_turn(guard)
+		if Vector2i(guard.x, guard.y) != was:
+			moved_again = true
+	check("and it resumes the round with nothing restoring it", moved_again)
 
 	# A floor with nothing to guard leaves it standing, not crashing.
 	var bare := _arena(20, 12)
 	bare._lay_the_beat()
 	check("a floor with no fires has no round", bare.patrol_route.is_empty())
 	var idle := _spawn(bare, "skeleton", 5, 5)
-	idle.alertness = Entity.Alert.PATROL
+	idle.alertness = Entity.Alert.ASLEEP
+	idle.activity = Entity.Activity.PATROLLING
 	bare._take_ai_turn(idle)
 	check("and a guard there simply holds its post",
 		idle.x == 5 and idle.y == 5)
+
+	# A save from the one evening PATROL was an alertness must still walk.
+	# Reading `alertness: 3` as a plain ASLEEP monster would stop the guard for
+	# good, silently, in a suspended run that already exists on disk.
+	var legacy := {"name": "skeleton", "app": "skeleton", "x": 3, "y": 3,
+		"alertness": 3, "patrols": true}
+	var revived := Entity.from_dict(legacy)
+	check("a guard saved under the old state still walks",
+		revived.activity == Entity.Activity.PATROLLING)
+	check("and its alertness is migrated to a real one",
+		revived.alertness == Entity.Alert.ASLEEP, str(revived.alertness))
+	# And one saved mid-chase, where alertness said nothing about the beat.
+	var chasing := Entity.from_dict({"name": "skeleton", "app": "skeleton",
+		"x": 3, "y": 3, "alertness": Entity.Alert.AWAKE, "patrols": true})
+	check("a guard saved mid-chase remembers its beat too",
+		chasing.activity == Entity.Activity.PATROLLING)
 
 	# --- the rabbit ----------------------------------------------------------
 	# Never seen in play: everything started ASLEEP, so a rabbit did not eat
@@ -5742,6 +5774,8 @@ func _test_the_floor_is_busy() -> void:
 	warren.player.y = 12
 	var bun := _spawn(warren, "rabbit", 4, 4)
 	bun.alertness = Entity.Alert.ASLEEP
+	check("a rabbit's activity is feeding, not a special case in the turn loop",
+		bun.activity == Entity.Activity.FEEDING)
 	for at in [Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4)]:
 		warren.map.set_tile(at.x, at.y, Tiles.FUNGUS)
 	warren._gather_lights()
