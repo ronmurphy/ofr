@@ -17,11 +17,28 @@ extends SceneTree
 ## can reach a file the player owns even by accident.
 
 func _initialize() -> void:
-	var real_path := GameState.SUSPEND_PATH
-	if not FileAccess.file_exists(real_path):
-		print("no suspended run at %s" % real_path)
+	# The NEWER of the two, so nobody has to say which. A suspend is the floor
+	# you walked away from; a death dump is the floor that killed you, written
+	# at every death site alongside the morgue line -- because dying otherwise
+	# leaves nothing to examine at all, and "I think a patroller got me" is the
+	# most anyone can say afterwards.
+	var suspend := GameState.SUSPEND_PATH
+	var died := GameState.DEATH_PATH
+	var has_suspend := FileAccess.file_exists(suspend)
+	var has_death := FileAccess.file_exists(died)
+	if not has_suspend and not has_death:
+		print("nothing to look at -- no suspended run and no death dump")
 		quit()
 		return
+	var real_path := suspend
+	var what := "suspended run"
+	if has_death and (not has_suspend
+			or FileAccess.get_modified_time(died)
+				>= FileAccess.get_modified_time(suspend)):
+		real_path = died
+		what = "DEATH"
+	print("")
+	print("reading the %s" % what)
 	var text := FileAccess.get_file_as_string(real_path)
 	# AFTER the read, so the tool cannot be pointed at the player's slot once
 	# it owns a GameState.
@@ -29,12 +46,12 @@ func _initialize() -> void:
 
 	var parsed: Variant = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
-		print("suspend file is not readable json")
+		print("that file is not readable json")
 		quit()
 		return
 	var gs := GameState.new(1)
 	if not gs.apply_dict(parsed):
-		print("suspend file is from a different save version")
+		print("that file is from a different save version")
 		quit()
 		return
 

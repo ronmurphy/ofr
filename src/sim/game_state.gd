@@ -25,6 +25,23 @@ const MAX_DEPTH := 10
 ##
 ## Nothing under src/ ever changes these. Only the harnesses do, at startup.
 static var SUSPEND_PATH := "user://suspend.save"
+
+## The floor as it was at the moment of death -- a black box, not a save.
+##
+## Dying leaves nothing behind. The morgue records one line and the suspend
+## slot is gone, so a death that felt wrong is unexaminable: "I think a
+## patroller killed me" is the most anyone can say afterwards. This writes the
+## whole state so `tools/inspect_save.gd` can answer what was actually on the
+## floor and what each thing was doing.
+##
+## OVERWRITTEN each death, deliberately. The interesting one is always the last
+## one, and a growing pile of these in a player's directory is litter.
+##
+## It is NOT a save and must never be loadable as one -- `load_suspend` reads
+## SUSPEND_PATH and nothing here changes that. Writing it cannot cost the
+## player anything, which is why it is safe to leave switched on in a shipped
+## build rather than hidden behind a debug flag.
+static var DEATH_PATH := "user://death.save"
 ## Same reasoning as SUSPEND_PATH. The death tests append real lines to this,
 ## and 868 of the 869 entries in one player's morgue turned out to be test
 ## output rather than deaths they had actually died.
@@ -41,6 +58,7 @@ static var MORGUE_PATH := "user://morgue.txt"
 static func use_scratch_files(tag: String) -> void:
 	SUSPEND_PATH = "user://scratch_%s_suspend.save" % tag
 	MORGUE_PATH = "user://scratch_%s_morgue.txt" % tag
+	DEATH_PATH = "user://scratch_%s_death.save" % tag
 	# The bestiary is a player-owned record too, and update_vision() writes to
 	# it on sight -- so EVERY headless run that builds a level would otherwise
 	# append to the real one. Redirected here rather than at each call site,
@@ -50,7 +68,7 @@ static func use_scratch_files(tag: String) -> void:
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
 	BestiaryLog.clear_scratch()
-	for path in [SUSPEND_PATH, MORGUE_PATH]:
+	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 const SAVE_VERSION := 1
@@ -2887,6 +2905,7 @@ func _fall_into_pit() -> bool:
 		death_cause = "broken by a fall"
 		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 		write_morgue()
+		write_death_dump()
 		return true
 
 	depth += 1
@@ -2920,6 +2939,7 @@ func _spring_trap(x: int, y: int) -> void:
 		death_cause = "caught in a trap"
 		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 		write_morgue()
+		write_death_dump()
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
 ## it is the counterpart to light, and the second thing that can give you away.
@@ -3772,6 +3792,7 @@ func player_ascend() -> bool:
 		game_over = true
 		award_xp(earned)
 		write_morgue()
+		write_death_dump()
 		msg_log.add("You climb into daylight, the Amulet of the Deep in hand. "
 			+ "You have escaped. Press R to descend again.",
 			Color(1.00, 0.92, 0.55))
@@ -4429,6 +4450,15 @@ func _carrying_amulet() -> bool:
 		if it.kind == Item.Kind.AMULET:
 			return true
 	return false
+
+## The black box. Called wherever the morgue line is written, so every way of
+## dying leaves one -- a blow, a pit, a trap.
+func write_death_dump() -> void:
+	var f := FileAccess.open(DEATH_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(to_dict()))
+	f.close()
 
 func write_morgue() -> void:
 	var f := FileAccess.open(MORGUE_PATH, FileAccess.READ_WRITE)
@@ -5880,6 +5910,7 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			death_cause = "killed by a %s" % attacker.name
 			events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 			write_morgue()
+			write_death_dump()
 			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
 		else:
 			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
