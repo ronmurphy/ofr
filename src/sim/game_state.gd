@@ -123,6 +123,12 @@ func torch_radius() -> int:
 ## The exploit is about SPEED, and the answer to it is that shots have to cost
 ## something. See the ammunition work.
 const COMBAT_NOISE := 6
+
+## How loud a thing has to be before the dead answer it.
+##
+## Seven: a bone crunch and up, so combat (6) and a door (6) stay under it and
+## a chest (8), a wail (9) and the forge (10) do not.
+const GRAVE_ROUSING := 7
 const BRAZIER_CHARGE := 10
 const BRAZIER_HEAL := 2
 ## Merging two identical items costs brazier charge, which is the same finite
@@ -2553,11 +2559,16 @@ func player_move(dx: int, dy: int) -> bool:
 		_end_player_turn()
 		return true
 
-	if map.get_tile(nx, ny) == Tiles.DOOR_CLOSED:
+	# A RAT GOES UNDER IT, and this is the first thing the ring is simply GOOD
+	# at. It costs you your hands, your sight and your ability to fight, and
+	# until now bought only stealth -- while every rat and rabbit in the
+	# dungeon slipped under doors you had to stop and open. `door_style()`
+	# already answers SQUEEZES for a small animal; wearing the ring makes you
+	# one, so the branch is skipped entirely and the door stays shut behind you.
+	if map.get_tile(nx, ny) == Tiles.DOOR_CLOSED and not ratted():
 		map.set_tile(nx, ny, Tiles.DOOR_OPEN)
 		pathfinder.set_solid(nx, ny, false)
-		msg_log.add("You pull the door open.")
-		_end_player_turn()
+		_work_the_door(Vector2i(nx, ny), "You pull the door open.")
 		return true
 
 	if not can_step(player.x, player.y, nx, ny):
@@ -2715,9 +2726,33 @@ func player_close_door() -> bool:
 		return false
 	map.set_tile(found.x, found.y, Tiles.DOOR_CLOSED)
 	_travel.clear()
-	msg_log.add("You pull the door shut.", Color(0.78, 0.74, 0.66))
-	_end_player_turn()
+	_work_the_door(found, "You pull the door shut.")
 	return true
+
+## How loud working a door is, and what being careful about it costs.
+##
+## Hinges and a latch in a stone corridor are not quiet, and the game had them
+## silent -- you could walk the length of a floor opening doors and wake
+## nothing. DOOR_NOISE sits at 6, the same as a fight and one below a bone
+## crunch, so it carries without raising the dead.
+##
+## Doused, you take your time and it makes no sound -- at DOUBLE the energy.
+## That is the point of the pair: dousing already costs you sight, and this is
+## the first thing it BUYS besides not being seen. "Quiet but slow" becomes a
+## posture you choose rather than just being blind in the dark.
+const DOOR_NOISE := 6
+const DOOR_CAREFUL_COST := 2
+
+func _work_the_door(at: Vector2i, said: String) -> void:
+	var careful := not torch_lit or ratted()
+	if careful:
+		msg_log.add(said + " Quietly.", Color(0.70, 0.74, 0.80))
+	else:
+		msg_log.add(said, Color(0.78, 0.74, 0.66))
+	_end_player_turn(Scheduler.ACTION_COST
+		* (DOOR_CAREFUL_COST if careful else 1))
+	if not careful:
+		_make_noise(at, DOOR_NOISE, &"door")
 
 ## Costs a turn on purpose. Going dark is a decision, not a free toggle.
 func player_toggle_torch() -> bool:
@@ -2966,15 +3001,29 @@ func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void
 		msg_log.add("The noise carries. %d things turn towards it." % roused,
 			Color(0.95, 0.70, 0.40))
 
-	# Bones and a wail, and nothing else.
+	# LOUD ENOUGH, rather than a list of causes.
 	#
-	# Those two are already distinct causes with no extra plumbing: the banshee
-	# passes &"wail", and `Tiles.noise_radius` answers 7 for BONES and 0 for
-	# every other tile -- and this function returns early at 0 -- so every
-	# &"step" noise in the game IS a bone crunch. Combat and the forge are loud
-	# too, and deliberately do not do this: the rule has to be a rule a player
-	# can hold in their head.
-	if cause == &"step" or cause == &"wail":
+	# This used to read "bones or a wail, and nothing else", which was a pair
+	# picked for convenience and defended as being easy to remember. It was not
+	# even true -- a sprung trap passed no cause at all, defaulted to &"step",
+	# and raised gravestones against the stated rule for the life of the
+	# project.
+	#
+	# The ladder says it better: combat 6, a door 6, bones 7, a chest 8, a wail
+	# 9, the forge 10. Anything at GRAVE_ROUSING or above wakes the dead, which
+	# is one sentence -- "loud things wake them" -- and it means a chest and a
+	# brazier now do, which makes a hoard room with a headstone in it a
+	# genuinely worse place to stand and work.
+	#
+	# COMBAT IS DELIBERATELY BELOW IT. Brad argued for including it: fighting
+	# near a stone as a way to force a raise. But `_place_graves` already
+	# scatters bones around every gravestone, so the deliberate route exists
+	# and is cheaper -- walk over and step on them. And combat is the most
+	# frequent loud thing in the game, so including it would fire the 45% roll
+	# many times a floor and turn the raise from POSSIBLE into NEAR-CERTAIN.
+	# That converts a headstone from a decision into a hazard you route around,
+	# which is exactly what GRAVE_RISE_CHANCE's comment argues against.
+	if radius >= GRAVE_ROUSING:
 		_wake_a_grave(at, radius)
 
 ## Something under a headstone hears the noise and answers it.

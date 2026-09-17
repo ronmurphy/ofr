@@ -135,6 +135,7 @@ func _initialize() -> void:
 	_test_the_floor_is_busy()
 	_test_doors_stop_different_things()
 	_test_creatures_can_see_each_other()
+	_test_doors_are_loud_and_rats_are_not()
 	_test_morale_is_social()
 	_test_the_panel_says_whose_side()
 	_test_the_dead_are_marked()
@@ -4532,10 +4533,23 @@ func _test_graves_raise_the_dead() -> void:
 				quiet += 1
 	check("a grave with nothing in it never rises", quiet == 0, "%d" % quiet)
 
-	# --- and only these two noises do it ------------------------------------
+	# --- LOUDNESS decides it, not a list of causes --------------------------
+	#
+	# This used to hand every cause a radius of SEVEN and assert that only
+	# &"step" and &"wail" rose. Two things were wrong with it once the rule
+	# became volume: seven is above the bar, so of course they rose -- and
+	# combat does not emit seven anyway. It emits six. The test was asserting a
+	# noise the game never makes.
+	#
+	# Now it uses the REAL constants, so it measures the rule the player lives
+	# under rather than one invented for the test.
 	var wrong := 0
+	var quiet_ones := {
+		&"combat": GameState.COMBAT_NOISE,
+		&"door": GameState.DOOR_NOISE,
+	}
 	for i in 60:
-		for cause in [&"combat", &"forge", &"clamour"]:
+		for cause in quiet_ones:
 			var gs := _arena(25, 13)
 			gs.rng = RandomNumberGenerator.new()
 			gs.rng.seed = 9000 + i
@@ -4543,11 +4557,29 @@ func _test_graves_raise_the_dead() -> void:
 			gs.player.y = 6
 			gs.map.set_tile(8, 6, Tiles.GRAVE)
 			gs.grave_at[Vector2i(8, 6)] = armed
-			gs._make_noise(Vector2i(6, 6), 7, cause)
+			gs._make_noise(Vector2i(6, 6), int(quiet_ones[cause]), cause)
 			for e in gs.entities:
 				if e.risen:
 					wrong += 1
-	check("swinging a sword does not wake the dead", wrong == 0, "%d" % wrong)
+	check("a fight and a door are too quiet to wake the dead",
+		wrong == 0, "%d" % wrong)
+
+	# And the loud ones do, whatever they are called.
+	var roused := 0
+	for i in 60:
+		for loud in [GameState.CHEST_NOISE, GameState.FORGE_NOISE]:
+			var gs := _arena(25, 13)
+			gs.rng = RandomNumberGenerator.new()
+			gs.rng.seed = 9400 + i
+			gs.player.x = 6
+			gs.player.y = 6
+			gs.map.set_tile(8, 6, Tiles.GRAVE)
+			gs.grave_at[Vector2i(8, 6)] = armed
+			gs._make_noise(Vector2i(6, 6), int(loud), &"forge")
+			for e in gs.entities:
+				if e.risen:
+					roused += 1
+	check("a chest and the forge are not (%d of 120)" % roused, roused > 0)
 
 	# --- a wail does, though -----------------------------------------------
 	var wailed := 0
@@ -6324,6 +6356,72 @@ func _test_the_panel_says_whose_side() -> void:
 			said = String(entry)
 	check("but an ally is", said.contains("(yours)"), said)
 	bar.free()
+
+## Doors, noise, and what a rat can do that a person cannot.
+func _test_doors_are_loud_and_rats_are_not() -> void:
+	# A RAT GOES UNDER. The first thing the ring is simply good at.
+	var burrow := _arena(20, 9)
+	burrow.player.x = 5
+	burrow.player.y = 4
+	burrow.map.set_tile(6, 4, Tiles.DOOR_CLOSED)
+	burrow.pathfinder = Pathfinder.new(burrow.map)
+	var ring := Item.make(&"rat_ring")
+	burrow.give_item(ring)
+	burrow.player.equipped[Item.Slot.WEAPON] = ring
+	check("the ring makes you a rat", burrow.ratted())
+	burrow.player_move(1, 0)
+	check("a rat is through the door", burrow.player.x == 6,
+		"at %d,%d" % [burrow.player.x, burrow.player.y])
+	check("and left it shut behind it",
+		burrow.map.get_tile(6, 4) == Tiles.DOOR_CLOSED)
+
+	# A PERSON opens it, spends a turn, and is heard.
+	var loud := _arena(20, 9)
+	loud.player.x = 5
+	loud.player.y = 4
+	loud.torch_lit = true
+	loud.map.set_tile(6, 4, Tiles.DOOR_CLOSED)
+	loud.pathfinder = Pathfinder.new(loud.map)
+	var sleeper := _spawn(loud, "goblin", 9, 4)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	sleeper.activity = Entity.Activity.SLEEPING
+	sleeper.notice_block = 0
+	check("the goblin is asleep and within earshot",
+		sleeper.alertness == Entity.Alert.ASLEEP
+			and Los.steps(6, 4, sleeper.x, sleeper.y) <= GameState.DOOR_NOISE)
+	loud.player_move(1, 0)
+	check("the door opens", loud.map.get_tile(6, 4) == Tiles.DOOR_OPEN)
+	check("and working it woke something",
+		sleeper.alertness != Entity.Alert.ASLEEP, str(sleeper.alertness))
+
+	# DOUSED, the same door is silent -- and costs double.
+	var careful := _arena(20, 9)
+	careful.player.x = 5
+	careful.player.y = 4
+	careful.torch_lit = false
+	careful.map.set_tile(6, 4, Tiles.DOOR_CLOSED)
+	careful.pathfinder = Pathfinder.new(careful.map)
+	var dozer := _spawn(careful, "goblin", 9, 4)
+	dozer.alertness = Entity.Alert.ASLEEP
+	dozer.activity = Entity.Activity.SLEEPING
+	dozer.notice_block = 99
+	var before := careful.elapsed
+	careful.player_move(1, 0)
+	check("it still opens", careful.map.get_tile(6, 4) == Tiles.DOOR_OPEN)
+	check("nothing heard it", dozer.alertness == Entity.Alert.ASLEEP)
+	check("but it took twice as long (%d)" % (careful.elapsed - before),
+		careful.elapsed - before
+			== Scheduler.ACTION_COST * GameState.DOOR_CAREFUL_COST)
+
+	# LOUDNESS, not a list of causes. A door and a fight stay under the bar;
+	# bones and everything above it do not.
+	check("a door is too quiet to wake the dead",
+		GameState.DOOR_NOISE < GameState.GRAVE_ROUSING)
+	check("and so is a fight", GameState.COMBAT_NOISE < GameState.GRAVE_ROUSING)
+	check("bones are not", Tiles.noise_radius(Tiles.BONES)
+		>= GameState.GRAVE_ROUSING)
+	check("nor is a chest", GameState.CHEST_NOISE >= GameState.GRAVE_ROUSING)
+	check("nor the forge", GameState.FORGE_NOISE >= GameState.GRAVE_ROUSING)
 
 func _test_morale_is_social() -> void:
 	var field := _arena(26, 13)
