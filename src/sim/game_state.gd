@@ -2657,6 +2657,49 @@ func player_ally_stance() -> bool:
 			Color(0.70, 0.90, 0.78))
 	return true
 
+## Shuts a door beside you. Nothing in this game could do this until now --
+## the player could open one and not close it, which made a door a tax rather
+## than a tool.
+##
+## It is the half that MATTERS, because of what it does to the three door
+## styles: shutting one on a goblin buys a turn, on a bear about three, and on
+## a rabbit exactly nothing. The same action means something different
+## depending on what is chasing you.
+##
+## Refuses when something is standing in the doorway, which is the obvious
+## thing a player will try in a corridor and would otherwise let them close a
+## door on a goblin's head.
+func player_close_door() -> bool:
+	if game_over:
+		return false
+	var found := Vector2i(-1, -1)
+	var blocked := false
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var c := Vector2i(player.x + dx, player.y + dy)
+			if not map.in_bounds(c.x, c.y):
+				continue
+			if map.get_tile(c.x, c.y) != Tiles.DOOR_OPEN:
+				continue
+			if entity_at(c.x, c.y) != null or not items_at(c.x, c.y).is_empty():
+				blocked = true
+				continue
+			if found.x < 0:
+				found = c
+	if found.x < 0:
+		if blocked:
+			msg_log.add("The doorway is not clear.", Color(0.7, 0.6, 0.4))
+		else:
+			msg_log.add("There is no open door beside you.", Color(0.7, 0.6, 0.4))
+		return false
+	map.set_tile(found.x, found.y, Tiles.DOOR_CLOSED)
+	_travel.clear()
+	msg_log.add("You pull the door shut.", Color(0.78, 0.74, 0.66))
+	_end_player_turn()
+	return true
+
 ## Costs a turn on purpose. Going dark is a decision, not a free toggle.
 func player_toggle_torch() -> bool:
 	if game_over:
@@ -5015,6 +5058,40 @@ func _ai_flee(actor: Entity, foe: Entity) -> void:
 	if actor.is_adjacent(foe):
 		_attack(actor, foe)
 
+## What a shut door costs, as a multiple of an ordinary stride.
+##
+## Charged as ENERGY rather than tracked as a state machine, exactly as mud is
+## -- "it took three turns" and "it cost three turns of energy" are the same
+## thing to the scheduler, and the second needs nothing remembered. A bear does
+## not open a door, it goes through it, and that is worth real time.
+const DOOR_SHOULDER_COST := 3
+
+## Getting through a shut door. Answers true if the door TOOK THE TURN, in
+## which case the creature has not moved.
+##
+## A bear can knock a door down but can never shut one -- there is nothing in
+## `player_close_door` or here that lets it -- which is why the open door you
+## find behind you tells you something came through.
+func _through_the_door(actor: Entity, at: Vector2i) -> bool:
+	if map.get_tile(at.x, at.y) != Tiles.DOOR_CLOSED:
+		return false
+	var style := actor.door_style()
+	if style == Entity.Door.SQUEEZES:
+		# Under it, and no slower for it. Brad has watched rabbits do this.
+		return false
+	map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+	_last_move_cost = Scheduler.ACTION_COST
+	if style == Entity.Door.SHOULDERS:
+		_last_move_cost *= DOOR_SHOULDER_COST
+	if map.is_visible(at.x, at.y):
+		if style == Entity.Door.SHOULDERS:
+			msg_log.add("The %s puts its shoulder through the door."
+				% actor.name, Color(0.90, 0.72, 0.55))
+		else:
+			msg_log.add("The %s pulls the door open." % actor.name,
+				Color(0.78, 0.74, 0.66))
+	return true
+
 func _step_toward(actor: Entity, target: Vector2i) -> void:
 	var route := pathfinder.path(Vector2i(actor.x, actor.y), target)
 	if route.is_empty():
@@ -5044,6 +5121,8 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 		step = _around(actor, target)
 		if step.x < 0:
 			return
+	if _through_the_door(actor, step):
+		return
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
@@ -5306,6 +5385,8 @@ func _step_random(actor: Entity) -> void:
 	if opts.is_empty():
 		return
 	var pick: Vector2i = opts[rng.randi_range(0, opts.size() - 1)]
+	if _through_the_door(actor, pick):
+		return
 	_last_move_cost = move_cost_for(actor, pick.x, pick.y)
 	actor.x = pick.x
 	actor.y = pick.y
@@ -5329,6 +5410,8 @@ func _step_away(actor: Entity, foe: Entity) -> bool:
 				best = Vector2i(nx, ny)
 	if best_d <= here:
 		return false
+	if _through_the_door(actor, best):
+		return true
 	_last_move_cost = move_cost_for(actor, best.x, best.y)
 	actor.x = best.x
 	actor.y = best.y

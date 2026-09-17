@@ -362,6 +362,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_A:
 			if state.player_ally_stance():
 				_refresh()
+		KEY_C:
+			if state.player_close_door():
+				_refresh()
 
 func _on_cell_clicked(cell: Vector2i) -> void:
 	_end_look()

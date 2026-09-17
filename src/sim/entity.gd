@@ -68,6 +68,37 @@ enum Alert { ASLEEP, SUSPICIOUS, AWAKE, PATROL }
 ## feature. Wandering will add it, and adding it then is free.
 enum Activity { SLEEPING, PATROLLING, FEEDING }
 
+## HOW THIS THING GETS THROUGH A SHUT DOOR.
+##
+## Doors used to be walkable by everything, so a rabbit strolled through a
+## closed one and only the player had to stop and open it -- an obstacle that
+## existed for exactly one creature in the dungeon.
+##
+## Measured before choosing the rule: every room in this dungeon generates with
+## its doors SHUT (190 of 190 on depth 1), so making a closed door solid to
+## animals would seal roughly half of every species into its birth room for the
+## whole run -- median reach 12-27% of the floor. That would have quietly
+## undone foraging and wandering. Hence three behaviours rather than two.
+##
+## SQUEEZES is the default and the fallback, because it is the one that can
+## never strand anything.
+enum Door { SQUEEZES, OPENS, SHOULDERS }
+
+## Phasing first: something that walks through stone does not care about a door.
+## Then size, then hands.
+##
+## `patrols` stands in for "is a biped" here, and today the two sets are exactly
+## the same eleven creatures. If a non-biped is ever given a beat, this wants
+## its own flag rather than a second meaning bolted onto that one.
+func door_style() -> int:
+	if phasing:
+		return Door.SQUEEZES
+	if heavy:
+		return Door.SHOULDERS
+	if patrols:
+		return Door.OPENS
+	return Door.SQUEEZES
+
 var activity: int = Activity.SLEEPING
 
 ## How an ally carries itself. Meaningless on anything hostile.

@@ -133,6 +133,7 @@ func _initialize() -> void:
 	_test_the_better_piece_is_kept()
 	_test_chests()
 	_test_the_floor_is_busy()
+	_test_doors_stop_different_things()
 	_test_the_dead_are_marked()
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
@@ -5988,6 +5989,110 @@ func _test_the_floor_is_busy() -> void:
 	check("so the log does not name what it cannot see",
 		not told.contains("rabbit"), told)
 	check("but it still says something happened", told != "", told)
+
+## Doors, and who a shut one actually stops.
+##
+## Every case is a different creature, and the rule was chosen from a
+## measurement rather than from taste: EVERY room generates with its doors shut
+## (190 of 190 on depth 1), so making a closed door solid to animals would seal
+## roughly half of every species into its birth room for the whole run. Hence
+## three behaviours. The checks below are about what each one COSTS, because
+## that is the only thing the player can feel.
+func _test_doors_stop_different_things() -> void:
+	var hall := _arena(24, 9)
+	hall.player.x = 2
+	hall.player.y = 4
+	hall.map.set_tile(10, 4, Tiles.DOOR_CLOSED)
+	hall.pathfinder = Pathfinder.new(hall.map)
+
+	# A rabbit goes under it and is not delayed at all.
+	var bun := _spawn(hall, "rabbit", 9, 4)
+	bun.activity = Entity.Activity.SLEEPING
+	check("a rabbit squeezes under", bun.door_style() == Entity.Door.SQUEEZES)
+	hall._step_toward(bun, Vector2i(14, 4))
+	check("and is through it, with the door still shut",
+		bun.x == 10 and hall.map.get_tile(10, 4) == Tiles.DOOR_CLOSED,
+		"at %d,%d" % [bun.x, bun.y])
+
+	# A goblin has hands: it opens the door, and that IS its turn.
+	var door2 := _arena(24, 9)
+	door2.player.x = 2
+	door2.player.y = 4
+	door2.map.set_tile(10, 4, Tiles.DOOR_CLOSED)
+	door2.pathfinder = Pathfinder.new(door2.map)
+	var gob := _spawn(door2, "goblin", 9, 4)
+	check("a goblin opens", gob.door_style() == Entity.Door.OPENS)
+	door2._step_toward(gob, Vector2i(14, 4))
+	check("it opens the door rather than walking through",
+		door2.map.get_tile(10, 4) == Tiles.DOOR_OPEN and gob.x == 9,
+		"at %d,%d" % [gob.x, gob.y])
+	check("and that cost it one turn",
+		door2._last_move_cost == Scheduler.ACTION_COST,
+		str(door2._last_move_cost))
+
+	# A bear shoulders through, and it costs real time.
+	var den := _arena(24, 9)
+	den.player.x = 2
+	den.player.y = 4
+	den.map.set_tile(10, 4, Tiles.DOOR_CLOSED)
+	den.pathfinder = Pathfinder.new(den.map)
+	var bear := _spawn(den, "cave bear", 9, 4)
+	check("a bear shoulders through", bear.door_style() == Entity.Door.SHOULDERS)
+	den._step_toward(bear, Vector2i(14, 4))
+	check("the door gives way", den.map.get_tile(10, 4) == Tiles.DOOR_OPEN)
+	check("and it cost three turns, not one (%d)" % den._last_move_cost,
+		den._last_move_cost
+			== Scheduler.ACTION_COST * GameState.DOOR_SHOULDER_COST)
+
+	# A banshee walks through stone; a door was never going to matter.
+	var crypt := _arena(24, 9)
+	crypt.player.x = 2
+	crypt.player.y = 4
+	var wail := _spawn(crypt, "banshee", 9, 4)
+	check("a banshee ignores doors entirely",
+		wail.door_style() == Entity.Door.SQUEEZES)
+
+	# NOTHING can shut one but the player, which is what makes an open door
+	# behind you evidence rather than scenery. Asserted by walking every kind
+	# of creature through an OPEN one and checking it is still open after --
+	# an earlier version of this check grepped the source and ended in
+	# "or true", which is a check that cannot fail.
+	for kind in ["rabbit", "goblin", "cave bear", "giant rat"]:
+		var lane := _arena(24, 9)
+		lane.player.x = 2
+		lane.player.y = 4
+		lane.map.set_tile(10, 4, Tiles.DOOR_OPEN)
+		lane.pathfinder = Pathfinder.new(lane.map)
+		var walker := _spawn(lane, kind, 9, 4)
+		walker.activity = Entity.Activity.SLEEPING
+		for _i in 4:
+			lane._step_toward(walker, Vector2i(14, 4))
+		check_silent(lane.map.get_tile(10, 4) == Tiles.DOOR_OPEN)
+	check_gathered("nothing that walks through an open door shuts it")
+
+	# --- the player's half, which did not exist until now --------------------
+	var me := _arena(20, 9)
+	me.player.x = 5
+	me.player.y = 4
+	check("with no door beside you, closing does nothing",
+		not me.player_close_door())
+	me.map.set_tile(6, 4, Tiles.DOOR_OPEN)
+	check("beside an open door, you can shut it", me.player_close_door())
+	check("and it is shut", me.map.get_tile(6, 4) == Tiles.DOOR_CLOSED)
+
+	# Not onto something standing in it.
+	me.map.set_tile(6, 4, Tiles.DOOR_OPEN)
+	var inway := _spawn(me, "goblin", 6, 4)
+	check("but not with something in the doorway", not me.player_close_door())
+	check("and the door stays open", me.map.get_tile(6, 4) == Tiles.DOOR_OPEN)
+	inway.alive = false
+	me.entities.erase(inway)
+	# Nor onto an item, which would swallow it.
+	var lost := Item.make(&"dagger")
+	lost.x = 6
+	lost.y = 4
+	me.ground.append(lost)
+	check("nor onto something lying in it", not me.player_close_door())
 
 func _test_the_dead_are_marked() -> void:
 	var gs := _arena(21, 9)

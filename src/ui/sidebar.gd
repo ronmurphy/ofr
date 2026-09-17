@@ -59,6 +59,9 @@ const KEYS := [
 	# cannot express -- so it lives in the full list, where a player goes
 	# looking the first time an ally does something they did not want.
 	["a", "ally: heel / loose", false],
+	## Worth finding: a shut door buys a turn against a goblin, three against
+	## a bear, and nothing at all against a rabbit.
+	["c", "close a door", false],
 	["f (no bow)", "throw", false],
 	["p", "pray at a shrine", false],
 	["m  - +", "sound", false],
