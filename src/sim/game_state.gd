@@ -5079,17 +5079,39 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 	if style == Entity.Door.SQUEEZES:
 		# Under it, and no slower for it. Brad has watched rabbits do this.
 		return false
-	map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
 	_last_move_cost = Scheduler.ACTION_COST
-	if style == Entity.Door.SHOULDERS:
-		_last_move_cost *= DOOR_SHOULDER_COST
-	if map.is_visible(at.x, at.y):
-		if style == Entity.Door.SHOULDERS:
-			msg_log.add("The %s puts its shoulder through the door."
-				% actor.name, Color(0.90, 0.72, 0.55))
-		else:
+	if style != Entity.Door.SHOULDERS:
+		map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+		if map.is_visible(at.x, at.y):
 			msg_log.add("The %s pulls the door open." % actor.name,
 				Color(0.78, 0.74, 0.66))
+		return true
+
+	_last_move_cost *= DOOR_SHOULDER_COST
+	# A bear does not open a door, it DESTROYS one -- Brad has watched it
+	# happen. Which does more than sound right: with the door merely opened,
+	# shutting it on a bear again would buy another three turns, and again, for
+	# as long as you cared to. Gone, the trick works exactly once and leaves a
+	# permanent hole in your escape route. An open door might be one you forgot
+	# about; a missing door is not ambiguous.
+	#
+	# EVERYWHERE, authored vaults included. The first version exempted
+	# `protected_cell` the way the golem's rubble does, on the grounds that a
+	# hand-drawn room's shape belongs to whoever drew it. Brad's call was
+	# consistency, and he is right: "sometimes a bear cannot break a door and
+	# you cannot tell which" is a worse rule than either one applied
+	# everywhere. A vault losing a door only ever makes it more open, so
+	# nothing an author drew becomes unreachable.
+	map.set_tile(at.x, at.y,
+		Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	pathfinder.set_solid(at.x, at.y, false)
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The %s takes the door off its hinges." % actor.name,
+			Color(0.92, 0.66, 0.45))
+	else:
+		msg_log.add("Wood splinters, somewhere out of sight.",
+			Color(0.78, 0.70, 0.60))
 	return true
 
 func _step_toward(actor: Entity, target: Vector2i) -> void:
@@ -5209,6 +5231,13 @@ func _nearest_fungus(actor: Entity) -> Vector2i:
 	for y in map.height:
 		for x in map.width:
 			if map.get_tile(x, y) != Tiles.FUNGUS:
+				continue
+			# Not one somebody is standing on. This picked the nearest mushroom
+			# and nothing else, so a rat asleep on the closest one left the
+			# rabbit pacing in front of it forever -- watched in play, with two
+			# perfectly good mushrooms in the same room. It was not refusing
+			# the others; it never looked at them.
+			if entity_at(x, y) != null:
 				continue
 			var d := Los.steps(actor.x, actor.y, x, y)
 			if d < best_d:

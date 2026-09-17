@@ -5910,6 +5910,31 @@ func _test_the_floor_is_busy() -> void:
 		forbidden.ground.size() == 4 and picky.equipped.is_empty(),
 		"holding %d" % picky.equipped.size())
 
+	# A mushroom with something asleep on it is not a mushroom you can eat.
+	# Brad watched a rabbit pace in front of one for several turns with two
+	# others in the same room: `_nearest_fungus` took the closest and never
+	# considered whether it was reachable.
+	var pantry := _arena(24, 11)
+	pantry.player.x = 22
+	pantry.player.y = 9
+	var hare := _spawn(pantry, "rabbit", 5, 5)
+	hare.activity = Entity.Activity.FEEDING
+	pantry.map.set_tile(7, 5, Tiles.FUNGUS)
+	pantry.map.set_tile(12, 5, Tiles.FUNGUS)
+	pantry._gather_lights()
+	check("it goes for the nearer mushroom when both are free",
+		pantry._nearest_fungus(hare) == Vector2i(7, 5),
+		str(pantry._nearest_fungus(hare)))
+	var squatter := _spawn(pantry, "giant rat", 7, 5)
+	squatter.activity = Entity.Activity.SLEEPING
+	check("but looks past one with something sitting on it",
+		pantry._nearest_fungus(hare) == Vector2i(12, 5),
+		str(pantry._nearest_fungus(hare)))
+	squatter.alive = false
+	check("and comes back to it once that has gone",
+		pantry._nearest_fungus(hare) == Vector2i(7, 5),
+		str(pantry._nearest_fungus(hare)))
+
 	# --- the rabbit ----------------------------------------------------------
 	# Never seen in play: everything started ASLEEP, so a rabbit did not eat
 	# until the player arrived, and then it flees anything within RABBIT_NOSE.
@@ -6039,10 +6064,35 @@ func _test_doors_stop_different_things() -> void:
 	var bear := _spawn(den, "cave bear", 9, 4)
 	check("a bear shoulders through", bear.door_style() == Entity.Door.SHOULDERS)
 	den._step_toward(bear, Vector2i(14, 4))
-	check("the door gives way", den.map.get_tile(10, 4) == Tiles.DOOR_OPEN)
+	# GONE, not merely open. With it left standing you could shut it on the
+	# bear again and buy another three turns, and again -- the trick has to
+	# work exactly once.
+	check("the door is gone, not just open",
+		den.map.get_tile(10, 4) == Tiles.FLOOR
+			or den.map.get_tile(10, 4) == Tiles.CAVE_FLOOR,
+		str(den.map.get_tile(10, 4)))
+	check("so there is nothing left to shut on it",
+		not den.player_close_door())
 	check("and it cost three turns, not one (%d)" % den._last_move_cost,
 		den._last_move_cost
 			== Scheduler.ACTION_COST * GameState.DOOR_SHOULDER_COST)
+
+	# An authored room is NOT exempt. The rule is the same everywhere, because
+	# one a player cannot predict is worse than either rule applied uniformly.
+	var vault := _arena(24, 9)
+	vault.player.x = 2
+	vault.player.y = 4
+	vault.map.set_tile(10, 4, Tiles.DOOR_CLOSED)
+	vault.pathfinder = Pathfinder.new(vault.map)
+	vault.vault_rects.append(Rect2i(8, 2, 6, 5))
+	check("the door is inside the authored room",
+		vault.protected_cell(Vector2i(10, 4)))
+	var vbear := _spawn(vault, "cave bear", 9, 4)
+	vault._step_toward(vbear, Vector2i(14, 4))
+	check("a bear takes an authored door off its hinges too",
+		vault.map.get_tile(10, 4) == Tiles.FLOOR
+			or vault.map.get_tile(10, 4) == Tiles.CAVE_FLOOR,
+		str(vault.map.get_tile(10, 4)))
 
 	# A banshee walks through stone; a door was never going to matter.
 	var crypt := _arena(24, 9)
