@@ -1804,7 +1804,8 @@ func _settle_the_grave() -> void:
 		Color(0.70, 0.72, 0.78))
 
 func _drop_loot(victim: Entity) -> void:
-	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit":
+	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit" \
+			or victim.appearance == &"bear":
 		_drop_meat(victim)
 	# A golem falls apart into what it was made of, and what it was throwing.
 	#
@@ -5189,6 +5190,22 @@ func _around(actor: Entity, target: Vector2i) -> Vector2i:
 ## is now competing with the player for the same mushrooms and the race should
 ## be losable.
 const RABBIT_TURNS := 2
+## The shallowest floor a rabbit can turn into something else on.
+##
+## Brad's rule, after dying to one at level 1 with a dagger. The learning floors
+## get rabbits and nothing worse; from here down, no hand-holding.
+##
+## The reason it needs saying at all is that `RABBIT_TURNS` was tuned for a
+## transformation that COULD NEVER FIRE -- everything was asleep until the
+## player arrived, so no rabbit ever ate twice. The moment that was fixed, a
+## depth-5 threat with power 9 started appearing on floor one against a
+## character holding a dagger, and nobody had ever balanced it, because until
+## this week it did not exist.
+##
+## Depth is the right lever rather than the threshold: making it rarer
+## everywhere would take the surprise out of the caves, where it belongs.
+const RABBIT_TURNS_DEPTH := 3
+
 ## Turns spent with its head down, unable to react. The window.
 const RABBIT_MEAL := 2
 ## How far it will look for a mushroom.
@@ -5260,7 +5277,8 @@ func _rabbit_swallows(actor: Entity) -> void:
 	if map.is_visible(actor.x, actor.y):
 		msg_log.add("The rabbit swallows it, and the glow goes out.",
 			Color(0.80, 0.72, 0.50))
-	if actor.meal >= RABBIT_TURNS and actor.ai == &"forager":
+	if actor.meal >= RABBIT_TURNS and actor.ai == &"forager" \
+			and effective_depth() >= RABBIT_TURNS_DEPTH:
 		_rabbit_turns(actor)
 
 ## What it becomes. Still frail -- it simply stops running.
@@ -5309,6 +5327,15 @@ func _rabbit_turns(actor: Entity) -> void:
 ##
 ## So: a real reward for winning a real hunt.
 const MEAT_BASE := 5
+
+## What a bear is worth, against a brazier's ten charges.
+##
+## Deliberately the same order as a whole fire, because farming bears SHOULD
+## feel like carrying a brazier in your pack. It stays honest through scarcity
+## rather than through the number: bears are a cave-band creature, absent from
+## the fortress entirely, and two cannot share a cave -- a bear costs 17 threat
+## and the largest cave ceiling the game can build is 30.
+const MEAT_BEAR := 10
 ## Meat gains a point every three floors, so a haunch stays worth hunting for.
 ## Flat, it was a fifth of your hit points on floor four and a twentieth by the
 ## climb -- the same reason the healing economy deflates, arriving by the same
@@ -5316,10 +5343,19 @@ const MEAT_BASE := 5
 const MEAT_PER_DEPTH := 3.0
 
 func _drop_meat(victim: Entity) -> void:
-	var meat := Item.make(&"meat")
+	var bear := victim.appearance == &"bear"
+	var meat := Item.make(&"bear_meat" if bear else &"meat")
 	if meat == null:
 		return
-	meat.magnitude = MEAT_BASE + victim.meal \
+	# A bear is a lot of meat, and it is worth MORE than a brazier's whole
+	# charge -- which is the point of it. By the time you can kill bears
+	# reliably you are carrying a fire around in your pack, and the thing that
+	# keeps that honest is how rare they are: one or two a floor in the cave
+	# band, and none at all in the fortress.
+	#
+	# No `meal` term. A rabbit's haunch is worth more for every mushroom it got
+	# to first; a bear has not been eating the scenery.
+	meat.magnitude = (MEAT_BEAR if bear else MEAT_BASE + victim.meal) \
 		+ int(floor(float(effective_depth()) / MEAT_PER_DEPTH))
 	var at := Vector2i(victim.x, victim.y)
 	if not _can_rest_on(at.x, at.y):

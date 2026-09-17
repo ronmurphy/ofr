@@ -156,6 +156,17 @@ const CATALOGUE := {
 		"min_depth": 999, "weight": 0,
 	},
 
+	## The other end of the larder.
+	##
+	## Its own entry rather than a renamed haunch, because the two must never
+	## merge in the pack -- a bear and a rabbit are different meals, and the
+	## stack would have to pick one magnitude for both.
+	&"bear_meat": {
+		"name": "haunch of bear", "app": &"meat", "kind": Kind.POTION,
+		"effect": &"heal", "magnitude": 1, "verb": "eat",
+		"min_depth": 999, "weight": 0,
+	},
+
 	# Elemental gems.
 	#
 	# WEIGHT ZERO: gems are not floor loot.

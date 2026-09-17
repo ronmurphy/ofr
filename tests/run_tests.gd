@@ -4355,15 +4355,23 @@ func _test_rabbit() -> void:
 		farm.static_lights.size() < lit,
 		"%d -> %d" % [lit, farm.static_lights.size()])
 
-	# Three mouthfuls and it stops running.
+	# Enough mouthfuls and it stops running.
+	#
+	# Depth set deliberately: the transformation is gated below
+	# RABBIT_TURNS_DEPTH so the learning floors only ever hold rabbits, and
+	# `_arena` starts on depth 1. The old comment here said "three", which
+	# stopped being true when the threshold moved to two -- and the check name
+	# below said it as well, which is a test describing a number it was not
+	# testing.
 	var fed := _arena(31, 11)
+	fed.depth = GameState.RABBIT_TURNS_DEPTH
 	fed.player.x = 28
 	fed.player.y = 9
 	var glut := _spawn(fed, "rabbit", 6, 3)
 	for i in GameState.RABBIT_TURNS:
 		fed.map.set_tile(glut.x, glut.y, Tiles.FUNGUS)
 		fed._rabbit_swallows(glut)
-	check("three mouthfuls and it turns (%s)" % glut.name,
+	check("%d mouthfuls and it turns (%s)" % [GameState.RABBIT_TURNS, glut.name],
 		glut.name == "killer rabbit", glut.name)
 	check("it stops fleeing and starts hunting", glut.ai == &"hunter", str(glut.ai))
 	check("and it can actually hurt you now", glut.power > 0, str(glut.power))
@@ -5935,10 +5943,36 @@ func _test_the_floor_is_busy() -> void:
 		pantry._nearest_fungus(hare) == Vector2i(7, 5),
 		str(pantry._nearest_fungus(hare)))
 
+	# A bear is the other end of the larder: worth more than a rabbit, and on
+	# the order of a whole brazier.
+	var larder := _arena(24, 11)
+	larder.depth = 6
+	larder.player.x = 3
+	larder.player.y = 3
+	var bruin := _spawn(larder, "cave bear", 8, 5)
+	bruin.hp = 1
+	larder._attack(larder.player, bruin)
+	var cut: Item = null
+	for it in larder.ground:
+		if it.id == &"bear_meat":
+			cut = it
+	check("a bear leaves meat behind", cut != null)
+	if cut != null:
+		check("named for what it came off", cut.name.contains("bear"), cut.name)
+		check("and worth more than a rabbit's (%d)" % cut.effective_magnitude(),
+			cut.effective_magnitude() > GameState.MEAT_BASE + 2)
+	# And they must never stack together -- two different meals, two different
+	# magnitudes, and one pile cannot hold both numbers.
+	check("bear and rabbit meat are different items",
+		Item.make(&"bear_meat").id != Item.make(&"meat").id)
+
 	# --- the rabbit ----------------------------------------------------------
 	# Never seen in play: everything started ASLEEP, so a rabbit did not eat
 	# until the player arrived, and then it flees anything within RABBIT_NOSE.
 	var warren := _arena(30, 14)
+	# Deep enough to be allowed to turn. `_arena` starts on depth 1, where a
+	# rabbit is now only ever a rabbit.
+	warren.depth = 5
 	warren.player.x = 28
 	warren.player.y = 12
 	var bun := _spawn(warren, "rabbit", 4, 4)
@@ -5983,6 +6017,23 @@ func _test_the_floor_is_busy() -> void:
 	# BEHAVIOUR, not mechanism. This used to assert `ai == &"hunter"`, which
 	# stayed true after the activity split while the rabbit went on eating --
 	# the test agreed with itself and disagreed with the game.
+	# And the learning floors stay safe, however much it eats.
+	var nursery := _arena(30, 14)
+	nursery.depth = 1
+	nursery.player.x = 28
+	nursery.player.y = 12
+	var kit := _spawn(nursery, "rabbit", 4, 4)
+	kit.alertness = Entity.Alert.ASLEEP
+	for at in [Vector2i(5, 4), Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4)]:
+		nursery.map.set_tile(at.x, at.y, Tiles.FUNGUS)
+	nursery._gather_lights()
+	nursery.update_vision()
+	for _i in 60:
+		nursery._take_ai_turn(kit)
+	check("a rabbit on floor one eats its fill and stays a rabbit (%d meals)"
+		% kit.meal, kit.appearance == &"rabbit" and kit.meal >= 2,
+		"%s after %d" % [kit.appearance, kit.meal])
+
 	check("which stops hunting mushrooms once it turns",
 		bun.activity != Entity.Activity.FEEDING, str(bun.activity))
 	var left_after := 0
