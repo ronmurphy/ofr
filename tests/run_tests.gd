@@ -134,6 +134,9 @@ func _initialize() -> void:
 	_test_chests()
 	_test_the_floor_is_busy()
 	_test_doors_stop_different_things()
+	_test_creatures_can_see_each_other()
+	_test_morale_is_social()
+	_test_the_panel_says_whose_side()
 	_test_the_dead_are_marked()
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
@@ -6194,6 +6197,204 @@ func _test_doors_stop_different_things() -> void:
 	lost.y = 4
 	me.ground.append(lost)
 	check("nor onto something lying in it", not me.player_close_door())
+
+## Who can see whom, which the game could not ask until now.
+##
+## A predicate rather than remembered awareness: everything we want from it --
+## predation, fear, ambush, tracking -- only ever needs "right now", and
+## N-squared remembered state would have to be serialised and debugged for no
+## gain.
+func _test_creatures_can_see_each_other() -> void:
+	var room := _arena(30, 13)
+	room.player.x = 2
+	room.player.y = 11
+	room.torch_lit = false
+	room.update_vision()
+
+	var goblin := _spawn(room, "goblin", 10, 4)
+	var mark := _spawn(room, "orc", 13, 4)
+
+	# PRECONDITION: in range and in line, so the only thing left to decide the
+	# answer is light. Asserted, because a test that fails on distance would
+	# look exactly like one that fails on darkness.
+	check("they are close enough and in line of sight",
+		Los.steps(goblin.x, goblin.y, mark.x, mark.y) <= goblin.notice_range
+			and Los.clear(room.map, goblin.x, goblin.y, mark.x, mark.y))
+	check("but in the dark a goblin sees nothing",
+		not room._can_see(goblin, mark))
+
+	# Light the target -- not the watcher. You see what is lit, not what you
+	# are standing in.
+	room.map.set_tile(14, 4, Tiles.BRAZIER)
+	room.brazier_charge[Vector2i(14, 4)] = GameState.BRAZIER_CHARGE
+	room._gather_lights()
+	room.update_vision()
+	check("light it and the goblin sees it", room._can_see(goblin, mark))
+
+	# The dead need no light, but only so far.
+	var bones := _spawn(room, "skeleton", 10, 9)
+	var near := _spawn(room, "orc", 14, 9)
+	# EIGHT cells: past darkvision (6) but still inside notice range (8). At
+	# nine it was out of range entirely, so the check would have passed for the
+	# wrong reason -- the precondition below is what caught that.
+	var far := _spawn(room, "orc", 18, 9)
+	check("a skeleton is unliving", bones.unliving)
+	check("the near one is inside darkvision and the far one is not",
+		Los.steps(bones.x, bones.y, near.x, near.y) <= GameState.DARKVISION
+			and Los.steps(bones.x, bones.y, far.x, far.y) > GameState.DARKVISION
+			and Los.steps(bones.x, bones.y, far.x, far.y) <= bones.notice_range)
+	check("it sees the near one in the dark", room._can_see(bones, near))
+	check("and not the far one", not room._can_see(bones, far))
+
+	# A wall stops everything that is not a banshee.
+	var crypt := _arena(30, 13)
+	crypt.player.x = 2
+	crypt.player.y = 11
+	for y in crypt.map.height:
+		crypt.map.set_tile(12, y, Tiles.WALL)
+	crypt.pathfinder = Pathfinder.new(crypt.map)
+	crypt.update_vision()
+	var watcher := _spawn(crypt, "skeleton", 10, 5)
+	var hidden := _spawn(crypt, "orc", 14, 5)
+	check("a wall blocks the dead too", not crypt._can_see(watcher, hidden))
+	var wail := _spawn(crypt, "banshee", 10, 5)
+	check("a banshee senses life through stone",
+		wail.senses and crypt._can_see(wail, hidden))
+
+	# And the targeting scan no longer reaches across the floor.
+	#
+	# `_foe_for` had no range check and no sight check, so a monster that woke
+	# to the player could lock onto an ally thirty cells away through three
+	# walls. The player is still a target when unseen -- an awake monster hunts
+	# by `last_seen` -- but nothing else is.
+	var reach := _arena(40, 13)
+	reach.player.x = 2
+	reach.player.y = 6
+	reach.torch_lit = false
+	reach.update_vision()
+	var hunter := _spawn(reach, "orc", 6, 6)
+	var ally := _spawn(reach, "skeleton", 34, 6)
+	ally.faction = Entity.Faction.PLAYER
+	check("the ally is far away and unlit",
+		Los.steps(hunter.x, hunter.y, ally.x, ally.y) > hunter.notice_range)
+	check("so the orc goes for the player, not the distant ally",
+		reach._foe_for(hunter) == reach.player,
+		reach._foe_for(hunter).name if reach._foe_for(hunter) else "nothing")
+
+## Morale, which was individual and is now social.
+##
+## It moves the THRESHOLD, never the damage. A monster that hit harder when
+## confident would be worth more to face than the floor paid for it -- the same
+## trap the killer rabbit and the scavenger both fell into -- and a modifier is
+## invisible where a rout is not.
+## The cursor panel says whose side a creature is on.
+##
+## From a real death: two skeletons raised from the same morgue, both in the
+## player's own old gear, one an ally and one not, told apart by the word
+## "risen" and a colour that is gone the moment you die.
+func _test_the_panel_says_whose_side() -> void:
+	var gs := _arena(20, 11)
+	gs.player.x = 3
+	gs.player.y = 3
+	# `_arena` marks everything VISIBLE but nothing EXPLORED, and `_describe`
+	# refuses to report on ground the player has never seen -- so without this
+	# the panel answered "unknown" and both checks below failed for a reason
+	# that had nothing to do with factions.
+	gs.map.set_all_visible()
+	gs.map.remember_visible()
+	var bar := Sidebar.new()
+	bar.state = gs
+	var foe := _spawn(gs, "skeleton", 8, 5)
+	foe.name = "risen BradTest"
+	bar.hovered = Vector2i(8, 5)
+	var said := ""
+	for entry in bar._describe():
+		if entry is String and String(entry).contains("BradTest"):
+			said = String(entry)
+	check("an enemy is not marked as yours", said != "" and not said.contains("yours"),
+		said)
+
+	var mate := _spawn(gs, "skeleton", 9, 5)
+	mate.name = "B"
+	mate.faction = Entity.Faction.PLAYER
+	bar.hovered = Vector2i(9, 5)
+	said = ""
+	for entry in bar._describe():
+		if entry is String and String(entry).begins_with("B "):
+			said = String(entry)
+	check("but an ally is", said.contains("(yours)"), said)
+	bar.free()
+
+func _test_morale_is_social() -> void:
+	var field := _arena(26, 13)
+	field.player.x = 3
+	field.player.y = 6
+
+	# Company steadies you. A lone goblin at the same wound breaks; one with
+	# friends stands.
+	var lone := _spawn(field, "goblin", 20, 3)
+	check("a goblin can be frightened at all", lone.flee_below > 0.0)
+	# FLOOR, not ceil. `ceil(9 * 0.20)` is 2, and 2/9 is 0.222 -- just ABOVE
+	# the 0.20 threshold, so the first version of this put the goblin at a
+	# wound it was never meant to break at and then blamed the code.
+	lone.hp = maxi(1, int(floor(lone.max_hp * lone.flee_below)))
+	check("it is genuinely hurt past its threshold (%.3f vs %.2f)"
+		% [float(lone.hp) / float(lone.max_hp), lone.flee_below],
+		float(lone.hp) / float(lone.max_hp) <= lone.flee_below)
+	field._update_morale(lone)
+	check("hurt and alone, it runs", lone.fleeing)
+
+	var braced := _spawn(field, "goblin", 10, 9)
+	for i in 3:
+		_spawn(field, "goblin", 10 + i, 10)
+	braced.hp = lone.hp
+	braced.max_hp = lone.max_hp
+	check("it has company", field._allies_near(braced, GameState.MORALE_REACH) >= 3)
+	field._update_morale(braced)
+	check("the same wound with friends beside it does not", not braced.fleeing)
+
+	# And losing the biggest thing present undoes that.
+	var ranks := _arena(26, 13)
+	ranks.player.x = 3
+	ranks.player.y = 6
+	var mob := []
+	for i in 3:
+		mob.append(_spawn(ranks, "goblin", 10 + i, 6))
+	var boss := _spawn(ranks, "ogre", 13, 6)
+	check("the ogre is the biggest thing here (%d vs %d)"
+		% [boss.threat, mob[0].threat], boss.threat > mob[0].threat)
+	check("and the goblins have the wit to notice", mob[0].scavenges)
+	for g in mob:
+		check_silent(g.shaken == 0)
+	check_gathered("nobody is shaken yet")
+
+	boss.alive = false
+	ranks._rattle_the_ranks(boss)
+	for g in mob:
+		check_silent(g.shaken > 0)
+	check_gathered("losing it shakes the whole group")
+
+	# Shaken, a wound they would have stood becomes a rout.
+	var runner: Entity = mob[0]
+	runner.hp = int(runner.max_hp * 0.4)
+	ranks._update_morale(runner)
+	check("and now they break at a wound they would have shrugged off",
+		runner.fleeing, "%d/%d shaken %d"
+			% [runner.hp, runner.max_hp, runner.shaken])
+
+	# An animal does not reason about its side, and neither do the dead.
+	var wild := _arena(26, 13)
+	wild.player.x = 3
+	wild.player.y = 6
+	var rat := _spawn(wild, "giant rat", 10, 6)
+	var bones := _spawn(wild, "skeleton", 11, 6)
+	var big := _spawn(wild, "cave troll", 12, 6)
+	check("neither the rat nor the skeleton scavenges",
+		not rat.scavenges and not bones.scavenges)
+	big.alive = false
+	wild._rattle_the_ranks(big)
+	check("so neither is shaken by it",
+		rat.shaken == 0 and bones.shaken == 0)
 
 func _test_the_dead_are_marked() -> void:
 	var gs := _arena(21, 9)

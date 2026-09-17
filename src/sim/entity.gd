@@ -114,6 +114,14 @@ enum Stance { LOOSE, HEEL }
 
 var stance: int = Stance.LOOSE
 
+## Turns left of having watched something bigger than it die.
+##
+## Not a damage penalty -- a shift in where its nerve breaks. See
+## `GameState._update_morale`: confidence and fear both move the threshold the
+## creature already had, so nothing new enters the combat path and no monster
+## ends up worth more or less to face than the floor paid for it.
+var shaken: int = 0
+
 ## Whether this thing picks up what it finds and puts it on.
 ##
 ## NOT an Activity, deliberately. Scavenging is opportunistic -- you do not
@@ -355,7 +363,7 @@ func to_dict() -> Dictionary:
 		"notice_block": notice_block, "alive": alive,
 		"stance": stance,
 		"patrols": patrols, "patrol_at": patrol_at,
-		"scavenges": scavenges,
+		"scavenges": scavenges, "shaken": shaken,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
@@ -400,6 +408,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.stance = int(d.get("stance", Stance.LOOSE))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
+	e.shaken = int(d.get("shaken", 0))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#

@@ -625,6 +625,17 @@ func _describe() -> Array:
 		for e in state.entities:
 			if e.alive and e.x == hovered.x and e.y == hovered.y:
 				var tag := "%s  %d/%d hp" % [e.name, e.hp, e.max_hp]
+				# WHOSE SIDE IT IS ON, which this panel never said.
+				#
+				# Reported from a real death: Brad fought in a room holding two
+				# skeletons raised from his own morgue, both wearing his own
+				# old gear -- "B", his bone ally, and "risen BradTest", a
+				# hostile off a gravestone. One word apart. The map colours
+				# allies green, but the moment he died the map was gone and all
+				# he had was this panel, which told him a name, hit points and
+				# a kit, and nothing about which of them was trying to kill him.
+				if e.faction == Entity.Faction.PLAYER and not e.is_player:
+					tag += "  (yours)"
 				if e.regen > 0:
 					tag += " *"
 				out.append(tag)

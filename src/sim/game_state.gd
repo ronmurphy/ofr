@@ -2908,8 +2908,13 @@ func _spring_trap(x: int, y: int) -> void:
 	events.append({"kind": &"trap", "to": Vector2i(x, y)})
 	events.append({"kind": &"melee", "from": Vector2i(x, y), "to": Vector2i(x, y),
 		"amount": hurt, "on_player": true})
-	# Springing one is loud.
-	_make_noise(Vector2i(x, y), 5)
+	# Springing one is loud -- but it is not a BONE CRUNCH, and the difference
+	# matters. This passed no cause, so it defaulted to &"step" and quietly
+	# raised gravestones, against the rule three lines of comment in
+	# `_make_noise` insist on: bones and a wail, and nothing else, so that the
+	# rule is one a player can hold in their head. A trap doing it as well made
+	# that a lie for the life of the project.
+	_make_noise(Vector2i(x, y), 5, &"trap")
 	if not player.alive:
 		game_over = true
 		death_cause = "caught in a trap"
@@ -4739,6 +4744,47 @@ func _ai_patrol(actor: Entity) -> void:
 		goal = patrol_route[actor.patrol_at]
 	_step_toward(actor, goal)
 
+## How far the dead see with no light at all.
+##
+## Six cells, which at five feet a square is D&D's thirty-foot darkvision --
+## Brad's reference, and the reason the number is not rounder. The dungeon has
+## several creatures that could justify it; the undead get it because they have
+## no eyes to need light for, which is the "it's magic" answer and the honest
+## one.
+const DARKVISION := 6
+
+## Whether one creature can make out another RIGHT NOW.
+##
+## A PREDICATE, deliberately, and not remembered awareness. Every creature
+## holding what it knows about every other creature is N-squared state that has
+## to be serialised and would be miserable to debug -- and nothing we want
+## needs it. Predation, fear, ambush and tracking all only ever ask "can this
+## thing see that thing at this moment".
+##
+## The ladder is Brad's: something that SENSES life needs neither eyes nor
+## light; the dead see a short way in the dark; everything else needs the thing
+## it is looking at to be LIT. That last part is the same rule the player lives
+## under -- `_notices_player` reads the luminance at the player's feet -- so a
+## monster standing in a dark corner is as hard for a goblin to see as you are.
+func _can_see(watcher: Entity, other: Entity) -> bool:
+	if watcher == other or not other.alive or not watcher.alive:
+		return false
+	var d := Los.steps(watcher.x, watcher.y, other.x, other.y)
+	if d > watcher.notice_range:
+		return false
+	if watcher.senses:
+		return true
+	if not Los.clear(map, watcher.x, watcher.y, other.x, other.y):
+		return false
+	# Arm's length finds anything, however dark. The same absolute the player's
+	# own detection keeps, and for the same reason: being unlit should never
+	# mean being untouchable.
+	if d <= 1:
+		return true
+	if watcher.unliving:
+		return d <= DARKVISION
+	return light_map.get_light(other.x, other.y).get_luminance() >= LIT_ENOUGH
+
 ## What this creature is trying to reach: the nearest thing it would fight.
 ##
 ## Today this is always the player, because the player is the only thing on
@@ -4763,6 +4809,16 @@ func _foe_for(actor: Entity) -> Entity:
 	var best_d := 0
 	for e in entities:
 		if not e.alive or not actor.hostile_to(e):
+			continue
+		# THE PLAYER STAYS A TARGET WHEN UNSEEN, because an awake monster hunts
+		# by `last_seen` and that memory is the whole point of the field.
+		# Everything else has to be visible right now.
+		#
+		# Without this the scan had no range and no sight check at all, so a
+		# monster that woke to the player could lock onto an ally thirty cells
+		# away through three walls. Nothing had noticed, because an ally is
+		# usually standing next to you.
+		if not e.is_player and not _can_see(actor, e):
 			continue
 		var d := Los.steps(actor.x, actor.y, e.x, e.y)
 		if best == null or d < best_d:
@@ -4851,14 +4907,82 @@ func wake(actor: Entity) -> void:
 ## Nothing rallies yet, since only the player can heal -- but the threshold is
 ## checked each turn rather than latched, so a healing monster later works
 ## without touching this.
+## How far a creature looks for company, and for the news that its leader fell.
+const MORALE_REACH := 5
+## How much braver each nearby ally makes it.
+const MORALE_PER_ALLY := 0.05
+## How much LESS nerve it has after watching the biggest thing nearby go down.
+##
+## Large on purpose: a rout should be a rout. Against a flee_below of 0.15 this
+## more than triples the point at which it breaks, so a group that was standing
+## firm comes apart the moment the ogre drops -- which is the whole scene.
+const MORALE_SHAKEN := 0.35
+## And how long that lasts, if it survives long enough to steady.
+const MORALE_SHAKEN_TURNS := 12
+
+## News travels, but only to things with the wit to understand it.
+##
+## D&D rolls a morale check when a leader falls. Brad's version of the rule is
+## the one this uses: the question is whether the creature is SMART ENOUGH to
+## realise, and if it is, it runs. `scavenges` is that test -- the flag is
+## already documented as "hands AND the wit to use what it finds", which is
+## exactly the set that can reason about its own side. It correctly leaves out
+## every animal, and the undead, who patrol but do not scavenge.
+##
+## The leader is the highest THREAT nearby, because that number exists to say
+## what a thing is worth facing. Evaluating stats separately here would be
+## admitting the number means nothing.
+##
+## Uses position rather than `_can_see`, because the thing it is looking at is
+## already dead and `_can_see` refuses corpses.
+func _rattle_the_ranks(fallen: Entity) -> void:
+	for e in entities:
+		if e == fallen or not e.alive or e.is_player:
+			continue
+		if e.faction != fallen.faction or not e.scavenges:
+			continue
+		# Something that never flees cannot be shaken either.
+		if e.flee_below <= 0.0:
+			continue
+		if Los.steps(e.x, e.y, fallen.x, fallen.y) > e.notice_range:
+			continue
+		if not Los.clear(map, e.x, e.y, fallen.x, fallen.y):
+			continue
+		# Was that the biggest thing here, or just another body?
+		var biggest := fallen.threat
+		for o in entities:
+			if o == fallen or o == e or not o.alive or o.is_player:
+				continue
+			if o.faction != e.faction:
+				continue
+			if Los.steps(e.x, e.y, o.x, o.y) > MORALE_REACH:
+				continue
+			biggest = maxi(biggest, o.threat)
+		if biggest > fallen.threat:
+			continue
+		e.shaken = MORALE_SHAKEN_TURNS
+		if map.is_visible(e.x, e.y):
+			msg_log.add("The %s sees it fall." % e.name, Color(0.85, 0.82, 0.55))
+
 func _update_morale(actor: Entity) -> void:
 	if actor.flee_below <= 0.0:
 		return
+	# WHERE ITS NERVE BREAKS, not how hard it hits. Company steadies it; having
+	# watched the biggest thing nearby die does the opposite. Moving the
+	# threshold rather than the damage keeps the combat path untouched and
+	# keeps every monster worth exactly the threat the floor paid for it.
+	var breaks_at := actor.flee_below
+	breaks_at -= MORALE_PER_ALLY * float(_allies_near(actor, MORALE_REACH))
+	if actor.shaken > 0:
+		actor.shaken -= 1
+		breaks_at += MORALE_SHAKEN
+	breaks_at = clampf(breaks_at, 0.0, 0.95)
+
 	var frac := float(actor.hp) / float(actor.max_hp)
-	if not actor.fleeing and frac <= actor.flee_below:
+	if not actor.fleeing and frac <= breaks_at:
 		actor.fleeing = true
 		msg_log.add("The %s turns to flee!" % actor.name, Color(0.78, 0.82, 0.58))
-	elif actor.fleeing and frac > actor.flee_below + 0.25:
+	elif actor.fleeing and frac > breaks_at + 0.25:
 		actor.fleeing = false
 
 func _ai_hunter(actor: Entity, foe: Entity) -> void:
@@ -5766,6 +5890,7 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			# because a suspend in the five turns after a big kill must not
 			# quietly cost you the dig.
 			_remember_the_dead(defender)
+			_rattle_the_ranks(defender)
 			_drop_loot(defender)
 			if defender.risen:
 				_settle_the_grave()
