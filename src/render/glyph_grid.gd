@@ -205,6 +205,18 @@ func _measure_font() -> void:
 func forget_metrics() -> void:
 	_dx_cache.clear()
 
+## Takes the player's chosen text size. Both numbers move together -- see
+## RenderTheme.font_size_for() for why the ratio between them is fixed.
+##
+## Called at launch as well as on the key, for the same reason
+## apply_effects_mode() is: a size chosen last session has to be in force before
+## the first frame is drawn, not only once the player presses something.
+func apply_text_size() -> void:
+	cell_size = RenderTheme.cell_size()
+	font_size = RenderTheme.font_size()
+	_measure_font()
+	queue_redraw()
+
 ## The size a character is drawn at, and how far to inset it. Cached together,
 ## because both are wanted at the same moment and measuring text is not free.
 ##
@@ -769,7 +781,7 @@ func _draw_wall(origin: Vector2, mask: int, fg: Color, bg: Color) -> void:
 
 	draw_rect(Rect2(origin, cell), bg, true)
 	var c := origin + cell * 0.5
-	var t := maxf(1.0, cell_size * 0.11)
+	var t := maxf(_thinnest_visible(), cell_size * 0.11)
 	var half := t * 0.5
 
 	if mask == 0:
@@ -783,6 +795,29 @@ func _draw_wall(origin: Vector2, mask: int, fg: Color, bg: Color) -> void:
 		draw_rect(Rect2(origin.x, c.y - half, c.x + half - origin.x, t), fg, true)
 	if mask & 8:  # east
 		draw_rect(Rect2(c.x - half, c.y - half, origin.x + cell_size - c.x + half, t), fg, true)
+
+## The thinnest stroke that still lands on a whole pixel of the actual screen.
+##
+## The floor on wall thickness used to be a flat 1.0, which is one pixel of the
+## 1600x900 canvas rather than one pixel of the display. The canvas stretches to
+## fit, so a Steam Deck at 1280x800 scales it by 0.8 and that floor arrived as
+## 0.8 of a real pixel -- a grey smear instead of a line, and inconsistent from
+## one wall to the next depending on where it fell.
+##
+## Only a screen smaller than the canvas scales below 1.0, which is why this was
+## invisible on every desktop it was ever looked at.
+func _thinnest_visible() -> float:
+	var vp := get_viewport()
+	if vp == null:
+		return 1.0
+	var logical := vp.get_visible_rect().size
+	if logical.x <= 0.0 or logical.y <= 0.0:
+		return 1.0
+	var real := Vector2(DisplayServer.window_get_size())
+	var scale := minf(real.x / logical.x, real.y / logical.y)
+	if scale <= 0.0:
+		return 1.0
+	return maxf(1.0, 1.0 / scale)
 
 ## Walls only connect to other walls that actually face open space. Without
 ## this every wall in the solid rock would join up and the whole map would be

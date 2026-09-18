@@ -15,6 +15,7 @@ extends Control
 @onready var name_entry: NamePanel = $NameEntry
 @onready var legend: LegendPanel = $Legend
 @onready var summary: SummaryPanel = $Summary
+@onready var pad_setup: PadPanel = $PadSetup
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -71,6 +72,14 @@ const MOVES := {
 }
 
 func _ready() -> void:
+	# `godot --pad-log` (or the exported binary with the same flag) prints every
+	# joypad event instead of acting on it. There is no other way to learn what
+	# a particular handheld calls its buttons.
+	pad.cfg.load_saved()
+	# Also switched on from the controller screen, so a tester on a handheld
+	# who cannot pass command-line flags through Steam can still produce one.
+	if "--pad-log" in OS.get_cmdline_args():
+		pad.start_log()
 	# A suspended run resumes straight into itself. Loading destroys the file,
 	# so there is nothing left to fall back to if this run goes badly.
 	var fresh := GameState.load_suspend()
@@ -99,8 +108,12 @@ func _ready() -> void:
 	inventory.throw_requested.connect(_on_throw_chosen)
 	inventory.bind_requested.connect(_on_bind_chosen)
 	menu.resume_requested.connect(_close_menu)
+	menu.pad_requested.connect(_open_pad_setup)
+	pad_setup.closed.connect(_refresh)
+	pad_setup.log_requested.connect(pad.start_log)
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
+	menu.text_size_requested.connect(_cycle_text_size)
 	name_entry.chosen.connect(_on_name_chosen)
 	inventory.close_requested.connect(_close_inventory)
 	summary.close_requested.connect(summary.close)
@@ -114,6 +127,9 @@ func _ready() -> void:
 	# pressed, or a player who chose "full" last session opens the game with
 	# the shader detached and no motion at all.
 	grid.apply_effects_mode()
+	# Same reasoning as the line above: a size chosen last session has to be in
+	# force before the first frame, not only once the menu is opened.
+	grid.apply_text_size()
 	Platform.guard_against_leaving(true)
 	_page_hidden_cb = Platform.on_page_hidden(_on_page_hidden)
 	_refresh()
@@ -126,6 +142,20 @@ func _on_page_hidden() -> void:
 	state.save_suspend()
 	_saved_at_turn = state.turns
 
+## Cycles the map's text size from the pause menu, deliberately leaving the menu
+## open.
+##
+## Staying open is the whole point. The sizes only mean anything when you can
+## watch the map redraw behind the panel and press again, rather than reopening
+## the menu to take each step -- which is how you pick a size on a handheld,
+## where the right answer depends on how far away you are holding it.
+func _cycle_text_size() -> void:
+	var said := RenderTheme.cycle_size()
+	if state != null:
+		state.msg_log.add(said, Color(0.70, 0.74, 0.80))
+	grid.apply_text_size()
+	_refresh()
+
 func _process(delta: float) -> void:
 	if menu.visible or legend.visible:
 		return
@@ -137,6 +167,12 @@ func _process(delta: float) -> void:
 		sidebar.hovered = grid.hovered_cell()
 	sidebar.queue_redraw()
 
+	# The stick is polled rather than evented: one held still sends nothing, and
+	# "still held" is exactly what auto-repeat has to know about.
+	var held := pad.stick_key(delta)
+	if held != 0:
+		_press(held)
+
 	if not state.travelling():
 		return
 	_travel_accum += delta
@@ -145,6 +181,45 @@ func _process(delta: float) -> void:
 	_travel_accum = 0.0
 	state.step_travel()
 	_refresh()
+
+## A controller, translated into the keystrokes every panel already reads.
+##
+## See src/render/gamepad.gd for why it works this way rather than through an
+## InputMap. Turn the diagnostic on with `--pad-log` on the command line and it
+## prints what your device actually sends instead of acting on it -- button
+## indices are not the same across manufacturers, and guessing them from here
+## is how you end up with a pad whose A button opens the inventory.
+var pad := Gamepad.new()
+
+## The controller walk-through, reached from the pause menu.
+func _open_pad_setup() -> void:
+	menu.visible = false
+	pad_setup.open(pad.cfg)
+	_refresh()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		return
+	# The rebinding panel wants the RAW button index -- learning it is the whole
+	# job -- so it sees joypad events before the translator does.
+	if pad_setup.visible:
+		if pad_setup.handle_pad(event):
+			_refresh()
+			get_viewport().set_input_as_handled()
+		return
+	var key := pad.key_for(event)
+	if key == 0:
+		return
+	_press(key)
+	get_viewport().set_input_as_handled()
+
+## Feeds a keycode through the same door a real keypress comes in by, so every
+## panel stays unaware that a controller exists.
+func _press(key: int) -> void:
+	var fake := InputEventKey.new()
+	fake.keycode = key
+	fake.pressed = true
+	_unhandled_key_input(fake)
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key_event := event as InputEventKey
@@ -156,6 +231,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# It needs the EVENT rather than the keycode: a keycode cannot tell "a" from
 	# "A", and a player who capitalises their own name should get what they
 	# typed.
+	# Keyboard-only on purpose: someone rebinding a controller that does not
+	# work cannot be asked to use that controller to escape the screen.
+	if pad_setup.visible:
+		pad_setup.handle_key(key)
+		_refresh()
+		return
+
 	if name_entry.visible:
 		name_entry.handle_key(key_event)
 		_refresh()

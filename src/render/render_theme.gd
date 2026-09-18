@@ -47,6 +47,18 @@ const SETTINGS := "user://settings.cfg"
 static var _mode: int = Mode.ICONS
 static var _instances := {}
 
+## Pixels per map cell, offered to the player rather than fixed.
+##
+## A handheld is the reason this moved. The canvas is 1600x900 and stretches to
+## fit, so a Steam Deck's 1280x800 scales it by 0.8 and the shipped 18px cell
+## reaches the eye as about 14 -- fine at a desk, small at arm's length on a
+## 7in panel. The low end of the list is for a large monitor, where seeing more
+## of the floor at once beats bigger letters.
+const CELL_SIZES := [14, 16, 18, 20, 24, 28]
+
+## The size the game shipped at, so nobody's view moves under them on update.
+static var _cell: int = 18
+
 static func active() -> RenderTheme:
 	if not _instances.has(_mode):
 		match _mode:
@@ -77,14 +89,46 @@ static func cycle() -> String:
 	set_mode(_mode + 1)
 	return "View: %s." % MODE_NAMES[_mode]
 
+static func cell_size() -> int:
+	return _cell
+
+## The glyph point size that belongs to a cell.
+##
+## Derived rather than stored. The shipped pair was a 16pt glyph in an 18px
+## cell and 16/18 is exactly 8/9, so holding that ratio means a character never
+## outgrows its cell at any step on the list. It also saves one number instead
+## of two that could drift apart.
+static func font_size_for(cell: int) -> int:
+	return roundi(cell * 8.0 / 9.0)
+
+static func font_size() -> int:
+	return font_size_for(_cell)
+
+## An unrecognised size falls back to the shipped one rather than being trusted.
+## This is read from a file a player can edit by hand.
+static func set_cell_size(px: int) -> void:
+	_cell = px if CELL_SIZES.has(px) else 18
+	_save()
+
+## Returns what to tell the player, the same contract as cycle().
+static func cycle_size() -> String:
+	var i := CELL_SIZES.find(_cell)
+	set_cell_size(CELL_SIZES[posmod(i + 1, CELL_SIZES.size())])
+	return "Text size: %d px." % _cell
+
 static func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS) != OK:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
+	# Set directly rather than through set_cell_size(), which would write the
+	# file back out during the load that is reading it.
+	var px := int(cfg.get_value("view", "cell", 18))
+	_cell = px if CELL_SIZES.has(px) else 18
 
 static func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS)
 	cfg.set_value("view", "mode", _mode)
+	cfg.set_value("view", "cell", _cell)
 	cfg.save(SETTINGS)

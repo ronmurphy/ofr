@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bofr0main0scene"]
+[gd_scene load_steps=11 format=3 uid="uid://bofr0main0scene"]
 
 [ext_resource type="Script" path="res://src/render/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/render/glyph_grid.gd" id="2_grid"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://src/audio/sound_deck.gd" id="8_snd"]
 [ext_resource type="Script" path="res://src/ui/summary_panel.gd" id="9_sum"]
 [ext_resource type="Script" path="res://src/ui/name_panel.gd" id="10_name"]
+[ext_resource type="Script" path="res://src/ui/pad_panel.gd" id="11_pad"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -84,6 +85,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 0
 script = ExtResource("10_name")
+
+[node name="PadSetup" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+script = ExtResource("11_pad")
 
 [node name="Sound" type="Node" parent="."]
 script = ExtResource("8_snd")

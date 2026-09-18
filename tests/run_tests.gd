@@ -99,6 +99,8 @@ func _initialize() -> void:
 	_test_low_health_warns_once()
 	_test_a_death_is_announced()
 	_test_panels_do_not_overflow()
+	_test_text_size_survives_a_restart()
+	_test_every_menu_row_is_reachable()
 	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
@@ -3068,6 +3070,97 @@ func _scene_widths() -> Dictionary:
 			out[name] = float(line.split("=")[1]) - left
 	return out
 
+## Every pause menu row must be reachable by its printed letter AND from a
+## controller, because there are three dispatch paths and keeping them in step
+## by hand has already failed twice: the controller row was added to the
+## keyboard and left dead to the mouse, and the text size row -- added FOR
+## handhelds -- could not be pressed from a handheld at all.
+func _test_every_menu_row_is_reachable() -> void:
+	var sendable := {}
+	for button in PadConfig.DEFAULTS:
+		sendable[PadConfig.DEFAULTS[button]] = true
+
+	# Navigation is what makes the rows reachable, not the letters: none of
+	# `t`, `s` or `n` can be sent by a default pad or even bound to one.
+	check("a default pad can move the menu highlight",
+		sendable.has(KEY_UP) and sendable.has(KEY_DOWN),
+		"%d keys bound" % sendable.size())
+	check("a default pad can choose the highlighted row",
+		sendable.has(KEY_PERIOD), "%d keys bound" % sendable.size())
+	check("a default pad can open the menu", sendable.has(KEY_ESCAPE),
+		"%d keys bound" % sendable.size())
+
+	var panel := MenuPanel.new()
+	var fired := {"v": ""}
+	panel.resume_requested.connect(func() -> void: fired["v"] = "resume")
+	panel.pad_requested.connect(func() -> void: fired["v"] = "pad")
+	panel.text_size_requested.connect(func() -> void: fired["v"] = "text")
+	panel.save_and_quit_requested.connect(func() -> void: fired["v"] = "save")
+	panel.new_run_requested.connect(func() -> void: fired["v"] = "new")
+
+	# Both layouts get driven, not just the desktop one. MenuPanel.new() never
+	# runs _ready(), so OPTIONS keeps its declared value and the web list would
+	# otherwise be read but never dispatched -- a row could be unwired there and
+	# nothing here would notice.
+	for options in [MenuPanel.OPTIONS_DESKTOP, MenuPanel.OPTIONS_WEB]:
+		panel.OPTIONS = options
+		var where := "web" if options == MenuPanel.OPTIONS_WEB else "desktop"
+
+		for row in options:
+			fired["v"] = ""
+			panel.handle_key(String(row[0]).to_upper().unicode_at(0))
+			check("%s row '%s' answers to the letter it prints" % [where, row[1]],
+				fired["v"] == String(row[2]), "got '%s'" % fired["v"])
+
+		# The controller path: move the highlight onto the row, then press wait.
+		for i in options.size():
+			var row: Array = options[i]
+			fired["v"] = ""
+			panel._hover = i
+			panel.handle_key(KEY_PERIOD)
+			check("%s row '%s' answers to the pad" % [where, row[1]],
+				fired["v"] == String(row[2]), "got '%s'" % fired["v"])
+
+	panel.free()
+
+## Text size is chosen at runtime rather than read from a table, which is the
+## exact shape of the rabbit meat bug: right in memory, absent from the file.
+func _test_text_size_survives_a_restart() -> void:
+	# settings.cfg is the player's REAL file -- use_scratch_files() covers the
+	# save and the morgue, not this. So read what is actually in it first and
+	# put that back at the end, and the file ends as it was found.
+	RenderTheme.load_settings()
+	var was := RenderTheme.cell_size()
+
+	check("the shipped size is still on the list",
+		RenderTheme.CELL_SIZES.has(18), str(RenderTheme.CELL_SIZES))
+	check("an 18px cell still draws a 16pt glyph",
+		RenderTheme.font_size_for(18) == 16, str(RenderTheme.font_size_for(18)))
+
+	# A glyph wider than its cell bleeds into the neighbouring one, which is the
+	# failure the fixed 8/9 ratio exists to prevent at every step.
+	var fits := true
+	var worst := ""
+	for px in RenderTheme.CELL_SIZES:
+		if RenderTheme.font_size_for(px) > px:
+			fits = false
+			worst = "%d px cell -> %d pt" % [px, RenderTheme.font_size_for(px)]
+	check("every offered size fits its cell (%d sizes)"
+		% RenderTheme.CELL_SIZES.size(), fits, worst)
+
+	RenderTheme.set_cell_size(24)
+	RenderTheme.load_settings()
+	check("a chosen size survives a reload", RenderTheme.cell_size() == 24,
+		str(RenderTheme.cell_size()))
+
+	# settings.cfg is plain text a player can edit, so a nonsense cell must not
+	# reach the grid and hand it a zero-width character.
+	RenderTheme.set_cell_size(7)
+	check("a size that is not offered falls back to the shipped one",
+		RenderTheme.cell_size() == 18, str(RenderTheme.cell_size()))
+
+	RenderTheme.set_cell_size(was)
+
 func _test_panels_do_not_overflow() -> void:
 	var font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
 	var widths := _scene_widths()
@@ -3079,6 +3172,53 @@ func _test_panels_do_not_overflow() -> void:
 			MenuPanel.font_size_default() - 4).x
 		check("menu note fits the panel (%d chars)" % note.length(),
 			w <= menu_limit, "%.0f > %.0f px -- %s" % [w, menu_limit, note])
+
+	# Nothing checked the panel's HEIGHT until the text size row was added, even
+	# though the comment on PANEL claimed this test did. Adding that fifth row
+	# put the last one 4px past the old 284 panel and no check would have said
+	# so. Rows are laid out from a fixed 92px header offset, so the bottom edge
+	# of the last row is the number that has to fit.
+	for options in [MenuPanel.OPTIONS_DESKTOP, MenuPanel.OPTIONS_WEB]:
+		var bottom: float = 92.0 + options.size() * MenuPanel.ROW_H
+		var room: float = MenuPanel.PANEL.y - MenuPanel.PAD
+		check("menu rows fit the panel (%d rows)" % options.size(),
+			bottom <= room, "%.0f > %.0f px" % [bottom, room])
+
+	# The controller panel is the same constant with the same missing check, in
+	# a second file. It grew from 11 rows to 14 within an hour of the menu
+	# growing from 4 to 5, and neither of us was hunting for it -- the shared
+	# cause is a hand-maintained height with a comment implying a test that did
+	# not exist.
+	#
+	# This one has a footer line UNDER the rows, so the bottom is not the last
+	# row: it is title, note, every row, a 6px gap, then the key hints. The
+	# panel is deliberately NOT sized from WALK.size(), so that growing the
+	# list fails here and a human chooses the new height, rather than the panel
+	# quietly resizing itself.
+	var pad_bottom: float = PadPanel.PAD + PadPanel.font_size_default() \
+		+ 2.0 * PadPanel.ROW_H + PadConfig.WALK.size() * PadPanel.ROW_H + 6.0
+	var pad_room: float = PadPanel.PANEL.y - PadPanel.PAD
+	check("controller rows fit the panel (%d rows)" % PadConfig.WALK.size(),
+		pad_bottom <= pad_room, "%.0f > %.0f px" % [pad_bottom, pad_room])
+
+	# Every key the defaults hand out must be something the walk-through can
+	# hand back. It was not: close door, ally stance and the legend were bound
+	# by DEFAULTS and absent from WALK, so rebinding could evict one and only
+	# `r` for defaults could restore it -- discarding every other choice with
+	# it. A binding you can lose and cannot restore is worse than one never
+	# offered.
+	var bindable := {}
+	for row in PadConfig.WALK:
+		bindable[int(row[0])] = true
+	# PackedStringArray, not Array: String.join() takes one, and a bare [...]
+	# here is an untyped Array that only happens to coerce.
+	var unreachable := PackedStringArray()
+	for button in PadConfig.DEFAULTS:
+		var k: int = int(PadConfig.DEFAULTS[button])
+		if not bindable.has(k):
+			unreachable.append(OS.get_keycode_string(k))
+	check("every defaulted pad key can be rebound",
+		unreachable.is_empty(), "not in WALK: %s" % ", ".join(unreachable))
 
 	# The ally row is the same shape of failure: a name on the left and hit
 	# points right-aligned against the same edge. It shipped broken -- "risen
