@@ -138,6 +138,30 @@ const VIGIL_PURSUIT := 60
 ## a chest (8), a wail (9) and the forge (10) do not.
 const GRAVE_ROUSING := 7
 const BRAZIER_CHARGE := 10
+
+## How often an untended fire loses a charge, in turns.
+##
+## THE DUNGEON GAINS A CLOCK. `brazier_charge` only ever fell when the PLAYER
+## rested or forged, so a fire on a floor nobody visited burned for ever -- the
+## one system in the game where time did not pass unless you were there to
+## spend it.
+##
+## Forty, so a full brazier is gone in four hundred turns: about one long visit.
+## The consequence is deliberate and is the real change here -- "save that fire
+## for later" stops working, and healing becomes something you take when you
+## find it. What keeps that from being a straight nerf is that guards tend
+## them, so a floor with a watch on it stays warm and a dead cave does not.
+const BRAZIER_BURN_EVERY := 40
+
+## Below this a passing guard will stoke a fire, and by how much.
+##
+## Brad's design, and it is better than mine was: I had fires simply burning
+## down, which is a clock. His adds a LOOP the player can work -- spend a fire,
+## hide, let the watch build it back. Three is deliberately awkward against
+## MERGE_COST of 4: one top-up buys three hit points but NOT a merge, so the
+## second wait is a different decision from the first.
+const BRAZIER_LOW := 4
+const BRAZIER_STOKE := 3
 const BRAZIER_HEAL := 2
 ## Merging two identical items costs brazier charge, which is the same finite
 ## pool as healing. That is the whole point: standing at a brazier hurt, with
@@ -3382,6 +3406,10 @@ func player_merge(index: int) -> bool:
 		# noise, and in the brazier itself.
 		map.set_tile(brazier.x, brazier.y, Tiles.BRAZIER_DEAD)
 		ember_until.erase(brazier)
+		# Off the round. A guard has no reason to walk to a fire that will
+		# never burn again, and `_lay_the_beat` already counts only lit and
+		# spent ones -- it just never ran again after the level was built.
+		_lay_the_beat()
 		msg_log.add("You hammer it out in the dying coals. (%s)"
 			% item.display_name(), Color(0.85, 0.88, 0.70))
 		msg_log.add("The brazier goes black. Nothing will kindle it again.",
@@ -3483,6 +3511,7 @@ func player_bind(index: int, target: int = -1) -> bool:
 	# Same cost as an ember forge, because it IS one: the brazier is spent.
 	map.set_tile(hot.x, hot.y, Tiles.BRAZIER_DEAD)
 	ember_until.erase(hot)
+	_lay_the_beat()
 	msg_log.add("You set the %s into the %s. It drinks the last of the heat."
 		% [gem.name, blade.display_name()], Color(0.85, 0.88, 0.70))
 	msg_log.add("The brazier goes black. Nothing will kindle it again.",
@@ -3557,6 +3586,24 @@ func _find_duplicate(item: Item) -> Item:
 ## One place, because the ember clock has to start no matter which way the fire
 ## was spent -- and a player who burned the last four charges on a forge should
 ## get the same offer as one who burned them on hit points.
+## Fires go out whether or not anyone is warming their hands at them.
+##
+## Keyed on the turn count rather than a per-brazier timer, so it costs nothing
+## to track and a saved run resumes on the same rhythm it left.
+func _burn_the_fires_down() -> void:
+	if turns % BRAZIER_BURN_EVERY != 0:
+		return
+	var spent: Array[Vector2i] = []
+	for cell in brazier_charge:
+		if map.get_tile(cell.x, cell.y) != Tiles.BRAZIER:
+			continue
+		brazier_charge[cell] = int(brazier_charge[cell]) - 1
+		if int(brazier_charge[cell]) <= 0:
+			spent.append(cell)
+	# Collected first: `_gutter` erases from the dictionary being walked.
+	for cell in spent:
+		_gutter(cell)
+
 func _gutter(cell: Vector2i) -> void:
 	brazier_charge.erase(cell)
 	map.set_tile(cell.x, cell.y, Tiles.BRAZIER_SPENT)
@@ -4165,6 +4212,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 		if torch_flare == 0:
 			msg_log.add("The flare gutters down to an ordinary flame.",
 				Color(0.80, 0.75, 0.60))
+	_burn_the_fires_down()
 	update_vision()
 	_run_world()
 	update_vision()
@@ -4820,6 +4868,24 @@ func _lay_the_beat() -> void:
 		patrol_route.append(here)
 		posts.remove_at(best)
 
+## A guard throwing a log on. Answers true if it spent the turn doing so.
+func _tend_the_fire(actor: Entity) -> bool:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(actor.x + dx, actor.y + dy)
+			if map.get_tile(c.x, c.y) != Tiles.BRAZIER:
+				continue
+			var left := int(brazier_charge.get(c, 0))
+			if left <= 0 or left > BRAZIER_LOW:
+				continue
+			brazier_charge[c] = mini(BRAZIER_CHARGE, left + BRAZIER_STOKE)
+			_last_move_cost = Scheduler.ACTION_COST
+			if map.is_visible(c.x, c.y):
+				msg_log.add("The %s feeds the fire." % actor.name,
+					Color(0.95, 0.78, 0.45))
+			return true
+	return false
+
 ## A cell a creature can actually stand on, next to something it cannot.
 ##
 ## Fixed scan order and no rng, so a seed lays the same beat every time.
@@ -4840,6 +4906,11 @@ func _beside(at: Vector2i) -> Vector2i:
 ## already run and would have made it AWAKE if it had seen you -- so this is
 ## only ever "keep going".
 func _ai_patrol(actor: Entity) -> void:
+	# A guard's OTHER job. Stoking is its turn, which is what stops a fire
+	# being restored for free -- and it only happens where a guard walks, so a
+	# garrisoned fortress stays lit and a cave burns down to nothing.
+	if _tend_the_fire(actor):
+		return
 	if patrol_route.is_empty():
 		return
 	var goal: Vector2i = patrol_route[actor.patrol_at % patrol_route.size()]

@@ -138,6 +138,7 @@ func _initialize() -> void:
 	_test_doors_are_loud_and_rats_are_not()
 	_test_the_gong_is_answered()
 	_test_the_small_give_way()
+	_test_fires_burn_down_and_guards_feed_them()
 	_test_morale_is_social()
 	_test_the_panel_says_whose_side()
 	_test_the_dead_are_marked()
@@ -6548,6 +6549,98 @@ func _test_the_small_give_way() -> void:
 	# And a dragon fears nothing, because nothing is twelve above it.
 	check("the dragon itself gives way to nobody",
 		lair._something_dreadful(lich) == null)
+
+## The dungeon's own clock, and the watch that fights it.
+##
+## `brazier_charge` only ever fell when the PLAYER rested or forged, so a fire
+## on a floor nobody visited burned for ever -- the one system where time did
+## not pass unless you were there to spend it.
+func _test_fires_burn_down_and_guards_feed_them() -> void:
+	var hearth := _arena(24, 11)
+	hearth.player.x = 3
+	hearth.player.y = 3
+	hearth.map.set_tile(12, 5, Tiles.BRAZIER)
+	hearth.brazier_charge[Vector2i(12, 5)] = GameState.BRAZIER_CHARGE
+	hearth._gather_lights()
+
+	# Time passes without the player touching it.
+	var start := int(hearth.brazier_charge[Vector2i(12, 5)])
+	for _i in GameState.BRAZIER_BURN_EVERY * 3:
+		hearth.turns += 1
+		hearth._burn_the_fires_down()
+	var now := int(hearth.brazier_charge.get(Vector2i(12, 5), 0))
+	check("an untended fire burns down (%d -> %d)" % [start, now], now < start)
+	check("and at about the rate it says it does",
+		start - now == 3, "%d in three windows" % (start - now))
+
+	# All the way out, and it becomes SPENT -- not dead. Embers still work.
+	for _i in GameState.BRAZIER_BURN_EVERY * GameState.BRAZIER_CHARGE:
+		hearth.turns += 1
+		hearth._burn_the_fires_down()
+	check("eventually it gutters",
+		hearth.map.get_tile(12, 5) == Tiles.BRAZIER_SPENT,
+		str(hearth.map.get_tile(12, 5)))
+	check("and the clock leaves a spent one alone",
+		not hearth.brazier_charge.has(Vector2i(12, 5)))
+
+	# A guard throws a log on -- but only on a LIVE fire that is low.
+	var post := _arena(24, 11)
+	post.player.x = 3
+	post.player.y = 3
+	post.map.set_tile(12, 5, Tiles.BRAZIER)
+	post.brazier_charge[Vector2i(12, 5)] = GameState.BRAZIER_CHARGE
+	post._gather_lights()
+	var guard := _spawn(post, "skeleton", 12, 6)
+	guard.activity = Entity.Activity.PATROLLING
+	check("a full fire needs no tending", not post._tend_the_fire(guard))
+
+	post.brazier_charge[Vector2i(12, 5)] = GameState.BRAZIER_LOW
+	check("a low one does", post._tend_the_fire(guard))
+	check("and it is fuller for it (%d)"
+		% int(post.brazier_charge[Vector2i(12, 5)]),
+		int(post.brazier_charge[Vector2i(12, 5)])
+			== GameState.BRAZIER_LOW + GameState.BRAZIER_STOKE)
+	check("stoking was its whole turn",
+		post._last_move_cost == Scheduler.ACTION_COST)
+
+	# Never above full, and never a guttered one.
+	post.brazier_charge[Vector2i(12, 5)] = GameState.BRAZIER_CHARGE - 1
+	post._tend_the_fire(guard)
+	check("it cannot be overfilled",
+		int(post.brazier_charge[Vector2i(12, 5)]) <= GameState.BRAZIER_CHARGE)
+	post.map.set_tile(12, 5, Tiles.BRAZIER_SPENT)
+	check("and a guard cannot relight a dead one -- that is what a scroll is for",
+		not post._tend_the_fire(guard))
+
+	# A fire that will never burn again comes off the round. The route is built
+	# at level generation and used to stand for ever, so a guard kept walking
+	# to a cold corner for the rest of the run.
+	var round_map := _arena(24, 11)
+	round_map.player.x = 3
+	round_map.player.y = 3
+	for at in [Vector2i(8, 5), Vector2i(16, 5), Vector2i(16, 9)]:
+		round_map.map.set_tile(at.x, at.y, Tiles.BRAZIER)
+		round_map.brazier_charge[at] = GameState.BRAZIER_CHARGE
+	round_map.pathfinder = Pathfinder.new(round_map.map)
+	round_map._lay_the_beat()
+	var posts := round_map.patrol_route.size()
+	check("three fires, three posts (%d)" % posts, posts == 3)
+	# Guttering is not death -- a spent fire is still somewhere to walk.
+	round_map.map.set_tile(8, 5, Tiles.BRAZIER_SPENT)
+	round_map._lay_the_beat()
+	check("a spent fire keeps its post",
+		round_map.patrol_route.size() == posts,
+		str(round_map.patrol_route.size()))
+	round_map.map.set_tile(8, 5, Tiles.BRAZIER_DEAD)
+	round_map._lay_the_beat()
+	check("a dead one loses it (%d)" % round_map.patrol_route.size(),
+		round_map.patrol_route.size() == posts - 1)
+
+	# The two halves meet: one top-up buys hit points but NOT a merge.
+	check("one stoke is worth three hit points",
+		GameState.BRAZIER_STOKE == 3)
+	check("and deliberately short of a merge (%d)" % GameState.MERGE_COST,
+		GameState.BRAZIER_STOKE < GameState.MERGE_COST)
 
 func _test_morale_is_social() -> void:
 	var field := _arena(26, 13)
