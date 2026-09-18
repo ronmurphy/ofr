@@ -136,6 +136,7 @@ func _initialize() -> void:
 	_test_doors_stop_different_things()
 	_test_creatures_can_see_each_other()
 	_test_doors_are_loud_and_rats_are_not()
+	_test_the_gong_is_answered()
 	_test_morale_is_social()
 	_test_the_panel_says_whose_side()
 	_test_the_dead_are_marked()
@@ -6422,6 +6423,68 @@ func _test_doors_are_loud_and_rats_are_not() -> void:
 		>= GameState.GRAVE_ROUSING)
 	check("nor is a chest", GameState.CHEST_NOISE >= GameState.GRAVE_ROUSING)
 	check("nor the forge", GameState.FORGE_NOISE >= GameState.GRAVE_ROUSING)
+
+## The gong, and whether anything actually comes.
+##
+## Measured before this existed: the vigil woke 244 things across twelve
+## depth-2 floors and EIGHT arrived -- 93% set off and forgot. The median
+## monster starts 31-38 cells from the shrine and an ordinary memory is ten
+## turns, so it covered about ten cells and settled down halfway. "Something
+## calls out, and 20 things answer" was true about the waking and a lie about
+## the answering.
+func _test_the_gong_is_answered() -> void:
+	var hall := _arena(40, 13)
+	hall.player.x = 4
+	hall.player.y = 6
+	var far := _spawn(hall, "goblin", 34, 6)
+	far.alertness = Entity.Alert.ASLEEP
+	far.activity = Entity.Activity.SLEEPING
+	check("it starts with an ordinary memory",
+		far.pursue_turns == Entity.DEFAULT_PURSUIT)
+	check("and it is a long way off (%d cells)"
+		% Los.steps(far.x, far.y, hall.player.x, hall.player.y),
+		Los.steps(far.x, far.y, hall.player.x, hall.player.y)
+			> Entity.DEFAULT_PURSUIT)
+
+	hall._invoke_shrine(Shrines.VIGIL)
+	check("the gong wakes it", far.alertness == Entity.Alert.AWAKE)
+	check("and it is willing to walk across the dungeon",
+		far.pursue_turns == GameState.VIGIL_PURSUIT)
+
+	# Out of sight the whole way -- a wall between, so it is travelling on
+	# memory alone, which is the case that used to fail.
+	# A wall with a GAP in it. The first version sealed the arena completely,
+	# so there was no route at all -- the goblin stayed awake, which is what
+	# the check above wanted, and could not take a single step, which is what
+	# the check below wanted. Blocked sight along its own row, open at the top.
+	for y in hall.map.height:
+		if y == 1:
+			continue
+		hall.map.set_tile(20, y, Tiles.WALL)
+	hall.pathfinder = Pathfinder.new(hall.map)
+	check("sight along its row is blocked but a way round exists",
+		not Los.clear(hall.map, far.x, far.y, hall.player.x, hall.player.y)
+			and not hall.pathfinder.path(Vector2i(far.x, far.y),
+				Vector2i(hall.player.x, hall.player.y)).is_empty())
+	hall.torch_lit = false
+	hall.update_vision()
+	var began := Los.steps(far.x, far.y, hall.player.x, hall.player.y)
+	for _i in Entity.DEFAULT_PURSUIT + 5:
+		hall._take_ai_turn(far)
+	check("well past an ordinary memory it is still coming",
+		far.alertness == Entity.Alert.AWAKE, str(far.alertness))
+	check("and it has closed the distance (%d -> %d)"
+		% [began, Los.steps(far.x, far.y, hall.player.x, hall.player.y)],
+		Los.steps(far.x, far.y, hall.player.x, hall.player.y) < began)
+
+	# And when it does finally give up, it is an ordinary creature again --
+	# a summons must not permanently change what something is.
+	far.lost_turns = GameState.VIGIL_PURSUIT + 1
+	hall._update_awareness(far)
+	check("giving up at last drops it back to suspicious",
+		far.alertness == Entity.Alert.SUSPICIOUS, str(far.alertness))
+	check("and its memory is ordinary again",
+		far.pursue_turns == Entity.DEFAULT_PURSUIT)
 
 func _test_morale_is_social() -> void:
 	var field := _arena(26, 13)

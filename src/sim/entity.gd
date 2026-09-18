@@ -114,6 +114,17 @@ enum Stance { LOOSE, HEEL }
 
 var stance: int = Stance.LOOSE
 
+## How long it will keep going towards where it last saw you before giving up.
+##
+## Ten by default, which is right for "I lost sight of him round that corner".
+## It is a FIELD rather than a constant because a summons is a different thing
+## from a glimpse: the vigil shrine rings across the whole floor, and measured,
+## only 3-7% of what it woke ever arrived -- the median monster starts 31-38
+## cells away and a ten-turn memory carries it about ten of them. Something
+## called from across the dungeon has to be willing to walk across the dungeon.
+const DEFAULT_PURSUIT := 10
+var pursue_turns: int = DEFAULT_PURSUIT
+
 ## Turns left of having watched something bigger than it die.
 ##
 ## Not a damage penalty -- a shift in where its nerve breaks. See
@@ -364,6 +375,7 @@ func to_dict() -> Dictionary:
 		"stance": stance,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
+		"pursue_turns": pursue_turns,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
@@ -409,6 +421,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))
+	e.pursue_turns = int(d.get("pursue_turns", DEFAULT_PURSUIT))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#

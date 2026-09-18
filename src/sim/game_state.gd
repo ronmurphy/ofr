@@ -124,6 +124,14 @@ func torch_radius() -> int:
 ## something. See the ammunition work.
 const COMBAT_NOISE := 6
 
+## How far something will walk to answer the vigil.
+##
+## Sixty, against a default of ten, because the median monster is 31-38 cells
+## from the shrine and a floor is 96x54. This is not "they try harder", it is
+## "they cross the dungeon", which is what a gong that wakes everything ought
+## to mean.
+const VIGIL_PURSUIT := 60
+
 ## How loud a thing has to be before the dead answer it.
 ##
 ## Seven: a bone crunch and up, so combat (6) and a door (6) stay under it and
@@ -2856,6 +2864,13 @@ func _invoke_shrine(kind: int) -> void:
 					e.last_seen = Vector2i(player.x, player.y)
 					e.lost_turns = 0
 					n += 1
+				# THE WHOLE POINT OF A GONG. Measured before this existed: the
+				# shrine woke 244 things on a depth-2 floor and EIGHT of them
+				# arrived -- the median one starts 31-38 cells out and a
+				# ten-turn memory carries it ten. "Something calls out, and 20
+				# things answer" was true about the waking and a lie about the
+				# answering.
+				e.pursue_turns = VIGIL_PURSUIT
 			# The loudest thing in the game, and until now the only one with no
 			# picture. It does not wake through _make_noise -- it wakes the
 			# whole floor directly, above -- so this is called afterwards purely
@@ -4916,9 +4931,13 @@ func _update_awareness(actor: Entity) -> void:
 			actor.lost_turns = 0
 		else:
 			actor.lost_turns += 1
-			if actor.lost_turns > 10:
+			if actor.lost_turns > actor.pursue_turns:
 				actor.alertness = Entity.Alert.SUSPICIOUS
 				actor.calm_turns = 0
+				# Back to an ordinary memory. Whatever called it has stopped
+				# mattering; the next thing it loses sight of is just a thing
+				# it lost sight of.
+				actor.pursue_turns = Entity.DEFAULT_PURSUIT
 		return
 
 	if actor.notice_block > 0:
