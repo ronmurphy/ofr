@@ -137,6 +137,7 @@ func _initialize() -> void:
 	_test_creatures_can_see_each_other()
 	_test_doors_are_loud_and_rats_are_not()
 	_test_the_gong_is_answered()
+	_test_the_small_give_way()
 	_test_morale_is_social()
 	_test_the_panel_says_whose_side()
 	_test_the_dead_are_marked()
@@ -6485,6 +6486,68 @@ func _test_the_gong_is_answered() -> void:
 		far.alertness == Entity.Alert.SUSPICIOUS, str(far.alertness))
 	check("and its memory is ordinary again",
 		far.pursue_turns == Entity.DEFAULT_PURSUIT)
+
+## Small things give big things room, and the player reads the room emptying.
+func _test_the_small_give_way() -> void:
+	var lair := _arena(30, 13)
+	lair.player.x = 3
+	lair.player.y = 6
+	lair.map.set_all_visible()
+	lair.map.remember_visible()
+
+	# LIT, because `_can_see` needs the thing being looked at to be lit and
+	# `_arena` never computes a light map. Without this the goblin can see
+	# nothing at all -- and the ogre check below would have passed for that
+	# reason rather than because an ogre is too small to fear.
+	lair.map.set_tile(16, 6, Tiles.BRAZIER)
+	lair.brazier_charge[Vector2i(16, 6)] = GameState.BRAZIER_CHARGE
+	lair._gather_lights()
+	lair.update_vision()
+
+	var gob := _spawn(lair, "goblin", 14, 6)
+	var ogre := _spawn(lair, "ogre", 17, 6)
+	check("a goblin can be frightened at all", gob.flee_below > 0.0)
+	check("and it can actually see the ogre standing there",
+		lair._can_see(gob, ogre))
+	check("an ogre is bigger but not by enough (%d vs %d)"
+		% [ogre.threat, gob.threat],
+		ogre.threat - gob.threat < GameState.APEX_GAP)
+	check("so the goblin stands its ground",
+		lair._something_dreadful(gob) == null)
+
+	var drake := _spawn(lair, "young dragon", 18, 6)
+	check("and it can see the dragon too", lair._can_see(gob, drake))
+	check("a dragon is (%d vs %d)" % [drake.threat, gob.threat],
+		drake.threat - gob.threat >= GameState.APEX_GAP)
+	check("and now the goblin wants no part of it",
+		lair._something_dreadful(gob) == drake)
+
+	# It backs off, and it does so instead of coming for the player.
+	var began := Los.steps(gob.x, gob.y, drake.x, drake.y)
+	gob.alertness = Entity.Alert.AWAKE
+	for _i in 3:
+		lair._take_ai_turn(gob)
+	check("it gives way rather than hunting you (%d -> %d)"
+		% [began, Los.steps(gob.x, gob.y, drake.x, drake.y)],
+		Los.steps(gob.x, gob.y, drake.x, drake.y) > began)
+
+	# Out of sight, out of mind -- no counter, nothing remembered.
+	drake.alive = false
+	check("with it gone the goblin is itself again",
+		lair._something_dreadful(gob) == null)
+
+	# The fearless are exempt for free, by the same gate morale uses.
+	# The dead need no light, so these two need no brazier of their own.
+	var bones := _spawn(lair, "skeleton", 14, 9)
+	var lich := _spawn(lair, "arch lich", 17, 9)
+	check("a skeleton never flees", bones.flee_below <= 0.0)
+	check("so even an arch lich does not move it (%d vs %d)"
+		% [lich.threat, bones.threat],
+		lair._something_dreadful(bones) == null)
+
+	# And a dragon fears nothing, because nothing is twelve above it.
+	check("the dragon itself gives way to nobody",
+		lair._something_dreadful(lich) == null)
 
 func _test_morale_is_social() -> void:
 	var field := _arena(26, 13)

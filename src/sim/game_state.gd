@@ -4577,6 +4577,18 @@ func _take_ai_turn(actor: Entity) -> int:
 	_update_awareness(actor)
 	_last_move_cost = Scheduler.ACTION_COST
 
+	# GIVING WAY comes before everything, including hunting you. Something that
+	# has just noticed a dragon has stopped caring about the adventurer, and
+	# that is the whole point -- the player sees the room empty out and knows
+	# to look at what caused it.
+	#
+	# No counter and no state: it backs off while the thing is in sight and
+	# resumes when it is not, which is self-limiting and needs nothing
+	# remembered.
+	var dread := _something_dreadful(actor)
+	if dread != null and _step_away(actor, dread):
+		return _last_move_cost
+
 	# Opportunistic, and checked BEFORE the activity below rather than being one
 	# of them: a guard can walk its round and still stoop for a blade. Only
 	# while unaware -- nothing stops mid-fight to try on armour.
@@ -5005,6 +5017,44 @@ func wake(actor: Entity) -> void:
 ## Nothing rallies yet, since only the player can heal -- but the threshold is
 ## checked each turn rather than latched, so a healing monster later works
 ## without touching this.
+## How much bigger something has to be before a creature gives it room.
+##
+## A GAP, not a ratio, and the threat table is why. Threats run 2 to 32, so at
+## 4x a goblin would fear a dragon but an ORC would need to meet something at
+## 40 -- nothing in the game is that big, and the strong would never fear
+## anything. Twelve works the whole way up: a kobold gives way to a troll but
+## not an ogre, an orc to a wizard, an ogre to a giant, a bear to the arch lich
+## alone, and a dragon to nothing at all.
+##
+## This is a WARNING SYSTEM as much as a behaviour. Kobolds scattering tells
+## the player something is coming before they can see what, which is the
+## dungeon speaking through behaviour rather than a message.
+const APEX_GAP := 12
+
+## The nearest thing in sight that this creature wants no part of, or null.
+##
+## Faction is deliberately not consulted: a goblin gives a dragon room whether
+## or not they are nominally on the same side. `flee_below` is the gate, which
+## is the same one morale uses and already encodes who can be frightened at all
+## -- so the undead, the golems and the apex creatures are exempt for free.
+func _something_dreadful(actor: Entity) -> Entity:
+	if actor.flee_below <= 0.0 or actor.faction == Entity.Faction.PLAYER:
+		return null
+	var worst: Entity = null
+	var near := 0
+	for e in entities:
+		if e == actor or not e.alive or e.is_player:
+			continue
+		if e.threat < actor.threat + APEX_GAP:
+			continue
+		if not _can_see(actor, e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if worst == null or d < near:
+			worst = e
+			near = d
+	return worst
+
 ## How far a creature looks for company, and for the news that its leader fell.
 const MORALE_REACH := 5
 ## How much braver each nearby ally makes it.
