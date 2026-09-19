@@ -456,6 +456,19 @@ const TIER_FADE := 0.22
 const TIER_GRACE := 1
 
 var rng := RandomNumberGenerator.new()
+
+## A SEPARATE rng for whether a generated weapon arrives enchanted, for exactly
+## the reason graves have one -- see the note in the grave placement below.
+##
+## The enchant roll happens once per item a floor rolls, so putting it on the
+## main stream made every later draw depend on how much loot appeared, and the
+## whole floor moved. Measured before it was split out: identical seeds gave
+## 29269 walls or 28870, 135 monsters or 149, and the guaranteed floor-two gem
+## went missing on 9 seeds in 60.
+##
+## Seeded from the run and the depth, so a save enchants the same way every
+## time while touching nothing else on the floor.
+var enchant_rng := RandomNumberGenerator.new()
 var map: DungeonMap
 var light_map: LightMap
 var pathfinder: Pathfinder
@@ -980,6 +993,9 @@ func new_game() -> void:
 	msg_log.add("You descend into the dark, torch guttering.", Color(0.85, 0.72, 0.45))
 
 func build_level() -> void:
+	# Salted differently from the grave rng, or the two side streams would
+	# march in lockstep and a floor's graves would predict its magic.
+	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
 	_fov_buffer.resize(MAP_W * MAP_H)
@@ -1346,7 +1362,7 @@ func _stock_the_hoard() -> void:
 			map.set_tile(x, y, Tiles.BRAZIER)
 			brazier_charge[c] = BRAZIER_CHARGE
 			lit = true
-	var prize := Item.roll(rng, effective_depth())
+	var prize := Item.roll(rng, effective_depth(), enchant_rng)
 	if prize != null:
 		_drop_item_at(prize, _open_cell_in(room))
 
@@ -1491,9 +1507,22 @@ func _place_first_gem() -> void:
 		if it.kind == Item.Kind.GEM:
 			gem_found = true
 			return
-	for e in entities:
-		for slot in e.equipped:
-			if e.equipped[slot].element != &"":
+	# THE PLAYER's gear, not everything on the floor.
+	#
+	# This asks "has this player already bound a gem", and it used to be able to
+	# infer that from any elemental item anywhere, because binding was the only
+	# way an element could exist. The found-magic generator broke that
+	# inference: a monster can now be carrying an enchanted weapon it was
+	# generated with, and reading that as "the player has met a gem" skipped the
+	# guarantee on 8 seeds in 60.
+	#
+	# A weapon a kobold happens to be holding teaches nothing about binding.
+	# Discovery is the whole thing this guarantee buys, and discovery means the
+	# player, not the floor.
+	if player != null:
+		for slot in player.equipped:
+			var worn: Item = player.equipped[slot]
+			if worn != null and worn.element != &"":
 				gem_found = true
 				return
 
@@ -1541,7 +1570,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 		var ix := rng.randi_range(room.position.x, room.end.x - 1)
 		var iy := rng.randi_range(room.position.y, room.end.y - 1)
 		if _can_rest_on(ix, iy) and Vector2i(ix, iy) != stairs and items_at(ix, iy).is_empty():
-			var loot := Item.roll(rng, effective_depth())
+			var loot := Item.roll(rng, effective_depth(), enchant_rng)
 			if loot != null:
 				loot.x = ix
 				loot.y = iy
@@ -1819,7 +1848,7 @@ func _arm_monster(m: Entity, pick: Dictionary, spare: int) -> int:
 	for slot in [Item.Slot.WEAPON, Item.Slot.ARMOR]:
 		if rng.randf() > 0.65:
 			continue
-		var it := Item.roll_equipment(rng, effective_depth(), slot)
+		var it := Item.roll_equipment(rng, effective_depth(), slot, enchant_rng)
 		if it == null:
 			continue
 		# Melee only. A goblin handed a bow would carry reach its `pack` AI
@@ -2019,15 +2048,15 @@ func _place_vault_contents(gen: MapGen) -> void:
 					continue
 				spent += cost
 			"?":
-				_drop_item_at(Item.roll(rng, effective_depth()), at)
+				_drop_item_at(Item.roll(rng, effective_depth(), enchant_rng), at)
 			"!":
 				_drop_item_at(Item.make(&"potion_healing"), at)
 			")":
 				_drop_item_at(Item.roll_equipment(rng, effective_depth(),
-					Item.Slot.WEAPON), at)
+					Item.Slot.WEAPON, enchant_rng), at)
 			"[":
 				_drop_item_at(Item.roll_equipment(rng, effective_depth(),
-					Item.Slot.ARMOR), at)
+					Item.Slot.ARMOR, enchant_rng), at)
 			"}":
 				_drop_item_at(_roll_launcher(), at)
 

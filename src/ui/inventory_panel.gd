@@ -436,7 +436,8 @@ func _draw_row(r: Rect2, item: Item, index: int) -> void:
 	var glyph_size := GlyphTheme.draw_size(app["ch"], font_size)
 	var glyph_font := icon_font if GlyphTheme.is_icon(app["ch"]) else font
 	draw_string(glyph_font, base + Vector2(34.0, (font_size - glyph_size) * 0.35),
-		app["ch"], HORIZONTAL_ALIGNMENT_LEFT, -1, glyph_size, app["fg"])
+		app["ch"], HORIZONTAL_ALIGNMENT_LEFT, -1, glyph_size,
+		Palette.MAGIC if item.element != &"" else app["fg"])
 	draw_string(font, base + Vector2(60.0, 0.0), item.display_name(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, label)
 

@@ -729,7 +729,82 @@ static func bone_label(who: String) -> String:
 
 ## Weighted pick from the equipment only, for one slot. Used to arm monsters,
 ## which must not be handed a potion.
-static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: int) -> Item:
+## How often a freshly generated weapon arrives already carrying an element.
+##
+## Keyed on EFFECTIVE depth (1-19 unbroken) rather than the mirrored band, and
+## that is the whole point. `Bands.mirrored()` would have given the climb its
+## rates for free, but free is the wrong answer here: it would make floors
+## 14-16 caves again, so the player climbing out would hit a magic DROUGHT two
+## thirds of the way home. Brad's reference is Diablo -- the effect you were
+## thrilled by on the way down should be routine by the time you are out.
+##
+## The caves are thinned rather than compensated, deliberately. Measured, they
+## carry a third of the loot the other bands do -- 2.7 floor items against 7.8
+## in the upper and 7.6 in the fortress -- and making them magic-poor as well
+## is the design, not an oversight. Three floors down and three up where the
+## fungus, the bear meat and the rabbit have to keep you alive instead.
+const ENCHANT_BASE := 0.08
+const ENCHANT_PER_DEPTH := 0.016
+const ENCHANT_CAVES := 0.55
+const ENCHANT_CEILING := 0.40
+
+static func enchant_chance(effective: int) -> float:
+	var r: float = ENCHANT_BASE + ENCHANT_PER_DEPTH * float(effective - 1)
+	if Bands.of(effective) == Bands.CAVES:
+		r *= ENCHANT_CAVES
+	return minf(r, ENCHANT_CEILING)
+
+## The elements a found weapon can arrive with -- the same five the gems give,
+## and deliberately the same.
+##
+## A found "war axe of frost" locks frost to an axe you may not want; a gem of
+## frost lets you choose the host. The gem stays the better prize because it is
+## PORTABLE, not because its effect is rarer. Found magic is the stopgap that
+## makes you want the gem more, which is why sharing the pool costs nothing.
+const FOUND_ELEMENTS: Array[StringName] = [
+	&"fire", &"frost", &"leech", &"return", &"crag",
+]
+
+## Rolls an element onto a generated item, if the dice and the item both allow.
+##
+## Goes through accepts_element() rather than picking freely, so this can never
+## produce a sling of frost -- an item the gem system explicitly forbids a
+## player from making. Two systems telling different stories about what is
+## possible is worse than either rule on its own.
+##
+## Uniques are skipped: they are authored, one per dungeon, and an extra
+## element on top of a designed item is not a thing anyone priced.
+## `enchant_rng` is SEPARATE from the run's rng, and that is not a nicety --
+## it is the same lesson graves already learned two floors down in this file's
+## sibling.
+##
+## Rolling from the run's own stream makes the number of draws depend on how
+## many items a floor happens to produce, and everything generated afterwards
+## shifts. Measured, with the roll on the main stream: the same seed built a
+## floor with 29269 walls before a death was recorded and 28870 after, 135
+## monsters against 149, and the guaranteed floor-two gem went missing on 9
+## seeds in 60. Seeded reproducibility is a promise this project makes.
+##
+## A null rng means no enchantment at all, which is what every caller outside
+## generation wants -- a test building an item should get the item it asked
+## for, not a coin flip.
+static func _maybe_enchant(it: Item, enchant_rng: RandomNumberGenerator,
+		effective: int) -> Item:
+	if it == null or enchant_rng == null or it.unique or it.element != &"":
+		return it
+	if enchant_rng.randf() >= enchant_chance(effective):
+		return it
+	var legal: Array[StringName] = []
+	for el in FOUND_ELEMENTS:
+		if it.accepts_element(el):
+			legal.append(el)
+	if legal.is_empty():
+		return it
+	it.element = legal[enchant_rng.randi_range(0, legal.size() - 1)]
+	return it
+
+static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: int,
+		enchant_rng: RandomNumberGenerator = null) -> Item:
 	var pool := []
 	var total := 0
 	for key in CATALOGUE:
@@ -744,8 +819,8 @@ static func roll_equipment(rng: RandomNumberGenerator, depth: int, want_slot: in
 	for entry in pool:
 		pick -= entry["weight"]
 		if pick <= 0:
-			return make(entry["id"])
-	return make(pool[-1]["id"])
+			return _maybe_enchant(make(entry["id"]), enchant_rng, depth)
+	return _maybe_enchant(make(pool[-1]["id"]), enchant_rng, depth)
 
 ## Weighted pick from everything legal at this depth.
 ## A gem, from the gems alone.
@@ -786,7 +861,8 @@ static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
 		return null
 	return make(pool[rng.randi_range(0, pool.size() - 1)])
 
-static func roll(rng: RandomNumberGenerator, depth: int) -> Item:
+static func roll(rng: RandomNumberGenerator, depth: int,
+		enchant_rng: RandomNumberGenerator = null) -> Item:
 	var pool := []
 	var total := 0
 	for key in CATALOGUE:
@@ -801,5 +877,5 @@ static func roll(rng: RandomNumberGenerator, depth: int) -> Item:
 	for entry in pool:
 		pick -= entry["weight"]
 		if pick <= 0:
-			return make(entry["id"])
-	return make(pool[-1]["id"])
+			return _maybe_enchant(make(entry["id"]), enchant_rng, depth)
+	return _maybe_enchant(make(pool[-1]["id"]), enchant_rng, depth)

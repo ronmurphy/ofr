@@ -579,7 +579,13 @@ func _draw() -> void:
 	# as the thing you need to deal with first.
 	for it in state.ground:
 		if map.is_visible(it.x, it.y):
-			_draw_glyph(it.appearance, Vector2(it.x, it.y))
+			# Enchanted gear is tinted rather than given its own glyph: ")" is the
+			# roguelike's mark for a melee weapon and splitting it would invent
+			# notation the genre already settled. Colour is the free channel.
+			if it.element != &"":
+				_draw_glyph_tinted(it.appearance, Vector2(it.x, it.y), Palette.MAGIC)
+			else:
+				_draw_glyph(it.appearance, Vector2(it.x, it.y))
 
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):

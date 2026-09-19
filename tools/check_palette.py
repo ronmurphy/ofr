@@ -150,6 +150,66 @@ def load_colours():
 # two signals on different properties is what makes them independent.
 
 
+PALETTE = ROOT / "src" / "render" / "palette.gd"
+
+# Everything a magic item's glyph can sit beside on a floor, or in a list next
+# to. Named rather than derived because Palette holds UI colours too, and
+# measuring the magic tint against a scrollbar tells you nothing.
+ITEM_COLOURS = [
+    "WEAPON", "ARMOUR", "LAUNCHER", "GEM", "RING", "AMULET", "SCROLL",
+    "POTION", "ALLY", "PLAYER", "STAIRS",
+]
+
+
+def load_palette():
+    """Palette constant -> hex, straight out of palette.gd."""
+    text = PALETTE.read_text()
+    out = {}
+    for m in re.finditer(r'^const (\w+)\s*:=\s*Color\("([0-9a-fA-F]{6})"\)',
+                         text, re.M):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def check_magic(out):
+    """Palette.MAGIC has to survive sharing a glyph with an ordinary weapon.
+
+    An enchanted short sword draws the same ")" as a plain one -- splitting the
+    glyph would invent notation the genre already settled -- so colour carries
+    the whole difference, and it has to carry it for the roughly 8% of men with
+    a red-green deficiency too.
+
+    Reported from play before the tint existed: "I almost did NOT pick up the
+    leech sword because I thought it was just another dagger."
+    """
+    if "MAGIC" not in out:
+        print("  Palette.MAGIC not found -- renamed?")
+        return 1
+    a = srgb(out["MAGIC"])
+    bad = 0
+    worst, who = 999.0, ""
+    for name in ITEM_COLOURS:
+        if name not in out:
+            print("  %s not found in palette.gd" % name)
+            bad += 1
+            continue
+        b = srgb(out[name])
+        for kind in ["normal"] + list(SIM):
+            aa = a if kind == "normal" else simulate(a, kind)
+            bb = b if kind == "normal" else simulate(b, kind)
+            d = delta_e(aa, bb)
+            if d < worst:
+                worst, who = d, "%s under %s" % (name, kind)
+            if d < READABLE:
+                print("  MAGIC vs %-9s %-8s %5.1f   <-- TOO CLOSE"
+                      % (name, kind, d))
+                bad += 1
+    if not bad:
+        print("  magic tint #%s holds up: worst %.1f, against %s"
+              % (out["MAGIC"], worst, who))
+    return bad
+
+
 def main():
     colours = load_colours()
     missing = [c for pair in SHARED.values() for c in pair if c not in colours]
@@ -184,6 +244,12 @@ def main():
         print("  red against green is the axis that disappears first.")
     else:
         print("  every shared-glyph pair holds up under all four.")
+
+    print()
+    print("  the magic-item tint, which shares a glyph with plain gear:")
+    print()
+    bad += check_magic(load_palette())
+    print()
     return 1 if bad else 0
 
 

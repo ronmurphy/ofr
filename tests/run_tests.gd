@@ -146,6 +146,7 @@ func _initialize() -> void:
 	_test_the_dead_are_marked()
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
+	_test_found_magic()
 	_test_every_kind_is_listed()
 	_test_cave_bear()
 	_test_cave_giant()
@@ -5575,6 +5576,142 @@ func _test_gem_of_returning() -> void:
 	gs.player.equipped[Item.Slot.WEAPON] = dagger
 	gs._end_player_turn()
 	check("a blade counts no steps", gs._return_walk == 0)
+
+## Weapons that arrive already carrying an element.
+##
+## Written because the tally did not move when the generator landed -- 1368
+## before and 1368 after, which is this suite saying plainly that none of it was
+## covered.
+func _test_found_magic() -> void:
+	# The curve climbs with EFFECTIVE depth rather than folding at the bottom.
+	# Keyed on the mirrored band it would have made floors 14-16 caves again,
+	# and the player climbing out would meet a magic drought two thirds of the
+	# way home -- the opposite of what the escalation is for.
+	check("magic gets richer as you go, not symmetrical",
+		Item.enchant_chance(19) > Item.enchant_chance(10)
+			and Item.enchant_chance(10) > Item.enchant_chance(1),
+		"1:%.3f 10:%.3f 19:%.3f" % [Item.enchant_chance(1),
+			Item.enchant_chance(10), Item.enchant_chance(19)])
+
+	# The caves are thinned ON PURPOSE. They carry a third of the loot the other
+	# bands do -- measured, 2.7 floor items against 7.8 -- and being magic-poor
+	# as well is the point: three floors down and three up where the fungus and
+	# the meat have to keep you alive instead.
+	check("the caves are leaner than the floors either side",
+		Item.enchant_chance(5) < Item.enchant_chance(3)
+			and Item.enchant_chance(5) < Item.enchant_chance(7),
+		"3:%.3f 5:%.3f 7:%.3f" % [Item.enchant_chance(3),
+			Item.enchant_chance(5), Item.enchant_chance(7)])
+	check("and the caves are thin on the climb too",
+		Item.enchant_chance(15) < Item.enchant_chance(13)
+			and Item.enchant_chance(15) < Item.enchant_chance(17))
+
+	# Nothing may arrive with an element the gem system would refuse to bind.
+	# A sling of frost is an item a player is explicitly forbidden to make, and
+	# two systems disagreeing about what is possible is worse than either rule
+	# on its own.
+	var illegal: Array[String] = []
+	var enchanted := 0
+	for d in [2, 5, 8, 11, 16, 19]:
+		for i in 25:
+			var gs := GameState.new(31000 + d * 60 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			var pool: Array = []
+			for it in gs.ground:
+				pool.append(it)
+			for e in gs.entities:
+				for slot in e.equipped:
+					if e.equipped[slot] != null:
+						pool.append(e.equipped[slot])
+			for it in pool:
+				if it.element == &"" or it.kind == Item.Kind.GEM:
+					continue
+				enchanted += 1
+				if not it.accepts_element(it.element):
+					illegal.append("%s / %s" % [it.name, it.element])
+	check("found magic is never something a gem could not bind",
+		illegal.is_empty(), str(illegal.slice(0, 4)))
+	# A guard on the guard: if generation stopped producing magic entirely the
+	# check above would pass by vacuum.
+	check("and the generator actually produced some (%d)" % enchanted,
+		enchanted > 0)
+
+	# Uniques are authored one per dungeon. An extra element on top of a
+	# designed item is not something anyone priced.
+	#
+	# Read from Item.uniques() rather than naming an id here. The first draft
+	# hardcoded &"ring_rat" -- the real id is &"rat_ring" -- so make() threw,
+	# the null guard swallowed it, and the check silently ceased to exist while
+	# the tally still went up. A test that can vanish is worse than no test.
+	var uniques := Item.uniques(GameState.MAX_DEPTH * 2)
+	check("there are uniques to check (%d)" % uniques.size(), not uniques.is_empty())
+	var enchanted_unique := ""
+	for key in uniques:
+		# Many attempts, not one: at the deepest rate the roll still misses
+		# most of the time, so a single call would pass whether the guard
+		# worked or not.
+		for i in 200:
+			var u := Item.make(key)
+			if u == null:
+				continue
+			Item._maybe_enchant(u, _rng_for(9000 + i), GameState.MAX_DEPTH * 2 - 1)
+			if u.element != &"":
+				enchanted_unique = "%s -> %s" % [u.name, u.element]
+				break
+		if enchanted_unique != "":
+			break
+	check("a unique is never enchanted", enchanted_unique == "", enchanted_unique)
+
+	# The roll must not touch the run's own stream. On it, the number of draws
+	# depended on how much loot a floor rolled and everything after moved:
+	# identical seeds gave 29269 walls or 28870 and 135 monsters or 149.
+	var a := GameState.new(4242)
+	a.new_game()
+	a.depth = 6
+	a.build_level()
+	var b := GameState.new(4242)
+	b.new_game()
+	b.depth = 6
+	b.build_level()
+	check("the same seed still builds the same floor",
+		a.ground.size() == b.ground.size()
+			and a.entities.size() == b.entities.size(),
+		"%d/%d vs %d/%d" % [a.ground.size(), a.entities.size(),
+			b.ground.size(), b.entities.size()])
+
+	# The pity gem asks whether THIS PLAYER has bound one. It used to infer that
+	# from any elemental item anywhere, which found magic quietly falsified: a
+	# kobold carrying an enchanted sword read as "the player has met a gem" and
+	# skipped the guarantee on 8 seeds in 60.
+	var armed := 0
+	var barren := 0
+	for i in 40:
+		var gs := GameState.new(6100 + i)
+		gs.new_game()
+		gs.depth = 2
+		gs.build_level()
+		var gem := false
+		for it in gs.ground:
+			if it.kind == Item.Kind.GEM:
+				gem = true
+		if not gem:
+			barren += 1
+		for e in gs.entities:
+			if e.is_player:
+				continue
+			for slot in e.equipped:
+				if e.equipped[slot] != null and e.equipped[slot].element != &"":
+					armed += 1
+	check("the first gem is still certain beside enchanted monsters (%d armed)"
+		% armed, barren == 0, "%d barren of 40" % barren)
+
+## A throwaway rng for a static call that wants one.
+func _rng_for(s: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = s
+	return r
 
 ## Every player meets a gem, early, whatever the dice do.
 func _test_the_first_gem_is_certain() -> void:

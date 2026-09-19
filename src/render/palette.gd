@@ -79,6 +79,22 @@ const CHEST         := Color("c9953f")
 ## run and it should not be mistaken for loot.
 const RING          := Color("b98cd6")
 
+## Anything carrying an element, whether a gem put it there or it was found
+## that way. NOT a theme-table entry: a magic short sword has the same
+## appearance id as a plain one, so this is the one colour that comes from an
+## item's STATE rather than its class.
+##
+## Chosen with tools/check_palette.py rather than by eye, because a magic
+## weapon shares ")" with an ordinary one and colour is doing the whole job.
+## Worst separation across normal vision and all three dichromacies is 36.5,
+## against RING under tritanopia -- the rat ring is the nearest thing on the
+## floor and the one that matters. The margin is thinner than it looks:
+## #5b8de8, one shade lighter, measures 15.8 and fails.
+##
+## Reported from play: "I almost did NOT pick up the leech sword because I
+## thought it was just another dagger."
+const MAGIC         := Color("3a72ff")
+
 ## Material tints, applied to terrain base colours -- deliberately NOT to the
 ## light.
 ##
