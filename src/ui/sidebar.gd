@@ -483,7 +483,11 @@ const SKULL := 0xF068C
 ## invisible shrine and brazier glyphs, which were also a real codepoint drawn
 ## with a font that did not carry it.
 static func ui_font() -> Font:
-	var text: FontFile = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	# duplicate() for the reason spelled out in GlyphGrid.map_font(): load()
+	# returns a shared instance, both functions set fallbacks on it pointing at
+	# each other, and the resulting cycle made Godot discard whichever
+	# assignment came second. A private copy keeps the two independent.
+	var text: FontFile = load("res://assets/fonts/JetBrainsMono-Regular.ttf").duplicate()
 	text.fallbacks = [load("res://assets/fonts/ofr_icons.ttf")]
 	return text
 

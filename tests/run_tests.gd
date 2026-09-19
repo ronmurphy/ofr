@@ -8644,6 +8644,29 @@ func _test_icon_theme() -> void:
 		bar._face_for(char(Sidebar.SKULL)) == bar.icon_font
 			and bar._face_for("k") == bar.font)
 
+	# Both faces built and HELD AT ONCE, which is the only state that shows the
+	# bug. load() returns one shared instance per path, so while map_font() and
+	# ui_font() assigned fallbacks straight onto it they wired that shared object
+	# to point at itself -- icons -> text -> icons. Godot rejects a cyclic chain
+	# ("Cyclic font fallback") by discarding the assignment, so whichever ran
+	# second came back with an EMPTY fallback list: the map losing its letters,
+	# or the panel losing its icons, depending only on which loaded first.
+	#
+	# Every other font check here drops its font before taking the next one, and
+	# a freed font means the next load() is a fresh instance that cannot collide.
+	# That is precisely why the suite went on passing while the running game
+	# printed the error on every launch. Holding both is the whole test.
+	var held_map := GlyphGrid.map_font()
+	var held_ui := Sidebar.ui_font()
+	check("the map face keeps its fallback while the panel face is alive too",
+		held_map.fallbacks.size() == 1 and held_ui.fallbacks.size() == 1,
+		"map=%d ui=%d" % [held_map.fallbacks.size(), held_ui.fallbacks.size()])
+	# The shared cached resources must be left untouched, since mutating those is
+	# what let two unrelated call sites reach each other in the first place.
+	check("and neither scribbles on the shared cached font",
+		load("res://assets/fonts/ofr_icons.ttf").fallbacks.is_empty()
+			and load("res://assets/fonts/JetBrainsMono-Regular.ttf").fallbacks.is_empty())
+
 	# Every gear glyph, from the icon face rather than through a fallback.
 	var unreachable := []
 	for id in Item.CATALOGUE:

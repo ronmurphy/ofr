@@ -188,7 +188,20 @@ func _ready() -> void:
 ## added to a theme cannot reintroduce it. _test_every_theme_glyph_is_drawable
 ## asserts the whole chain covers every theme.
 static func map_font() -> Font:
-	var icons: FontFile = load("res://assets/fonts/ofr_icons.ttf")
+	# duplicate() first. load() hands back ONE shared instance per path, so
+	# setting fallbacks here also mutated the very object Sidebar.ui_font()
+	# builds from -- and the two wire each other in OPPOSITE directions: icons
+	# -> text here, text -> icons there. Once both were alive in the scene at
+	# the same time that was a loop, and Godot refuses a cyclic chain outright
+	# ("Cyclic font fallback" at font.cpp:186). The refusal is a no-op, not a
+	# crash, so whichever of the two ran SECOND silently ended up with no
+	# fallback at all -- this one losing it is the invisible brazier again.
+	#
+	# The suite cannot see this: it drops each font as soon as it checks it, and
+	# a freed font means the next load() is a fresh instance with nothing to
+	# collide with. Only a running game holds both at once. A private copy costs
+	# nothing (PackedByteArray is copy-on-write) and cannot collide with anyone.
+	var icons: FontFile = load("res://assets/fonts/ofr_icons.ttf").duplicate()
 	icons.fallbacks = [load("res://assets/fonts/JetBrainsMono-Regular.ttf")]
 	return icons
 
