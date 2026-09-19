@@ -26,12 +26,50 @@ document already made once.
 Copying only the executable gives "Couldn't load project data" and nothing
 else. `build/` is gitignored, so these never enter a commit.
 
-On the Legion Go S:
+### On the handheld: add it to Steam. This is not optional.
 
 ```
 chmod +x ofr.x86_64
-./ofr.x86_64
 ```
+
+Then **add `ofr.x86_64` to Steam as a non-Steam game and launch it from
+there** — desktop mode or gaming mode, either works once Steam is in the
+chain.
+
+**Do not just run `./ofr.x86_64`. The controller will not work and the
+rebinding screen will capture nothing.** This cost a two-hour diagnosis on a
+Legion Go S before we understood it, and it is not a bug in the game.
+
+Why, because the four testers will ask and "use Steam" is not an answer:
+Steam Input takes **exclusive** ownership of the handheld's built-in
+controller so games can't receive doubled input, and blanks the real device
+node to enforce it. On Brad's Legion Go S `/proc/bus/input/devices` showed
+both pads, and the permissions told the story:
+
+```
+/dev/input/event4    c---------    the real "Legion Go S"   -- mode 0000, unopenable
+/dev/input/event14   crw-rw----@   virtual "X-Box 360 pad"  -- brad has rw
+```
+
+Run outside Steam, the game can see neither: the physical pad is locked away
+and the virtual one it would be replaced by doesn't exist yet. Nothing is
+wrong with the bindings, the defaults, or the game's input code — **the pad is
+hidden at the OS level before OFR gets a say.**
+
+This is not Valve-specific and not about desktop-versus-gaming mode. Both were
+our early guesses and both were wrong. **The variable is whether Steam is in
+the launch chain at all.**
+
+If a tester reports "the controller does nothing", ask this first, before
+anything about bindings:
+
+```
+cat /proc/bus/input/devices     # does the OS list a pad at all?
+./ofr.x86_64 --pad-log          # did the game receive it?
+```
+
+Neither sees one → it's the launch path, not OFR. The OS sees one and the game
+doesn't → then it's ours.
 
 ## 2. The controller screen
 
