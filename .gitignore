@@ -3,8 +3,20 @@
 .godot/
 .import/
 
-# Export config can carry keystore paths and passwords.
-export_presets.cfg
+# export_presets.cfg is deliberately TRACKED, despite the usual advice.
+#
+# The usual advice exists because the file can carry keystore paths, signing
+# identities and passwords. This one carries none: three presets (Linux, Web,
+# Windows), encrypt_pck=false throughout, and export_path="" everywhere, so
+# there are no machine-specific absolute paths to churn between machines.
+#
+# It has to be tracked because tools/build_windows.sh is committed and calls
+# `--export-release "Windows"` by name. Without the preset, a fresh clone gets
+# a build script that cannot build -- and the same is true of Linux and Web,
+# just less obviously because those presets are older.
+#
+# If a signing credential ever goes in here, ignore it again and find another
+# way to share the presets.
 
 # Binary artefacts generated from source files.
 *.translation

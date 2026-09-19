@@ -1,80 +1,119 @@
-# Controller support — what to do when you get back
+# Controller support
 
-Everything below is built and **uncommitted**. The Linux export is built and
-verified; the instructions are not guesses.
+For Brad and the four itch testers running OFR on a handheld.
 
-## 1. Build the handheld binary
+Everything here is committed, the suite is green at HEAD, and the instructions
+are checked against the build scripts as they actually stand rather than
+remembered.
+
+**If you read one thing, read section 2.** Launching the game directly instead
+of through Steam is the single reason a controller appears not to work, and it
+is not a bug in the game.
+
+## 1. Get the build
 
 ```
 tools/build_linux.sh
 ```
 
-**Run it yourself before you transfer anything.** I built once at 10:29 to
-prove the export works, then seven source files changed underneath it — text
-size, the pad-navigable menu, stretch/aspect, the hairline fix, and my own
-`WALK` and panel changes. A binary from before those lands you testing the
-exact problems we spent the afternoon fixing and concluding they're still
-broken. If the two files in `build/linux/` are older than `src/`, they are the
-wrong build.
+It produces **one file** — `ofr.x86_64`, with the `.pck` embedded — and packs
+it as `build/ofr-linux-x86_64.tar.gz`. The script prints the sizes when it
+finishes. They are deliberately not written down here, because a recorded
+measurement goes stale.
 
-It produces two files in `build/linux/` — `ofr.x86_64` and `ofr.pck`. The
-script prints both sizes when it finishes; I've left the numbers out here
-rather than record a measurement that goes stale, which is the mistake this
-document already made once.
+It used to be two files that had to travel together, and copying only the
+executable gave "Couldn't load project data" and nothing else. Embedding makes
+that mistake impossible.
 
-**They must travel together, in the same folder, with matching basenames.**
-Copying only the executable gives "Couldn't load project data" and nothing
-else. `build/` is gitignored, so these never enter a commit.
+**Build it fresh before sending it anywhere.** A binary from before a fix lands
+someone testing a problem that's already solved and reporting it as still
+broken. The check that needs nobody's word: if `build/linux/ofr.x86_64` is
+older than `src/`, it is the wrong build.
 
-### On the handheld: add it to Steam. This is not optional.
+**Unpack with `tar`, not a zip tool.** tar records the executable bit, zip
+discards it:
 
 ```
-chmod +x ofr.x86_64
+tar -xzf ofr-linux-x86_64.tar.gz
+./ofr.x86_64
 ```
 
-Then **add `ofr.x86_64` to Steam as a non-Steam game and launch it from
-there** — desktop mode or gaming mode, either works once Steam is in the
-chain.
+If the binary arrived some other way and refuses to start, `chmod +x
+ofr.x86_64` is the missing step. Copying to a FAT32 USB stick strips that bit,
+so chmod on the handheld rather than before.
 
-**Do not just run `./ofr.x86_64`. The controller will not work and the
-rebinding screen will capture nothing.** This cost a two-hour diagnosis on a
-Legion Go S before we understood it, and it is not a bug in the game.
+## 2. Launch it through Steam. This is not optional.
 
-Why, because the four testers will ask and "use Steam" is not an answer:
-Steam Input takes **exclusive** ownership of the handheld's built-in
-controller so games can't receive doubled input, and blanks the real device
-node to enforce it. On Brad's Legion Go S `/proc/bus/input/devices` showed
-both pads, and the permissions told the story:
+**Add `ofr.x86_64` to Steam as a non-Steam game and launch it from there.**
+Desktop mode or gaming mode — either works, once Steam is in the chain.
+
+**Run `./ofr.x86_64` directly and the controller will do nothing, and the
+rebinding screen will capture nothing.** This cost a two-hour diagnosis before
+it was understood.
+
+Why, because "just use Steam" is not an answer anyone can act on:
+
+Steam Input takes **exclusive** ownership of a handheld's built-in controller,
+so games can't receive doubled input, and it blanks the real device node to
+enforce that. On a Legion Go S, `/proc/bus/input/devices` lists both pads and
+the permissions tell the whole story:
 
 ```
-/dev/input/event4    c---------    the real "Legion Go S"   -- mode 0000, unopenable
-/dev/input/event14   crw-rw----@   virtual "X-Box 360 pad"  -- brad has rw
+/dev/input/event4    c---------   real "Legion Go S"        mode 0000, unopenable
+/dev/input/event14   crw-rw----@  virtual "X-Box 360 pad"   readable via ACL
 ```
 
-Run outside Steam, the game can see neither: the physical pad is locked away
-and the virtual one it would be replaced by doesn't exist yet. Nothing is
-wrong with the bindings, the defaults, or the game's input code — **the pad is
-hidden at the OS level before OFR gets a say.**
+Outside Steam the game can see neither: the physical pad is locked away, and
+the virtual one that would replace it doesn't exist yet. Nothing is wrong with
+the bindings, the defaults or the input code — **the pad is hidden at the OS
+level before OFR gets a say.**
 
-This is not Valve-specific and not about desktop-versus-gaming mode. Both were
-our early guesses and both were wrong. **The variable is whether Steam is in
-the launch chain at all.**
+This is not Valve-specific, and not about desktop versus gaming mode. Both were
+early guesses and both were wrong. **The variable is whether Steam is in the
+launch chain at all.**
 
-If a tester reports "the controller does nothing", ask this first, before
-anything about bindings:
+### If a controller does nothing, ask this before anything about bindings
 
 ```
 cat /proc/bus/input/devices     # does the OS list a pad at all?
 ./ofr.x86_64 --pad-log          # did the game receive it?
 ```
 
-Neither sees one → it's the launch path, not OFR. The OS sees one and the game
-doesn't → then it's ours.
+- **Neither sees a pad** → it's the launch path, not OFR.
+- **The OS sees one, the game doesn't** → then it's ours, and the log says why.
 
-## 2. The controller screen
+## 3. Defaults, so most people never open the rebinding screen
 
-`esc` → `g`, or click **controller** in the pause menu. Both paths work —
-the mouse row was dead until I wired it just now, the keyboard `g` was fine.
+D-pad walks · `A` wait · `B` pick up · `X` inventory · `Y` look · `LB` shoot ·
+`RB` swap reach/blade · `Start` menu.
+
+That's the Xbox-style layout most handhelds report as. Right for most, wrong
+for someone — which is why rebinding exists.
+
+A binding is a promise that pressing that button is exactly like typing that
+key. So `Y` really is the `x` key, and that's correct rather than a mismatch.
+
+**The left stick needs no binding.** It's polled, quantised to the same eight
+directions the keyboard has, with press-once-then-repeat so a held stick
+doesn't fire sixty moves a second. **Diagonals come from the stick** — asking
+anyone to bind eight directions on a four-way d-pad is a poor first
+experience, so the d-pad stays four-way and the stick covers the corners.
+
+## 4. The pause menu works entirely from the pad
+
+`Start` opens it. **D-pad up/down moves the highlight, the wait button chooses.**
+Every row — continue, controller, text size, save, abandon — is reachable with
+nothing rebound.
+
+The printed letters still work, and so does the mouse. All three read the same
+table, so a new row is wired for all three at once.
+
+**Text size lives here**, which matters most on a handheld: it cycles the cell
+size and the map redraws behind the menu as you go.
+
+## 5. The rebinding screen
+
+`Esc` → `g`, or click **controller** in the pause menu.
 
 It asks for fourteen bindings in order:
 
@@ -84,14 +123,12 @@ inventory · look · shoot · swap reach/blade · close a door
 ally heel/loose · the legend · menu
 ```
 
-The last three were missing at first. The defaults bound them, but the
-walk-through didn't offer them — so rebinding could knock close-door off its
-button with no way to put it back except `r`, which throws away every other
-choice too. A binding you can lose and can't restore is worse than one never
-offered.
-
-Directions come first on purpose: someone who gives up halfway still has a
+Directions come first on purpose: anyone who gives up halfway still has a
 controller they can walk with.
+
+Every key the defaults hand out appears in that list, so any binding can be
+restored. A binding you can lose and can't put back is worse than one never
+offered.
 
 The panel's own controls are **keyboard-only, deliberately** — someone
 rebinding a controller that doesn't work can't be asked to use that controller
@@ -100,115 +137,71 @@ to escape the screen:
 | key | does |
 |---|---|
 | `backspace` | back one row |
-| `r` | restore the Xbox-style defaults |
+| `r` | restore the defaults |
 | `l` | start logging this pad |
 | `esc` / `enter` | done, and save |
 
-Saved to `user://gamepad.cfg`. It describes hardware, not a run, so it
+One button means one thing. Binding a button that's already in use takes it off
+its old job rather than doubling up.
+
+Saved to `user://gamepad.cfg`. It describes hardware rather than a run, so it
 survives death — it sits beside `settings.cfg`, not with the morgue.
 
-One button can only mean one thing. Binding a button that's already in use
-takes it off its old job rather than doubling up.
-
-## 3. Defaults, so most people never open that screen
-
-D-pad walks, `A` wait, `B` pick up, `X` inventory, `Y` look, `LB` shoot,
-`RB` swap, `start` menu. That's the Xbox-style layout most handhelds report
-as. It's right for most and wrong for someone, which is exactly why the
-rebinding screen exists.
-
-**The left stick needs no binding.** It's polled, quantised to the same eight
-directions the keyboard has, with press-once-then-repeat so a held stick
-doesn't fire sixty moves a second. Diagonals come from the stick — asking
-someone to bind eight directions on a four-way d-pad is a poor first
-experience, so the d-pad stays four-way and the stick covers the corners.
-
-## 4. The log — this is the part I actually need from the four testers
+## 6. The log — this is what we need back from testers
 
 ```
 ./ofr.x86_64 --pad-log
 ```
 
-or press `l` on the controller screen. Either writes:
+or press `l` on the rebinding screen. Either writes:
 
 ```
 ~/.local/share/godot/app_userdata/OFR/pad_log.txt
 ```
 
 It records the pad's name, its GUID, and every button index and axis touched,
-flushed per line, so a force-quit still leaves a readable file. I ran it here
-with no pad attached and it correctly says `NO PAD CONNECTED -- nothing will
-be recorded` — so a tester whose pad Godot can't see gets a diagnostic line
-rather than an empty file they can't interpret.
+flushed line by line, so a force-quit still leaves a readable file. With no pad
+attached it says `NO PAD CONNECTED -- nothing will be recorded`, so an empty
+result is still a diagnosis.
 
-**Ask each of the four for that file**, plus device name. The question I can't
-answer from here is whether a Steam Deck, a ROG and a Legion Go S agree about
-which index is "A", and my strong guess is at least one of them doesn't. If
-they disagree, the fix is a per-GUID defaults table, and the logs are what
-would let me write it.
+**Please send that file, plus the device name.** The open question is whether a
+Steam Deck, a ROG and a Legion Go S agree about which button index is "A". If
+they don't, the fix is a per-device defaults table, and the logs are what make
+it writable.
 
-## 4b. The whole pause menu works from the pad
+## 7. What the tests cover, and what they can't
 
-The second session added a **text size** row while I was working — good timing
-for a handheld, and you okayed the mixed commit.
+The suite is at **1368 and green**, and almost none of it covers the
+controller. Pad code is render- and node-layer, which a headless suite doesn't
+reach, and **no test has ever seen a gamepad.** What the checks guard is
+layout, dispatch and the binding table: that a menu row answers to its letter,
+the mouse and the pad alike, and that every key the defaults hand out is one
+the rebinding screen can hand back.
 
-For about an hour it was unreachable. I checked the three sets rather than
-guessing: the menu needed `C ESCAPE G N S T`, a default pad could send
-`A C DOWN ESCAPE F G I LEFT PERIOD QUESTION RIGHT UP W X`, and the rebinding
-walk-through couldn't bind `T` or `S` at all. So on a handheld with no
-keyboard you could not have changed the text size that was built for
-handhelds, and could not have saved your run.
+That limit is exactly where it bit. The controller failed its first contact
+with real hardware and a green suite could never have caught it, because Steam
+Input was hiding the pad before the game got a say.
 
-**That is fixed and it is in this build.** The menu now takes **d-pad up/down
-to move the highlight and the wait button (A) to choose**, so every row —
-including text size and save — works from the pad with nothing rebound. The
-letters still work, and the mouse still works; all three now read the same
-`OPTIONS` table, so adding a row wires all three in one edit.
+**A hardware feature can be entirely correct and entirely non-functional at the
+same time.** The handheld is the real test; the log is how it reports.
 
-That last part matters more than the fix. There used to be three hand-kept
-lists, which is why the controller row shipped working by letter and dead to
-clicks.
-
-## 5. Two things to know before you commit
-
-**The suite tally is unchanged at 1334.** That is not a pass — it means
-**none of the gamepad code has a test**. It's render- and node-layer code,
-which the headless suite doesn't reach. What 1334/0 tells you is that I
-didn't break anything that was already covered. Treat the pad code as
-play-tested only, and the handheld as the first real test.
-
-**There's a pre-existing font bug I did not fix.** The exported build logs:
+## 8. The files
 
 ```
-ERROR: Cyclic font fallback.
+src/render/gamepad.gd      joypad -> keycode translation
+src/sim/pad_config.gd      bindings, saved to user://gamepad.cfg
+src/ui/pad_panel.gd        the rebinding walk-through
+src/render/main.gd         _unhandled_input, stick poll, --pad-log
+src/ui/menu_panel.gd       the controller row; d-pad + wait navigate it
+scenes/main.tscn           PadSetup node
+
+tools/build_linux.sh       single-file build, packed as .tar.gz
+tools/build_windows.sh     single-file OFR.exe
+tools/optimize_art.sh      imagemagick + oxipng, for assets/art
 ```
 
-`src/render/glyph_grid.gd:192` sets `ofr_icons.fallbacks = [JetBrainsMono]`,
-and `src/ui/sidebar.gd:487` sets `JetBrainsMono.fallbacks = [ofr_icons]`.
-`load()` returns the same cached resource instance both times, so those two
-lines mutate shared objects into a cycle, and Godot **silently rejects
-whichever runs second**. One of those two fallback chains isn't wired, and
-which one depends on load order.
-
-This is the same territory as the comment in `sidebar.gd` about "killed by"
-being a tofu box on itch since the day it shipped. It may be the cause, or
-unrelated. It's unrelated to the controller work, so I left it alone rather
-than mixing two systems into one commit — but it's worth its own look.
-
-## 6. Files in this change
-
-```
-new     src/render/gamepad.gd      joypad -> keycode translation
-new     src/sim/pad_config.gd      bindings, saved to user://gamepad.cfg
-new     src/ui/pad_panel.gd        the rebinding walk-through
-new     tools/build_linux.sh       the handheld build
-mod     src/render/main.gd         _unhandled_input, stick poll, --pad-log
-mod     src/ui/menu_panel.gd       the controller row, keyboard and mouse
-mod     scenes/main.tscn           PadSetup node
-```
-
-The design that makes this small: `Gamepad` turns joypad events into
-**keycodes**, so all seven existing input-handling files work unchanged. No
-action layer was invented. A binding is the promise that pressing this button
-is exactly like typing that key — a smaller promise, and an easier one to be
-sure of.
+The design that keeps this small: `Gamepad` turns joypad events into
+**keycodes**, so every existing input-handling file works unchanged. No action
+layer was invented. A binding is the promise that pressing this button is
+exactly like typing that key — a smaller promise, and an easier one to be sure
+of.
