@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://280orr1umu5w"
-path="res://.godot/imported/giant-dragon-advancing.png-6198857ec3bb9a58113a44341fae96f4.ctex"
+uid="uid://bu7pvckxn1icq"
+path="res://.godot/imported/kobold.png-c10baea55373a5a06ab9166f3cbfba78.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/giant-dragon-advancing.png"
-dest_files=["res://.godot/imported/giant-dragon-advancing.png-6198857ec3bb9a58113a44341fae96f4.ctex"]
+source_file="res://assets/art/creatures/kobold.png"
+dest_files=["res://.godot/imported/kobold.png-c10baea55373a5a06ab9166f3cbfba78.ctex"]
 
 [params]
 

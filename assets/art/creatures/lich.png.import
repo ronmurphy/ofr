@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cgpo21d1eog7g"
-path="res://.godot/imported/undead-arch-lich.png-c3b390300ff27a48e12dde801180e14c.ctex"
+uid="uid://cady6b1cm2l41"
+path="res://.godot/imported/lich.png-32b2b8caa94d910dca20e5384a2dbae2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/undead-arch-lich.png"
-dest_files=["res://.godot/imported/undead-arch-lich.png-c3b390300ff27a48e12dde801180e14c.ctex"]
+source_file="res://assets/art/creatures/lich.png"
+dest_files=["res://.godot/imported/lich.png-32b2b8caa94d910dca20e5384a2dbae2.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dbu64r0lfvj7"
-path="res://.godot/imported/kobold-and-giant-rat.png-cc1900a84921161c97ae37b4fc9b186b.ctex"
+uid="uid://dpenymvthfitk"
+path="res://.godot/imported/dragon.png-db9cf87f8836cfaf346d620ff5fd4541.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/kobold-and-giant-rat.png"
-dest_files=["res://.godot/imported/kobold-and-giant-rat.png-cc1900a84921161c97ae37b4fc9b186b.ctex"]
+source_file="res://assets/art/creatures/dragon.png"
+dest_files=["res://.godot/imported/dragon.png-db9cf87f8836cfaf346d620ff5fd4541.ctex"]
 
 [params]
 
