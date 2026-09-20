@@ -290,6 +290,10 @@ func _process(delta: float) -> void:
 ## the time this runs -- these only show the player what happened.
 func play_events(evts: Array) -> void:
 	for e in evts:
+		# EVERY event carries "to", including the ones with no animation --
+		# this is read before the kind is looked at, so an event without one
+		# does not fall through harmlessly, it freezes the game. A talk event
+		# shipped without it for one build and walking into the trader hung.
 		var to: Vector2i = e["to"]
 
 		if e["kind"] == &"levelup":

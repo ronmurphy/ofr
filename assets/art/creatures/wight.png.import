@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dsr2xismmolqp"
-path="res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"
+uid="uid://7l74c7palvp4"
+path="res://.godot/imported/wight.png-334d3ea50504b7a472de8ff9a194d86a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/creatures/rat.png"
-dest_files=["res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"]
+source_file="res://assets/art/creatures/wight.png"
+dest_files=["res://.godot/imported/wight.png-334d3ea50504b7a472de8ff9a194d86a.ctex"]
 
 [params]
 

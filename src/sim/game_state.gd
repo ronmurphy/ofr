@@ -1531,6 +1531,35 @@ var trader: Entity = null
 ## why they are down here. Everywhere else they are simply somewhere on the
 ## floor and finding them is the player's business -- the legend says a trader
 ## exists, which is enough of a hint to go looking.
+## Somewhere in this room a trader can stand without being in the way.
+##
+## Nearest the middle, like _open_cell_in, but refusing the things that matter
+## for something that occupies its cell permanently and cannot be pushed past:
+## either staircase, the player's own square, and anything already standing
+## there. Answers (-1, -1) when the room has nowhere suitable.
+func _trader_cell(room: Rect2i) -> Vector2i:
+	var c := room.get_center()
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	for y in range(room.position.y, room.end.y):
+		for x in range(room.position.x, room.end.x):
+			var here := Vector2i(x, y)
+			if not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y)):
+				continue
+			if here == stairs:
+				continue
+			# Whatever the player is standing on when the floor is built is the
+			# way they came in, and blocking it strands them on arrival.
+			if player != null and here == Vector2i(player.x, player.y):
+				continue
+			if entity_at(x, y) != null:
+				continue
+			var d := absi(x - c.x) + absi(y - c.y)
+			if d < best_d:
+				best_d = d
+				best = here
+	return best
+
 func _place_trader() -> void:
 	trader = null
 	if not TRADER_FLOORS.has(effective_depth()):
@@ -1555,7 +1584,26 @@ func _place_trader() -> void:
 					want = i
 		else:
 			want = trader_rng.randi_range(1, room_rects.size() - 1)
-	var at := _open_cell_in(room_rects[want])
+	# NOT _open_cell_in, which picks the cell nearest the room's centre and
+	# knows nothing about what is standing on it. That is fine for an item --
+	# a potion lying on the stairs is a potion you pick up on your way down --
+	# and it is a softlock for the trader.
+	#
+	# Reported from play: the trader was standing ON the stairs. Walking into it
+	# TALKS rather than swapping places, which is what makes it a conversation
+	# and not a shove, so the player could not reach the stairs at all and the
+	# floor had no exit.
+	#
+	# Tries the chosen room first and then every other room, because "no
+	# trader" is a better failure than "no way down".
+	var at := _trader_cell(room_rects[want])
+	if at.x < 0:
+		for i in room_rects.size():
+			if i == want:
+				continue
+			at = _trader_cell(room_rects[i])
+			if at.x >= 0:
+				break
 	if at.x < 0:
 		return
 
@@ -2682,7 +2730,12 @@ func player_move(dx: int, dy: int) -> bool:
 	# Free, and it does not end the turn -- the same call as the ally stance
 	# key. Nothing on the floor should get a move because you said hello.
 	if target != null and target.faction == Entity.Faction.NEUTRAL:
-		events.append({"kind": &"talk", "who": target.name})
+		# "to" is not optional on an event. GlyphGrid.play_events reads it
+		# before it looks at the kind, so an event without one freezes the
+		# game on the spot -- which is exactly what the first version of this
+		# line did when the player walked into the trader.
+		events.append({"kind": &"talk", "to": Vector2i(nx, ny),
+			"who": target.name})
 		return true
 	# Change places with it rather than hitting it. An autonomous ally WILL
 	# end up in the corridor you are backing down -- that is not an edge case,

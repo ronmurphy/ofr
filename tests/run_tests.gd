@@ -147,6 +147,7 @@ func _initialize() -> void:
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
 	_test_found_magic()
+	_test_the_trader()
 	_test_every_kind_is_listed()
 	_test_cave_bear()
 	_test_cave_giant()
@@ -272,13 +273,21 @@ func _test_monsters_start_asleep() -> void:
 	gs.new_game()
 	var awake := 0
 	var total := 0
+	var neutrals := 0
 	for e in gs.entities:
 		if e.is_player:
+			continue
+		# The trader is awake on purpose and is not a monster -- it fights
+		# nobody and nobody fights it. Counted separately rather than ignored,
+		# so "a monster was quietly made neutral" cannot hide in here.
+		if e.faction == Entity.Faction.NEUTRAL:
+			neutrals += 1
 			continue
 		total += 1
 		if e.alertness != Entity.Alert.ASLEEP:
 			awake += 1
 	check("the level has monsters to check", total > 0, "%d" % total)
+	check("and at most one neutral on the floor (%d)" % neutrals, neutrals <= 1)
 	check("every monster starts asleep", awake == 0, "%d awake" % awake)
 
 func _test_sleeping_monsters_do_not_act() -> void:
@@ -5576,6 +5585,112 @@ func _test_gem_of_returning() -> void:
 	gs.player.equipped[Item.Slot.WEAPON] = dagger
 	gs._end_player_turn()
 	check("a blade counts no steps", gs._return_walk == 0)
+
+## The one thing in the dungeon that wants to talk to you.
+func _test_the_trader() -> void:
+	# On the first floor of every band, and nowhere else.
+	var wrong: Array[String] = []
+	for d in range(1, 20):
+		var gs := GameState.new(770 + d)
+		gs.new_game()
+		gs.depth = d
+		gs.build_level()
+		var want: bool = GameState.TRADER_FLOORS.has(d)
+		if (gs.trader != null) != want:
+			wrong.append("depth %d" % d)
+	check("a trader stands on the first floor of each band and nowhere else",
+		wrong.is_empty(), str(wrong))
+
+	var gs := GameState.new(4242)
+	gs.new_game()
+	gs.depth = 1
+	gs.build_level()
+	check("floor one has one", gs.trader != null)
+	if gs.trader == null:
+		return
+
+	# NEVER on the stairs, and this is a softlock rather than an annoyance.
+	# Walking into the trader talks instead of swapping places -- that is what
+	# makes it a conversation and not a shove -- so a trader standing on the
+	# way down leaves the floor with no exit. Reported from play on floor one.
+	#
+	# Checked across every trader floor rather than one, because the cell is
+	# picked per room and the bug only shows when the chosen room happens to be
+	# the one holding the stairs.
+	var on_stairs: Array[String] = []
+	var on_player: Array[String] = []
+	for d in GameState.TRADER_FLOORS:
+		for i in 40:
+			var g := GameState.new(2400 + int(d) * 70 + i)
+			g.new_game()
+			g.depth = int(d)
+			g.build_level()
+			if g.trader == null:
+				continue
+			var cell := Vector2i(g.trader.x, g.trader.y)
+			if cell == g.stairs:
+				on_stairs.append("depth %d seed %d" % [int(d), 2400 + int(d) * 70 + i])
+			if cell == Vector2i(g.player.x, g.player.y):
+				on_player.append("depth %d" % int(d))
+	check("a trader never blocks the stairs", on_stairs.is_empty(),
+		str(on_stairs.slice(0, 3)))
+	check("and never stands on the player", on_player.is_empty(),
+		str(on_player.slice(0, 3)))
+
+	# Nothing fights it, and it fights nothing. A monster that could kill the
+	# trader would delete the floor's only conversation, and the player would
+	# never learn it had been there.
+	var hostile := 0
+	for e in gs.entities:
+		if e.hostile_to(gs.trader) or gs.trader.hostile_to(e):
+			hostile += 1
+	check("nothing is hostile to the trader", hostile == 0, str(hostile))
+
+	# It never takes a turn, so "there is a trader on this floor" cannot become
+	# a lie the legend tells.
+	var was := Vector2i(gs.trader.x, gs.trader.y)
+	for i in 200:
+		gs._take_ai_turn(gs.trader)
+	check("and it never wanders off",
+		Vector2i(gs.trader.x, gs.trader.y) == was)
+
+	# Walking into it talks instead of swapping places. player_move trades
+	# places with anything non-hostile -- that rule exists for allies in
+	# corridors -- so without an earlier branch the player shoves past the one
+	# thing that wants to speak to them.
+	gs.player.x = gs.trader.x - 1
+	gs.player.y = gs.trader.y
+	var turns_before := gs.turns
+	gs.take_events()
+	var acted := gs.player_move(1, 0)
+	var evts := gs.take_events()
+	var talked := false
+	for ev in evts:
+		if ev.get("kind", &"") == &"talk":
+			talked = true
+	check("walking into the trader starts a conversation", acted and talked)
+	check("and the player did not swap places with it",
+		gs.player.x == gs.trader.x - 1 and gs.trader.x != gs.player.x)
+	# Free, like the ally stance key. Nothing on the floor gets a move because
+	# you said hello.
+	check("and saying hello costs no time", gs.turns == turns_before)
+
+	# EVERY event carries "to". GlyphGrid.play_events reads it before it looks
+	# at the kind, so an event without one does not fall through harmlessly --
+	# it freezes the game. The first talk event shipped without one and walking
+	# into the trader hung on the spot.
+	var homeless: Array[String] = []
+	for ev in evts:
+		if not ev.has("to"):
+			homeless.append(String(ev.get("kind", &"?")))
+	check("every event it raises carries a cell", homeless.is_empty(),
+		str(homeless))
+	# And the renderer really does survive them, rather than us asserting the
+	# shape of the thing that broke.
+	var grid := GlyphGrid.new()
+	grid.state = gs
+	grid.play_events(evts)
+	check("the renderer plays them without falling over", true)
 
 ## Weapons that arrive already carrying an element.
 ##

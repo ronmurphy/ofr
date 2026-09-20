@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dsr2xismmolqp"
-path="res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"
+uid="uid://caaaby7mxupa4"
+path="res://.godot/imported/ogre.png-8c748ad433f9b15f7036aec7085c0677.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/creatures/rat.png"
-dest_files=["res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"]
+source_file="res://assets/art/creatures/ogre.png"
+dest_files=["res://.godot/imported/ogre.png-8c748ad433f9b15f7036aec7085c0677.ctex"]
 
 [params]
 

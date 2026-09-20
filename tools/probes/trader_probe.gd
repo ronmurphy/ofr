@@ -60,6 +60,24 @@ func _initialize() -> void:
 			float(total) / dists.size()])
 		print("    in your own starting room: %d" % same_room)
 
+	# How often the trader lands on the stairs. Walking into it talks rather
+	# than swapping, so a trader on the way down is a floor with no exit.
+	print("\n  trader standing on the stairs, 40 seeds per trader floor:")
+	var blocked := 0
+	var checked := 0
+	for d in GameState.TRADER_FLOORS:
+		for i in 40:
+			var g := GameState.new(2400 + int(d) * 70 + i)
+			g.new_game()
+			g.depth = int(d)
+			g.build_level()
+			if g.trader == null:
+				continue
+			checked += 1
+			if Vector2i(g.trader.x, g.trader.y) == g.stairs:
+				blocked += 1
+	print("    %d of %d floors softlocked" % [blocked, checked])
+
 	# A trader must never be hostile, and nothing must be hostile to it.
 	var gs2 := GameState.new(4)
 	gs2.new_game()

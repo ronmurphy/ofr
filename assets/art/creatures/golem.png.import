@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cnrulqemj6w7h"
-path="res://.godot/imported/brazier-weapons-forging-hammer-ascii.png-d7a22dd386fd76ad5dc8ddc8496194d8.ctex"
+uid="uid://bwc2sjha24elc"
+path="res://.godot/imported/golem.png-2a7aec911b913c33af8026cf1a1adb86.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/brazier-weapons-forging-hammer-ascii.png"
-dest_files=["res://.godot/imported/brazier-weapons-forging-hammer-ascii.png-d7a22dd386fd76ad5dc8ddc8496194d8.ctex"]
+source_file="res://assets/art/creatures/golem.png"
+dest_files=["res://.godot/imported/golem.png-2a7aec911b913c33af8026cf1a1adb86.ctex"]
 
 [params]
 

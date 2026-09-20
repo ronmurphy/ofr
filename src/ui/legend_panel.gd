@@ -16,7 +16,19 @@ extends Control
 ## message with an unexpected character in it would come out as tofu.
 @export var icon_font: Font
 
+## A creature row was chosen, and there is a picture for it.
+signal portrait_requested(app: StringName, title: String, note: String)
+
 var state: GameState
+
+## Rows you can actually open, rebuilt every draw.
+##
+## Only creatures you have MET are in here. An unmet row reads "not yet met"
+## and has nothing behind it -- letting a player open a blank portrait for
+## something they have never seen would tell them it exists, which is the one
+## thing this panel is careful not to do.
+var _rows: Array = []
+var _pick := -1
 
 const PAD := 24.0
 const LINE := 21.0
@@ -77,10 +89,77 @@ func close() -> void:
 	visible = false
 
 func _gui_input(event: InputEvent) -> void:
+	var motion := event as InputEventMouseMotion
+	if motion != null:
+		var at := _row_at(motion.position)
+		if at != _pick:
+			_pick = at
+			queue_redraw()
+		return
 	var click := event as InputEventMouseButton
-	if click != null and click.pressed:
-		close()
-		queue_redraw()
+	if click == null or not click.pressed:
+		return
+	# A click ON a row you have met opens its picture; anywhere else closes,
+	# which is what this panel has always done.
+	var hit := _row_at(click.position)
+	if hit >= 0:
+		_open(hit)
+		return
+	close()
+	queue_redraw()
+
+## The wash behind the selected row.
+##
+## Called with the index the NEXT appended row will take -- _rows.size() -- so
+## it works while the list is still being rebuilt. Reading _rows[_pick] from
+## inside the draw does not: the list is cleared at the top of the column and
+## refilled as rows are laid out, so for most of a frame it is a partial copy
+## of itself.
+func _highlight(x: float, y: float, w: float) -> void:
+	if _pick == _rows.size():
+		draw_rect(Rect2(x - 4.0, y, w, LINE), Color(Palette.CURSOR, 0.13), true)
+
+func _row_at(pos: Vector2) -> int:
+	for i in _rows.size():
+		if Rect2(_rows[i]["rect"]).has_point(pos):
+			return i
+	return -1
+
+func _open(i: int) -> void:
+	if i < 0 or i >= _rows.size():
+		return
+	var row: Dictionary = _rows[i]
+	portrait_requested.emit(row["app"], String(row["title"]),
+		String(row["note"]))
+
+## Keys, so the roster is reachable without a mouse.
+##
+## The whole reason this exists: a handheld has no pointer, and "click a name
+## to see its picture" is not an instruction a Steam Deck player can follow.
+## Up and down move the highlight, wait or enter opens it -- the same two keys
+## the pause menu uses, and both bound on a default pad.
+func handle_key(key: int) -> bool:
+	if not visible:
+		return false
+	match key:
+		KEY_UP:
+			_move(-1)
+		KEY_DOWN:
+			_move(1)
+		KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER:
+			_open(_pick)
+		_:
+			close()
+	queue_redraw()
+	return true
+
+func _move(step: int) -> void:
+	if _rows.is_empty():
+		return
+	if _pick < 0:
+		_pick = 0 if step > 0 else _rows.size() - 1
+	else:
+		_pick = posmod(_pick + step, _rows.size())
 
 # ---------------------------------------------------------------- drawing ---
 
@@ -236,6 +315,7 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	for e in GameState.BESTIARY:
 		if BestiaryLog.knows(e["app"]):
 			known += 1
+	_rows.clear()
 	y = _heading(x, y, "CREATURES  %d/%d" % [known, GameState.BESTIARY.size()])
 	y = _entry(x, y, w, "@", Palette.PLAYER, "you", "")
 	# Never redacted, unlike the roster below.
@@ -248,8 +328,13 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	#
 	# Outside the roster loop, so it does not move the "known / total" count,
 	# the same way "you" does not.
+	var trader_top := y
+	_highlight(x, y, w)
 	y = _entry(x, y, w, "&", Palette.TRADER, "a trader",
 		"first floor of a band")
+	_rows.append({"rect": Rect2(x, trader_top, w, y - trader_top),
+		"app": &"trader", "title": "the trader",
+		"note": "first floor of a band"})
 	for e in GameState.BESTIARY:
 		# Not met yet: a redacted row rather than no row.
 		#
@@ -287,7 +372,11 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			# the thing worth learning by meeting one, and the log says it
 			# plainly the first time it happens.
 			note = "wails  " + note
+		var top := y
+		_highlight(x, y, w)
 		y = _entry(x, y, w, art["ch"], art["fg"], e["name"], note, twisted)
+		_rows.append({"rect": Rect2(x, top, w, y - top),
+			"app": e["app"], "title": String(e["name"]), "note": note})
 
 	y += LINE * 0.6
 	y = _heading(x, y, "BEHAVIOUR MARKS")

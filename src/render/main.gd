@@ -110,6 +110,7 @@ func _ready() -> void:
 	inventory.bind_requested.connect(_on_bind_chosen)
 	menu.resume_requested.connect(_close_menu)
 	menu.pad_requested.connect(_open_pad_setup)
+	legend.portrait_requested.connect(_show_portrait)
 	pad_setup.closed.connect(_refresh)
 	pad_setup.log_requested.connect(pad.start_log)
 	menu.save_and_quit_requested.connect(_save_and_quit)
@@ -203,6 +204,21 @@ func _open_pad_setup() -> void:
 ## The introduction is told ONCE per player and the flag is set when the panel
 ## OPENS, not when it closes -- a player who escapes out of it has decided they
 ## do not want it, and replaying it next run would be the game arguing.
+## A creature's picture, opened from the legend.
+##
+## The same panel the trader talks through: a portrait beside some words is the
+## shape both of them want, and building a second one would have meant two
+## places that lay out a 720 image and drift apart.
+##
+## A creature with no file yet simply shows its words. That is not a fallback
+## bolted on -- it is what let the viewer ship before the art did.
+func _show_portrait(app: StringName, title: String, note: String) -> void:
+	var path := "res://assets/art/creatures/%s.png" % String(app)
+	if app == &"trader":
+		path = "res://assets/art/trader.png"
+	talk.open(title, [{"text": note, "art": path}])
+	_refresh()
+
 func _maybe_talk(evts: Array) -> void:
 	for ev in evts:
 		if ev.get("kind", &"") != &"talk":
@@ -279,7 +295,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if legend.visible:
-		legend.close()
+		# It used to close on any key at all. Now it takes up/down and wait so
+		# the roster can be read on a handheld, and closes on anything else --
+		# which is the behaviour anyone already used to it still gets.
+		legend.handle_key(key)
 		_refresh()
 		return
 

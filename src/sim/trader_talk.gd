@@ -55,6 +55,7 @@ static func forget_intro() -> void:
 		cfg.save(SETTINGS)
 
 const AMULET_ART := "res://assets/art/amulet-of-deep.png"
+const TRADER_ART := "res://assets/art/trader.png"
 
 ## The first meeting. Told once per player, on floor one.
 ##
@@ -63,16 +64,21 @@ const AMULET_ART := "res://assets/art/amulet-of-deep.png"
 ## mostly shouting, and it has never had anybody correct it.
 static func intro() -> Array:
 	return [
-		{"text": "You are not running.\n\nMost run."},
-		{"text": "I am not going to fight you. I have never wanted to. I wanted to ask how you are."},
+		{"text": "You are not running.\n\nMost run.", "art": TRADER_ART},
+		{"text": "I am not going to fight you. I have never wanted to. I wanted to ask how you are.",
+		 "art": TRADER_ART},
 		{"text": "You came for the amulet. Everyone comes for the amulet.\n\nThey say it stops the monsters coming. Nobody says how, and nobody who went to look has come back to explain it.",
 		 "art": AMULET_ART},
 		{"text": "That is it. I saw it once, from a long way off.\n\nI could not go closer. Things like me cannot.",
 		 "art": AMULET_ART},
-		{"text": "You can. That is the only difference between us that matters down here."},
-		{"text": "I collect. It is what I am for. Armour nobody is wearing any more, blades, stones out of the shrines. I carry it between the floors."},
-		{"text": "So come and find me when you have something you do not want. I will take it, and I will ask how you are getting on, and you will tell me.\n\nThat is the trade."},
-		{"text": "Go carefully.\n\nAnd if you ever reach the top still holding it -- I would like very much to know what the daylight does."},
+		{"text": "You can. That is the only difference between us that matters down here.",
+		 "art": TRADER_ART},
+		{"text": "I collect. It is what I am for. Armour nobody is wearing any more, blades, stones out of the shrines. I carry it between the floors.",
+		 "art": TRADER_ART},
+		{"text": "So come and find me when you have something you do not want. I will take it, and I will ask how you are getting on, and you will tell me.\n\nThat is the trade.",
+		 "art": TRADER_ART},
+		{"text": "Go carefully.\n\nAnd if you ever reach the top still holding it -- I would like very much to know what the daylight does.",
+		 "art": TRADER_ART},
 	]
 
 ## Every meeting after the first, until there is something to trade.
@@ -81,6 +87,8 @@ static func intro() -> Array:
 ## be reminded who this is, not told the whole thing again.
 static func greeting() -> Array:
 	return [
-		{"text": "You are still going.\n\nGood. Tell me how it is down there."},
-		{"text": "I have nothing to offer you yet. Soon.\n\nCome back when I have got the stock out of my bag."},
+		{"text": "You are still going.\n\nGood. Tell me how it is down there.",
+		 "art": TRADER_ART},
+		{"text": "I have nothing to offer you yet. Soon.\n\nCome back when I have got the stock out of my bag.",
+		 "art": TRADER_ART},
 	]

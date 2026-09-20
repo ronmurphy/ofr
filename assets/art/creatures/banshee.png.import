@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dsr2xismmolqp"
-path="res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"
+uid="uid://mul57swtxppk"
+path="res://.godot/imported/banshee.png-a9a16afe6a0e57116a3cb0aea8668629.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/creatures/rat.png"
-dest_files=["res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"]
+source_file="res://assets/art/creatures/banshee.png"
+dest_files=["res://.godot/imported/banshee.png-a9a16afe6a0e57116a3cb0aea8668629.ctex"]
 
 [params]
 

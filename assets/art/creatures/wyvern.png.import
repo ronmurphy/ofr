@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dsr2xismmolqp"
-path="res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"
+uid="uid://cernjrrryq5n3"
+path="res://.godot/imported/wyvern.png-110aafa3222b6dae7b81db3829edcad1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/creatures/rat.png"
-dest_files=["res://.godot/imported/rat.png-be38b9688a6e3704631233a2fec91bda.ctex"]
+source_file="res://assets/art/creatures/wyvern.png"
+dest_files=["res://.godot/imported/wyvern.png-110aafa3222b6dae7b81db3829edcad1.ctex"]
 
 [params]
 
