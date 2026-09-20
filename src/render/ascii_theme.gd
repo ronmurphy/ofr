@@ -67,6 +67,17 @@ const TABLE := {
 	## shield on the floor can be told from a breastplate without inspecting it.
 	&"shield":      {"ch": "(", "fg": Palette.ARMOUR},
 
+	## The trader, and "&" rather than a letter on purpose.
+	##
+	## Every letter in this table is something that fights you -- the lowercase
+	## tier and the uppercase one both. A lowercase "p" for "person" is the
+	## genre's own convention and would have read here as one more monster,
+	## which is exactly backwards for the only creature in the game that wants
+	## to talk. "&" belongs to nothing else and looks like nothing else.
+	##
+	## The obvious CP437 answer, a smiling face, is not available: JetBrains
+	## Mono has neither U+263A nor U+263B, so both would have drawn as tofu.
+	&"trader":      {"ch": "&", "fg": Palette.TRADER},
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},
 	&"kobold":      {"ch": "k", "fg": Color("e8d9a0")},

@@ -238,6 +238,18 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			known += 1
 	y = _heading(x, y, "CREATURES  %d/%d" % [known, GameState.BESTIARY.size()])
 	y = _entry(x, y, w, "@", Palette.PLAYER, "you", "")
+	# Never redacted, unlike the roster below.
+	#
+	# The bestiary hides what you have not met so the legend cannot spoil what
+	# is waiting further down. A trader is the opposite case: knowing one exists
+	# is the whole point, because the only failure mode is walking past without
+	# realising there was anything to walk up to. Brad's reasoning -- somebody
+	# reads this, says "wait, there is a trader?", and goes looking.
+	#
+	# Outside the roster loop, so it does not move the "known / total" count,
+	# the same way "you" does not.
+	y = _entry(x, y, w, "&", Palette.TRADER, "a trader",
+		"first floor of a band")
 	for e in GameState.BESTIARY:
 		# Not met yet: a redacted row rather than no row.
 		#

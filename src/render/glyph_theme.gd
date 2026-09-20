@@ -36,11 +36,14 @@ const HEAVY_FIGURE := 0xF115D   # md-weight_lifter
 ## An active stance, not a bow. A bow icon standing on a monster reads as loot
 ## lying on the floor.
 const ARMED_SMALL  := 0xF082C   # md-karate
+## The trader. A figure holding something out, which is the whole job.
+const TRADER       := 0xF4CA    # oct-feed_person
 
 ## Semantic id -> codepoint. Alternates are already in the font subset, so
 ## changing one's mind costs a line here rather than rebuilding the font.
 const OVERRIDES := {
 	# --- the humanoid ladder ------------------------------------------------
+	&"trader":   TRADER,
 	&"kobold":   SMALL_FIGURE,
 	&"goblin":   SMALL_FIGURE,
 	&"slinger":  ARMED_SMALL,

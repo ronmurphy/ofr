@@ -77,6 +77,13 @@ const GEM           := Color("dfe4ea")
 const CHEST         := Color("c9953f")
 ## A unique. Deliberately unlike anything else on a floor -- there is one in a
 ## run and it should not be mistaken for loot.
+## The trader. Warm, because they are the one thing down here that is pleased
+## to see you, and because no monster wears it.
+##
+## Unlike MAGIC this needs no colour-blind clearance: "&" is a glyph nothing
+## else uses, so shape carries the difference and colour is only flavour.
+const TRADER        := Color("e8b76a")
+
 const RING          := Color("b98cd6")
 
 ## Anything carrying an element, whether a gem put it there or it was found

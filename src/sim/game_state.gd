@@ -469,6 +469,11 @@ var rng := RandomNumberGenerator.new()
 ## Seeded from the run and the depth, so a save enchants the same way every
 ## time while touching nothing else on the floor.
 var enchant_rng := RandomNumberGenerator.new()
+
+## And one for the trader's room, for the same reason again: it is drawn after
+## the floor is already populated, so taking it from the main stream would make
+## the number of draws depend on whether this depth has a trader at all.
+var trader_rng := RandomNumberGenerator.new()
 var map: DungeonMap
 var light_map: LightMap
 var pathfinder: Pathfinder
@@ -996,6 +1001,7 @@ func build_level() -> void:
 	# Salted differently from the grave rng, or the two side streams would
 	# march in lockstep and a floor's graves would predict its magic.
 	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
+	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
 	_fov_buffer.resize(MAP_W * MAP_H)
@@ -1112,6 +1118,8 @@ func build_level() -> void:
 	_place_vault_contents(gen)
 	_place_first_gem()
 	_place_chest()
+	# Last, so the trader takes a cell nothing else wanted.
+	_place_trader()
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
@@ -1497,6 +1505,81 @@ func _open_chest(at: Vector2i) -> void:
 	if rng.randf() < CHEST_TRAP_CHANCE:
 		msg_log.add("The hinges shriek. That carried.", Color(0.95, 0.70, 0.40))
 		_make_noise(at, CHEST_NOISE, &"forge")
+
+## The floors a trader stands on: the FIRST of each band, going down and coming
+## back up.
+##
+##     1, 4, 7   upper, caves, fortress on the descent
+##     11, 14, 17  fortress, caves, upper on the climb
+##
+## Floor 10 has none on purpose -- it is the amulet's own floor and it is meant
+## to be met alone.
+##
+## Six in a full run, which is the number that prices everything the trader will
+## eventually sell. Derived from Bands rather than listed by hand would be
+## tidier, but a band's FIRST floor is not something Bands can answer: mirrored()
+## folds 11 onto 9, and 9 is a band's last floor, not its first.
+const TRADER_FLOORS := [1, 4, 7, 11, 14, 17]
+
+## Where the trader stands, once per floor that has one. Null everywhere else.
+var trader: Entity = null
+
+## Stood in a room, not wandering.
+##
+## On floor ONE specifically, as close to where you woke as a room away, because
+## that trader carries the story and a player who never finds them never learns
+## why they are down here. Everywhere else they are simply somewhere on the
+## floor and finding them is the player's business -- the legend says a trader
+## exists, which is enough of a hint to go looking.
+func _place_trader() -> void:
+	trader = null
+	if not TRADER_FLOORS.has(effective_depth()):
+		return
+	if room_rects.is_empty():
+		return
+
+	# The first floor's trader is deliberately findable: the nearest room that
+	# is not the one you are standing in. Missing them is possible -- the stairs
+	# might be the other way -- but it should take bad luck rather than being
+	# the default.
+	var want := 0
+	if room_rects.size() > 1:
+		if effective_depth() == 1:
+			var home := room_rects[0].get_center()
+			var best := 1 << 30
+			for i in range(1, room_rects.size()):
+				var c := room_rects[i].get_center()
+				var d := absi(c.x - home.x) + absi(c.y - home.y)
+				if d < best:
+					best = d
+					want = i
+		else:
+			want = trader_rng.randi_range(1, room_rects.size() - 1)
+	var at := _open_cell_in(room_rects[want])
+	if at.x < 0:
+		return
+
+	var t := Entity.new("trader", &"trader", at.x, at.y)
+	# NEUTRAL is the whole point, and this is its first use in the game. It
+	# fights nobody and nobody fights it -- see Entity.hostile_to. A monster
+	# that walked into a trader and killed it would delete the floor's only
+	# conversation, and the player would never know it had been there.
+	t.faction = Entity.Faction.NEUTRAL
+	t.max_hp = 1
+	t.hp = 1
+	t.power = 0
+	t.threat = 0
+	# Never rolled into the watch and never given a beat: standing still is what
+	# makes them findable, and a trader who wandered off would turn "there is a
+	# trader on this floor" into a lie the legend tells.
+	t.alertness = Entity.Alert.AWAKE
+	# Not SLEEPING, which would draw the "z" over their head and invite the
+	# player to stab them in their sleep.
+	t.activity = Entity.Activity.PATROLLING
+	t.patrols = false
+	t.scavenges = false
+	entities.append(t)
+	trader = t
 
 func _place_first_gem() -> void:
 	if gem_found or ascending:
@@ -2590,6 +2673,17 @@ func player_move(dx: int, dy: int) -> bool:
 	var ny := player.y + dy
 
 	var target := entity_at(nx, ny)
+	# Walking into the trader starts a conversation instead of shoving past it.
+	#
+	# This has to come BEFORE the swap below, which exists for allies: a neutral
+	# is not hostile, so without this the player would trade places with the one
+	# thing on the floor that wants to talk to them and never find out it did.
+	#
+	# Free, and it does not end the turn -- the same call as the ally stance
+	# key. Nothing on the floor should get a move because you said hello.
+	if target != null and target.faction == Entity.Faction.NEUTRAL:
+		events.append({"kind": &"talk", "who": target.name})
+		return true
 	# Change places with it rather than hitting it. An autonomous ally WILL
 	# end up in the corridor you are backing down -- that is not an edge case,
 	# it is most corridors -- and the alternatives are both bad: bumping it
@@ -4622,6 +4716,16 @@ func _run_world() -> void:
 ## slows the player, which is the whole reason mud can be used as a shield.
 func _take_ai_turn(actor: Entity) -> int:
 	if not actor.alive or game_over:
+		return Scheduler.ACTION_COST
+
+	# A neutral takes no turn at all.
+	#
+	# Stated here rather than left to fall out of "it has no foe", because the
+	# quiet paths would still run: patrolling would look for a route it has no
+	# beat for, scavenging would eye the floor, and morale would count it among
+	# the ranks. A trader who wandered off would also turn "there is a trader on
+	# this floor" into a lie the legend tells.
+	if actor.faction == Entity.Faction.NEUTRAL:
 		return Scheduler.ACTION_COST
 
 	# Regeneration ticks even while asleep, so a troll you wounded and fled

@@ -16,6 +16,7 @@ extends Control
 @onready var legend: LegendPanel = $Legend
 @onready var summary: SummaryPanel = $Summary
 @onready var pad_setup: PadPanel = $PadSetup
+@onready var talk: TalkPanel = $Talk
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -197,6 +198,24 @@ func _open_pad_setup() -> void:
 	pad_setup.open(pad.cfg)
 	_refresh()
 
+## Somebody said something. Open the panel for it.
+##
+## The introduction is told ONCE per player and the flag is set when the panel
+## OPENS, not when it closes -- a player who escapes out of it has decided they
+## do not want it, and replaying it next run would be the game arguing.
+func _maybe_talk(evts: Array) -> void:
+	for ev in evts:
+		if ev.get("kind", &"") != &"talk":
+			continue
+		var who := String(ev.get("who", "trader"))
+		if TraderTalk.intro_seen():
+			talk.open(who, TraderTalk.greeting())
+		else:
+			TraderTalk.mark_intro_seen()
+			talk.open(who, TraderTalk.intro())
+		_refresh()
+		return
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		return
@@ -233,6 +252,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# typed.
 	# Keyboard-only on purpose: someone rebinding a controller that does not
 	# work cannot be asked to use that controller to escape the screen.
+	# A conversation is modal and takes keys before any other panel.
+	if talk.visible:
+		talk.handle_key(key)
+		_refresh()
+		return
+
 	if pad_setup.visible:
 		pad_setup.handle_key(key)
 		_refresh()
@@ -710,6 +735,7 @@ func _refresh() -> void:
 	var evts := state.take_events()
 	grid.play_events(evts)
 	sound.play_events(evts)
+	_maybe_talk(evts)
 	grid.refresh_preview()
 	grid.queue_redraw()
 	sidebar.queue_redraw()
