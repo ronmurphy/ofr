@@ -586,7 +586,16 @@ func _draw() -> void:
 			# Enchanted gear is tinted rather than given its own glyph: ")" is the
 			# roguelike's mark for a melee weapon and splitting it would invent
 			# notation the genre already settled. Colour is the free channel.
-			if it.element != &"":
+			#
+			# NOT gems. A gem carries an element as base catalogue data -- that
+			# is what it IS -- so the naive test caught every one and painted
+			# them MAGIC blue, taking away the near-white that nothing else in
+			# the game uses. A gem is not an enchanted item, it is the thing you
+			# bind, and collapsing the two costs exactly the discrimination the
+			# palette was built to give. `item.gd:565` already guards the name
+			# suffix the same way; this is that guard, in the place it was
+			# missed.
+			if it.shows_enchanted():
 				_draw_glyph_tinted(it.appearance, Vector2(it.x, it.y), Palette.MAGIC)
 			else:
 				_draw_glyph(it.appearance, Vector2(it.x, it.y))

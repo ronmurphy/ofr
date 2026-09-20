@@ -1638,24 +1638,33 @@ func _place_first_gem() -> void:
 		if it.kind == Item.Kind.GEM:
 			gem_found = true
 			return
-	# THE PLAYER's gear, not everything on the floor.
+	# There WAS a third test here, and removing it is the fix rather than an
+	# omission.
 	#
-	# This asks "has this player already bound a gem", and it used to be able to
-	# infer that from any elemental item anywhere, because binding was the only
-	# way an element could exist. The found-magic generator broke that
-	# inference: a monster can now be carrying an enchanted weapon it was
-	# generated with, and reading that as "the player has met a gem" skipped the
-	# guarantee on 8 seeds in 60.
+	# It read the player's equipped gear and treated any element as proof that
+	# a gem had been met. That inference was sound while binding was the only
+	# way an element could exist, and the found-magic generator ended that: a
+	# weapon can now arrive enchanted, so the check fired for a player who had
+	# never seen a gem.
 	#
-	# A weapon a kobold happens to be holding teaches nothing about binding.
-	# Discovery is the whole thing this guarantee buys, and discovery means the
-	# player, not the floor.
-	if player != null:
-		for slot in player.equipped:
-			var worn: Item = player.equipped[slot]
-			if worn != null and worn.element != &"":
-				gem_found = true
-				return
+	# Measured, same seeds, the only difference being the player's weapon:
+	# bare-handed, 0 of 120 pity floors went without a gem; carrying a
+	# generated enchanted weapon, 120 of 120 did. Not a rare miss -- the
+	# guarantee stopped existing. Reachable on roughly one run in ten, which is
+	# how often the strongest weapon on depth one is also the magic one.
+	#
+	# It is deleted rather than repaired because it was never load-bearing.
+	# Every genuine way to meet a gem already sets `gem_found` where it
+	# happens -- a chest (_place_chest), a heard prayer (_pray_at_shrine), a
+	# gem lying on this floor (just above), the pity gem itself -- and the flag
+	# is saved and restored with the run. Nothing reaches these lines having
+	# truly met one. Tightening the test to "was this element BOUND" would have
+	# meant a new field on Item recording provenance, to answer a question
+	# nothing else asks.
+	#
+	# The cost is a save written before `gem_found` existed, carrying a bound
+	# gem: that run may be offered one extra gem on depths 2-4. One spare stone
+	# is a smaller wrong than a guarantee that silently does not apply.
 
 	# The FARTHEST room from where you woke up, and never room 0.
 	#
@@ -2570,6 +2579,24 @@ func player_fire(cell: Vector2i) -> bool:
 		# a shot.
 		msg_log.add("There is nothing there to shoot.", Color(0.7, 0.6, 0.4))
 		return false
+	# Hostility, not "is it me" -- the same rule firing_targets applies, applied
+	# again here because the tab cursor is not the only way to choose a target.
+	#
+	# Tab-cycling already refused neutrals and allies. Right-click did not, and
+	# right-click is the path a mouse finds first: no mode, no confirmation,
+	# straight to the shot. Measured on 2026-09-20 before this line existed --
+	# 40 of 40 clear bow shots killed the trader, deleting the floor's only
+	# conversation, and the same gap let you put an arrow through your own
+	# risen ally, which is precisely what the comment in firing_targets says
+	# must never happen.
+	#
+	# Gated on hostile_to() rather than on Faction.NEUTRAL directly, so anything
+	# marked neutral later inherits the refusal without anyone remembering to
+	# come back here. That inheritance is the whole reason the faction exists.
+	if not target.hostile_to(player):
+		msg_log.add("The %s is not your enemy." % target.name,
+			Color(0.7, 0.6, 0.4))
+		return false
 
 	var launcher: Item = player.equipped.get(Item.Slot.WEAPON, null)
 	if launcher != null and launcher.uses_ammo() and launcher.ammo <= 0:
@@ -2637,6 +2664,14 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 	var target := entity_at(cell.x, cell.y)
 	if target == null or target.is_player:
 		msg_log.add("There is nothing there to throw at.", Color(0.7, 0.6, 0.4))
+		return false
+	# Same rule as player_fire, and refused here for the same reason: a thrown
+	# item killed the trader on 25 of 25 attempts. Checked BEFORE the item
+	# leaves the inventory, so declining the throw does not also cost the thing
+	# you were going to throw.
+	if not target.hostile_to(player):
+		msg_log.add("The %s is not your enemy." % target.name,
+			Color(0.7, 0.6, 0.4))
 		return false
 
 	_travel.clear()

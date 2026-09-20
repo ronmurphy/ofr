@@ -17,6 +17,19 @@ func _initialize() -> void:
 	# those paths were constants it did that to the player's own files, and it
 	# deleted a suspended run that was actually being played.
 	GameState.use_scratch_files("tests")
+	# settings.cfg is the one player-owned file use_scratch_files does NOT
+	# redirect, and four separate modules write it: RenderTheme, Effects,
+	# TraderTalk and SoundDeck. Snapshot it here and compare at the end, so a
+	# test that leaves the player's own settings altered fails loudly instead
+	# of being discovered months later as "it always resets".
+	#
+	# A guard rather than a redirect because a redirect means a static path
+	# variable in all four, which is its own change. This catches every one of
+	# them from a single place in the meantime.
+	var settings_before := ""
+	var had_settings := FileAccess.file_exists("user://settings.cfg")
+	if had_settings:
+		settings_before = FileAccess.get_file_as_string("user://settings.cfg")
 	print("")
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
@@ -146,6 +159,8 @@ func _initialize() -> void:
 	_test_the_dead_are_marked()
 	_test_damage_types()
 	_test_the_first_gem_is_certain()
+	_test_found_magic_is_not_a_gem()
+	_test_gems_keep_their_colour()
 	_test_found_magic()
 	_test_the_trader()
 	_test_every_kind_is_listed()
@@ -167,6 +182,34 @@ func _initialize() -> void:
 	_report_encounter_curve()
 
 	GameState.clear_scratch_files()
+
+	# The snapshot taken at the top. Anything the suite changed in the player's
+	# own settings is a bug in the test that changed it, not a finding here.
+	#
+	# Existence is asserted separately from contents, because comparing two
+	# empty strings is a pass that tested nothing -- the same vacuity that let
+	# four checks aim at an empty cell this morning. Asserted as "the file is in
+	# the same STATE" rather than "the file exists", so a clean checkout that
+	# has never run the game does not go spuriously red: on such a machine there
+	# is genuinely nothing to protect, and a test that CREATES the file still
+	# fails this, which is the case that matters.
+	#
+	# Note the limit rather than trusting it further than it goes: this only
+	# runs if _initialize reaches the end. A SCRIPT ERROR or an early quit skips
+	# it entirely and leaves the settings clobbered with nothing said. It is a
+	# tripwire, not a seatbelt. The seatbelt is routing SETTINGS through
+	# use_scratch_files the way BestiaryLog does, which is a separate change.
+	var has_settings := FileAccess.file_exists("user://settings.cfg")
+	var settings_after := ""
+	if has_settings:
+		settings_after = FileAccess.get_file_as_string("user://settings.cfg")
+	check("settings.cfg is in the same state it started in",
+		had_settings == has_settings,
+		"existed before=%s after=%s" % [had_settings, has_settings])
+	check("and the suite leaves its contents untouched",
+		settings_after == settings_before,
+		"before=%s after=%s" % [settings_before.replace("\n", " "),
+			settings_after.replace("\n", " ")])
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -1205,6 +1248,58 @@ func _test_player_ranged_attacks() -> void:
 	var turns_now := gs.turns
 	check("shooting nothing is refused", not gs.player_fire(Vector2i(11, 5)))
 	check("and costs no turn", gs.turns == turns_now)
+
+	# You cannot AIM at something you are not fighting.
+	#
+	# Measured 2026-09-20, before the guard existed: 40 of 40 clear bow shots
+	# killed the trader and 25 of 25 thrown items did the same, deleting the
+	# floor's only conversation. The identical gap let an arrow through a risen
+	# ally -- exactly what firing_targets' own comment says must never happen.
+	# Tab-cycling had always refused both; right-click and free aim had not,
+	# because they take a CELL and never consulted hostility.
+	#
+	# Asserted per path on purpose: player_fire and player_throw carry duplicate
+	# target tests, and a duplicated fix is one that drifts apart later.
+	near.faction = Entity.Faction.NEUTRAL
+	turns_now = gs.turns
+	# Aim where it IS, not where it started. The successful shot above ends the
+	# turn, the goblin takes its move, and (9, 5) is vacant by the time these
+	# run. Four of these checks first shipped hardcoded to (9, 5) and passed
+	# while testing nothing: player_fire refuses a null target at :2578, long
+	# before the hostility guard at :2587 it is supposed to be exercising.
+	#
+	# Hence the preconditions. A refusal test that passes because the cell is
+	# empty, or because the target drifted out of range, is not a weaker test --
+	# it is a test of something else entirely that happens to return false.
+	var live := Vector2i(near.x, near.y)
+	check("the target is standing where we aim", gs.entity_at(live.x, live.y) == near)
+	check("and the shot is genuinely available", gs.can_fire_at(live))
+	check("a neutral cannot be shot", not gs.player_fire(live))
+	check("and refusing it costs no turn", gs.turns == turns_now)
+
+	near.faction = Entity.Faction.PLAYER
+	check("nor can an ally be shot", not gs.player_fire(live))
+
+	# The guard has to refuse the RIGHT things rather than everything: a check
+	# that refused every target would satisfy both lines above and be useless.
+	near.faction = Entity.Faction.MONSTER
+	check("but a hostile target is still shootable", gs.player_fire(live))
+
+	# Thrown items take the same rule, and declining must not cost the item --
+	# the refusal is placed before the inventory removal for that reason. The
+	# shot above spent a turn, so it has moved again: re-read, and re-assert.
+	live = Vector2i(near.x, near.y)
+	gs.player.inventory.append(Item.make(&"dagger"))
+	var pack_before := gs.player.inventory.size()
+	near.faction = Entity.Faction.NEUTRAL
+	check("the throw target is standing where we aim",
+		gs.entity_at(live.x, live.y) == near)
+	check("and is inside throwing range", gs.can_reach(live, 5))
+	check("a neutral cannot be thrown at",
+		not gs.player_throw(pack_before - 1, live))
+	check("and the dagger stays in the pack",
+		gs.player.inventory.size() == pack_before)
+	near.faction = Entity.Faction.MONSTER
 
 	# Melee weapons must not quietly become ranged.
 	var axe := Item.make(&"war_axe")
@@ -3588,7 +3683,6 @@ func _test_symbol_theme() -> void:
 	check("cycling visits every mode and wraps",
 		seen.size() == RenderTheme.mode_count(),
 		"%d of %d" % [seen.size(), RenderTheme.mode_count()])
-	RenderTheme.set_mode(was)
 
 	# All three panels must agree, which is the only reason the mode is static.
 	RenderTheme.set_mode(RenderTheme.Mode.SYMBOLS)
@@ -3597,6 +3691,16 @@ func _test_symbol_theme() -> void:
 	RenderTheme.set_mode(RenderTheme.Mode.ASCII)
 	check("and the ascii one when not",
 		RenderTheme.active().appearance(&"water")["ch"] == "~")
+
+	# LAST, and that placement is the whole point.
+	#
+	# set_mode() writes user://settings.cfg, which is the PLAYER's file --
+	# use_scratch_files() redirects the save, the morgue and the bestiary but
+	# has never covered this one. The restore used to sit above the two lines
+	# that follow it, so every headless run ended with the mode left on ASCII
+	# and silently rewrote Brad's own view back to letters. He noticed as "it
+	# always resets" long before either of us found the cause.
+	RenderTheme.set_mode(was)
 
 
 ## Reported from play: a brazier standing in a shrine's doorway.
@@ -5827,6 +5931,103 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
 	r.seed = s
 	return r
+
+## A gem is not an enchanted item. It is the thing you bind.
+##
+## Gems carry an element as base catalogue data, so the found-magic tint caught
+## every one of them and painted them MAGIC blue -- taking away Palette.GEM, a
+## near-white that nothing else in the game uses. Shipped unnoticed for a day.
+##
+## The guard already existed elsewhere: item.gd's display name checks
+## `kind != Kind.GEM` before appending an element suffix, for the same reason.
+func _test_gems_keep_their_colour() -> void:
+	# The premise. If a gem ever stops carrying an element this test silently
+	# stops testing anything, so it is asserted rather than assumed.
+	var fire := Item.make(&"gem_fire")
+	check("a gem carries an element (the reason the bug existed)",
+		fire != null and fire.element != &"")
+	if fire == null:
+		return
+
+	# What the draw sites ask.
+	check("but a gem is not tinted as found magic",
+		not fire.shows_enchanted())
+
+	# And the other half: an enchanted weapon still IS.
+	var sword := Item.make(&"short_sword")
+	sword.element = &"fire"
+	check("while an enchanted weapon still is", sword.shows_enchanted())
+
+	# Every gem in the catalogue, not just the one. A new gem added later is
+	# exactly how this comes back.
+	var missed: Array[String] = []
+	for key in Item.CATALOGUE:
+		var it := Item.make(key)
+		if it != null and it.kind == Item.Kind.GEM and it.shows_enchanted():
+			missed.append(it.name)
+	check("no gem in the catalogue is tinted", missed.is_empty(), str(missed))
+
+## A weapon that ARRIVED enchanted is not proof the player has met a gem.
+##
+## `_place_first_gem` used to read the player's equipped gear and treat any
+## element as that proof. Sound while binding was the only source of elements;
+## the found-magic generator ended it.
+##
+## Measured before the fix, same seeds, the only difference being the weapon:
+## bare-handed 0 of 120 pity floors went without a gem, carrying generated
+## magic 120 of 120 did. The guarantee did not weaken, it stopped existing.
+func _test_found_magic_is_not_a_gem() -> void:
+	var bare_barren := 0
+	var armed_barren := 0
+	var floors := 0
+	for d in GameState.GEM_PITY_FLOORS:
+		for i in 12:
+			var seed_value := 3300 + int(d) * 90 + i
+			floors += 1
+
+			# The control. Same seed, no weapon -- this is what the guarantee
+			# is supposed to do, and if it ever fails the test below proves
+			# nothing.
+			var bare := GameState.new(seed_value)
+			bare.new_game()
+			bare.depth = int(d)
+			bare.build_level()
+			if not _floor_holds_a_gem(bare):
+				bare_barren += 1
+
+			# The same floor, with a weapon the generator could have produced:
+			# an element set, and no gem ever involved.
+			var armed := GameState.new(seed_value)
+			armed.new_game()
+			var sword := Item.make(&"short_sword")
+			sword.element = &"fire"
+			armed.player.equipped[Item.Slot.WEAPON] = sword
+			armed.depth = int(d)
+			armed.build_level()
+			if not _floor_holds_a_gem(armed):
+				armed_barren += 1
+
+	check("the pity gem still arrives for a bare-handed player (%d floors)"
+		% floors, bare_barren == 0, "%d barren" % bare_barren)
+	check("and found magic does not count as having met one",
+		armed_barren == 0, "%d of %d barren" % [armed_barren, floors])
+
+	# The other direction: a player who has GENUINELY met a gem gets no pity
+	# one. Without this, deleting the guarantee entirely would pass the checks
+	# above perfectly.
+	var met := GameState.new(4242)
+	met.new_game()
+	met.gem_found = true
+	met.depth = 2
+	met.build_level()
+	check("but a player who has already met one is not given another",
+		not _floor_holds_a_gem(met))
+
+func _floor_holds_a_gem(gs: GameState) -> bool:
+	for it in gs.ground:
+		if it.kind == Item.Kind.GEM:
+			return true
+	return false
 
 ## Every player meets a gem, early, whatever the dice do.
 func _test_the_first_gem_is_certain() -> void:

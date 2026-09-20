@@ -433,6 +433,20 @@ static func make(item_id: StringName) -> Item:
 ##   return  LAUNCHERS ONLY, and pointless on a sling.
 ##   fire    Anything. You can set a stone or an arrow alight.
 ##   crag    Anything. Something heavy striking the ground is the whole idea.
+## Whether this should be drawn as carrying an effect.
+##
+## Lives here because three places ask it -- the map, the inventory row, and
+## the test that guards them -- and three copies of one condition is how the
+## three stop agreeing. The gem exclusion is the whole reason it is not simply
+## `element != &""`: a gem carries an element as catalogue data, because being
+## an element is what a gem IS. It is the thing you bind, not a bound thing,
+## and it keeps Palette.GEM.
+##
+## Shipped for a day without the exclusion, which painted every gem on every
+## floor in the magic colour and took away the one near-white nothing else uses.
+func shows_enchanted() -> bool:
+	return element != &"" and kind != Kind.GEM
+
 func accepts_element(el: StringName) -> bool:
 	if not is_equipment() or kind != Kind.WEAPON:
 		return false
