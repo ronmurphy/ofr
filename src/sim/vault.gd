@@ -17,9 +17,37 @@ const TERRAIN := {
 	"%": Tiles.RUBBLE, ",": Tiles.BONES, "*": Tiles.FUNGUS,
 	"&": Tiles.BRAZIER, "A": Tiles.SHRINE, "X": Tiles.PIT, "t": Tiles.TRAP,
 	">": Tiles.STAIRS_DOWN, "<": Tiles.STAIRS_UP,
+	# Chosen for the shape of a headstone. Deliberately not `T`, which sits one
+	# shift away from `t` for trap -- these files are hand-typed, and a glyph a
+	# slip of the finger turns into a different feature is a bad glyph.
+	#
+	# GRAVE is the only standing feature that is walkable, so it can be dropped
+	# anywhere a monster could stand without a vault having to prove it did not
+	# wedge a corridor. See the note on it in tiles.gd.
+	"n": Tiles.GRAVE,
+	# Solid, like a door -- you open it by walking into it. So it is terrain
+	# rather than a content marker, and it is NOT somewhere an actor can stand.
+	#
+	# Authored chests do not threaten the "one unique per run" rule, which is
+	# enforced by `uniques_found` in _open_chest rather than by chests being
+	# rare: the first chest of a run hands out the unique, every one after it
+	# rolls a gem instead. What an extra chest really costs is gem supply and a
+	# 75% chance of a very loud hinge (CHEST_NOISE 8, louder than a fight), and
+	# both of those are things a vault author should be free to spend.
+	#
+	# The generator's own chests remain on the middle floor of each band -- see
+	# _place_chest -- so placing one here adds to that cadence rather than
+	# replacing it.
+	"C": Tiles.CHEST,
 }
 ## Content markers stand on plain floor; the floor is laid first, then these.
-const CONTENTS := ["m", "M", "?", "!", ")", "[", "}"]
+##
+## `(` is a sack. The convention here is to reuse the character the ASCII theme
+## draws the thing with -- `!` potion, `)` weapon, `[` armour -- but a sack
+## draws as `¤`, which is not on a keyboard and has no business in a file
+## people hand-edit. `(` is free in both namespaces and reads as the open mouth
+## of one.
+const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "("]
 
 var name := "vault"
 var weight := 8

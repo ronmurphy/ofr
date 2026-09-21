@@ -2352,6 +2352,13 @@ func _place_vault_contents(gen: MapGen) -> void:
 					Item.Slot.ARMOR, enchant_rng), at)
 			"}":
 				_drop_item_at(_roll_launcher(), at)
+			"(":
+				# A sack, placed rather than rolled. The sack decides its own
+				# contents when opened -- see _open_sack -- so an author is
+				# choosing "something worth carrying is here", not choosing what
+				# it is. That keeps a hand-drawn room from handing out a
+				# specific prize the tables would never have given it.
+				_drop_item_at(Item.make(&"sack"), at)
 
 ## Vault loot goes where the author put it -- unless a later pass turned that
 ## cell into a hazard, in which case it is nudged to a neighbour rather than

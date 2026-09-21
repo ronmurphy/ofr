@@ -14,13 +14,19 @@ const TERRAIN := {
 	"'": "open door", "O": "pillar", "^": "stalagmite", "~": "water",
 	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus", "&": "brazier",
 	"A": "shrine", "X": "pit", "t": "trap", ">": "stairs down", "<": "stairs up",
+	"n": "grave", "C": "chest",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
-	")": "weapon", "[": "armour", "}": "launcher"}
+	")": "weapon", "[": "armour", "}": "launcher", "(": "sack"}
 ## Cells an actor can occupy. Doors count -- they open. Shrines too: they are
 ## stood upon, not bumped into. Braziers and pillars are NOT.
+##
+## `n` is here because a grave is the one standing feature you can walk onto;
+## tiles.gd says so explicitly, and the reason is that a headstone which
+## blocked movement would be one more thing generation has to prove it never
+## wedged into a corridor.
 const PASSABLE := [".", "_", "+", "'", "~", "=", "%", ",", "*", "A", "X", "t",
-	">", "<", "m", "M", "?", "!", ")", "[", "}"]
+	">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "("]
 
 var _problems := 0
 var _warnings := 0
