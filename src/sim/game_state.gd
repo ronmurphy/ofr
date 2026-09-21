@@ -387,6 +387,22 @@ const GEM_RETURN_STEPS := 5
 ## Only the FIRST one is placed. Everything after it is the ordinary roll, so
 ## the guarantee buys discovery and nothing else.
 const GEM_PITY_FLOORS := [2, 3, 4]
+
+## What a sack holds, as cumulative thresholds.
+##
+## Brad's shape: a weapon is the usual answer, armour next, then something
+## enchanted, and a gem is the rare one. Written as a ladder rather than four
+## weights so the ordering is visible and a change to one boundary cannot
+## silently reorder the tiers.
+##
+## The MAGIC tier does not roll its own element -- it takes an ordinary weapon
+## and applies the same enchant the floor would, so a sack can never contain
+## something the gem rules forbid, and the curve that makes deep magic richer
+## reaches sacks without anyone wiring it.
+const SACK_WEAPON := 0.45
+const SACK_ARMOUR := 0.75
+const SACK_MAGIC := 0.93
+## above SACK_MAGIC: a gem
 var gem_found := false
 ## Which uniques this run has already turned up. One of each per dungeon, so a
 ## second chest cannot hand you a second ring.
@@ -1657,6 +1673,53 @@ func _place_trader() -> void:
 	entities.append(t)
 	trader = t
 
+## Opens a sack, and hands back whatever the tables gave.
+##
+## Every branch calls a generator that already exists. The point of the sack is
+## that it is a REUSABLE drop: anything that hoards rather than wears can carry
+## one, and none of them need to know what a sack contains.
+##
+## Rolls at effective_depth(), so the floor it is opened on decides the draw.
+func _open_sack() -> bool:
+	var at := effective_depth()
+	var roll := rng.randf()
+	var prize: Item = null
+	var said := ""
+
+	if roll < SACK_WEAPON:
+		prize = Item.roll_equipment(rng, at, Item.Slot.WEAPON, enchant_rng)
+		said = "Something with an edge."
+	elif roll < SACK_ARMOUR:
+		prize = Item.roll_equipment(rng, at, Item.Slot.ARMOR, enchant_rng)
+		said = "Something to put between you and the dark."
+	elif roll < SACK_MAGIC:
+		# An ordinary weapon, then the floor's own enchant applied until it
+		# takes. Not a separate magic table: routing it through the same
+		# accepts_element() rules means a sack can never produce a sling of
+		# frost, which the gem system forbids a player from making.
+		for _try in 12:
+			prize = Item.roll_equipment(rng, at, Item.Slot.WEAPON)
+			if prize == null:
+				break
+			Item._maybe_enchant(prize, enchant_rng, GameState.MAX_DEPTH * 2)
+			if prize.element != &"":
+				break
+		said = "It hums."
+	else:
+		prize = Item.roll_gem(rng, at)
+		said = "A stone, and warm."
+
+	if prize == null:
+		# The tables had nothing legal at this depth. Refuse rather than
+		# consume: an item that vanishes and gives nothing is a bug report.
+		msg_log.add("The sack is empty.", Color(0.7, 0.6, 0.4))
+		return false
+
+	_drop_item_at(prize, Vector2i(player.x, player.y))
+	msg_log.add("You open the sack. %s a %s." % [said, prize.display_name()],
+		Color(0.85, 0.80, 0.60))
+	return true
+
 func _place_first_gem() -> void:
 	if gem_found or ascending:
 		return
@@ -2066,6 +2129,21 @@ func _drop_loot(victim: Entity) -> void:
 	# against the next one. Rubble knaps into sling stones, a sling is blunt,
 	# and blunt is what golems are weak to -- so its corpse is ammunition for
 	# killing its kin. Nothing here is new; it is four existing rules meeting.
+	# A hoard, for the one thing in the dungeon that hoards.
+	#
+	# Reported by a player who lost three runs getting back to the dragon and
+	# was handed nothing for winning: it wears no armour and carries no blade,
+	# so the ordinary drop path had nothing of its to give. A sack is the
+	# answer rather than a bespoke table, because "this creature kept treasure
+	# instead of wearing it" is a thing several creatures could be.
+	#
+	# It is placed rather than rolled, so killing the dragon always pays. What
+	# it pays is still the sack's roll, and it rolls at the depth you open it.
+	if victim.appearance == &"dragon":
+		var hoard := Item.make(&"sack")
+		if hoard != null:
+			_drop_item_at(hoard, Vector2i(victim.x, victim.y))
+
 	if victim.appearance == &"golem":
 		var at := Vector2i(victim.x, victim.y)
 		if map.in_bounds(at.x, at.y) and map.get_tile(at.x, at.y) == Tiles.FLOOR \
@@ -4317,6 +4395,9 @@ func _apply_effect(item: Item) -> bool:
 			return _summon_ally(item)
 		&"raise_corpse":
 			return _raise_the_recent_dead()
+
+		&"open_sack":
+			return _open_sack()
 
 		&"heal":
 			if player.hp >= player.max_hp:

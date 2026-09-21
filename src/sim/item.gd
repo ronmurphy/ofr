@@ -250,6 +250,27 @@ const CATALOGUE := {
 		"effect": &"heal", "magnitude": 12, "forge": 8,
 		"min_depth": 1, "weight": 12,
 	},
+	## A sack of loot, and deliberately a GENERAL mechanism rather than a
+	## dragon's drop.
+	##
+	## Anything that hoards rather than wears can drop one, and it rolls across
+	## every table the game already has instead of carrying its own: the
+	## equipment roller for ordinary gear, the same enchant chance floor loot
+	## uses, and the shrine's gem roller. Nothing here duplicates a generator,
+	## so a change to any of them reaches the sack for free.
+	##
+	## Weight 0: never rolled as ordinary loot, the same as gems and uniques.
+	## Something has to decide to drop one.
+	##
+	## It rolls at the depth it is OPENED, not the depth it fell. Brad's call,
+	## and it turns carrying one into a decision -- a sack held from the upper
+	## floors to the fortress draws from a richer table, and the enchant curve
+	## climbs with effective depth, so the magic half improves too.
+	&"sack": {
+		"name": "sack", "app": &"sack", "kind": Kind.POTION,
+		"effect": &"open_sack", "verb": "open",
+		"min_depth": 1, "weight": 0,
+	},
 	&"scroll_light": {
 		"name": "scroll of light", "app": &"scroll", "kind": Kind.SCROLL,
 		"effect": &"light", "magnitude": 16, "forge": 4,

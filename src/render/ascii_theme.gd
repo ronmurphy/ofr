@@ -77,6 +77,10 @@ const TABLE := {
 	##
 	## The obvious CP437 answer, a smiling face, is not available: JetBrains
 	## Mono has neither U+263A nor U+263B, so both would have drawn as tofu.
+	## A sack. The chest is the other container and wears the other currency
+	## mark, so the pair read as kin without being the same thing -- a chest is
+	## terrain you open in place, a sack is loot you carry until you choose.
+	&"sack":        {"ch": "\u00a4", "fg": Palette.SACK},
 	&"trader":      {"ch": "&", "fg": Palette.TRADER},
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},

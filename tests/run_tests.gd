@@ -161,6 +161,7 @@ func _initialize() -> void:
 	_test_the_first_gem_is_certain()
 	_test_found_magic_is_not_a_gem()
 	_test_gems_keep_their_colour()
+	_test_the_sack()
 	_test_found_magic()
 	_test_the_trader()
 	_test_every_kind_is_listed()
@@ -5931,6 +5932,67 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
 	r.seed = s
 	return r
+
+## A sack of loot: one drop that reaches every table the game already has.
+func _test_the_sack() -> void:
+	var sack := Item.make(&"sack")
+	check("a sack exists and is openable", sack != null and sack.verb() == "open")
+	check("and is never ordinary loot (weight 0)",
+		int(Item.CATALOGUE[&"sack"].get("weight", -1)) == 0)
+
+	# Opening always yields SOMETHING. An item that vanishes and pays nothing
+	# is the bug report this refuses to allow.
+	var empties := 0
+	var uniques := 0
+	var illegal: Array[String] = []
+	var kinds := {}
+	for d in [2, 10, 19]:
+		for i in 60:
+			var gs := GameState.new(1500 + d * 7 + i)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			var before: int = gs.ground.size()
+			var ok := gs._open_sack()
+			if not ok or gs.ground.size() == before:
+				empties += 1
+				continue
+			var got: Item = gs.ground[-1]
+			kinds[got.kind] = int(kinds.get(got.kind, 0)) + 1
+			# Uniques are authored and chest-only. A sack must never spend one.
+			if got.unique:
+				uniques += 1
+			# And it must never contain something the gem rules forbid a player
+			# from making -- the sack routes through accepts_element precisely
+			# so a sling of frost is impossible here too.
+			if got.element != &"" and got.kind != Item.Kind.GEM \
+					and not got.accepts_element(got.element):
+				illegal.append("%s / %s" % [got.name, got.element])
+
+	check("a sack always holds something (%d empty)" % empties, empties == 0)
+	check("and never a unique", uniques == 0, str(uniques))
+	check("and never an element a gem could not bind",
+		illegal.is_empty(), str(illegal.slice(0, 3)))
+	# Vacuity guard: all three checks above pass if nothing was ever opened.
+	check("and the roll actually produced items (%d kinds)" % kinds.size(),
+		kinds.size() >= 2, str(kinds))
+
+	# The dragon pays. Reported by a player who lost three runs reaching it and
+	# got nothing: it wears no armour and carries no blade, so the ordinary
+	# drop path had nothing of its to give.
+	var gs2 := _arena(31, 11)
+	gs2.player.x = 4
+	gs2.player.y = 5
+	var wyrm := _spawn(gs2, "young dragon", 9, 5)
+	if wyrm != null:
+		var before2: int = gs2.ground.size()
+		gs2._drop_loot(wyrm)
+		var found := false
+		for it in gs2.ground:
+			if it.appearance == &"sack":
+				found = true
+		check("a slain dragon leaves a hoard", found,
+			"%d items dropped" % (gs2.ground.size() - before2))
 
 ## A gem is not an enchanted item. It is the thing you bind.
 ##

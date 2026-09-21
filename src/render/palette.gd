@@ -84,6 +84,17 @@ const CHEST         := Color("c9953f")
 ## else uses, so shape carries the difference and colour is only flavour.
 const TRADER        := Color("e8b76a")
 
+## A sack of loot, dropped by something that hoarded rather than wore it.
+##
+## Deliberately NOT run through tools/check_palette.py, and the reason is the
+## tool's own rule: colour has to be distinct only where SHAPE is not. The sack
+## owns "$" in no mode -- it has its own mark everywhere -- so brown is flavour
+## rather than information. Measured anyway, for the record: every leather and
+## tan tested sat 13-23 deltaE from ARMOUR or POTION, because that whole region
+## of the palette is already occupied. Had the sack shared a glyph, none of
+## them would have been usable.
+const SACK          := Color("8a5a3c")
+
 const RING          := Color("b98cd6")
 
 ## Anything carrying an element, whether a gem put it there or it was found

@@ -38,11 +38,13 @@ const HEAVY_FIGURE := 0xF115D   # md-weight_lifter
 const ARMED_SMALL  := 0xF082C   # md-karate
 ## The trader. A figure holding something out, which is the whole job.
 const TRADER       := 0xF4CA    # oct-feed_person
+const SACK         := 0xF0D2E   # md-sack
 
 ## Semantic id -> codepoint. Alternates are already in the font subset, so
 ## changing one's mind costs a line here rather than rebuilding the font.
 const OVERRIDES := {
 	# --- the humanoid ladder ------------------------------------------------
+	&"sack":     SACK,
 	&"trader":   TRADER,
 	&"kobold":   SMALL_FIGURE,
 	&"goblin":   SMALL_FIGURE,
