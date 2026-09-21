@@ -28,9 +28,14 @@ const MODE_NAMES := {
 
 ## The same file the view mode uses, for the same reason: these are both
 ## settings a player picks once and expects to still be there tomorrow.
-const SETTINGS := "user://settings.cfg"
 
-static var _mode: int = Mode.TIMERS
+## SHADERS by default, Brad's call 2026-09-20.
+##
+## TIMERS shipped as a precaution for weak hardware, and the precaution was
+## never measured. These are small fragment shaders over a 1600x900 canvas;
+## decade-old integrated graphics run them. Everyone testing turns them on
+## immediately, and the setting stays for anyone who wants it off.
+static var _mode: int = Mode.SHADERS
 
 static func mode() -> int:
 	return _mode
@@ -61,12 +66,12 @@ static func cycle() -> String:
 
 static func load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS) != OK:
+	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	_mode = posmod(int(cfg.get_value("view", "effects", Mode.TIMERS)), mode_count())
 
 static func _save() -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS)
+	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("view", "effects", _mode)
-	cfg.save(SETTINGS)
+	cfg.save(GameState.SETTINGS_PATH)

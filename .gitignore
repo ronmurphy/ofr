@@ -32,4 +32,5 @@ __pycache__/
 # OS noise.
 .DS_Store
 Thumbs.db
+# brad ruling, so people don't have issues with claude helping.
 CLAUDE.md

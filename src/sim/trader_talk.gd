@@ -20,7 +20,6 @@ extends RefCounted
 ## near the amulet. Things like it cannot. That is the whole reason it needs
 ## somebody like you, and it is said plainly rather than asked for.
 
-const SETTINGS := "user://settings.cfg"
 const SECTION := "story"
 const KEY := "met_trader"
 
@@ -33,7 +32,7 @@ const KEY := "met_trader"
 ## run, beside the bestiary and the pad bindings.
 static func intro_seen() -> bool:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS) != OK:
+	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return false
 	return bool(cfg.get_value(SECTION, KEY, false))
 
@@ -41,18 +40,18 @@ static func mark_intro_seen() -> void:
 	var cfg := ConfigFile.new()
 	# Loaded first so this does not wipe the view and audio sections that share
 	# the file.
-	cfg.load(SETTINGS)
+	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value(SECTION, KEY, true)
-	cfg.save(SETTINGS)
+	cfg.save(GameState.SETTINGS_PATH)
 
 ## Tools and tests only, for the same reason GameState has scratch paths.
 static func forget_intro() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS) != OK:
+	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	if cfg.has_section_key(SECTION, KEY):
 		cfg.erase_section_key(SECTION, KEY)
-		cfg.save(SETTINGS)
+		cfg.save(GameState.SETTINGS_PATH)
 
 const AMULET_ART := "res://assets/art/amulet-of-deep.png"
 const TRADER_ART := "res://assets/art/trader.png"

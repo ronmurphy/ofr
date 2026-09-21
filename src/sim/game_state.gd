@@ -47,6 +47,23 @@ static var DEATH_PATH := "user://death.save"
 ## output rather than deaths they had actually died.
 static var MORGUE_PATH := "user://morgue.txt"
 
+## The view mode, the effects mode, the volume and whether the trader's
+## introduction has been heard. A file the PLAYER owns, so it lives here with
+## the other three rather than as a const in each of the four modules that
+## write it.
+##
+## One owner, in sim, because `src/sim` may not reach into `src/render` -- that
+## seam is what lets the whole suite run headless. RenderTheme, Effects,
+## SoundDeck and TraderTalk all read this.
+##
+## Restoring after a mutation was tried and is not enough: one test put the
+## value back in the wrong PLACE and left the view on ASCII for weeks, another
+## put it back in the right place but captured the in-memory DEFAULT instead of
+## the player's choice and downgraded his shaders on every run. Both looked
+## correct when read. Not writing the file is the only version that cannot be
+## got wrong.
+static var SETTINGS_PATH := "user://settings.cfg"
+
 ## Points both files somewhere the player does not own.
 ##
 ## Every headless tool in tests/ must call this before it touches a GameState.
@@ -64,6 +81,17 @@ static func use_scratch_files(tag: String) -> void:
 	# append to the real one. Redirected here rather than at each call site,
 	# because the call sites are every test and every tool.
 	BestiaryLog.use_path("user://scratch_%s_bestiary.txt" % tag)
+	# And the settings, which are the player's too.
+	#
+	# Added after the guard caught TWO tests writing the real file: one restored
+	# in the wrong place and left the view on ASCII for weeks, the other
+	# restored in the right place but captured the in-memory default instead of
+	# the player's choice and downgraded his shaders every run. Both looked
+	# correct on inspection. Redirecting is the only version that cannot be
+	# written wrong.
+	#
+	# One path, four readers, so this single line moves all of them.
+	SETTINGS_PATH = "user://scratch_%s_settings.cfg" % tag
 
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:

@@ -31,7 +31,6 @@ const MODE_NAMES := {
 	Mode.ICONS: "pictures",
 }
 
-const SETTINGS := "user://settings.cfg"
 
 ## Pictures, not letters.
 ##
@@ -118,7 +117,7 @@ static func cycle_size() -> String:
 
 static func load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS) != OK:
+	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
 	# Set directly rather than through set_cell_size(), which would write the
@@ -128,7 +127,7 @@ static func load_settings() -> void:
 
 static func _save() -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS)
+	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("view", "mode", _mode)
 	cfg.set_value("view", "cell", _cell)
-	cfg.save(SETTINGS)
+	cfg.save(GameState.SETTINGS_PATH)

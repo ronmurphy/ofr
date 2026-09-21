@@ -22,7 +22,7 @@ extends Node
 ## Adding to that list is easy and should be resisted.
 
 const POOL := 10
-const SETTINGS := "user://settings.cfg"
+
 
 ## Matches GlyphGrid.SHOT_PER_CELL. An arrow's impact is drawn when the
 ## projectile lands, so the thud has to wait for it too -- otherwise a shot
@@ -194,7 +194,7 @@ func nudge_volume(step: float) -> String:
 
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS) != OK:
+	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	volume = clampf(float(cfg.get_value("audio", "volume", volume)), 0.0, 1.0)
 	muted = bool(cfg.get_value("audio", "muted", muted))
@@ -204,7 +204,7 @@ func _load_settings() -> void:
 ## wrong place to keep anything a player expects to persist.
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS)
+	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("audio", "volume", volume)
 	cfg.set_value("audio", "muted", muted)
-	cfg.save(SETTINGS)
+	cfg.save(GameState.SETTINGS_PATH)
