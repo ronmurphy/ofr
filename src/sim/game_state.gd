@@ -365,6 +365,40 @@ const GEM_FROST_COST := 1.7
 ## At most this many spires per blow. Two, because the point is to break a line
 ## of approach rather than to bury the thing.
 const GEM_CRAG_SPIRES := 2
+
+## How many spires a MISSILE weapon raises, by how far it throws.
+##
+## Brad's design, and the reason it is not simply "stronger weapon, more
+## stone": the sling knaps its ammunition out of rubble, which is everywhere,
+## while arrows are the only strictly closed resource in the game -- nothing
+## ever adds one. So a sling throws one wall and can do it forever, and a war
+## bow throws three at a cost the dungeon never refunds.
+##
+## The weakest option is not worse, it is cheaper. That trade already existed
+## in the ammunition; this lets the crag gem read it.
+##
+## Keyed on reach rather than a table of weapon names, so a polearm or a
+## crossbow added later gets an answer without anyone editing this.
+const CRAG_SLING_REACH := 4
+
+## How long a spire stands before it subsides.
+##
+## Brad's call, and it replaces a check rather than adding one. A permanent
+## spire can seal a one-wide corridor -- reported from play -- and the floor
+## behind it is then unreachable. Detecting that needs a flood fill on every
+## connecting blow, which is expensive and only ever says no.
+##
+## Temporary stone says yes and then undoes itself. It still does the job the
+## gem exists for: three turns is long enough to break away from something or
+## put a wall between you and it, and not long enough to rebuild the level.
+const GEM_CRAG_TURNS := 3
+
+## Cell -> [turn it subsides, the tile that was there before].
+##
+## Saved with the run, so a spire raised before a suspend does not become
+## permanent by outliving the save -- which is how a temporary thing quietly
+## turns into the permanent one it was replacing.
+var spires: Dictionary = {}
 ## Steps before loosed arrows come home.
 ##
 ## Five is chosen to split the two kinds of scarcity apart. WITHIN a fight five
@@ -1588,9 +1622,22 @@ func _trader_cell(room: Rect2i) -> Vector2i:
 	for y in range(room.position.y, room.end.y):
 		for x in range(room.position.x, room.end.x):
 			var here := Vector2i(x, y)
-			if not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y)):
+			var t := map.get_tile(x, y)
+			if not map.is_walkable(x, y) or Tiles.is_avoided(t):
 				continue
 			if here == stairs:
+				continue
+			# Nor on a feature. Reported from play: the trader was standing on
+			# a shrine, which hid it and put a conversation on top of a thing
+			# you use. Doors and graves are walkable too and equally wrong --
+			# a trader in a doorway blocks it, since bumping talks rather than
+			# swapping.
+			#
+			# Same shape as the stairs bug: anything that holds its cell
+			# permanently has to ask what is already there, and `walkable` is
+			# not the same question as `empty`.
+			if t == Tiles.SHRINE or t == Tiles.GRAVE \
+					or t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
 				continue
 			# Whatever the player is standing on when the floor is built is the
 			# way they came in, and blocking it strands them on arrival.
@@ -4533,6 +4580,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 			msg_log.add("The flare gutters down to an ordinary flame.",
 				Color(0.80, 0.75, 0.60))
 	_burn_the_fires_down()
+	_let_the_stone_settle()
 	update_vision()
 	_run_world()
 	update_vision()
@@ -4612,6 +4660,13 @@ func to_dict() -> Dictionary:
 	var embers := {}
 	for cell in ember_until:
 		embers["%d,%d" % [cell.x, cell.y]] = int(ember_until[cell])
+	# Absolute turn numbers, same as the embers above, plus the tile to put
+	# back. Without this a suspend taken while stone is up restores a floor
+	# with permanent stalagmites -- the exact failure the timer replaced.
+	var stone := {}
+	for cell in spires:
+		var row: Array = spires[cell]
+		stone["%d,%d" % [cell.x, cell.y]] = [int(row[0]), int(row[1])]
 	var caves := []
 	for r in cave_regions:
 		caves.append([r.position.x, r.position.y, r.size.x, r.size.y])
@@ -4639,7 +4694,8 @@ func to_dict() -> Dictionary:
 		"material": Marshalls.raw_to_base64(map.material),
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
-		"braziers": charges, "embers": embers, "caves": caves, "rooms": rooms,
+		"braziers": charges, "embers": embers, "spires": stone,
+		"caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
 		"recent_dead": recent_dead,
@@ -4693,6 +4749,15 @@ func apply_dict(d: Dictionary) -> bool:
 		var parts: PackedStringArray = String(key).split(",")
 		if parts.size() == 2:
 			brazier_charge[Vector2i(parts[0].to_int(), parts[1].to_int())] = int(charges[key])
+
+	spires.clear()
+	var stone: Dictionary = d.get("spires", {})
+	for key in stone:
+		var bits: PackedStringArray = String(key).split(",")
+		var row: Array = stone[key]
+		if bits.size() == 2 and row.size() == 2:
+			spires[Vector2i(bits[0].to_int(), bits[1].to_int())] = \
+				[int(row[0]), int(row[1])]
 
 	ember_until.clear()
 	var embers: Dictionary = d.get("embers", {})
@@ -6227,7 +6292,7 @@ func _gem_of(attacker: Entity, ranged: bool) -> StringName:
 ## What an element does once the blow has landed. Fire is handled at the
 ## damage line instead, because it changes the number itself.
 func _gem_strikes(gem: StringName, attacker: Entity, defender: Entity,
-		dmg: int) -> void:
+		dmg: int, ranged: bool = false) -> void:
 	match gem:
 		&"frost":
 			if defender.alive:
@@ -6247,7 +6312,7 @@ func _gem_strikes(gem: StringName, attacker: Entity, defender: Entity,
 					msg_log.add("The gem drinks, and you feel it. (+%d)" % drawn,
 						Color(0.80, 0.55, 0.75))
 		&"crag":
-			_raise_spires(defender)
+			_raise_spires(defender, _crag_spires_for(attacker, ranged))
 
 ## Stone spires erupt around whatever was hit.
 ##
@@ -6255,7 +6320,21 @@ func _gem_strikes(gem: StringName, attacker: Entity, defender: Entity,
 ## can hem a thing in but can never bury the player who swung. Plain ground
 ## only -- a spire through water or an authored vault floor would be writing
 ## over something that already means something.
-func _raise_spires(target: Entity) -> void:
+## How much stone this attacker's weapon tears up.
+##
+## Melee is unchanged at GEM_CRAG_SPIRES. A missile weapon scales from one at
+## the sling's reach, capped at three -- past the war bow there is nothing left
+## to earn.
+func _crag_spires_for(attacker: Entity, ranged: bool) -> int:
+	if not ranged:
+		return GEM_CRAG_SPIRES
+	var held: Item = attacker.equipped.get(Item.Slot.WEAPON, null)
+	if held == null:
+		return 1
+	var reach := held.range_bonus
+	return clampi(1 + int(floor(float(reach - CRAG_SLING_REACH) / 2.0)), 1, 3)
+
+func _raise_spires(target: Entity, count: int) -> void:
 	var made := 0
 	var spots: Array[Vector2i] = []
 	for dy in [-1, 0, 1]:
@@ -6269,7 +6348,7 @@ func _raise_spires(target: Entity) -> void:
 		spots[i] = spots[j]
 		spots[j] = t
 	for c in spots:
-		if made >= GEM_CRAG_SPIRES:
+		if made >= count:
 			break
 		if not map.in_bounds(c.x, c.y) or entity_at(c.x, c.y) != null:
 			continue
@@ -6280,6 +6359,7 @@ func _raise_spires(target: Entity) -> void:
 			continue
 		if protected_cell(c):
 			continue
+		spires[c] = [turns + GEM_CRAG_TURNS, t]
 		map.set_tile(c.x, c.y, Tiles.STALAGMITE)
 		made += 1
 	if made > 0:
@@ -6287,6 +6367,34 @@ func _raise_spires(target: Entity) -> void:
 			pathfinder = Pathfinder.new(map)
 		msg_log.add("Stone tears up out of the floor around it.",
 			Color(0.78, 0.74, 0.66))
+
+## Spires subside on their own.
+##
+## Restores the tile that was actually there rather than assuming FLOOR: cave
+## ground exists and a spire raised on it must not leave a room floor behind.
+##
+## Skips any cell something is standing on and tries again next turn, so a
+## creature hemmed in by stone is never buried inside it when the stone goes.
+func _let_the_stone_settle() -> void:
+	if spires.is_empty():
+		return
+	var done: Array[Vector2i] = []
+	for cell in spires:
+		var row: Array = spires[cell]
+		if turns < int(row[0]):
+			continue
+		if map.get_tile(cell.x, cell.y) != Tiles.STALAGMITE:
+			# Something else changed it. Not ours to restore any more.
+			done.append(cell)
+			continue
+		if entity_at(cell.x, cell.y) != null:
+			continue
+		map.set_tile(cell.x, cell.y, int(row[1]))
+		done.append(cell)
+	for cell in done:
+		spires.erase(cell)
+	if not done.is_empty() and pathfinder != null:
+		pathfinder = Pathfinder.new(map)
 
 ## Is this cell inside a hand-drawn room? Authored terrain is what the author
 ## drew and nothing gets to rewrite it.
@@ -6326,7 +6434,7 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		dmg += maxi(1, int(round(float(dmg) * GEM_FIRE_SHARE)))
 	defender.take_damage(dmg)
 	if gem != &"":
-		_gem_strikes(gem, attacker, defender, dmg)
+		_gem_strikes(gem, attacker, defender, dmg, ranged)
 
 	if attacker.is_player:
 		_tally("dealt", dmg)

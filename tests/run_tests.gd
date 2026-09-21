@@ -163,6 +163,7 @@ func _initialize() -> void:
 	_test_gems_keep_their_colour()
 	_test_the_sack()
 	_test_the_overview_map()
+	_test_spires_subside()
 	_test_found_magic()
 	_test_the_trader()
 	_test_every_kind_is_listed()
@@ -5961,6 +5962,156 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 	r.seed = s
 	return r
 
+## Stone the crag gem raises has to go away again.
+##
+## Reported from play: a spire can seal a one-wide corridor, and the floor
+## behind it is then unreachable. Brad chose a timer over a connectivity check,
+## which is the better trade -- a check runs on every connecting blow and can
+## only ever say no, while temporary stone says yes and undoes itself.
+func _test_spires_subside() -> void:
+	var raised_any := false
+	var leftover := 0
+	var trials := 0
+	for seed_value in [9, 23, 41, 77]:
+		var gs := GameState.new(seed_value)
+		gs.new_game()
+		gs.depth = 3
+		gs.build_level()
+		var victim: Entity = null
+		for e in gs.entities:
+			if not e.is_player:
+				victim = e
+				break
+		if victim == null:
+			continue
+		trials += 1
+		var before := _stalagmites(gs)
+		gs._raise_spires(victim, GameState.GEM_CRAG_SPIRES)
+		if _stalagmites(gs) > before:
+			raised_any = true
+		# Long enough that every spire is due, plus one.
+		for t in GameState.GEM_CRAG_TURNS + 2:
+			gs.turns += 1
+			gs._let_the_stone_settle()
+		if _stalagmites(gs) != before or not gs.spires.is_empty():
+			leftover += 1
+
+	# Vacuity guard: if nothing ever raised, "it all went away" is meaningless.
+	check("the crag gem actually raises stone", raised_any)
+	check("and all of it subsides again (%d trials)" % trials,
+		leftover == 0, "%d floors kept stone" % leftover)
+
+	# A missile weapon raises stone in proportion to its reach, and the point
+	# is the ammunition rather than the power: the sling knaps stones out of
+	# rubble and can throw walls forever, while a war bow spends arrows the
+	# dungeon never replaces. Brad's design.
+	var arena := _arena(21, 11)
+	var thrower := arena.player
+	var counts := {}
+	for pair in [["sling", 1], ["short_bow", 2], ["war_bow", 3]]:
+		var wpn := Item.make(StringName(pair[0]))
+		thrower.equipped[Item.Slot.WEAPON] = wpn
+		counts[String(pair[0])] = arena._crag_spires_for(thrower, true)
+		check("a %s raises %d" % [wpn.name, int(pair[1])],
+			arena._crag_spires_for(thrower, true) == int(pair[1]),
+			"%d" % arena._crag_spires_for(thrower, true))
+	check("and they are not all the same number",
+		counts.values().size() == 3
+			and int(counts["sling"]) < int(counts["war_bow"]))
+	# Melee is untouched, so the gem still works the way it always did in hand.
+	thrower.equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+	check("melee is unchanged",
+		arena._crag_spires_for(thrower, false) == GameState.GEM_CRAG_SPIRES)
+	arena = null
+
+	# The tile that was there is what comes back -- not FLOOR. Cave ground
+	# exists, and a spire raised on it must not leave a room behind.
+	var gs2 := GameState.new(41)
+	gs2.new_game()
+	gs2.depth = 5
+	gs2.build_level()
+	var cell := Vector2i(-1, -1)
+	for y in gs2.map.height:
+		for x in gs2.map.width:
+			if gs2.map.get_tile(x, y) == Tiles.CAVE_FLOOR:
+				cell = Vector2i(x, y)
+				break
+		if cell.x >= 0:
+			break
+	if cell.x >= 0:
+		gs2.spires[cell] = [gs2.turns, Tiles.CAVE_FLOOR]
+		gs2.map.set_tile(cell.x, cell.y, Tiles.STALAGMITE)
+		gs2._let_the_stone_settle()
+		check("and cave ground comes back as cave ground",
+			gs2.map.get_tile(cell.x, cell.y) == Tiles.CAVE_FLOOR)
+
+	# A creature standing where stone is due keeps it up rather than being
+	# buried inside it.
+	var gs3 := _arena(21, 11)
+	var spot := Vector2i(8, 5)
+	gs3.map.set_tile(spot.x, spot.y, Tiles.STALAGMITE)
+	gs3.spires[spot] = [gs3.turns, Tiles.FLOOR]
+	var squatter := _spawn(gs3, "goblin", spot.x, spot.y)
+	if squatter != null:
+		gs3._let_the_stone_settle()
+		check("stone waits rather than burying what stands on it",
+			gs3.map.get_tile(spot.x, spot.y) == Tiles.STALAGMITE
+				and gs3.spires.has(spot))
+
+	# And a trader must not stand on a feature -- reported from play, standing
+	# on a shrine, which hid it and put a conversation on a thing you use.
+	var on_feature: Array[String] = []
+	for d in GameState.TRADER_FLOORS:
+		for i in 12:
+			var g := GameState.new(4400 + int(d) * 13 + i)
+			g.new_game()
+			g.depth = int(d)
+			g.build_level()
+			if g.trader == null:
+				continue
+			var t := g.map.get_tile(g.trader.x, g.trader.y)
+			if t in [Tiles.SHRINE, Tiles.GRAVE, Tiles.DOOR_CLOSED,
+					Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP]:
+				on_feature.append("depth %d: tile %d" % [int(d), t])
+	check("a trader never stands on a feature", on_feature.is_empty(),
+		str(on_feature.slice(0, 3)))
+
+## CIE76 deltaE, the same maths tools/check_palette.py uses.
+##
+## Normal vision only here: the python tool also simulates the three
+## dichromacies and is the place to check a NEW colour. This guards against a
+## landmark being added that collides outright, which is the failure that
+## actually happened.
+func _delta_e(a: Color, b: Color) -> float:
+	var la := _lab(a)
+	var lb := _lab(b)
+	return sqrt(pow(la.x - lb.x, 2.0) + pow(la.y - lb.y, 2.0)
+		+ pow(la.z - lb.z, 2.0))
+
+func _lab(c: Color) -> Vector3:
+	var r := _lin(c.r)
+	var g := _lin(c.g)
+	var b := _lin(c.b)
+	var x := (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+	var y := 0.2126 * r + 0.7152 * g + 0.0722 * b
+	var z := (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+	return Vector3(116.0 * _f(y) - 16.0, 500.0 * (_f(x) - _f(y)),
+		200.0 * (_f(y) - _f(z)))
+
+func _lin(u: float) -> float:
+	return u / 12.92 if u <= 0.04045 else pow((u + 0.055) / 1.055, 2.4)
+
+func _f(u: float) -> float:
+	return pow(u, 1.0 / 3.0) if u > 0.008856 else 7.787 * u + 16.0 / 116.0
+
+func _stalagmites(gs: GameState) -> int:
+	var n := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.STALAGMITE:
+				n += 1
+	return n
+
 ## The floor as you know it, and the page it lives on.
 func _test_the_overview_map() -> void:
 	var m := MapPanel.new()
@@ -6000,6 +6151,28 @@ func _test_the_overview_map() -> void:
 		hues[seen[t]] = true
 	check("and they are not all one colour", hues.size() == seen.size(),
 		"%d kinds, %d colours" % [seen.size(), hues.size()])
+
+	# EVERY pair has to be distinguishable, and this is the one screen where
+	# colour carries the whole difference: on the floor a brazier is a glyph
+	# and a chest is another, but here they are both a square.
+	#
+	# The first version reused the game's own colours and five of fifteen pairs
+	# failed -- brazier against chest at deltaE 9.9. Brad caught it from the
+	# legend strip in a screenshot, which is not a way to find this twice.
+	var too_close: Array[String] = []
+	var marks: Array = MapPanel.MARKS
+	for i in marks.size():
+		for j in range(i + 1, marks.size()):
+			var ca: Color = marks[i][1]
+			var cb: Color = marks[j][1]
+			var d := _delta_e(ca, cb)
+			if d < 25.0:
+				too_close.append("%s/%s %.0f" % [marks[i][0], marks[j][0], d])
+	check("every map landmark is distinguishable from every other",
+		too_close.is_empty(), str(too_close))
+	# Vacuity: an empty MARKS table passes the loop above perfectly.
+	check("and there are landmarks to compare (%d)" % marks.size(),
+		marks.size() >= 5)
 
 	# A spent brazier is still worth knowing about -- that is what makes a
 	# scroll of light worth carrying -- so it is drawn dim, not omitted.

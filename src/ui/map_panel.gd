@@ -120,7 +120,7 @@ func _draw() -> void:
 		var pr: float = maxf(cell * 1.4, 6.0)
 		draw_rect(Rect2(at + Vector2(state.player.x * cell, state.player.y * cell)
 			- Vector2(pr - cell, pr - cell) * 0.5, Vector2(pr, pr)),
-			Palette.PLAYER, true)
+			MARK_PLAYER, true)
 
 	_legend_line(at, board)
 
@@ -138,8 +138,37 @@ func _terrain_colour(t: int) -> Color:
 		return Color(0.32, 0.31, 0.33)
 	return Color(0, 0, 0, 0)
 
-## The landmarks, in the colours the map itself draws them.
+## The map's own palette, and NOT the map's colours.
 ##
+## The first version reused Palette.STAIRS, AMULET and so on, so a brazier and
+## a chest on the overview would match a brazier and a chest on the floor. That
+## was wrong for a reason the palette checker states plainly: colour only has to
+## be distinct where SHAPE is not, and on this screen every landmark is the
+## same square. There is no glyph to fall back on, so colour carries the whole
+## difference.
+##
+## Measured, reusing the game's colours: five of the fifteen pairs were
+## indistinguishable, brazier against chest at deltaE 9.9 and stairs against
+## chest at 15.1 -- and Brad spotted it from the legend strip in a screenshot.
+##
+## These clear 25 on all fifteen pairs under normal vision and all three
+## dichromacies, worst 28.5. They are checked by the suite, so a future
+## landmark cannot quietly collide with an existing one.
+const MARK_STAIRS  := Color("fff36b")
+const MARK_SHRINE  := Color("b98cd6")
+const MARK_BRAZIER := Color("e86a10")
+const MARK_SPENT   := Color("7a5c3d")
+const MARK_CHEST   := Color("3fd0a0")
+const MARK_PLAYER  := Color("ffffff")
+
+## Named, in the order the strip prints them. One table so the key at the
+## bottom and the marks on the floor cannot drift apart, and so the suite can
+## walk every pair.
+const MARKS := [
+	["you", MARK_PLAYER], ["stairs", MARK_STAIRS], ["shrine", MARK_SHRINE],
+	["brazier", MARK_BRAZIER], ["spent", MARK_SPENT], ["chest", MARK_CHEST],
+]
+
 ## A brazier that has burned out is drawn DIM rather than left off: knowing
 ## where a dead one stands is what makes a scroll of light worth carrying.
 func _landmark(x: int, y: int) -> Color:
@@ -151,24 +180,20 @@ func _landmark(x: int, y: int) -> Color:
 func _landmark_for(t: int) -> Color:
 	match t:
 		Tiles.STAIRS_DOWN, Tiles.STAIRS_UP:
-			return Palette.STAIRS
+			return MARK_STAIRS
 		Tiles.SHRINE:
-			return Palette.RING
+			return MARK_SHRINE
 		Tiles.BRAZIER:
-			return Color(1.0, 0.72, 0.36)
+			return MARK_BRAZIER
 		Tiles.BRAZIER_SPENT, Tiles.BRAZIER_DEAD:
-			return Color(0.48, 0.36, 0.24)
+			return MARK_SPENT
 		Tiles.CHEST:
-			return Palette.AMULET
+			return MARK_CHEST
 	return Color(0, 0, 0, 0)
 
 func _legend_line(at: Vector2, board: Vector2) -> void:
 	var y := at.y + board.y + 22.0
-	var parts := [
-		["you", Palette.PLAYER], ["stairs", Palette.STAIRS],
-		["shrine", Palette.RING], ["brazier", Color(1.0, 0.72, 0.36)],
-		["spent", Color(0.48, 0.36, 0.24)], ["chest", Palette.AMULET],
-	]
+	var parts := MARKS
 	var x := at.x
 	for p in parts:
 		draw_rect(Rect2(Vector2(x, y - 9.0), Vector2(9.0, 9.0)), p[1], true)
