@@ -59,6 +59,17 @@ const WALK := [
 	[KEY_C, "close a door"],
 	[KEY_A, "ally heel / loose"],
 	[KEY_QUESTION, "the legend"],
+	## Bindable but NOT bound by default, and that is a gap rather than a
+	## decision. Every button on a standard pad is already spoken for:
+	## d-pad, A, B, X, Y, both shoulders, start, back and both stick clicks.
+	## What is left is GUIDE (which Steam swallows before the game sees it),
+	## the paddles and MISC1 (device-specific, absent on most), and the
+	## touchpad (a Deck has one, a Legion Go does not).
+	##
+	## So the map is here for anyone who wants to spend a button on it, and
+	## on a keyboard it is "o". Giving it a default would mean taking one from
+	## something else -- see the note on JOY_BUTTON_BACK.
+	[KEY_O, "the map"],
 	[KEY_ESCAPE, "menu"],
 ]
 
@@ -75,6 +86,10 @@ const DEFAULTS := {
 	JOY_BUTTON_LEFT_SHOULDER: KEY_F,
 	JOY_BUTTON_RIGHT_SHOULDER: KEY_W,
 	JOY_BUTTON_START: KEY_ESCAPE,
+	## The legend. A candidate to give up if the map should have a button by
+	## default: both are reference screens you read between fights, and the
+	## map is the one you want repeatedly on a floor while the legend is
+	## mostly read once. Brad's call, not made yet.
 	JOY_BUTTON_BACK: KEY_QUESTION,
 	JOY_BUTTON_LEFT_STICK: KEY_C,
 	JOY_BUTTON_RIGHT_STICK: KEY_A,

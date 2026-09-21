@@ -17,6 +17,7 @@ extends Control
 @onready var summary: SummaryPanel = $Summary
 @onready var pad_setup: PadPanel = $PadSetup
 @onready var talk: TalkPanel = $Talk
+@onready var overview: MapPanel = $Overview
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -111,6 +112,11 @@ func _ready() -> void:
 	menu.resume_requested.connect(_close_menu)
 	menu.pad_requested.connect(_open_pad_setup)
 	legend.portrait_requested.connect(_show_portrait)
+	# Two pages of one reference. The legend pages right to the map and the map
+	# pages left back, so the map needs no controller button of its own --
+	# every button on a standard pad is already bound.
+	legend.map_requested.connect(_open_overview)
+	overview.legend_requested.connect(_open_legend)
 	pad_setup.closed.connect(_refresh)
 	pad_setup.log_requested.connect(pad.start_log)
 	menu.save_and_quit_requested.connect(_save_and_quit)
@@ -212,6 +218,16 @@ func _open_pad_setup() -> void:
 ##
 ## A creature with no file yet simply shows its words. That is not a fallback
 ## bolted on -- it is what let the viewer ship before the art did.
+func _open_overview() -> void:
+	overview.state = state
+	overview.open()
+	_refresh()
+
+func _open_legend() -> void:
+	legend.state = state
+	legend.open()
+	_refresh()
+
 func _show_portrait(app: StringName, title: String, note: String) -> void:
 	var path := "res://assets/art/creatures/%s.png" % String(app)
 	if app == &"trader":
@@ -268,6 +284,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# typed.
 	# Keyboard-only on purpose: someone rebinding a controller that does not
 	# work cannot be asked to use that controller to escape the screen.
+	if overview.visible:
+		overview.handle_key(key)
+		_refresh()
+		return
+
 	# A conversation is modal and takes keys before any other panel.
 	if talk.visible:
 		talk.handle_key(key)
@@ -392,6 +413,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		state.msg_log.add(Effects.cycle(), Color(0.70, 0.74, 0.80))
 		grid.apply_effects_mode()
 		_refresh()
+		return
+
+	# The overview, straight from the map. A shortcut rather than the way in:
+	# the legend pages across to it, which is the route that works on a pad.
+	if key == KEY_O:
+		_open_overview()
 		return
 
 	if key == KEY_V:

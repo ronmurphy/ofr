@@ -162,6 +162,7 @@ func _initialize() -> void:
 	_test_found_magic_is_not_a_gem()
 	_test_gems_keep_their_colour()
 	_test_the_sack()
+	_test_the_overview_map()
 	_test_found_magic()
 	_test_the_trader()
 	_test_every_kind_is_listed()
@@ -3301,11 +3302,38 @@ func _test_panels_do_not_overflow() -> void:
 	# panel is deliberately NOT sized from WALK.size(), so that growing the
 	# list fails here and a human chooses the new height, rather than the panel
 	# quietly resizing itself.
+	# Two columns now, so the height is set by the LONGER column rather than by
+	# the row count. An odd number of bindings leaves the extra on the left.
 	var pad_bottom: float = PadPanel.PAD + PadPanel.font_size_default() \
-		+ 2.0 * PadPanel.ROW_H + PadConfig.WALK.size() * PadPanel.ROW_H + 6.0
+		+ 2.0 * PadPanel.ROW_H + PadPanel.left_rows() * PadPanel.ROW_H + 6.0
 	var pad_room: float = PadPanel.PANEL.y - PadPanel.PAD
-	check("controller rows fit the panel (%d rows)" % PadConfig.WALK.size(),
+	check("controller rows fit the panel (%d rows in %d columns)"
+		% [PadConfig.WALK.size(), 2],
 		pad_bottom <= pad_room, "%.0f > %.0f px" % [pad_bottom, pad_room])
+
+	# WIDTH, which the height check could not see.
+	#
+	# Reported from a screenshot: the footer ran one pixel past the panel edge
+	# and had done since the walk-through grew to fourteen rows. A guard
+	# written for one axis says nothing about the other, and this panel had a
+	# careful assertion about its rows sitting directly above an overflow.
+	var pad_foot := font.get_string_size(
+		"backspace  back     r  defaults     l  log this pad     esc  done",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, PadPanel.font_size_default() - 4).x
+	var pad_wide: float = PadPanel.PANEL.x - PadPanel.PAD * 2.0
+	check("the controller footer fits the panel",
+		pad_foot <= pad_wide, "%.0f > %.0f px" % [pad_foot, pad_wide])
+
+	# And a column has to hold its widest label with its binding beside it.
+	var col_w := (PadPanel.PANEL.x - PadPanel.PAD * 2.0 - PadPanel.COL_GAP) * 0.5
+	var widest := ""
+	for row in PadConfig.WALK:
+		if String(row[1]).length() > widest.length():
+			widest = String(row[1])
+	var pair := font.get_string_size("%s  button 12" % widest,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, PadPanel.font_size_default()).x
+	check("and its widest binding fits a column (\"%s\")" % widest,
+		pair <= col_w, "%.0f > %.0f px" % [pair, col_w])
 
 	# Every key the defaults hand out must be something the walk-through can
 	# hand back. It was not: close door, ally stance and the legend were bound
@@ -5932,6 +5960,90 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
 	r.seed = s
 	return r
+
+## The floor as you know it, and the page it lives on.
+func _test_the_overview_map() -> void:
+	var m := MapPanel.new()
+	var gs := GameState.new(7)
+	gs.new_game()
+	gs.depth = 1
+	gs.build_level()
+	m.state = gs
+
+	# It shows what you have EXPLORED, not what exists. A run that has just
+	# begun must not hand the player the floorplan.
+	var known := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.is_explored(x, y):
+				known += 1
+	var total := gs.map.width * gs.map.height
+	check("a new floor is mostly unknown (%d of %d seen)" % [known, total],
+		known < total / 4, "%d of %d" % [known, total])
+
+	# The landmarks are the reason to open it, so each has to be findable and
+	# they must not all be the same colour.
+	gs.map.reveal_all()
+	var seen := {}
+	for y in gs.map.height:
+		for x in gs.map.width:
+			var c: Color = m._landmark(x, y)
+			if c.a > 0.0:
+				seen[gs.map.get_tile(x, y)] = c
+	check("an explored floor shows landmarks (%d kinds)" % seen.size(),
+		seen.size() >= 2, str(seen.size()))
+	# Keyed on the Color itself. String(Color) is not a constructor in Godot 4
+	# and throws -- which aborted the rest of this function and left the suite
+	# reporting a clean tally with eight checks that never ran.
+	var hues := {}
+	for t in seen:
+		hues[seen[t]] = true
+	check("and they are not all one colour", hues.size() == seen.size(),
+		"%d kinds, %d colours" % [seen.size(), hues.size()])
+
+	# A spent brazier is still worth knowing about -- that is what makes a
+	# scroll of light worth carrying -- so it is drawn dim, not omitted.
+	check("a spent brazier is still marked",
+		m._landmark_for(Tiles.BRAZIER_SPENT).a > 0.0)
+	check("and differs from a lit one",
+		m._landmark_for(Tiles.BRAZIER_SPENT) != m._landmark_for(Tiles.BRAZIER))
+
+	# Walls and floor must be told apart, or the map is a grey rectangle.
+	check("walls and floor are drawn differently",
+		m._terrain_colour(Tiles.WALL) != m._terrain_colour(Tiles.FLOOR))
+	check("and both are actually drawn",
+		m._terrain_colour(Tiles.WALL).a > 0.0
+			and m._terrain_colour(Tiles.FLOOR).a > 0.0)
+	m.free()
+
+	# The two screens are pages of one reference: the legend goes right to the
+	# map, the map goes left back. On a handheld this is the ONLY route to the
+	# map, because every button on a standard pad is already bound.
+	var leg := LegendPanel.new()
+	leg.state = gs
+	leg.visible = true
+	var paged := [false]
+	leg.map_requested.connect(func() -> void: paged[0] = true)
+	leg.handle_key(KEY_RIGHT)
+	check("the legend pages right to the map", paged[0])
+	leg.free()
+
+	var m2 := MapPanel.new()
+	m2.state = gs
+	m2.visible = true
+	var back := [false]
+	m2.legend_requested.connect(func() -> void: back[0] = true)
+	m2.handle_key(KEY_LEFT)
+	check("and the map pages left to the legend", back[0])
+	# Anything else closes rather than paging, so a stray press does not trap
+	# the player between two screens.
+	var m3 := MapPanel.new()
+	m3.state = gs
+	m3.visible = true
+	m3.handle_key(KEY_Z)
+	check("and any other key closes it", not m3.visible)
+	m2.free()
+	m3.free()
 
 ## A sack of loot: one drop that reaches every table the game already has.
 func _test_the_sack() -> void:

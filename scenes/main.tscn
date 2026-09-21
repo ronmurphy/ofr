@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://bofr0main0scene"]
+[gd_scene load_steps=13 format=3 uid="uid://bofr0main0scene"]
 
 [ext_resource type="Script" path="res://src/render/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/render/glyph_grid.gd" id="2_grid"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://src/ui/name_panel.gd" id="10_name"]
 [ext_resource type="Script" path="res://src/ui/pad_panel.gd" id="11_pad"]
 [ext_resource type="Script" path="res://src/ui/talk_panel.gd" id="12_talk"]
+[ext_resource type="Script" path="res://src/ui/map_panel.gd" id="13_map"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -102,6 +103,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 0
 script = ExtResource("12_talk")
+
+[node name="Overview" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+script = ExtResource("13_map")
 
 [node name="Sound" type="Node" parent="."]
 script = ExtResource("8_snd")

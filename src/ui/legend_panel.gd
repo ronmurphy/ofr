@@ -18,6 +18,10 @@ extends Control
 
 ## A creature row was chosen, and there is a picture for it.
 signal portrait_requested(app: StringName, title: String, note: String)
+## Right pages across to the overview map. Brad's idea, and it is what let the
+## map exist without a controller button of its own: these are two pages of one
+## reference, the way a Zelda menu pages between map and equipment.
+signal map_requested()
 
 var state: GameState
 
@@ -148,6 +152,9 @@ func handle_key(key: int) -> bool:
 			_move(1)
 		KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER:
 			_open(_pick)
+		KEY_RIGHT:
+			visible = false
+			map_requested.emit()
 		_:
 			close()
 	queue_redraw()
@@ -279,6 +286,15 @@ func _control_column(x: float, y: float, w: float) -> void:
 		draw_string(font, Vector2(x + GLYPH_X, base), row[1],
 			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1, Palette.UI_TEXT)
 		y += LINE
+
+	# The page marker. Said on the screen rather than left to be discovered,
+	# because a page you do not know is there is a page nobody visits -- and on
+	# a handheld this is the ONLY route to the map, since every button is
+	# already spoken for.
+	y += LINE * 0.8
+	draw_string(font, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
+		"right  \u2192  the map", HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size - 1, Palette.STAIRS)
 
 func _look(id: StringName) -> Dictionary:
 	# The active theme, not the ASCII table: a legend that keeps showing

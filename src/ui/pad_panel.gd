@@ -29,12 +29,25 @@ signal log_requested()
 static func font_size_default() -> int:
 	return 17
 
-## Tall enough for every row in PadConfig.WALK plus the title, the note and the
-## footer: PAD + font_size + 2*ROW_H + rows*ROW_H + 6, and then the same bottom
-## margin the eleven-row version had. Growing WALK without growing this draws
-## the last rows through the panel edge, which is exactly the bug the pause
-## menu shipped with and nothing caught.
-const PANEL := Vector2(520.0, 560.0)
+## TWO COLUMNS, and the width is the point rather than the height.
+##
+## Brad's call, from a screenshot: at fourteen rows the single column was a
+## 560px tower on a 900px canvas, and the footer had run one pixel past the
+## edge -- which the height assertion could not see, because it measures the
+## rows and never measured the footer. Splitting the list halves the height,
+## widens the panel enough for the footer to breathe, and leaves room for
+## roughly 28 bindings, which is more than a controller has buttons.
+##
+## Sized from the content: the widest row is "swap reach / blade" with a
+## "button 12" right-aligned against it, measured at 327px, so a 350px column
+## holds anything the walk-through is likely to name.
+const PANEL := Vector2(820.0, 400.0)
+const COL_GAP := 44.0
+
+## Rows in the left column. The right column takes the remainder, so an odd
+## count leaves the extra on the left and the columns stay top-aligned.
+static func left_rows() -> int:
+	return int(ceil(PadConfig.WALK.size() / 2.0))
 const PAD := 26.0
 const ROW_H := 30.0
 
@@ -123,23 +136,35 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 3, Color(0.68, 0.66, 0.72))
 	y += ROW_H
 
+	# Two columns, filled down the left and then down the right, so the reading
+	# order matches the order the walk-through asks in. Filling across would
+	# put "move up" and "move down" side by side and the eye would follow the
+	# wrong one.
+	var split := left_rows()
+	var col_w := (PANEL.x - PAD * 2.0 - COL_GAP) * 0.5
+	var top := y
 	for i in PadConfig.WALK.size():
 		var row: Array = PadConfig.WALK[i]
+		var col := 0 if i < split else 1
+		var col_x: float = at.x + PAD + float(col) * (col_w + COL_GAP)
+		var row_y: float = top + float(i - (split if col == 1 else 0)) * ROW_H
+
 		var live := i == _at and _listening
 		var tint := Color(0.95, 0.82, 0.45) if live else Color(0.78, 0.76, 0.80)
 		if i < _at:
 			tint = Color(0.60, 0.72, 0.60)
-		draw_string(font, Vector2(at.x + PAD, y), String(row[1]),
+		draw_string(font, Vector2(col_x, row_y), String(row[1]),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
 		var said := "press a button" if live else "--"
 		var has := cfg.button_for_key(int(row[0])) if cfg != null else -1
 		if not live and has >= 0:
 			said = "button %d" % has
-		draw_string(font, Vector2(at.x + PAD, y), said,
-			HORIZONTAL_ALIGNMENT_RIGHT, PANEL.x - PAD * 2.0, font_size, tint)
-		y += ROW_H
+		# Right-aligned within its own column rather than the panel, or the
+		# left column's bindings would sit in the right column's labels.
+		draw_string(font, Vector2(col_x, row_y), said,
+			HORIZONTAL_ALIGNMENT_RIGHT, col_w, font_size, tint)
 
-	y += 6.0
+	y = top + float(split) * ROW_H + 6.0
 	draw_string(font, Vector2(at.x + PAD, y),
 		"backspace  back     r  defaults     l  log this pad     esc  done",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Color(0.58, 0.56, 0.62))
