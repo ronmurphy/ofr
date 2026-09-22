@@ -35,14 +35,28 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 game="ronmurphy/ofr-old-fashioned-roguelike"
 
 force=0
+build=0
 want=""
 for arg in "$@"; do
   case "$arg" in
     --force) force=1 ;;
+    --build) build=1 ;;
     linux|windows|html5) want="$arg" ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
+
+# `--build` exists because publishing a stale build is the easy mistake here:
+# publish.sh uploads what is in build/, and nothing about running it suggests
+# that those files might predate your last commit. Still OFF by default --
+# building and publishing stay separate acts, because one is local and cheap
+# and the other is public and immediate.
+if (( build )); then
+  for s in linux windows web; do
+    echo "==> building $s"
+    "$root/tools/build_$s.sh" >/dev/null
+  done
+fi
 
 if ! command -v butler >/dev/null; then
   echo "butler is not installed." >&2
@@ -74,7 +88,13 @@ push() {
   local newest_src newest_build
   # `|| true` because `head -1` closes the pipe early and find exits non-zero
   # on SIGPIPE, which `set -e` would otherwise treat as a failed publish.
-  newest_src=$(find "$root/src" "$root/scenes" -type f -newer "$dir" 2>/dev/null | head -1 || true)
+  # build_info.gd is EXCLUDED, and it has to be. tools/stamp_build.sh restores
+  # it immediately after each export, so it is always newer than the build that
+  # just finished -- which made every build look stale forever, in all three
+  # channels, the moment stamping was added. A warning that fires every single
+  # time teaches you to ignore it, which is worse than not having one.
+  newest_src=$(find "$root/src" "$root/scenes" -type f -newer "$dir" \
+    ! -name build_info.gd 2>/dev/null | head -1 || true)
   if [[ -n "$newest_src" ]]; then
     echo "  ! $dir is older than $(basename "$newest_src") -- rebuild first?" >&2
   fi
