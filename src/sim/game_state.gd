@@ -4091,10 +4091,35 @@ func player_pickup() -> bool:
 	if not here.is_empty() and here[0].id == &"arrows":
 		return _gather_ammo(here[0])
 	if here.is_empty():
-		if map.get_tile(player.x, player.y) == Tiles.FUNGUS:
+		# WHATEVER THIS SQUARE IS FOR. Gabe's suggestion, by email, and Brad's
+		# extension of it to the shrine.
+		#
+		# This key was ALREADY contextual and nobody had noticed: it gathered
+		# arrows, ate fungus, knapped stones or picked something up, four
+		# behaviours chosen by what you were standing on. What it did not do
+		# was the terrain you stand on deliberately -- so the stairs needed `>`
+		# and `<`, which on a pad is `shift`, which a pad cannot send. A
+		# controller could not leave floor one.
+		#
+		# Gabe's actual words were about re-learning: "why not make code as
+		# where the G key will know if your ascending or descending, and then
+		# do the right action". A tile is never both, so the game already knows
+		# and was making the player say it twice.
+		#
+		# Dispatched on the TILE rather than by trying each action in turn,
+		# because every one of these refuses with its own message -- speculative
+		# calls would print "There are no stairs here" on open floor.
+		var under := map.get_tile(player.x, player.y)
+		if under == Tiles.FUNGUS:
 			return _eat_fungus()
-		if map.get_tile(player.x, player.y) == Tiles.RUBBLE:
+		if under == Tiles.RUBBLE:
 			return _knap_stones()
+		if under == Tiles.STAIRS_DOWN:
+			return player_descend()
+		if under == Tiles.STAIRS_UP:
+			return player_ascend()
+		if under == Tiles.SHRINE:
+			return player_pray()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
@@ -4169,13 +4194,36 @@ func _eat_fungus() -> bool:
 ## so there are sixty to ninety stones lying around; what limits a sling is
 ## that it holds ten and every reload is a turn.
 func _knap_stones() -> bool:
-	var sling: Item = player.equipped.get(Item.Slot.WEAPON, null)
-	if sling == null or sling.ammo_kind != &"stone":
-		msg_log.add("Loose stone, and nothing to sling it with.",
+	# THE ONE IN HAND FIRST, THEN THE PACK.
+	#
+	# Gabe again, and the complaint was not "let me stockpile stones" -- stones
+	# are not an item, they are a counter on the weapon, so there is nowhere for
+	# a loose one to live. It was that rubble could only be worked while the
+	# sling was EQUIPPED, so topping up meant swapping to it, knapping, and
+	# swapping back. The swap costs a turn at each end, which is most of a fight.
+	#
+	# One pass rather than two helpers, because "no sling at all" and "every
+	# sling is full" are different refusals and the old code could only say the
+	# first one.
+	var held: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	var sling: Item = null
+	var any_sling := false
+	if held != null and held.ammo_kind == &"stone":
+		any_sling = true
+		if held.ammo < held.ammo_max:
+			sling = held
+	if sling == null:
+		for it in player.inventory:
+			if it.ammo_kind != &"stone":
+				continue
+			any_sling = true
+			if it.ammo < it.ammo_max:
+				sling = it
+				break
+	if sling == null:
+		msg_log.add("You have all the stones you can carry." if any_sling
+			else "Loose stone, and nothing to sling it with.",
 			Color(0.7, 0.6, 0.4))
-		return false
-	if sling.ammo >= sling.ammo_max:
-		msg_log.add("You have all the stones you can carry.", Color(0.7, 0.6, 0.4))
 		return false
 	# One stone a tile, so every shot costs a turn spent on rubble somewhere.
 	#
@@ -4189,8 +4237,9 @@ func _knap_stones() -> bool:
 	map.set_tile(player.x, player.y,
 		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 		else Tiles.FLOOR)
-	msg_log.add("You work a stone loose from the rubble. (%d/%d)"
-		% [sling.ammo, sling.ammo_max], Color(0.80, 0.78, 0.70))
+	var into := "" if sling == held else " into the %s in your pack" % sling.name
+	msg_log.add("You work a stone loose from the rubble%s. (%d/%d)"
+		% [into, sling.ammo, sling.ammo_max], Color(0.80, 0.78, 0.70))
 	_end_player_turn()
 	return true
 

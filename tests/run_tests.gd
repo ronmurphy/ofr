@@ -145,6 +145,7 @@ func _initialize() -> void:
 	_test_gems_bite()
 	_test_gem_of_returning()
 	_test_gem_of_the_bulwark()
+	_test_g_is_the_action_key()
 	_test_a_rat_may_creep_past()
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
@@ -5722,6 +5723,106 @@ func _test_gems_bite() -> void:
 	bird.chilled = 3
 	check("frost survives a suspend",
 		Entity.from_dict(bird.to_dict()).chilled == 3)
+
+## One key, and the square decides what it means.
+##
+## Gabe's suggestion by email, extended to the shrine by Brad. The key was
+## already contextual -- arrows, fungus, rubble, pick up -- and stopped short of
+## the terrain you stand on deliberately, which is why a pad could not use the
+## stairs: they wanted `>` and `<`, and `shift` is not a thing a pad can send.
+func _test_g_is_the_action_key() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+
+	# The must-succeed premise. Everything below is "G did the right thing",
+	# and all of it would pass vacuously against a player who cannot act.
+	gs.map.set_tile(5, 5, Tiles.FLOOR)
+	check("plain floor still refuses", not gs.player_pickup())
+
+	# --- an item wins, and the terrain waits its turn ---------------------
+	# Brad's explicit ruling: item first if something is lying on the stairs.
+	gs.map.set_tile(5, 5, Tiles.STAIRS_DOWN)
+	var loot := Item.make(&"short_sword")
+	loot.x = 5
+	loot.y = 5
+	gs.ground.append(loot)
+	var was_depth := gs.depth
+	check("an item on the stairs is picked up first", gs.player_pickup())
+	check("and the floor did not change under you", gs.depth == was_depth,
+		"%d -> %d" % [was_depth, gs.depth])
+	check("the sword is in the pack", gs.player.inventory.has(loot))
+
+	# --- and now the same key takes the stairs ---------------------------
+	check("the second press descends", gs.player_pickup())
+	check("the floor changed", gs.depth == was_depth + 1,
+		"%d -> %d" % [was_depth, gs.depth])
+
+	# --- the shrine -------------------------------------------------------
+	var sh := _arena(21, 11)
+	sh.player.x = 5
+	sh.player.y = 5
+	sh.map.set_tile(5, 5, Tiles.SHRINE)
+	var before := sh.msg_log.entries.size()
+	check("G prays at a shrine", sh.player_pickup())
+	check("and it said something about it", sh.msg_log.entries.size() > before)
+
+	# --- climbing ---------------------------------------------------------
+	var up := _arena(21, 11)
+	up.player.x = 5
+	up.player.y = 5
+	up.ascending = true
+	up.depth = 3
+	up.map.set_tile(5, 5, Tiles.STAIRS_UP)
+	check("G climbs where the stairs go up", up.player_pickup())
+
+	# --- the sling, in hand and in the pack -------------------------------
+	#
+	# Gabe's real complaint: rubble could only be worked with the sling
+	# EQUIPPED, so topping up meant swapping to it and back -- a turn at each
+	# end.
+	var r := _arena(21, 11)
+	r.player.x = 5
+	r.player.y = 5
+	r.map.set_tile(5, 5, Tiles.RUBBLE)
+	check("with no sling at all, rubble refuses", not r.player_pickup())
+
+	var packed := Item.make(&"sling")
+	packed.ammo = 0
+	r.player.inventory.append(packed)
+	check("a sling in the PACK is enough (%d)" % packed.ammo, r.player_pickup())
+	check("and it gained the stone", packed.ammo == 1, "%d" % packed.ammo)
+
+	# The equipped one is preferred when it has room.
+	var r2 := _arena(21, 11)
+	r2.player.x = 5
+	r2.player.y = 5
+	r2.map.set_tile(5, 5, Tiles.RUBBLE)
+	var held := Item.make(&"sling")
+	held.ammo = 0
+	var spare := Item.make(&"sling")
+	spare.ammo = 0
+	r2.player.inventory.append(held)
+	r2.player.inventory.append(spare)
+	r2.player.equipped[Item.Slot.WEAPON] = held
+	check("the sling in hand is filled first", r2.player_pickup())
+	check("the held one took it", held.ammo == 1, "%d" % held.ammo)
+	check("and the spare was left alone", spare.ammo == 0, "%d" % spare.ammo)
+
+	# Full slings say so, and say something DIFFERENT from having none.
+	var r3 := _arena(21, 11)
+	r3.player.x = 5
+	r3.player.y = 5
+	r3.map.set_tile(5, 5, Tiles.RUBBLE)
+	var full := Item.make(&"sling")
+	full.ammo = full.ammo_max
+	r3.player.inventory.append(full)
+	check("a full sling refuses", not r3.player_pickup())
+	var said := ""
+	for line in r3.msg_log.entries:
+		said = String(line.get("text", ""))
+	check("and says it is full rather than that you have none",
+		said.findn("carry") >= 0, said)
 
 ## The shield hand finally holds something, and it reaches past the floor.
 func _test_gem_of_the_bulwark() -> void:
