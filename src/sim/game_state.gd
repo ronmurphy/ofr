@@ -3809,6 +3809,25 @@ func player_merge(index: int) -> bool:
 ## warm yourself at a brazier for the ten hit points you wanted anyway, then
 ## have twenty turns and ONE working to decide between an edge and an element,
 ## carrying both the stone and the weapon before you start.
+## Which equipped piece a gem goes into when the player does not name one.
+##
+## Asks `accepts_element` rather than naming a slot, because the slot is
+## something the ELEMENT already knows: a blocking stone is for the shield hand
+## and nothing else will hold it. Naming `Slot.WEAPON` here was the third copy
+## of that condition, and the comment above `accepts_element` warns in as many
+## words that three copies is how the three stop agreeing.
+##
+## Deliberately does NOT skip a piece that already holds a stone. Filtering
+## those out here would replace "the war axe already holds a gem" with "you
+## have nothing in hand to set it into", which is a worse sentence and a false
+## one.
+func _default_host(gem: Item) -> Variant:
+	for slot in [Item.Slot.WEAPON, Item.Slot.OFFHAND, Item.Slot.ARMOR]:
+		var it: Variant = player.equipped.get(slot, null)
+		if it != null and it.accepts_element(gem.element):
+			return it
+	return null
+
 func player_bind(index: int, target: int = -1) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
 		return false
@@ -3823,10 +3842,10 @@ func player_bind(index: int, target: int = -1) -> bool:
 	var blade: Variant = null
 	if target >= 0 and target < player.inventory.size():
 		blade = player.inventory[target]
-		if not blade.is_equipment() or blade.kind != Item.Kind.WEAPON:
+		if not blade.is_equipment():
 			return false
 	else:
-		blade = player.equipped.get(Item.Slot.WEAPON, null)
+		blade = _default_host(gem)
 	if blade == null:
 		msg_log.add("You have nothing in hand to set it into.",
 			Color(0.7, 0.6, 0.4))
@@ -3897,10 +3916,8 @@ func player_bind(index: int, target: int = -1) -> bool:
 func can_bind_gem(gem: Item) -> bool:
 	if gem.kind != Item.Kind.GEM:
 		return false
-	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	var blade: Variant = _default_host(gem)
 	if blade == null or blade.element != &"":
-		return false
-	if not blade.accepts_element(gem.element):
 		return false
 	# True at a LIT brazier too: the click there rakes the fire down, which is
 	# a real step toward binding rather than a refusal. Marking it otherwise
@@ -6439,6 +6456,21 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	var gem := _gem_of(attacker, ranged)
 	if gem == &"fire":
 		dmg += maxi(1, int(round(float(dmg) * GEM_FIRE_SHARE)))
+	# The shield hand, and the ONE thing in this game that reaches past the
+	# damage floor.
+	#
+	# Applied last, after the floor and after fire, because it turns aside the
+	# blow that actually lands rather than a number on the way to it. Every
+	# message below prints the reduced `dmg`, so the player is never shown a
+	# figure the shield already ate.
+	#
+	# Still floored at 1: nothing in this game does nothing, and a tower shield
+	# that made a rat harmless would make the early floors a walk.
+	var turned := defender.block_amount()
+	if turned > 0:
+		var before := dmg
+		dmg = maxi(1, dmg - turned)
+		turned = before - dmg
 	defender.take_damage(dmg)
 	if gem != &"":
 		_gem_strikes(gem, attacker, defender, dmg, ranged)
@@ -6498,6 +6530,17 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		msg_log.add("The %s shoots you for %d." % [attacker.name, dmg], Color(0.95, 0.62, 0.35))
 	else:
 		msg_log.add("The %s hits you for %d." % [attacker.name, dmg], Color(0.90, 0.45, 0.40))
+
+	# Said out loud, because the whole effect is a number that did NOT happen.
+	# Without this the stone reads as no change at all -- the same reason fire
+	# is added before the blow lands rather than deducted after it.
+	if turned > 0:
+		if defender.is_player:
+			msg_log.add("Your shield turns %d of it." % turned,
+				Color(0.62, 0.78, 0.95))
+		elif attacker.is_player:
+			msg_log.add("The %s's shield turns %d." % [defender.name, turned],
+				Color(0.72, 0.74, 0.80))
 
 	# Shoved only by a connecting melee blow, and only if it survived it. A
 	# corpse has nowhere to be pushed to, and a thrown rock that moved you two

@@ -143,6 +143,7 @@ func _initialize() -> void:
 	_test_binding_a_stone()
 	_test_gems_bite()
 	_test_gem_of_returning()
+	_test_gem_of_the_bulwark()
 	_test_a_rat_may_creep_past()
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
@@ -5638,6 +5639,152 @@ func _test_gems_bite() -> void:
 	bird.chilled = 3
 	check("frost survives a suspend",
 		Entity.from_dict(bird.to_dict()).chilled == 3)
+
+## The shield hand finally holds something, and it reaches past the floor.
+func _test_gem_of_the_bulwark() -> void:
+	var buckler := Item.make(&"buckler")
+	var kite := Item.make(&"kite_shield")
+	var tower := Item.make(&"tower_shield")
+	var mail := Item.make(&"chain_mail")
+	var dagger := Item.make(&"dagger")
+	var bow := Item.make(&"short_bow")
+
+	# --- who will hold it ------------------------------------------------
+	# The MUST-SUCCEED check first, so the refusals below cannot all pass by
+	# aiming at an element nothing accepts.
+	check("a shield takes the bulwark", buckler.accepts_element(&"block"))
+	check("every tier of it", kite.accepts_element(&"block")
+		and tower.accepts_element(&"block"))
+	check("body armour does not -- it is not the shield hand",
+		not mail.accepts_element(&"block"))
+	check("nor a blade", not dagger.accepts_element(&"block"))
+	check("nor a bow, which only CLAIMS the offhand",
+		not bow.accepts_element(&"block"))
+	# Opening the gate must not have opened it for everything else.
+	check("and a shield still holds no fire", not buckler.accepts_element(&"fire"))
+	check("nor frost, leech, crag or returning",
+		not buckler.accepts_element(&"frost")
+		and not buckler.accepts_element(&"leech")
+		and not buckler.accepts_element(&"crag")
+		and not buckler.accepts_element(&"return"))
+
+	# --- what it is worth ------------------------------------------------
+	check("an empty shield hand turns nothing",
+		Entity.new("nobody", &"player", 0, 0).block_amount() == 0)
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	check("a shield with no stone turns nothing either",
+		gs.player.block_amount() == 0)
+	gs.player.equipped[Item.Slot.OFFHAND] = kite
+	check("and one with a stone turns its tier", _bulwark(gs.player, kite) == 2)
+
+	# --- the whole point: past the damage floor --------------------------
+	#
+	# The shield ladder is tuned so more DEFENSE does nothing once an attacker
+	# is already at the floor. If blocking did not reach past it, these two
+	# numbers would be equal and the stone would be decoration.
+	var orc := _spawn(gs, "orc", 6, 4)
+	gs.player.max_hp = 9999
+	gs.player.equipped.erase(Item.Slot.OFFHAND)
+
+	# Pinned to the floor on purpose. With defense this high the subtraction is
+	# far below `least`, so every blow lands for exactly the floor and the rng
+	# spread cannot reach it -- which makes the three numbers below comparable
+	# rather than merely different.
+	gs.player.defense = 500
+	gs.player.hp = 9999
+	gs._attack(orc, gs.player)
+	var floored := 9999 - gs.player.hp
+	check("a floored blow still lands (%d)" % floored, floored > 0)
+
+	# The premise the shield ladder is built on, asserted rather than assumed:
+	# once an attacker is at the floor, MORE DEFENSE BUYS NOTHING. If this ever
+	# stops being true, the bulwark's whole reason to exist has gone with it.
+	var plain := Item.make(&"tower_shield")
+	gs.player.equipped[Item.Slot.OFFHAND] = plain
+	gs.player.hp = 9999
+	gs._attack(orc, gs.player)
+	var with_shield := 9999 - gs.player.hp
+	check("a shield with no stone changes nothing at the floor (%d -> %d)"
+		% [floored, with_shield], with_shield == floored)
+
+	# Same shield, same orc, same floor. The ONLY difference is the stone.
+	plain.element = &"block"
+	gs.player.hp = 9999
+	gs._attack(orc, gs.player)
+	var with_stone := 9999 - gs.player.hp
+	check("the stone turns what the floor forced through (%d -> %d)"
+		% [with_shield, with_stone], with_stone < with_shield)
+	check("but never all of it", with_stone >= 1)
+
+	# An orc floors at 2, so a tier-3 shield clamps to 1 and the TIER never
+	# shows. Struck with something big enough to have room in it, the full
+	# subtraction is visible -- and this is the check that would catch a
+	# bulwark that turned a flat 1 regardless of what you were carrying.
+	var heavy := 40
+	var expect := int(ceil(float(heavy) * GameState.DAMAGE_FLOOR_FRACTION))
+	gs.player.equipped.erase(Item.Slot.OFFHAND)
+	gs.player.hp = 9999
+	gs._attack(orc, gs.player, false, heavy)
+	var big := 9999 - gs.player.hp
+	check("a heavy blow floors at a quarter of its power (%d)" % big,
+		big == expect, "expected %d" % expect)
+	for tier in [&"buckler", &"kite_shield", &"tower_shield"]:
+		var sh := Item.make(tier)
+		sh.element = &"block"
+		gs.player.equipped[Item.Slot.OFFHAND] = sh
+		gs.player.hp = 9999
+		gs._attack(orc, gs.player, false, heavy)
+		var got := 9999 - gs.player.hp
+		check("a %s turns exactly its tier (%d off %d)"
+			% [sh.name, big - got, big],
+			big - got == sh.defense_bonus)
+
+	# --- it is said out loud ---------------------------------------------
+	var said := false
+	for line in gs.msg_log.entries:
+		if String(line.get("text", "")).findn("shield turns") >= 0:
+			said = true
+	check("and the shield is mentioned when it does", said)
+
+	# --- binding it at the coals -----------------------------------------
+	var gs2 := _arena(21, 9)
+	gs2.player.x = 5
+	gs2.player.y = 4
+	gs2.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs2.ember_until[Vector2i(6, 4)] = gs2.turns + GameState.EMBER_TURNS
+	var stone := Item.make(&"gem_bulwark")
+	gs2.player.inventory.append(stone)
+	check("with no shield there is nothing to set it into",
+		not gs2.can_bind_gem(stone))
+	var worn := Item.make(&"buckler")
+	gs2.player.inventory.append(worn)
+	gs2.player.equipped[Item.Slot.OFFHAND] = worn
+	check("with one, the forge offers", gs2.can_bind_gem(stone))
+	check("and it takes", gs2.player_bind(gs2.player.inventory.find(stone)))
+	check("the shield now holds it", worn.element == &"block")
+
+	# The weapon hand must not have been robbed to do it.
+	check("the stone went to the shield, not the weapon",
+		gs2.player.equipped.get(Item.Slot.WEAPON, null) == null
+		or gs2.player.equipped[Item.Slot.WEAPON].element == &"")
+
+	# --- and it survives being written down ------------------------------
+	# The binding bug was nineteen commits of silent loss because a suffix had
+	# two ends and only one of them knew about it.
+	var back := Item.from_display_name(worn.display_name())
+	check("a bound shield round-trips through its name", back != null,
+		worn.display_name())
+	if back != null:
+		check("keeping the stone", back.element == &"block")
+		check("and its tier", back.defense_bonus == worn.defense_bonus)
+
+## Reads the tier through the entity, so the test cannot quietly measure the
+## item it is holding instead of the one the game consults.
+func _bulwark(who: Entity, shield: Item) -> int:
+	shield.element = &"block"
+	return who.block_amount()
 
 ## Arrows come home, and only to the weapon that earns them.
 func _test_gem_of_returning() -> void:

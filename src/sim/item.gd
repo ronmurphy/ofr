@@ -190,11 +190,22 @@ const CATALOGUE := {
 	# floor would read as the single most important interactive thing in the
 	# game, and a water gem as a puddle.
 	#
-	# Four rather than six. At roughly one gem a floor and a permanent
-	# binding, a player meets eight or ten in a run -- if half of them are
-	# variations on "the enemy is inconvenienced", none of them becomes the one
-	# you hope to find. These four answer four different questions: damage,
-	# distance, survival, ground.
+	# Kept few on purpose. At roughly one gem a floor and a permanent binding, a
+	# player meets eight or ten in a run -- if half of them are variations on
+	# "the enemy is inconvenienced", none of them becomes the one you hope to
+	# find. Each has to answer a DIFFERENT question: damage, distance, survival,
+	# ground.
+	#
+	# The bulwark is the sixth, and it earns the slot by not competing. The
+	# other five all want the same binding site -- the weapon -- so each new one
+	# dilutes that choice. A blocking stone goes in the SHIELD hand, which until
+	# now could hold nothing at all, so finding one never costs you a weapon
+	# binding you wanted. It also asks a question none of the others do: leech
+	# is survival bought by hitting, and this is survival while being hit.
+	#
+	# It does dilute `roll_gem`, which picks uniformly -- 1-in-6 rather than
+	# 1-in-5 at depth 3 and below. That is the real price and it is accepted
+	# rather than unnoticed.
 	&"gem_fire": {
 		"name": "gem of fire", "app": &"gem", "kind": Kind.GEM,
 		"element": &"fire", "min_depth": 2, "weight": 0,
@@ -220,6 +231,26 @@ const CATALOGUE := {
 	&"gem_crag": {
 		"name": "gem of the crag", "app": &"gem", "kind": Kind.GEM,
 		"element": &"crag", "min_depth": 3, "weight": 0,
+	},
+
+	## The only stone that is not for the weapon hand, and the reason binding
+	## had to stop being weapons-only.
+	##
+	## Blocking had to reach PAST the damage floor to mean anything, and that
+	## is not a balance preference, it is what the shield ladder above already
+	## says: the tiers were chosen so a buckler floors the shadow and a tower
+	## shield "buys one point of margin past everything in the game. Any larger
+	## and the extra would do literally nothing." So a blocking stone that
+	## simply added defense would be a no-op against precisely the monsters a
+	## shield is for -- a gem consumed, a brazier spent, and no measurable
+	## change. That is the ring bug in a different coat.
+	##
+	## So it subtracts AFTER the floor, and it is the only thing in the game
+	## that can take a blow below a quarter of the attacker's power. Brad's
+	## call, 2026-09-21.
+	&"gem_bulwark": {
+		"name": "gem of the bulwark", "app": &"gem", "kind": Kind.GEM,
+		"element": &"block", "min_depth": 3, "weight": 0,
 	},
 
 	## The first unique. It claims the WEAPON hand and gives no power, which is
@@ -469,7 +500,7 @@ func shows_enchanted() -> bool:
 	return element != &"" and kind != Kind.GEM
 
 func accepts_element(el: StringName) -> bool:
-	if not is_equipment() or kind != Kind.WEAPON:
+	if not is_equipment():
 		return false
 	# Never into something you cannot swing.
 	#
@@ -485,6 +516,22 @@ func accepts_element(el: StringName) -> bool:
 	# right one, and `transforms()` already answers that for the swap key.
 	if transforms():
 		return false
+
+	# The shield hand, and nothing else, and only if it is actually a shield.
+	#
+	# `slot` is the right question rather than `kind`: a launcher CLAIMS the
+	# offhand without living in it (its own slot is WEAPON), so asking about
+	# the slot selects shields and misses bows for free. The `defense_bonus`
+	# guard is the ring lesson again -- blocking scales with tier, so a tier-0
+	# offhand would eat the stone and turn nothing aside.
+	if el == &"block":
+		return slot == Slot.OFFHAND and defense_bonus > 0
+	# Every other element is still weapons-only. Opening the gate above opened
+	# it for ONE stone, not for all of them: a mail shirt of frost would be a
+	# second system telling a different story from the first.
+	if kind != Kind.WEAPON:
+		return false
+
 	var ranged := range_bonus > 1
 	match el:
 		&"leech", &"frost":
@@ -797,7 +844,7 @@ static func enchant_chance(effective: int) -> float:
 ## PORTABLE, not because its effect is rarer. Found magic is the stopgap that
 ## makes you want the gem more, which is why sharing the pool costs nothing.
 const FOUND_ELEMENTS: Array[StringName] = [
-	&"fire", &"frost", &"leech", &"return", &"crag",
+	&"fire", &"frost", &"leech", &"return", &"crag", &"block",
 ]
 
 ## Rolls an element onto a generated item, if the dice and the item both allow.

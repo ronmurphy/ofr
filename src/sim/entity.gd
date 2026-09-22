@@ -332,6 +332,19 @@ func total_defense() -> int:
 		v += equipped[slot].defense_bonus
 	return v
 
+## What the shield hand turns aside, on top of defense and PAST the damage
+## floor. Zero for everybody without a blocking stone bound, which is almost
+## everybody.
+##
+## Lives on Entity rather than on the player, because monsters roll shields out
+## of the same catalogue and `_maybe_enchant` can put the stone on one. Brad's
+## standing rule: if the player can have something, so can the monsters.
+func block_amount() -> int:
+	var off: Variant = equipped.get(Item.Slot.OFFHAND, null)
+	if off == null or off.element != &"block":
+		return 0
+	return off.defense_bonus
+
 func is_equipped(item) -> bool:
 	for slot in equipped:
 		if equipped[slot] == item:
