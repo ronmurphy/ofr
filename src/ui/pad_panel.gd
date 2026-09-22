@@ -55,6 +55,18 @@ const COL_GAP := 44.0
 ## count leaves the extra on the left and the columns stay top-aligned.
 static func left_rows() -> int:
 	return int(ceil(PadConfig.WALK.size() / 2.0))
+## Measured by the suite rather than eyeballed: this panel shipped with a
+## footer 39px past its own edge, and the height guard sitting above it said
+## nothing because a guard on one axis says nothing about the other.
+const KEY_FOOTER := "backspace  back     r  defaults     l  log this pad     esc  done"
+
+## Built from the LIVE binding rather than written out, so it cannot claim a
+## button that does not do that any more.
+static func pad_footer() -> String:
+	return "%s  done     %s  defaults     any other button  rebind" % [
+		PadConfig.button_name(JOY_BUTTON_START),
+		PadConfig.button_name(JOY_BUTTON_BACK)]
+
 const PAD := 26.0
 const ROW_H := 30.0
 
@@ -106,7 +118,44 @@ func handle_pad(event: InputEvent) -> bool:
 	# Not listening: the first press ASKS to rebind rather than rebinding. So a
 	# player can open this, read what their pad does, and leave without having
 	# changed anything -- which is what they came for most of the time.
+	#
+	# TWO BUTTONS WORK HERE, and they are the reason this screen stopped being a
+	# one-way door.
+	#
+	# Reported from play on a Legion Go S, 2026-09-22: main.gd hands joypad
+	# events to this panel BEFORE translating them, so while it is open every
+	# button is swallowed by the walk-through. Start could not close it because
+	# Start was just another button to bind, and the footer's four ways out --
+	# backspace, r, l, esc -- are all keyboard keys on a device with no
+	# keyboard. Brad could not leave without the Steam overlay.
+	#
+	# The keyboard-only rule above it was written for a DEAD pad, and it still
+	# holds: a controller that sends nothing cannot press Start either, so the
+	# keyboard hatch has to stay. These are not alternatives. One serves a
+	# broken pad, the other a missing keyboard, and neither case covers the
+	# other.
+	#
+	# Reserved ONLY while not listening. Once the walk-through is running every
+	# button binds, including these two -- otherwise Start could never be
+	# assigned to anything, and reaching the "menu" row and pressing the
+	# obvious button would quit instead of binding it. The walk-through always
+	# ends by itself after WALK.size() presses, so this can never trap anyone.
 	if not _listening:
+		if button.button_index == JOY_BUTTON_START:
+			close()
+			return true
+		if button.button_index == JOY_BUTTON_BACK:
+			# The stale-config escape hatch, and the reason it had to be here.
+			# `load_saved` clears the defaults and takes the file wholesale, so
+			# anyone who ever ran the walk-through keeps their old bindings
+			# forever -- which is how four testers ended up unable to reach the
+			# stairs after the d-pad was given new work. `r` fixed it and `r`
+			# needs a keyboard.
+			cfg.reset()
+			cfg.save()
+			_at = 0
+			queue_redraw()
+			return true
 		_listening = true
 		_at = 0
 		queue_redraw()
@@ -195,6 +244,20 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_RIGHT, col_w, font_size, tint)
 
 	y = top + float(split) * ROW_H + 6.0
-	draw_string(font, Vector2(at.x + PAD, y),
-		"backspace  back     r  defaults     l  log this pad     esc  done",
+	draw_string(font, Vector2(at.x + PAD, y), KEY_FOOTER,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Color(0.58, 0.56, 0.62))
+
+	# The pad's own way out, said in the pad's own words.
+	#
+	# BOTH footers are always drawn, rather than choosing one by asking whether
+	# a controller is connected. That question has already lied once: the
+	# diagnostic log asks it at startup, before Steam's virtual pad has
+	# enumerated, and printed "NO PAD CONNECTED" on a machine holding a working
+	# controller. A line of text is cheaper than being wrong about which device
+	# somebody is holding.
+	#
+	# Hidden mid-walk-through because it is not true then: every button binds
+	# while listening, including these two.
+	if not _listening:
+		draw_string(font, Vector2(at.x + PAD, y + 20.0), pad_footer(),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Color(0.55, 0.62, 0.72))

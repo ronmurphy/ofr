@@ -3384,8 +3384,11 @@ func _test_panels_do_not_overflow() -> void:
 	# quietly resizing itself.
 	# Two columns now, so the height is set by the LONGER column rather than by
 	# the row count. An odd number of bindings leaves the extra on the left.
+	# +20 for the pad footer, which is drawn under the keyboard one whenever
+	# the panel is not mid-walk-through.
 	var pad_bottom: float = PadPanel.PAD + PadPanel.font_size_default() \
-		+ 2.0 * PadPanel.ROW_H + PadPanel.left_rows() * PadPanel.ROW_H + 6.0
+		+ 2.0 * PadPanel.ROW_H + PadPanel.left_rows() * PadPanel.ROW_H + 6.0 \
+		+ 20.0
 	var pad_room: float = PadPanel.PANEL.y - PadPanel.PAD
 	check("controller rows fit the panel (%d rows in %d columns)"
 		% [PadConfig.WALK.size(), 2],
@@ -3397,12 +3400,15 @@ func _test_panels_do_not_overflow() -> void:
 	# and had done since the walk-through grew to fourteen rows. A guard
 	# written for one axis says nothing about the other, and this panel had a
 	# careful assertion about its rows sitting directly above an overflow.
-	var pad_foot := font.get_string_size(
-		"backspace  back     r  defaults     l  log this pad     esc  done",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, PadPanel.font_size_default() - 4).x
+	# Read from the panel's own constant rather than retyped. The first version
+	# of this check held its own copy of the string, which measures whatever
+	# the TEST says and not what the panel draws.
 	var pad_wide: float = PadPanel.PANEL.x - PadPanel.PAD * 2.0
-	check("the controller footer fits the panel",
-		pad_foot <= pad_wide, "%.0f > %.0f px" % [pad_foot, pad_wide])
+	for foot in [PadPanel.KEY_FOOTER, PadPanel.pad_footer()]:
+		var w := font.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			PadPanel.font_size_default() - 4).x
+		check("footer fits the panel (\"%s\")" % foot.substr(0, 24),
+			w <= pad_wide, "%.0f > %.0f px" % [w, pad_wide])
 
 	# And a column has to hold its widest label with its binding beside it.
 	var col_w := (PadPanel.PANEL.x - PadPanel.PAD * 2.0 - PadPanel.COL_GAP) * 0.5
@@ -6255,6 +6261,102 @@ func _test_pack_without_letters() -> void:
 	pad.handle_pad(press)
 	check("and the next press does bind", cfg.button_for_key(KEY_UP) == JOY_BUTTON_Y)
 	pad.free()
+
+	# --- and there is a way OUT of it without a keyboard -------------------
+	#
+	# main.gd feeds joypad events to this panel before translating them, so
+	# while it is open every button is swallowed by the walk-through. Start
+	# could not close it because Start was just another button to bind, and all
+	# four documented exits are keyboard keys. On a Legion Go S that made the
+	# controller screen a one-way door -- found in play 2026-09-22.
+	var out_pad := PadPanel.new()
+	var out_cfg := PadConfig.new()
+	out_pad.open(out_cfg)
+	var shut := {"n": 0}
+	out_pad.closed.connect(func() -> void: shut["n"] += 1)
+
+	# Must-succeed first: if the panel were not open, every check below would
+	# pass while testing nothing.
+	check("the controller screen is open to begin with", out_pad.visible)
+	var start := InputEventJoypadButton.new()
+	start.button_index = JOY_BUTTON_START
+	start.pressed = true
+	out_pad.handle_pad(start)
+	check("Start closes it from the pad alone", not out_pad.visible)
+	check("and it says so once", shut["n"] == 1, "%d" % shut["n"])
+	check("without starting a rebind", not out_pad._listening)
+	check("and without binding Start to anything",
+		out_cfg.key_for_button(JOY_BUTTON_START) == KEY_ESCAPE,
+		OS.get_keycode_string(out_cfg.key_for_button(JOY_BUTTON_START)))
+
+	# Back restores the defaults, which is the only pad-reachable cure for a
+	# stale gamepad.cfg -- `load_saved` takes the file wholesale, so four
+	# testers kept old d-pad bindings and could not reach the stairs.
+	var stale := PadConfig.new()
+	stale.bind(JOY_BUTTON_DPAD_DOWN, KEY_UP)
+	check("a stale binding is in place to begin with",
+		stale.key_for_button(JOY_BUTTON_DPAD_DOWN) == KEY_UP)
+	var fix := PadPanel.new()
+	fix.open(stale)
+	var back := InputEventJoypadButton.new()
+	back.button_index = JOY_BUTTON_BACK
+	back.pressed = true
+	fix.handle_pad(back)
+	check("Back puts the defaults back from the pad alone",
+		stale.key_for_button(JOY_BUTTON_DPAD_DOWN) == KEY_GREATER,
+		OS.get_keycode_string(stale.key_for_button(JOY_BUTTON_DPAD_DOWN)))
+	check("and leaves the screen open to look at", fix.visible)
+
+	# THE CASE THAT MAKES THE RESERVATION SAFE. Once the walk-through is
+	# running, every button binds -- otherwise reaching the "menu" row and
+	# pressing the obvious button would quit instead of binding it, and Start
+	# could never be assigned to anything at all.
+	var walk := PadPanel.new()
+	var walk_cfg := PadConfig.new()
+	walk.open(walk_cfg)
+	var any := InputEventJoypadButton.new()
+	any.button_index = JOY_BUTTON_Y
+	any.pressed = true
+	walk.handle_pad(any)
+	check("a walk-through is running", walk._listening)
+	walk.handle_pad(start)
+	check("Start does NOT close mid-walk-through", walk.visible)
+	check("it binds like any other button",
+		walk_cfg.button_for_key(KEY_UP) == JOY_BUTTON_START,
+		"%d" % walk_cfg.button_for_key(KEY_UP))
+	walk.handle_pad(back)
+	check("and so does Back",
+		walk_cfg.button_for_key(KEY_DOWN) == JOY_BUTTON_BACK,
+		"%d" % walk_cfg.button_for_key(KEY_DOWN))
+
+	# The walk-through must still END by itself, or "every button binds" would
+	# be the trap all over again.
+	# Pressed until it stops, not a fixed count: two rows are already bound
+	# above, and overshooting RESTARTS the walk-through, which is correct
+	# behaviour and made the first version of this check fail.
+	var guard := 0
+	while walk._listening and guard < 200:
+		walk.handle_pad(any)
+		guard += 1
+	check("the walk-through finishes on its own (%d presses)" % guard,
+		not walk._listening)
+	check("leaving Start able to close again", walk.visible)
+	walk.handle_pad(start)
+	check("which it does", not walk.visible)
+	out_pad.free()
+	fix.free()
+	walk.free()
+
+	# The footer has to SAY so. A reserved button nobody is told about is no
+	# better than no reserved button.
+	check("the pad footer names the button that leaves",
+		PadPanel.pad_footer().findn("done") >= 0
+		and PadPanel.pad_footer().findn(PadConfig.button_name(JOY_BUTTON_START)) >= 0,
+		PadPanel.pad_footer())
+	check("and the one that restores defaults",
+		PadPanel.pad_footer().findn("defaults") >= 0
+		and PadPanel.pad_footer().findn(PadConfig.button_name(JOY_BUTTON_BACK)) >= 0,
+		PadPanel.pad_footer())
 
 	# Buttons are named, not numbered.
 	check("a button has a name", PadConfig.button_name(JOY_BUTTON_A) == "A")
