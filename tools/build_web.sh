@@ -19,6 +19,16 @@ rm -f "$out"/index.* "$zipfile"
 # without this the script only worked when it happened to be run from the
 # project root. Running it as ./tools/build_web.sh from anywhere else failed
 # with "Please provide a valid project path when exporting".
+# The version the game will show in its pause menu, so a screenshot from a
+# handheld can be traced to a commit. Restored on a TRAP rather than after the
+# export, or a failed build would leave the stamp behind to be committed by
+# accident -- which would bake this build's hash into every later one.
+#
+# Derived from git, so running the three build scripts separately still gives
+# all three exports the same version. See tools/stamp_build.sh.
+trap '"$root/tools/stamp_build.sh" restore' EXIT
+"$root/tools/stamp_build.sh" stamp
+
 echo "==> exporting to $out"
 godot --headless --path "$root" --export-release "Web" "$out/index.html"
 

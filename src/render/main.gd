@@ -77,6 +77,25 @@ func _ready() -> void:
 	# `godot --pad-log` (or the exported binary with the same flag) prints every
 	# joypad event instead of acting on it. There is no other way to learn what
 	# a particular handheld calls its buttons.
+	# `ofr --ofr-version` prints the build and exits.
+	#
+	# NOT `--version`: that is Godot's own flag, and the engine answers it with
+	# its own version and exits before the project ever loads. Measured -- the
+	# exported binary printed "4.7.2.stable.official" and the game never ran.
+	# `--pad-log` is the existing precedent for a flag the engine ignores and
+	# passes through.
+	#
+	# Exists because the stamp is otherwise UNVERIFIABLE from outside: exports
+	# use script_export_mode=2 (binary tokens), so no GDScript string literal
+	# survives as plain text in the binary and grepping for it finds nothing --
+	# neither the version nor any of the game's own messages. Without this the
+	# only way to check which build a file is would be to launch it and open
+	# the pause menu.
+	if "--ofr-version" in OS.get_cmdline_args():
+		print(BuildInfo.BUILD)
+		get_tree().quit()
+		return
+
 	pad.cfg.load_saved()
 	# Also switched on from the controller screen, so a tester on a handheld
 	# who cannot pass command-line flags through Steam can still produce one.

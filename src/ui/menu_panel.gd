@@ -192,6 +192,17 @@ func _draw() -> void:
 		draw_string(font, p.position + Vector2(PAD, PANEL.y - PAD),
 			line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
 
+	# Which build this is, right-aligned on the SAME baseline as the clock, so
+	# it costs no height and the panel guard does not have to move.
+	#
+	# Here rather than on the title screen because this is the one panel a
+	# player can always reach, including from a handheld with no keyboard --
+	# and "which build are you running" is a question that only ever gets asked
+	# once something is already wrong.
+	draw_string(font, p.position + Vector2(PAD, PANEL.y - PAD),
+		BuildInfo.BUILD, HORIZONTAL_ALIGNMENT_RIGHT, PANEL.x - PAD * 2.0,
+		font_size - 4, Palette.UI_DIM)
+
 	for i in OPTIONS.size():
 		var r := _row_rect(i)
 		if i == _hover:

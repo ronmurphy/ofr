@@ -146,6 +146,7 @@ func _initialize() -> void:
 	_test_gem_of_returning()
 	_test_gem_of_the_bulwark()
 	_test_g_is_the_action_key()
+	_test_the_build_is_named()
 	_test_a_rat_may_creep_past()
 	_test_choosing_the_bound_weapon()
 	_test_the_better_piece_is_kept()
@@ -5743,6 +5744,36 @@ func _test_gems_bite() -> void:
 	bird.chilled = 3
 	check("frost survives a suspend",
 		Entity.from_dict(bird.to_dict()).chilled == 3)
+
+## A screenshot has to be traceable to a commit.
+##
+## Brad's suggestion, after pushing to itch and having no way to confirm from
+## the handheld that the build running was the build uploaded.
+func _test_the_build_is_named() -> void:
+	check("there is a build string at all", BuildInfo.BUILD.length() > 0)
+	# "dev" in a working tree is CORRECT -- the stamp is applied at export and
+	# removed again, because a commit cannot contain its own hash. So this
+	# asserts the shape rather than a value: either the dev marker, or a
+	# stamp beginning with a build number.
+	check("it is either dev or a stamp (\"%s\")" % BuildInfo.BUILD,
+		BuildInfo.BUILD == "dev" or BuildInfo.BUILD.begins_with("b"),
+		BuildInfo.BUILD)
+
+	# It shares a baseline with the clock, so the two must not collide. The
+	# clock is the longer of the pair and grows with the run.
+	var panel := MenuPanel.new()
+	var font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var size := MenuPanel.font_size_default() - 4
+	# A deliberately long clock: hours, and a turn count past anything a real
+	# run reaches.
+	var clock := "99h 59m underground  ·  999999 turns"
+	var stamp := "b99999+ abcdef0"
+	var used := font.get_string_size(clock, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x \
+		+ font.get_string_size(stamp, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var room: float = MenuPanel.PANEL.x - MenuPanel.PAD * 2.0
+	check("the clock and the build stamp share a line without colliding",
+		used <= room, "%.0f > %.0f px" % [used, room])
+	panel.free()
 
 ## One key, and the square decides what it means.
 ##

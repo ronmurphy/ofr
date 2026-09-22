@@ -25,6 +25,16 @@ rm -f "$exe" "$out"/OFR.pck "$out"/OFR.console.exe "$archive"
 
 # --path, not cd: Godot locates the project from the working directory, so
 # without this the script only works when run from the project root.
+# The version the game will show in its pause menu, so a screenshot from a
+# handheld can be traced to a commit. Restored on a TRAP rather than after the
+# export, or a failed build would leave the stamp behind to be committed by
+# accident -- which would bake this build's hash into every later one.
+#
+# Derived from git, so running the three build scripts separately still gives
+# all three exports the same version. See tools/stamp_build.sh.
+trap '"$root/tools/stamp_build.sh" restore' EXIT
+"$root/tools/stamp_build.sh" stamp
+
 echo "==> exporting to $out"
 godot --headless --path "$root" --export-release "Windows" "$exe"
 
