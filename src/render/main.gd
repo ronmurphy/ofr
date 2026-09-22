@@ -165,6 +165,22 @@ func _cycle_text_size() -> void:
 	_refresh()
 
 func _process(delta: float) -> void:
+	# The stick is polled rather than evented: one held still sends nothing, and
+	# "still held" is exactly what auto-repeat has to know about.
+	#
+	# POLLED BEFORE THE MODAL RETURN BELOW, and that is load-bearing. It used to
+	# sit after it, which was harmless only for as long as the d-pad also sent
+	# arrows: the menu and the legend were navigated with the d-pad, and the
+	# stick going quiet while they were open cost nothing.
+	#
+	# The moment the d-pad stopped sending arrows (see PadConfig.DEFAULTS) that
+	# early return became a soft-lock -- open the pause menu with Start on a
+	# handheld and NOTHING moves the highlight, including Resume. The stick is
+	# now the only thing that navigates, so it has to be heard everywhere.
+	var held := pad.stick_key(delta)
+	if held != 0:
+		_press(held)
+
 	if menu.visible or legend.visible:
 		return
 	if _look:
@@ -174,12 +190,6 @@ func _process(delta: float) -> void:
 	else:
 		sidebar.hovered = grid.hovered_cell()
 	sidebar.queue_redraw()
-
-	# The stick is polled rather than evented: one held still sends nothing, and
-	# "still held" is exactly what auto-repeat has to know about.
-	var held := pad.stick_key(delta)
-	if held != 0:
-		_press(held)
 
 	if not state.travelling():
 		return

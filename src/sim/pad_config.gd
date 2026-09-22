@@ -71,6 +71,30 @@ const WALK := [
 	## something else -- see the note on JOY_BUTTON_BACK.
 	[KEY_O, "the map"],
 	[KEY_ESCAPE, "menu"],
+
+	## THE D-PAD'S NEW JOB, and the reason it has one.
+	##
+	## Measured 2026-09-21: a controller could not reach descend, ascend, pray
+	## or the torch AT ALL. Every button is translated into a bare keycode --
+	## main.gd `_press` builds an InputEventKey with no modifiers -- so the two
+	## stairs actions, which want shift+period and shift+comma, were impossible
+	## however they were bound. `p` and `t` were not even in this list to bind.
+	## A pad-only handheld could not leave floor one.
+	##
+	## Brad's fix, and it is better than overloading a face button: THE LEFT
+	## STICK ALREADY WALKS, in all eight directions, straight off the axes and
+	## with no binding involved (`Gamepad.stick_key`). The d-pad was only ever
+	## the four cardinals, a strict subset of what the stick already did, so
+	## spending it on movement was spending it twice. These four are what it
+	## buys instead.
+	##
+	## Down descends and up ascends because the staircase is the thing you are
+	## standing on, and no contextual rule is needed to say which -- two keys
+	## that already exist, `>` and `<`, doing exactly what they always did.
+	[KEY_GREATER, "go down stairs"],
+	[KEY_LESS, "go up stairs"],
+	[KEY_T, "torch on / off"],
+	[KEY_P, "pray at a shrine"],
 ]
 
 ## The Xbox-style guess. Right for most, wrong for someone, which is the point.
@@ -105,10 +129,17 @@ static func button_name(index: int) -> String:
 	return String(BUTTON_NAMES.get(index, "button %d" % index))
 
 const DEFAULTS := {
-	JOY_BUTTON_DPAD_UP: KEY_UP,
-	JOY_BUTTON_DPAD_DOWN: KEY_DOWN,
-	JOY_BUTTON_DPAD_LEFT: KEY_LEFT,
-	JOY_BUTTON_DPAD_RIGHT: KEY_RIGHT,
+	## NOT movement. The stick does that already and does it better -- eight
+	## directions against four, and hardcoded rather than bound, so this cannot
+	## strand anybody who rebinds. See the note in WALK.
+	##
+	## Still offered by the walk-through as "move up/down/left/right", so a
+	## player who wants the d-pad back can have it; they are simply not bound
+	## here any more.
+	JOY_BUTTON_DPAD_DOWN: KEY_GREATER,
+	JOY_BUTTON_DPAD_UP: KEY_LESS,
+	JOY_BUTTON_DPAD_LEFT: KEY_T,
+	JOY_BUTTON_DPAD_RIGHT: KEY_P,
 	JOY_BUTTON_A: KEY_PERIOD,
 	JOY_BUTTON_B: KEY_G,
 	JOY_BUTTON_X: KEY_I,

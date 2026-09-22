@@ -41,7 +41,14 @@ static func font_size_default() -> int:
 ## Sized from the content: the widest row is "swap reach / blade" with a
 ## "button 12" right-aligned against it, measured at 327px, so a 350px column
 ## holds anything the walk-through is likely to name.
-const PANEL := Vector2(820.0, 400.0)
+## Height chosen by hand for 19 rows, not computed: the guard in the suite is
+## meant to FAIL when the walk-through grows, so that somebody looks at the
+## panel rather than letting it silently resize past the screen. It grew from
+## 400 to 460 on 2026-09-22 when the d-pad picked up four actions -- stairs
+## both ways, the torch and praying -- at 10 rows in the taller column.
+## 460 leaves about 25px of slack; the next addition will fail here again, and
+## should.
+const PANEL := Vector2(820.0, 460.0)
 const COL_GAP := 44.0
 
 ## Rows in the left column. The right column takes the remainder, so an odd

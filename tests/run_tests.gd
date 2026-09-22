@@ -114,6 +114,7 @@ func _initialize() -> void:
 	_test_panels_do_not_overflow()
 	_test_text_size_survives_a_restart()
 	_test_every_menu_row_is_reachable()
+	_test_a_pad_can_finish_the_game()
 	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
@@ -3185,6 +3186,60 @@ func _scene_widths() -> Dictionary:
 ## by hand has already failed twice: the controller row was added to the
 ## keyboard and left dead to the mouse, and the text size row -- added FOR
 ## handhelds -- could not be pressed from a handheld at all.
+## Every action a run REQUIRES has to be reachable from a controller.
+##
+## Measured 2026-09-21 and it was not: descend, ascend, pray and the torch were
+## unreachable from any button, however bound. Every pad press becomes a bare
+## keycode -- main.gd `_press` builds an InputEventKey with no modifiers -- so
+## the stairs, which want shift+period and shift+comma on a keyboard, could not
+## be sent at all. A pad-only handheld could not leave floor one.
+##
+## This is the check that would have caught it, and it is written against what
+## a run NEEDS rather than against the binding table, so a future rearrangement
+## cannot quietly drop one again.
+func _test_a_pad_can_finish_the_game() -> void:
+	var cfg := PadConfig.new()
+	var pressable := {}
+	for button in cfg.binds:
+		pressable[int(cfg.binds[button])] = true
+	for dir in Gamepad.STICK_KEYS:
+		pressable[int(Gamepad.STICK_KEYS[dir])] = true
+
+	# The must-succeed premise: if this table were empty every check below
+	# would pass while asserting nothing.
+	check("a default pad sends something at all (%d keys)" % pressable.size(),
+		pressable.size() >= 10)
+
+	# `>` and `<` rather than shift+period: a pad cannot hold shift.
+	check("a pad can go DOWN the stairs", pressable.has(KEY_GREATER))
+	check("and back up them", pressable.has(KEY_LESS))
+	check("a pad can pray at a shrine", pressable.has(KEY_P))
+	check("a pad can douse its torch", pressable.has(KEY_T))
+	check("a pad can still wait", pressable.has(KEY_PERIOD))
+	check("pick up", pressable.has(KEY_G))
+	check("open the pack", pressable.has(KEY_I))
+	check("and open the menu", pressable.has(KEY_ESCAPE))
+
+	# Nothing a pad can send may need a modifier, because it cannot send one.
+	# This is the general form of the bug rather than a list of its instances.
+	for row in PadConfig.WALK:
+		var k := int(row[0])
+		check("\"%s\" needs no shift key" % String(row[1]),
+			k != KEY_COLON and k != KEY_PLUS,
+			OS.get_keycode_string(k))
+
+	# And the invariant the walk-through already had, restated for the new
+	# rows: anything bound by default must be something you can bind back.
+	var bindable := {}
+	for row in PadConfig.WALK:
+		bindable[int(row[0])] = true
+	var lost := PackedStringArray()
+	for button in PadConfig.DEFAULTS:
+		if not bindable.has(int(PadConfig.DEFAULTS[button])):
+			lost.append(OS.get_keycode_string(int(PadConfig.DEFAULTS[button])))
+	check("every new default is restorable", lost.is_empty(),
+		"not in WALK: %s" % ", ".join(lost))
+
 func _test_every_menu_row_is_reachable() -> void:
 	var sendable := {}
 	for button in PadConfig.DEFAULTS:
@@ -3192,9 +3247,31 @@ func _test_every_menu_row_is_reachable() -> void:
 
 	# Navigation is what makes the rows reachable, not the letters: none of
 	# `t`, `s` or `n` can be sent by a default pad or even bound to one.
+	#
+	# It comes from the STICK now, not from a bound button. The d-pad used to
+	# send the arrows and was spent doing it; since 2026-09-22 it carries the
+	# four actions a pad could not otherwise reach, and the stick -- which
+	# always walked, in eight directions rather than four -- is the only thing
+	# that navigates.
+	#
+	# That is a STRONGER guarantee than the old one, and this is the check that
+	# says so: STICK_KEYS is hardcoded, so navigation cannot be evicted by
+	# rebinding. Under the old arrangement a player who bound the d-pad to
+	# something else lost the ability to work the pause menu.
+	for nav in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
+		sendable[nav] = true
 	check("a default pad can move the menu highlight",
 		sendable.has(KEY_UP) and sendable.has(KEY_DOWN),
 		"%d keys bound" % sendable.size())
+	var walks := {}
+	for dir in Gamepad.STICK_KEYS:
+		walks[int(Gamepad.STICK_KEYS[dir])] = true
+	check("and it comes from the stick, which no rebinding can take away",
+		walks.has(KEY_UP) and walks.has(KEY_DOWN)
+		and walks.has(KEY_LEFT) and walks.has(KEY_RIGHT),
+		"%d stick keys" % walks.size())
+	check("the stick still covers all eight directions", walks.size() == 8,
+		"%d" % walks.size())
 	check("a default pad can choose the highlighted row",
 		sendable.has(KEY_PERIOD), "%d keys bound" % sendable.size())
 	check("a default pad can open the menu", sendable.has(KEY_ESCAPE),
