@@ -59,16 +59,14 @@ const WALK := [
 	[KEY_C, "close a door"],
 	[KEY_A, "ally heel / loose"],
 	[KEY_QUESTION, "the legend"],
-	## Bindable but NOT bound by default, and that is a gap rather than a
-	## decision. Every button on a standard pad is already spoken for:
-	## d-pad, A, B, X, Y, both shoulders, start, back and both stick clicks.
-	## What is left is GUIDE (which Steam swallows before the game sees it),
-	## the paddles and MISC1 (device-specific, absent on most), and the
-	## touchpad (a Deck has one, a Legion Go does not).
+	## BOUND NOW, to d-pad up. This used to say the map could never have a
+	## button because every one was spoken for, and that stopped being true
+	## when `g` became the action key: a tile knows whether its stairs go up
+	## or down, so the dedicated ascend and pray buttons became redundant and
+	## d-pad up was the first thing freed. Brad's call on what to spend it on.
 	##
-	## So the map is here for anyone who wants to spend a button on it, and
-	## on a keyboard it is "o". Giving it a default would mean taking one from
-	## something else -- see the note on JOY_BUTTON_BACK.
+	## `<` is still in this list and still works on a keyboard -- it is simply
+	## no longer worth a button, which is different from being removed.
 	[KEY_O, "the map"],
 	[KEY_ESCAPE, "menu"],
 
@@ -137,7 +135,7 @@ const DEFAULTS := {
 	## player who wants the d-pad back can have it; they are simply not bound
 	## here any more.
 	JOY_BUTTON_DPAD_DOWN: KEY_GREATER,
-	JOY_BUTTON_DPAD_UP: KEY_LESS,
+	JOY_BUTTON_DPAD_UP: KEY_O,
 	JOY_BUTTON_DPAD_LEFT: KEY_T,
 	JOY_BUTTON_DPAD_RIGHT: KEY_P,
 	JOY_BUTTON_A: KEY_PERIOD,

@@ -3211,11 +3211,31 @@ func _test_a_pad_can_finish_the_game() -> void:
 	check("a default pad sends something at all (%d keys)" % pressable.size(),
 		pressable.size() >= 10)
 
-	# `>` and `<` rather than shift+period: a pad cannot hold shift.
-	check("a pad can go DOWN the stairs", pressable.has(KEY_GREATER))
-	check("and back up them", pressable.has(KEY_LESS))
-	check("a pad can pray at a shrine", pressable.has(KEY_P))
-	check("a pad can douse its torch", pressable.has(KEY_T))
+	# Asserted as CAPABILITIES with their possible routes, not as keycodes.
+	#
+	# The first version of this checked `pressable.has(KEY_LESS)`, which broke
+	# the moment `g` became the action key and d-pad up was freed for the map:
+	# a pad could still climb perfectly well, through `g`, while the check
+	# said it could not. A guard written against the mechanism fails when the
+	# mechanism changes; one written against what a RUN NEEDS does not.
+	#
+	# `g` counts as a route because _test_g_is_the_action_key proves it takes
+	# the stairs and prays. This check only asks whether a pad can press it.
+	var routes := {
+		"go down the stairs": [KEY_GREATER, KEY_G],
+		"climb back up them": [KEY_LESS, KEY_G],
+		"pray at a shrine": [KEY_P, KEY_G],
+		"douse its torch": [KEY_T],
+	}
+	for what in routes:
+		var ok := false
+		var tried := PackedStringArray()
+		for k in routes[what]:
+			tried.append(OS.get_keycode_string(int(k)))
+			if pressable.has(int(k)):
+				ok = true
+		check("a pad can %s" % what, ok, "none of %s" % ", ".join(tried))
+	check("and the action key itself is on a button", pressable.has(KEY_G))
 	check("a pad can still wait", pressable.has(KEY_PERIOD))
 	check("pick up", pressable.has(KEY_G))
 	check("open the pack", pressable.has(KEY_I))
