@@ -74,6 +74,36 @@ const WALK := [
 ]
 
 ## The Xbox-style guess. Right for most, wrong for someone, which is the point.
+## What to CALL a button, rather than what number it is.
+##
+## Reported from play: the screen read "button 12", which tells a player
+## nothing. It is a lookup rather than a guess because Godot normalises every
+## pad it recognises to this layout through SDL's controller database -- so
+## index 0 really is A on an Xbox pad, on a Steam Deck and on a Legion Go, and
+## Cross on a PlayStation pad. The numbers in a bug report decode the same way.
+##
+## Xbox naming because that is what the handhelds copy. A PlayStation pad shows
+## the same positions under different names, which is a per-device refinement
+## worth having later and not worth guessing at now.
+const BUTTON_NAMES := {
+	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B",
+	JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
+	JOY_BUTTON_BACK: "Back", JOY_BUTTON_GUIDE: "Guide",
+	JOY_BUTTON_START: "Start",
+	JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
+	JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
+	JOY_BUTTON_DPAD_UP: "D-pad up", JOY_BUTTON_DPAD_DOWN: "D-pad down",
+	JOY_BUTTON_DPAD_LEFT: "D-pad left", JOY_BUTTON_DPAD_RIGHT: "D-pad right",
+}
+
+## A name if we have one, the raw index if we do not.
+##
+## The fallback matters: a pad SDL does not recognise reports indices this table
+## has never heard of, and "button 17" is at least true. A wrong name would be
+## worse than a number.
+static func button_name(index: int) -> String:
+	return String(BUTTON_NAMES.get(index, "button %d" % index))
+
 const DEFAULTS := {
 	JOY_BUTTON_DPAD_UP: KEY_UP,
 	JOY_BUTTON_DPAD_DOWN: KEY_DOWN,

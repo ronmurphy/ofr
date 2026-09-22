@@ -164,6 +164,7 @@ func _initialize() -> void:
 	_test_the_sack()
 	_test_the_overview_map()
 	_test_spires_subside()
+	_test_pack_without_letters()
 	_test_found_magic()
 	_test_the_trader()
 	_test_every_kind_is_listed()
@@ -5961,6 +5962,80 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
 	r.seed = s
 	return r
+
+## The pack has to be usable by something with no letters on it.
+##
+## Reported from play on a Legion Go S: the inventory opened and nothing could
+## be chosen. Every route in was a letter key or the mouse, and a controller
+## sends neither -- Brad had to tap the touchscreen to equip anything.
+func _test_pack_without_letters() -> void:
+	var gs := _arena(21, 11)
+	var pack := InventoryPanel.new()
+	pack.state = gs
+	for id in [&"short_sword", &"leather_armour", &"potion_healing",
+			&"scroll_light"]:
+		var it := Item.make(id)
+		if it != null:
+			gs.give_item(it)
+	pack.open()
+
+	# The premise. If the pack were empty every check below would pass while
+	# testing nothing.
+	var rows := pack.selectable()
+	check("the pack has rows to select (%d)" % rows.size(), rows.size() >= 3)
+
+	check("nothing is highlighted to begin with", pack.hovered() < 0)
+	pack.move_hover(1)
+	check("down highlights the first row", pack.hovered() == rows[0],
+		"%d vs %d" % [pack.hovered(), rows[0] if rows else -1])
+	pack.move_hover(-1)
+	check("and up from there wraps to the last", pack.hovered() == rows[-1])
+	pack.move_hover(1)
+	check("and wraps forward again", pack.hovered() == rows[0])
+
+	# Walking the whole list must visit every row and come back.
+	var seen := {}
+	for i in rows.size():
+		seen[pack.hovered()] = true
+		pack.move_hover(1)
+	check("walking the list reaches every row",
+		seen.size() == rows.size(), "%d of %d" % [seen.size(), rows.size()])
+	check("and returns to where it started", pack.hovered() == rows[0])
+
+	# A highlight must never point at a row the mouse could not click -- the
+	# two come from the same _row_rects(), and this is what keeps them honest.
+	check("the highlight is always a real row", pack.selectable().has(pack.hovered()))
+
+	# Filtering changes what is on screen, so the highlight cannot survive it.
+	pack.cycle_filter(1)
+	check("changing filter clears the highlight", pack.hovered() < 0)
+	pack.free()
+
+	# And the controller screen must not rebind just because it was opened.
+	#
+	# It used to start listening on open, so a player looking at their bindings
+	# rebound "move up" to whatever they pressed -- and the way out is
+	# keyboard-only, so on a handheld there was no way to stop.
+	var pad := PadPanel.new()
+	var cfg := PadConfig.new()
+	var was := cfg.button_for_key(KEY_UP)
+	pad.open(cfg)
+	check("the controller screen opens without listening", not pad._listening)
+	var press := InputEventJoypadButton.new()
+	press.button_index = JOY_BUTTON_Y
+	press.pressed = true
+	pad.handle_pad(press)
+	check("and the first press only starts the walk-through",
+		cfg.button_for_key(KEY_UP) == was, "rebound to %d" % cfg.button_for_key(KEY_UP))
+	check("but it is listening now", pad._listening)
+	pad.handle_pad(press)
+	check("and the next press does bind", cfg.button_for_key(KEY_UP) == JOY_BUTTON_Y)
+	pad.free()
+
+	# Buttons are named, not numbered.
+	check("a button has a name", PadConfig.button_name(JOY_BUTTON_A) == "A")
+	check("and an unknown index still says something true",
+		PadConfig.button_name(97) == "button 97")
 
 ## Stone the crag gem raises has to go away again.
 ##

@@ -329,6 +329,39 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	# The inventory is modal and swallows everything else while it is up.
 	if inventory.visible:
+		# A CONTROLLER HAS NO LETTERS.
+		#
+		# Reported from play on a Legion Go S: the pack opened and nothing in it
+		# could be chosen, because every route in was a letter key or the mouse,
+		# and a pad sends neither. Brad had to reach up and tap the touchscreen
+		# to equip anything.
+		#
+		# Handled ahead of all three modes -- ordinary, throw and bind -- since
+		# the two pickers were exactly as unreachable as the pack itself.
+		# Up/down move the highlight, wait or enter chooses, and the letters and
+		# the mouse keep working untouched.
+		if key == KEY_UP or key == KEY_DOWN:
+			inventory.move_hover(-1 if key == KEY_UP else 1)
+			_refresh()
+			return
+		if key == KEY_PERIOD or key == KEY_ENTER or key == KEY_KP_ENTER:
+			var on := inventory.hovered()
+			if on >= 0:
+				if inventory.throw_mode:
+					_on_throw_chosen(on)
+				elif inventory.bind_mode:
+					_on_bind_chosen(on)
+				else:
+					_use_item(on)
+			return
+		# Left and right page the filters, so the chips are reachable too. Tab
+		# still does it for a keyboard; this is the same act on a d-pad.
+		if not inventory.throw_mode and not inventory.bind_mode:
+			if key == KEY_LEFT or key == KEY_RIGHT:
+				inventory.cycle_filter(-1 if key == KEY_LEFT else 1)
+				_refresh()
+				return
+
 		if inventory.throw_mode:
 			if key == KEY_ESCAPE or key == KEY_F:
 				_close_inventory()

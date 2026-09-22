@@ -297,6 +297,41 @@ func _gui_input(event: InputEvent) -> void:
 	elif click.button_index == MOUSE_BUTTON_RIGHT:
 		drop_requested.emit(hit)
 
+## Every item index currently on screen, in the order they are drawn.
+##
+## Built from the same `_row_rects()` the mouse hit-tests against, so the
+## highlight can never land somewhere the pointer could not, and a filter that
+## hides a row hides it from both at once.
+func selectable() -> Array[int]:
+	var out: Array[int] = []
+	for entry in _row_rects():
+		var row: Dictionary = entry["row"]
+		if row.has("header"):
+			continue
+		out.append(int(row["index"]))
+	return out
+
+## Moves the highlight, wrapping at both ends.
+##
+## From nowhere, down lands on the first row and up on the last, so the first
+## press always goes somewhere predictable rather than depending on where a
+## mouse was last left. The same rule the pause menu follows.
+func move_hover(step: int) -> void:
+	var rows := selectable()
+	if rows.is_empty():
+		_hover_index = -1
+		return
+	var at := rows.find(_hover_index)
+	if at < 0:
+		_hover_index = rows[0] if step > 0 else rows[-1]
+	else:
+		_hover_index = rows[posmod(at + step, rows.size())]
+	queue_redraw()
+
+## What the highlight is on, or -1.
+func hovered() -> int:
+	return _hover_index if selectable().has(_hover_index) else -1
+
 func _index_at(pos: Vector2) -> int:
 	for entry in _row_rects():
 		if entry["row"].has("header"):

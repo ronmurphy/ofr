@@ -64,10 +64,21 @@ func _ready() -> void:
 	if font_bold == null:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
+## Opens SHOWING, not listening.
+##
+## Reported from play on a Legion Go S: this screen used to begin capturing the
+## moment it opened, so a player who came to look at their bindings rebound
+## "move up" to whatever they pressed next -- and the way out is keyboard-only,
+## by an earlier decision, so on a handheld there was no way to stop. Brad had
+## to quit through the Steam overlay.
+##
+## The keyboard-only exit was right for a DEAD pad and wrong for a live one. A
+## screen that reads your bindings back is the common case; rebinding is the
+## rare one, and it now has to be asked for.
 func open(config: PadConfig) -> void:
 	cfg = config
 	_at = 0
-	_listening = true
+	_listening = false
 	visible = true
 	queue_redraw()
 
@@ -85,6 +96,14 @@ func handle_pad(event: InputEvent) -> bool:
 	var button := event as InputEventJoypadButton
 	if button == null or not button.pressed:
 		return false
+	# Not listening: the first press ASKS to rebind rather than rebinding. So a
+	# player can open this, read what their pad does, and leave without having
+	# changed anything -- which is what they came for most of the time.
+	if not _listening:
+		_listening = true
+		_at = 0
+		queue_redraw()
+		return true
 	if _at >= PadConfig.WALK.size():
 		close()
 		return true
@@ -129,8 +148,12 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.92, 0.88, 0.70))
 	y += ROW_H
 
-	var note := "press a button for each line"
-	if not _listening:
+	# Three states, not two: showing what you have, walking through a rebind,
+	# and finished. The first is new -- it used to open straight into the walk.
+	var note := "press any button to start rebinding     esc  leave"
+	if _listening and _at < PadConfig.WALK.size():
+		note = "press a button for each line"
+	elif _listening:
 		note = "all set -- enter to finish"
 	draw_string(font, Vector2(at.x + PAD, y), note,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 3, Color(0.68, 0.66, 0.72))
@@ -158,7 +181,7 @@ func _draw() -> void:
 		var said := "press a button" if live else "--"
 		var has := cfg.button_for_key(int(row[0])) if cfg != null else -1
 		if not live and has >= 0:
-			said = "button %d" % has
+			said = PadConfig.button_name(has)
 		# Right-aligned within its own column rather than the panel, or the
 		# left column's bindings would sit in the right column's labels.
 		draw_string(font, Vector2(col_x, row_y), said,

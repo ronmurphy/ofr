@@ -75,6 +75,85 @@ TILES = """const TILES = [
 ];"""
 
 
+def _strip_comment(line: str) -> str:
+    """Cut a GDScript line at its comment, respecting string literals.
+
+    The naive `#.*$` is wrong here and wrong in an expensive way: the very
+    first line of TERRAIN is `"#": Tiles.WALL, ".": Tiles.FLOOR, ...`, so
+    cutting at the first `#` deletes the wall, the floor and the cave floor.
+    The check then reports the EDITOR as having three glyphs too many, which
+    points at the wrong file entirely. Caught on the first run of this check,
+    by the check.
+    """
+    inside = False
+    for i, c in enumerate(line):
+        if c == '"':
+            inside = not inside
+        elif c == "#" and not inside:
+            return line[:i]
+    return line
+
+
+def legal_glyphs() -> set:
+    """The glyphs src/sim/vault.gd will actually parse.
+
+    Comments are stripped first. `TERRAIN`'s own notes mention characters in
+    prose -- the headstone note names `T`, the sack note names the currency
+    sign -- and a regex over the raw text would collect those as if they were
+    table entries.
+
+    TERRAIN is a Dictionary of "x": Tiles.CONST and CONTENTS is a plain Array
+    of "x", which is exactly the shape difference that made a single pattern
+    silently skip the whole contents table when ofr-80 first checked for drift.
+    They are read separately here for that reason.
+    """
+    src = VAULT.read_text(encoding="utf-8")
+    body = "\n".join(_strip_comment(ln) for ln in src.splitlines())
+
+    def block(name: str, opener: str, closer: str) -> str:
+        m = re.search(
+            r"const %s\s*:=\s*%s(.*?)%s" % (name, re.escape(opener), re.escape(closer)),
+            body, re.S)
+        if m is None:
+            sys.exit("could not find %s in %s" % (name, VAULT.name))
+        return m.group(1)
+
+    terrain = set(re.findall(r'"(.)"\s*:', block("TERRAIN", "{", "}")))
+    contents = set(re.findall(r'"(.)"', block("CONTENTS", "[", "]")))
+
+    # A pattern that matches nothing fails the same way a stale table does, so
+    # say so loudly rather than proceeding with an empty set that agrees with
+    # nothing and complains about everything.
+    if not terrain or not contents:
+        sys.exit("extracted %d terrain and %d content glyphs from %s -- the "
+                 "parser matched nothing, which is a bug in this script rather "
+                 "than in the game" % (len(terrain), len(contents), VAULT.name))
+    return terrain | contents
+
+
+def check_against_vault() -> None:
+    """Refuse to write an editor that disagrees with the game."""
+    legal = legal_glyphs()
+    # " " is the editor's own "outside the vault" brush and is not a vault
+    # glyph -- a blank is absence, and vault.gd has nothing to say about it.
+    offered = set(re.findall(r'\{ ch: "((?:\\u[0-9a-fA-F]{4})|.)"', TILES)) - {" "}
+
+    missing = sorted(legal - offered)
+    extra = sorted(offered - legal)
+    if missing or extra:
+        lines = ["tools/vault_editor.html would disagree with src/sim/vault.gd:"]
+        if missing:
+            lines.append("  vault.gd parses these, the editor cannot draw them: "
+                         + " ".join(missing))
+        if extra:
+            lines.append("  the editor offers these, vault.gd would reject them: "
+                         + " ".join(extra))
+        lines.append("Add them to TILES in this file, with a colour and an icon "
+                     "if the game has one.")
+        sys.exit("\n".join(lines))
+    print("checked %d glyphs against %s" % (len(legal), VAULT.name))
+
+
 def replace_once(text: str, pattern: str, repl: str, what: str) -> str:
     new, n = re.subn(pattern, lambda _m: repl, text, count=1, flags=re.S)
     if n != 1:
@@ -85,6 +164,7 @@ def replace_once(text: str, pattern: str, repl: str, what: str) -> str:
 def main() -> None:
     if not FONT.exists():
         sys.exit("missing %s" % FONT)
+    check_against_vault()
     html = HTML.read_text(encoding="utf-8")
     b64 = base64.b64encode(FONT.read_bytes()).decode("ascii")
 
