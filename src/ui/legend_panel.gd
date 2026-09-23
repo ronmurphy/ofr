@@ -11,6 +11,15 @@ extends Control
 @export var font_bold: Font
 @export var font_size: int = 14
 
+## The live bindings and which device is in the player's hands, set by main.gd.
+##
+## This screen was the LAST place in the game still naming keys a handheld does
+## not have -- it read `w  swap reach / blade` on a Legion Go S, where the answer
+## is RB. Every other surface had been made device-aware; this one was missed
+## because it is the one nobody looks at until they are already lost.
+var pad_cfg: PadConfig = null
+var pad_input := false
+
 ## The size the panel actually draws at, as a constant the suite can read: an
 ## @export is an instance property, and a layout guard must not have to build a
 ## panel to ask how big its text is.
@@ -287,7 +296,8 @@ func _control_column(x: float, y: float, w: float) -> void:
 	# what a key does.
 	for row in Sidebar.KEYS:
 		var base := y + font.get_ascent(font_size)
-		draw_string(font, Vector2(x + GLYPH_X, base), row[0],
+		draw_string(font, Vector2(x + GLYPH_X, base),
+			Sidebar.key_label(row, pad_cfg, pad_input),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 1, Palette.UI_DIM)
 		draw_string(font, Vector2(x + GLYPH_X, base), row[1],
 			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1, Palette.UI_TEXT)
@@ -295,8 +305,12 @@ func _control_column(x: float, y: float, w: float) -> void:
 
 	# The page marker. Said on the screen rather than left to be discovered,
 	# because a page you do not know is there is a page nobody visits -- and on
-	# a handheld this is the ONLY route to the map, since every button is
-	# already spoken for.
+	# a handheld this WAS the only route to the map. That stopped being true on
+	# 2026-09-22, when `g` became the action key: the tile knows whether its
+	# stairs go up or down, so the dedicated ascend button was freed and the map
+	# took it. Kept because paging between the two reference screens is still
+	# how most people will reach it, and the corrected claim is worth having
+	# written down rather than silently deleted.
 	y += LINE * 0.8
 	draw_string(font, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
 		"right  \u2192  the map", HORIZONTAL_ALIGNMENT_LEFT, -1,

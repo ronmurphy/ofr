@@ -37,41 +37,71 @@ var _hit_at := -10.0
 const PAD := 14.0
 const LINE := 21.0
 
-## The canonical key table. The third column marks the handful worth keeping
-## permanently on screen -- the legend draws all of them, this panel draws only
-## those, because a sixteen-row block at the bottom of the sidebar had stopped
-## being a reference and started being wallpaper.
+## The canonical key table, and now the only place that draws it is the legend.
 ##
-## One list rather than two, so the short version cannot drift from the long
-## one as keys are added.
+## FOUR COLUMNS. The third marked the handful once kept permanently in the
+## sidebar; that block is gone -- HerePanel answers "what do I press now" far
+## better than a static list did -- but the flag is kept because the legend still
+## reads it and something else may want the short version again.
+##
+## THE FOURTH IS THE KEYCODE, and it is what makes the legend device-aware.
+##
+## Without it this screen was the last place in the game still naming keys a
+## handheld does not have: it read `w  swap reach / blade` on a Legion Go S,
+## where the answer is RB. The first column is still what a keyboard player
+## sees, because several rows are not one key at all -- "arrows / hjklyubn" is
+## nine of them and "m  - +" is three. Where a single keycode exists, a pad
+## player is shown the button bound to it instead.
+##
+## 0 means "no single key", and those rows keep their written form on both
+## devices. `pad` is an override for the ones where the controller answer is
+## real but is not a button: the stick walks, and saying "arrows" to somebody
+## holding a Legion Go is simply wrong.
 const KEYS := [
-	["arrows / hjklyubn", "move", true],
-	[". or 5", "wait / rest", true],
-	[">", "descend", false],
-	["<", "ascend", false],
-	["x", "look", true],
-	["g", "pick up", true],
-	["i", "inventory", true],
-	["t", "torch", false],
-	["f / right-click", "shoot", true],
-	["w", "swap reach / blade", true],
+	["arrows / hjklyubn", "move", true, 0, "stick"],
+	[". or 5", "wait / rest", true, KEY_PERIOD, ""],
+	[">", "descend", false, KEY_GREATER, ""],
+	["<", "ascend", false, KEY_LESS, ""],
+	["x", "look", true, KEY_X, ""],
+	["g", "pick up", true, KEY_G, ""],
+	["i", "inventory", true, KEY_I, ""],
+	["t", "torch", false, KEY_T, ""],
+	["f / right-click", "shoot", true, KEY_F, ""],
+	["w", "swap reach / blade", true, KEY_W, ""],
 	# Essential only while somebody is standing with you, which the sidebar
 	# cannot express -- so it lives in the full list, where a player goes
 	# looking the first time an ally does something they did not want.
-	["a", "ally: heel / loose", false],
+	["a", "ally: heel / loose", false, KEY_A, ""],
 	## Worth finding: a shut door buys a turn against a goblin, three against
 	## a bear, and nothing at all against a rabbit.
-	["c", "close a door", false],
-	["f (no bow)", "throw", false],
-	["p", "pray at a shrine", false],
-	["m  - +", "sound", false],
-	["v", "letters / symbols / pictures", false],
+	["c", "close a door", false, KEY_C, ""],
+	["f (no bow)", "throw", false, KEY_F, ""],
+	["p", "pray at a shrine", false, KEY_P, ""],
+	["m  - +", "sound", false, 0, ""],
+	["v", "letters / symbols / pictures", false, KEY_V, ""],
 	# Motion, and it is an accessibility setting before it is a taste one --
 	# effects like these stop some people playing games at all.
-	["e", "still / simple / full", false],
-	["esc", "menu", false],
-	["click", "travel", false],
+	["e", "still / simple / full", false, KEY_E, ""],
+	["o", "the map", false, KEY_O, ""],
+	["esc", "menu", false, KEY_ESCAPE, ""],
+	["click", "travel", false, 0, "--"],
 ]
+
+## What to show in the first column, for whoever is holding whatever.
+##
+## Falls back to the written form whenever there is no single key, or the pad has
+## nothing bound to it -- an action a controller cannot reach should say so by
+## naming the key honestly, not by going blank.
+static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
+	if not on_pad:
+		return String(row[0])
+	if row.size() > 4 and String(row[4]) != "":
+		return String(row[4])
+	if int(row[3]) != 0 and cfg != null:
+		var button := cfg.button_for_key(int(row[3]))
+		if button >= 0:
+			return PadConfig.button_name(button)
+	return String(row[0])
 
 ## What the sidebar itself shows: the essentials, plus the way to everything.
 static func essential_keys() -> Array:

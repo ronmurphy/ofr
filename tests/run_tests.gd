@@ -3865,6 +3865,35 @@ func _test_panels_do_not_overflow() -> void:
 			help_cfg.button_for_key(KEY_QUESTION)),
 		help_cfg.label(KEY_QUESTION, true))
 
+	# THE LEGEND NAMES BUTTONS ON A PAD. It was the last screen in the game
+	# still saying `w  swap reach / blade` to somebody holding a Legion Go S,
+	# where the answer is RB -- missed because it is the one screen nobody looks
+	# at until they are already lost.
+	var leg_cfg := PadConfig.new()
+	var keyboard_only := PackedStringArray()
+	var changed := 0
+	for row in Sidebar.KEYS:
+		var typed_k := Sidebar.key_label(row, leg_cfg, false)
+		var held_k := Sidebar.key_label(row, leg_cfg, true)
+		check("\"%s\" reads as itself on a keyboard" % row[1],
+			typed_k == String(row[0]), typed_k)
+		if typed_k != held_k:
+			changed += 1
+		elif int(row[3]) != 0:
+			keyboard_only.append("%s (%s)" % [row[1], typed_k])
+	# The premise: if nothing changed, the whole feature is doing nothing.
+	check("a pad player sees different labels (%d of %d rows)"
+		% [changed, Sidebar.KEYS.size()], changed >= 10)
+	# A row WITH a keycode that still reads the same on a pad means that action
+	# is keyboard-only -- honest, but worth naming rather than discovering.
+	check("keyboard-only actions are named, not blank",
+		keyboard_only.size() <= 4, ", ".join(keyboard_only))
+	check("walking still says stick on a pad",
+		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, true) == "stick",
+		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, true))
+	check("and arrows on a keyboard",
+		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, false).findn("arrows") >= 0)
+
 	# The legend still has every row, which is where the list really belonged.
 	check("the legend still lists every key (%d)" % Sidebar.KEYS.size(),
 		Sidebar.KEYS.size() >= 12)
@@ -6951,11 +6980,21 @@ func _test_pack_without_letters() -> void:
 	var was := cfg.button_for_key(KEY_UP)
 	pad.open(cfg)
 	check("the controller screen opens without listening", not pad._listening)
+	# REBINDING IS ASKED FOR NOW, not stumbled into. Two people rebound "move
+	# up" by pressing something to see what it did.
+	var idle := InputEventJoypadButton.new()
+	idle.button_index = JOY_BUTTON_X
+	idle.pressed = true
+	pad.handle_pad(idle)
+	check("an ordinary press changes nothing at all",
+		cfg.button_for_key(KEY_UP) == was and not pad._listening,
+		"rebound to %d" % cfg.button_for_key(KEY_UP))
+
 	var press := InputEventJoypadButton.new()
 	press.button_index = JOY_BUTTON_Y
 	press.pressed = true
 	pad.handle_pad(press)
-	check("and the first press only starts the walk-through",
+	check("and the asking button starts the walk-through",
 		cfg.button_for_key(KEY_UP) == was, "rebound to %d" % cfg.button_for_key(KEY_UP))
 	check("but it is listening now", pad._listening)
 	pad.handle_pad(press)
@@ -7019,6 +7058,8 @@ func _test_pack_without_letters() -> void:
 	any.pressed = true
 	walk.handle_pad(any)
 	check("a walk-through is running", walk._listening)
+	# Once it IS running, every button binds -- including the one that started
+	# it -- or Y could never be assigned to anything at all.
 	walk.handle_pad(start)
 	check("Start does NOT close mid-walk-through", walk.visible)
 	check("it binds like any other button",
@@ -7052,6 +7093,10 @@ func _test_pack_without_letters() -> void:
 	check("the pad footer names the button that leaves",
 		PadPanel.pad_footer().findn("done") >= 0
 		and PadPanel.pad_footer().findn(PadConfig.button_name(JOY_BUTTON_START)) >= 0,
+		PadPanel.pad_footer())
+	check("and the one that starts rebinding",
+		PadPanel.pad_footer().findn("rebind") >= 0
+		and PadPanel.pad_footer().findn(PadConfig.button_name(JOY_BUTTON_Y)) >= 0,
 		PadPanel.pad_footer())
 	check("and the one that restores defaults",
 		PadPanel.pad_footer().findn("defaults") >= 0

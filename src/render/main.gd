@@ -221,6 +221,16 @@ func _process(delta: float) -> void:
 	if held != 0:
 		_press(held)
 
+	# WHICH DEVICE IS IN THEIR HANDS, updated BEFORE the modal return below.
+	#
+	# The legend is drawn while that return is firing, so setting this after it
+	# would leave the one screen that exists to answer "what do I press" holding
+	# whatever the flag happened to be before it opened. Same shape as the stick
+	# poll above: anything a modal needs has to be set before the modal is
+	# allowed to short-circuit the frame.
+	sidebar.pad_input = _pad_input
+	legend.pad_input = _pad_input
+
 	if menu.visible or legend.visible:
 		return
 	if _look:
@@ -230,7 +240,6 @@ func _process(delta: float) -> void:
 	else:
 		sidebar.hovered = grid.hovered_cell()
 	sidebar.queue_redraw()
-	sidebar.pad_input = _pad_input
 	here.pad_input = _pad_input
 	here.aiming = _aiming
 	here.look_mode = _look
@@ -734,6 +743,7 @@ func _bind_state(s: GameState) -> void:
 	sidebar.state = s
 	# So the contextual block can name BUTTONS on a handheld, not letters.
 	sidebar.pad_cfg = pad.cfg
+	legend.pad_cfg = pad.cfg
 	here.state = s
 	here.pad_cfg = pad.cfg
 	_pad_input = not Input.get_connected_joypads().is_empty()

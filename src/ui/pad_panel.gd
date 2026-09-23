@@ -63,9 +63,10 @@ const KEY_FOOTER := "backspace  back     r  defaults     l  log this pad     esc
 ## Built from the LIVE binding rather than written out, so it cannot claim a
 ## button that does not do that any more.
 static func pad_footer() -> String:
-	return "%s  done     %s  defaults     any other button  rebind" % [
-		PadConfig.button_name(JOY_BUTTON_START),
-		PadConfig.button_name(JOY_BUTTON_BACK)]
+	return "%s  rebind     %s  defaults     %s  done" % [
+		PadConfig.button_name(JOY_BUTTON_Y),
+		PadConfig.button_name(JOY_BUTTON_BACK),
+		PadConfig.button_name(JOY_BUTTON_START)]
 
 const PAD := 26.0
 const ROW_H := 30.0
@@ -141,6 +142,23 @@ func handle_pad(event: InputEvent) -> bool:
 	# obvious button would quit instead of binding it. The walk-through always
 	# ends by itself after WALK.size() presses, so this can never trap anyone.
 	if not _listening:
+		# REBINDING IS ASKED FOR, NOT STUMBLED INTO.
+		#
+		# Reported from play by two people independently -- Stephanie twice,
+		# Brad once. Opening this screen and pressing ANY button began the
+		# walk-through, so anyone who came to check what their pad does
+		# rebound "move up" to whatever they touched. Reading your bindings is
+		# the common case; changing them is the rare one, and the rare one
+		# should be the one that costs a deliberate press.
+		#
+		# Y because it is the only face button not already spoken for here, and
+		# the footer names it -- a reserved button nobody is told about is no
+		# better than none.
+		if button.button_index == JOY_BUTTON_Y:
+			_listening = true
+			_at = 0
+			queue_redraw()
+			return true
 		if button.button_index == JOY_BUTTON_START:
 			close()
 			return true
@@ -156,9 +174,8 @@ func handle_pad(event: InputEvent) -> bool:
 			_at = 0
 			queue_redraw()
 			return true
-		_listening = true
-		_at = 0
-		queue_redraw()
+		# Anything else is inert. This is the whole fix: a player exploring
+		# their controller on this screen changes nothing by doing so.
 		return true
 	if _at >= PadConfig.WALK.size():
 		close()
