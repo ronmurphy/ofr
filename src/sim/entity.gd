@@ -486,9 +486,6 @@ static func from_dict(d: Dictionary) -> Entity:
 			e.equipped[int(slot_key)] = e.inventory[idx]
 	return e
 
-func distance_to(other: Entity) -> float:
-	return Vector2(x - other.x, y - other.y).length()
-
 ## Chebyshev distance -- the correct adjacency test on an 8-way grid.
 func steps_to(other: Entity) -> int:
 	return maxi(absi(x - other.x), absi(y - other.y))

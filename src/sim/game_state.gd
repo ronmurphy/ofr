@@ -1363,11 +1363,6 @@ func move_cost_for(actor: Entity, x: int, y: int) -> int:
 func room_threat_ceiling() -> int:
 	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
 
-## What a TYPICAL cave can hold. Kept for callers that are asking about caves in
-## general rather than about one particular cave.
-func cave_threat_ceiling() -> int:
-	return int(round(room_threat_ceiling() * CAVE_THREAT_SCALE))
-
 ## The walkable cavern inside a cave's bounding box.
 ##
 ## The box is not the cave -- a region is a rectangle with a cave carved through

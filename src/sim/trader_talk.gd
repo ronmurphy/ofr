@@ -44,15 +44,6 @@ static func mark_intro_seen() -> void:
 	cfg.set_value(SECTION, KEY, true)
 	cfg.save(GameState.SETTINGS_PATH)
 
-## Tools and tests only, for the same reason GameState has scratch paths.
-static func forget_intro() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(GameState.SETTINGS_PATH) != OK:
-		return
-	if cfg.has_section_key(SECTION, KEY):
-		cfg.erase_section_key(SECTION, KEY)
-		cfg.save(GameState.SETTINGS_PATH)
-
 const AMULET_ART := "res://assets/art/amulet-of-deep.png"
 const TRADER_ART := "res://assets/art/trader.png"
 

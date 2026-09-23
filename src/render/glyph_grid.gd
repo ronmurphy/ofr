@@ -396,11 +396,6 @@ func _expired(e: Dictionary) -> bool:
 		&"shove": return e["t"] >= float(e.get("life", SHOVE_LIFE))
 	return true
 
-func grid_size() -> Vector2:
-	if state == null:
-		return Vector2.ZERO
-	return Vector2(state.map.width * cell_size, state.map.height * cell_size)
-
 ## Size of the visible window, in cells.
 func viewport_cells() -> Vector2i:
 	return Vector2i(floori(size.x / cell_size), floori(size.y / cell_size))

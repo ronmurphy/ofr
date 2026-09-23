@@ -36,9 +36,6 @@ static func use_path(p: String) -> void:
 	_loaded = false
 	_seen = {}
 
-static func reset_path() -> void:
-	use_path(PATH)
-
 ## Everything ever seen. Loaded once, then held.
 static func seen() -> Dictionary:
 	if not _loaded:

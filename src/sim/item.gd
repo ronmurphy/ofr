@@ -539,29 +539,31 @@ func accepts_element(el: StringName) -> bool:
 	if transforms():
 		return false
 
-	# The shield hand, and nothing else, and only if it is actually a shield.
+	# WHAT MAY HOLD WHAT comes from ELEMENTS now, not from arms added here.
 	#
-	# `slot` is the right question rather than `kind`: a launcher CLAIMS the
-	# offhand without living in it (its own slot is WEAPON), so asking about
-	# the slot selects shields and misses bows for free. The `defense_bonus`
-	# guard is the ring lesson again -- blocking scales with tier, so a tier-0
-	# offhand would eat the stone and turn nothing aside.
-	if el == &"block" or el == &"reflect" or el == &"bash":
-		return slot == Slot.OFFHAND and defense_bonus > 0
-	# Every other element is still weapons-only. Opening the gate above opened
-	# it for ONE stone, not for all of them: a mail shirt of frost would be a
-	# second system telling a different story from the first.
-	if kind != Kind.WEAPON:
+	# The rules themselves are unchanged and the reasons still hold:
+	#
+	# `slot` is the right question for a shield rather than `kind`, because a
+	# launcher CLAIMS the offhand without living in it (its own slot is WEAPON),
+	# so asking about the slot selects shields and misses bows for free. The
+	# `defense_bonus` guard is the ring lesson again -- the shield stones scale
+	# with tier, so a tier-0 offhand would eat one and do nothing with it.
+	#
+	# And everything that is not a shield stone is still weapons-only: a mail
+	# shirt of frost would be a second system telling a different story from the
+	# first.
+	var rule: Dictionary = ELEMENTS.get(el, {})
+	if rule.is_empty():
 		return false
-
-	var ranged := range_bonus > 1
-	match el:
-		&"leech", &"frost":
-			return not ranged
-		&"return":
-			return ammo_kind == &"arrow"
-		&"fire", &"crag":
-			return true
+	match rule["hosts"]:
+		&"shield":
+			return slot == Slot.OFFHAND and defense_bonus > 0
+		&"bow":
+			return kind == Kind.WEAPON and ammo_kind == &"arrow"
+		&"melee":
+			return kind == Kind.WEAPON and range_bonus <= 1
+		&"weapon":
+			return kind == Kind.WEAPON
 	return false
 
 ## Rebuilds an item from what `display_name()` produced -- "short bow +1" back
@@ -858,17 +860,54 @@ static func enchant_chance(effective: int) -> float:
 		r *= ENCHANT_CAVES
 	return minf(r, ENCHANT_CEILING)
 
-## The elements a found weapon can arrive with -- the same five the gems give,
-## and deliberately the same.
+## EVERY ELEMENT, AND THE ONE PLACE THAT SAYS WHAT MAY HOLD IT.
 ##
-## A found "war axe of frost" locks frost to an axe you may not want; a gem of
-## frost lets you choose the host. The gem stays the better prize because it is
-## PORTABLE, not because its effect is rarer. Found magic is the stopgap that
-## makes you want the gem more, which is why sharing the pool costs nothing.
-const FOUND_ELEMENTS: Array[StringName] = [
-	&"fire", &"frost", &"leech", &"return", &"crag", &"block",
-	&"reflect", &"bash",
-]
+## Adding a gem used to touch five places: a catalogue entry, an arm of
+## `accepts_element`, the FOUND_ELEMENTS list beside it, sometimes an Entity
+## helper, and the effect itself. Four of those were bookkeeping saying the same
+## thing in four grammars -- and the comment above `accepts_element` has warned
+## from the start that three copies of one condition is how the three stop
+## agreeing.
+##
+## WHAT CANNOT MOVE HERE IS THE EFFECT. `fire` works because `_gem_strikes` has
+## an arm for it, and `bash` because `_attack` reads the offhand. Behaviour is
+## code, and a table pretending otherwise would be a lookup pointing at nothing.
+## So a new gem is now TWO places: a row here, and the thing it does.
+##
+## `hosts` is a RULE rather than a slot name:
+##     weapon  anything you can swing or shoot
+##     melee   weapons only, and not at reach -- frost and leech
+##     bow     arrows specifically, never a sling
+##     shield  the offhand, and only when it actually defends
+##
+## Found magic draws on this same list, deliberately. A found "war axe of frost"
+## locks frost to an axe you may not want; a gem of frost lets you choose the
+## host. The gem stays the better prize because it is PORTABLE, not because its
+## effect is rarer -- so sharing the pool costs nothing, and deriving that pool
+## here means a stone can never be bindable yet un-findable through simple
+## omission from a second list.
+##
+## THE ORDER IS LOAD-BEARING. `_maybe_enchant` walks it to build the legal list
+## and then indexes that list with `enchant_rng`, so reordering these rows
+## changes which element a given seed rolls onto a given item. This is the order
+## the hand-kept array had, and it should stay that way.
+const ELEMENTS := {
+	&"fire":    {"gem": &"gem_fire",    "hosts": &"weapon"},
+	&"frost":   {"gem": &"gem_frost",   "hosts": &"melee"},
+	&"leech":   {"gem": &"gem_leech",   "hosts": &"melee"},
+	&"return":  {"gem": &"gem_return",  "hosts": &"bow"},
+	&"crag":    {"gem": &"gem_crag",    "hosts": &"weapon"},
+	&"block":   {"gem": &"gem_bulwark", "hosts": &"shield"},
+	&"reflect": {"gem": &"gem_mirror",  "hosts": &"shield"},
+	&"bash":    {"gem": &"gem_boss",    "hosts": &"shield"},
+}
+
+## The elements a generated item can roll, in table order.
+static func found_elements() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for el in ELEMENTS:
+		out.append(el)
+	return out
 
 ## Rolls an element onto a generated item, if the dice and the item both allow.
 ##
@@ -900,7 +939,7 @@ static func _maybe_enchant(it: Item, enchant_rng: RandomNumberGenerator,
 	if enchant_rng.randf() >= enchant_chance(effective):
 		return it
 	var legal: Array[StringName] = []
-	for el in FOUND_ELEMENTS:
+	for el in found_elements():
 		if it.accepts_element(el):
 			legal.append(el)
 	if legal.is_empty():

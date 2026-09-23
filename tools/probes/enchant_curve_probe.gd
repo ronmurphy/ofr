@@ -56,7 +56,7 @@ func _initialize() -> void:
 					continue
 				equip += 1
 				var can := false
-				for el in Item.FOUND_ELEMENTS:
+				for el in Item.found_elements():
 					if it.accepts_element(el):
 						can = true
 						break

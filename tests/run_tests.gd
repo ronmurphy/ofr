@@ -146,6 +146,7 @@ func _initialize() -> void:
 	_test_gem_of_returning()
 	_test_gem_of_the_bulwark()
 	_test_the_other_two_shield_stones()
+	_test_the_element_table_agrees_with_itself()
 	_test_g_is_the_action_key()
 	_test_the_build_is_named()
 	_test_a_rat_may_creep_past()
@@ -5890,6 +5891,84 @@ func _swing_total(gs: GameState, who: Entity, at: Entity, n: int,
 		gs._attack(who, at, ranged)
 		total += 9999 - at.hp
 	return total
+
+## The element table and the catalogue must describe the same set of stones.
+##
+## They were one hand-kept array and a set of match arms, which is the shape the
+## comment above accepts_element warned about from the beginning. Consolidating
+## them removed the chance of silent disagreement; this is what keeps it removed
+## when the next gem arrives.
+func _test_the_element_table_agrees_with_itself() -> void:
+	# The premise. An empty table would make every loop below pass by not
+	# running -- the commonest defect in this suite.
+	check("there are elements to check (%d)" % Item.ELEMENTS.size(),
+		Item.ELEMENTS.size() >= 8)
+
+	var hosts_seen := {}
+	for el in Item.ELEMENTS:
+		var rule: Dictionary = Item.ELEMENTS[el]
+		var gem := Item.make(StringName(rule["gem"]))
+		check("%s names a gem that exists" % el, gem != null, String(rule["gem"]))
+		if gem != null:
+			check("  and that gem carries %s" % el, gem.element == el,
+				String(gem.element))
+			check("  and it really is a gem", gem.kind == Item.Kind.GEM)
+		hosts_seen[rule["hosts"]] = true
+
+	# Every gem in the catalogue must be in the table, or it is bindable by the
+	# forge and invisible to found magic -- a difference nobody would spot by
+	# reading either one alone.
+	var missing := PackedStringArray()
+	for key in Item.CATALOGUE:
+		var data: Dictionary = Item.CATALOGUE[key]
+		if int(data.get("kind", -1)) != Item.Kind.GEM:
+			continue
+		var el: StringName = data.get("element", &"")
+		if not Item.ELEMENTS.has(el):
+			missing.append("%s (%s)" % [key, el])
+	check("every catalogue gem is in the table", missing.is_empty(),
+		", ".join(missing))
+
+	# And the reverse: found magic is derived from the table, so the two lists
+	# cannot disagree by construction -- assert that it stayed that way.
+	var found := Item.found_elements()
+	check("found magic offers every element (%d)" % found.size(),
+		found.size() == Item.ELEMENTS.size(),
+		"%d vs %d" % [found.size(), Item.ELEMENTS.size()])
+
+	# ORDER IS LOAD-BEARING: _maybe_enchant indexes the legal list with
+	# enchant_rng, so a reordering silently changes what a seed rolls.
+	check("and in the order the table declares",
+		found[0] == &"fire" and found[1] == &"frost" and found[2] == &"leech",
+		str(found))
+
+	# Every `hosts` rule must be one accepts_element actually implements. A typo
+	# would fall through the match and refuse everything, which reads exactly
+	# like "that item cannot hold it" and is invisible in play.
+	var known := {&"weapon": true, &"melee": true, &"bow": true, &"shield": true}
+	var bad := PackedStringArray()
+	for h in hosts_seen:
+		if not known.has(h):
+			bad.append(String(h))
+	check("every hosts rule is one the gate knows", bad.is_empty(),
+		", ".join(bad))
+
+	# And the rules still do what they did before the table existed.
+	var dagger := Item.make(&"dagger")
+	var bow := Item.make(&"short_bow")
+	var sling := Item.make(&"sling")
+	var mail := Item.make(&"chain_mail")
+	var kite := Item.make(&"kite_shield")
+	check("fire goes on anything you fight with", dagger.accepts_element(&"fire")
+		and bow.accepts_element(&"fire") and sling.accepts_element(&"fire"))
+	check("frost is melee only", dagger.accepts_element(&"frost")
+		and not bow.accepts_element(&"frost"))
+	check("returning is arrows only", bow.accepts_element(&"return")
+		and not sling.accepts_element(&"return"))
+	check("shield stones are the offhand only",
+		kite.accepts_element(&"block") and not dagger.accepts_element(&"block"))
+	check("and armour still holds nothing", not mail.accepts_element(&"fire")
+		and not mail.accepts_element(&"block"))
 
 ## Three stones, one slot, one permanent choice.
 ##

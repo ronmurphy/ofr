@@ -349,10 +349,6 @@ func _gear_slot_row(y: float, label: String, p: Entity, slot: int,
 		return
 	_gear_row(y, label, item, "", boosted)
 
-func _slot_name(p: Entity, slot: int) -> String:
-	var item = p.equipped.get(slot, null)
-	return "--" if item == null else _gear_text(item)
-
 ## The picture for the kind, the word for which one.
 ##
 ## Brad's call, and it is the same trade `_skullify` already makes on the death
@@ -399,15 +395,6 @@ func _gear_row(y: float, label: String, item: Item, numbers: String,
 	var glyph := _gear_glyph(item)
 	_draw_icon_row(y, label, glyph, gear_row_words(label, glyph,
 		_gear_words(item), _gear_up(item), _gear_el(item), numbers), boosted)
-
-## A row whose value begins with an ICON, for anything that is not gear.
-##
-## `keep` is a tail that must survive truncation. Without it the words are
-## trimmed from the right, which is where the numbers live.
-func _icon_row(y: float, label: String, glyph: String, text: String,
-		boosted: bool, keep: String = "") -> void:
-	_draw_icon_row(y, label, glyph, icon_row_words(label, glyph, text, keep),
-		boosted)
 
 ## Which face can actually draw this character.
 ##
@@ -585,17 +572,6 @@ func gear_row_words(label: String, glyph: String, tag: String, up: String,
 				-1, font_size).x <= avail:
 			return candidate
 	return _fit(numbers, size.x - PAD * 2.0 - avail)
-
-## The full width a gear row would occupy: label, icon and words together.
-func icon_row_width(label: String, glyph: String, text: String,
-		keep: String = "") -> float:
-	var gs := GlyphTheme.draw_size(glyph, font_size)
-	var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
-	var lw := font.get_string_size(label + "  ", HORIZONTAL_ALIGNMENT_LEFT,
-		-1, font_size).x
-	var shown := icon_row_words(label, glyph, text, keep)
-	return lw + gw + font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT,
-		-1, font_size).x
 
 ## One look-panel line that leads with a picture.
 ##
