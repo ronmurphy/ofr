@@ -118,6 +118,44 @@ const BUTTON_NAMES := {
 	JOY_BUTTON_DPAD_LEFT: "D-pad left", JOY_BUTTON_DPAD_RIGHT: "D-pad right",
 }
 
+## What to CALL a KEY on screen.
+##
+## `OS.get_keycode_string` is built for settings dialogs and answers "Period",
+## "Question", "Greater". Printed in a hint that says "press this", those read as
+## instructions to type the word -- seen in play, the panel said `period  warm
+## yourself`. Punctuation wants to be shown as itself; letters are fine as they
+## come back.
+const KEY_NAMES := {
+	KEY_PERIOD: ".", KEY_COMMA: ",", KEY_QUESTION: "?",
+	KEY_GREATER: ">", KEY_LESS: "<", KEY_SLASH: "/",
+	KEY_SEMICOLON: ";", KEY_MINUS: "-", KEY_EQUAL: "=",
+	KEY_ESCAPE: "esc", KEY_ENTER: "enter", KEY_KP_ENTER: "enter",
+	KEY_TAB: "tab", KEY_SPACE: "space", KEY_BACKSPACE: "backspace",
+}
+
+static func key_name(key: int) -> String:
+	if KEY_NAMES.has(key):
+		return String(KEY_NAMES[key])
+	return OS.get_keycode_string(key).to_lower()
+
+## What to show the player for this action, in the language of what they hold.
+##
+## An instance method because it needs the LIVE bindings: on a pad, `?` is
+## whatever button the legend currently sits on, and that is rebindable.
+##
+## `on_pad` is the device last USED, not what is plugged in -- a Steam Deck's
+## controller is part of the hardware and permanently connected, so asking the
+## other question labels the screen with buttons while somebody types.
+##
+## Here rather than in a panel because two panels now ask it, and a second copy
+## is how the two would start disagreeing.
+func label(key: int, on_pad: bool) -> String:
+	if on_pad:
+		var button := button_for_key(key)
+		if button >= 0:
+			return button_name(button)
+	return key_name(key)
+
 ## A name if we have one, the raw index if we do not.
 ##
 ## The fallback matters: a pad SDL does not recognise reports indices this table

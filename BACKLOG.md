@@ -69,6 +69,47 @@ keyboard and no file manager the only place a diagnostic can go is on screen.
 
 ---
 
+## Known gaps
+
+**A controller cannot name a character.** Found 2026-09-23. The name prompt
+takes typed characters, and a pad sends none. It is NOT a softlock — `escape`
+closes the panel and Start sends escape, so a pad player starts the run with the
+default name.
+
+Brad wants both, 2026-09-23:
+
+1. **A pregenerated name list**, cycled with the d-pad and confirmed with A,
+   offered *beside* the typing field rather than instead of it. Cheap, and it
+   suits a game whose characters are mostly remembered by how they died.
+2. **A modal alphabet keyboard** with d-pad navigation — the way every console
+   did it until the last generation or so.
+
+Note on "someone has probably written a drop-in for this": likely, but the
+integration would probably cost more than writing it. The panel already exists
+(`NamePanel`), it already accumulates into a `typed` string, and the grid
+navigation is the same shape as the inventory highlight and the pad walk-through
+— a cursor over cells, d-pad to move, A to choose. An addon would have to be
+taught this project's keycode vocabulary, which is the part that is actually
+specific to us. Estimate: a small panel, not a dependency.
+
+**InputMap, and when it would be worth migrating.** Suggested by a reviewer, and
+the design document names it as the strongest criticism of the input layer. It
+is the correct long-term architecture: engine-level actions bound to keys and
+buttons together would give keyboard rebinding for free and make the
+"modifiers are unreachable from a pad" class impossible.
+
+Deferred on recurring cost. The current translation layer caused one real bug,
+which is fixed and guarded. Note that migrating would NOT remove the stale-config
+problem — a saved InputMap override shadows new defaults exactly the way
+`gamepad.cfg` did. That bug is about persistence, not about the input layer.
+
+**The trigger to revisit:** if keyboard rebinding is ever genuinely wanted —
+accessibility, left-handed players, or non-QWERTY layouts where `hjkl` is
+miserable. Building that on top of the current system means a second translation
+layer, and at that point the seven-file rewrite pays for itself.
+
+---
+
 ## Designed in full, not built
 
 **Miasma.** Brad's, and his Nausicaä reference. A fungus cluster (2x2+) gives

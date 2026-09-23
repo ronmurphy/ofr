@@ -11,6 +11,12 @@ extends Control
 @export var font_bold: Font
 @export var font_size: int = 14
 
+## The size the panel actually draws at, as a constant the suite can read: an
+## @export is an instance property, and a layout guard must not have to build a
+## panel to ask how big its text is.
+static func font_size_default() -> int:
+	return 14
+
 ## The icon subset, for glyphs only. Text keeps the full font: this one
 ## carries ascii and the symbols the game draws and nothing else, so a
 ## message with an unexpected character in it would come out as tofu.

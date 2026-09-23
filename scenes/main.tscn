@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://bofr0main0scene"]
+[gd_scene load_steps=14 format=3 uid="uid://bofr0main0scene"]
 
 [ext_resource type="Script" path="res://src/render/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://src/render/glyph_grid.gd" id="2_grid"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://src/ui/pad_panel.gd" id="11_pad"]
 [ext_resource type="Script" path="res://src/ui/talk_panel.gd" id="12_talk"]
 [ext_resource type="Script" path="res://src/ui/map_panel.gd" id="13_map"]
+[ext_resource type="Script" path="res://src/ui/here_panel.gd" id="14_here"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -43,10 +44,19 @@ script = ExtResource("3_side")
 layout_mode = 0
 offset_left = 16.0
 offset_top = 752.0
-offset_right = 1584.0
+offset_right = 980.0
 offset_bottom = 884.0
 mouse_filter = 2
 script = ExtResource("4_log")
+
+[node name="Here" type="Control" parent="."]
+layout_mode = 0
+offset_left = 996.0
+offset_top = 752.0
+offset_right = 1584.0
+offset_bottom = 884.0
+mouse_filter = 2
+script = ExtResource("14_here")
 
 [node name="Inventory" type="Control" parent="."]
 layout_mode = 1

@@ -115,6 +115,8 @@ func _initialize() -> void:
 	_test_text_size_survives_a_restart()
 	_test_every_menu_row_is_reachable()
 	_test_a_pad_can_finish_the_game()
+	_test_a_pad_can_answer_every_prompt()
+	_test_main_only_sets_properties_that_exist()
 	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
@@ -148,6 +150,7 @@ func _initialize() -> void:
 	_test_the_other_two_shield_stones()
 	_test_the_element_table_agrees_with_itself()
 	_test_g_is_the_action_key()
+	_test_the_sidebar_says_what_is_here()
 	_test_the_build_is_named()
 	_test_a_rat_may_creep_past()
 	_test_choosing_the_bound_weapon()
@@ -3190,6 +3193,134 @@ func _scene_widths() -> Dictionary:
 ## by hand has already failed twice: the controller row was added to the
 ## keyboard and left dead to the mouse, and the text size row -- added FOR
 ## handhelds -- could not be pressed from a handheld at all.
+## Every property main.gd assigns to a panel must actually exist on it.
+##
+## Found the hard way 2026-09-23: the sidebar's contextual block was moved out to
+## HerePanel, `pad_input` went with it, and main.gd kept assigning it. The game
+## threw on the first frame -- and NOTHING caught it. `--check-only` does not
+## resolve @onready property access, and the suite never instantiates main.gd,
+## deliberately: its `_ready` loads a suspended run, and loading one DESTROYS it,
+## so a test that started the real scene would eat the player's save.
+##
+## So this reads the source instead. Cheap, and it covers the one file the rest
+## of the suite cannot reach.
+func _test_main_only_sets_properties_that_exist() -> void:
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	check("main.gd was readable (%d bytes)" % src.length(), src.length() > 0)
+
+	# Which @onready node is which class, read from main.gd rather than listed.
+	var decl := RegEx.new()
+	decl.compile("@onready var (\\w+): (\\w+) = \\$")
+	var owners := {}
+	for m in decl.search_all(src):
+		owners[m.get_string(1)] = m.get_string(2)
+	check("found the panels main.gd wires (%d)" % owners.size(),
+		owners.size() >= 8, str(owners.keys()))
+
+	# Constructors, because a class name in a string cannot be instantiated.
+	# The check below asserts this covers everything found, so a new panel that
+	# is not listed here fails rather than being silently skipped.
+	var build := {
+		"GlyphGrid": func() -> Object: return GlyphGrid.new(),
+		"Sidebar": func() -> Object: return Sidebar.new(),
+		"MessageView": func() -> Object: return MessageView.new(),
+		"InventoryPanel": func() -> Object: return InventoryPanel.new(),
+		"MenuPanel": func() -> Object: return MenuPanel.new(),
+		"NamePanel": func() -> Object: return NamePanel.new(),
+		"LegendPanel": func() -> Object: return LegendPanel.new(),
+		"SummaryPanel": func() -> Object: return SummaryPanel.new(),
+		"PadPanel": func() -> Object: return PadPanel.new(),
+		"TalkPanel": func() -> Object: return TalkPanel.new(),
+		"MapPanel": func() -> Object: return MapPanel.new(),
+		"HerePanel": func() -> Object: return HerePanel.new(),
+		"SoundDeck": func() -> Object: return SoundDeck.new(),
+	}
+	var unknown := PackedStringArray()
+	for who in owners:
+		if not build.has(String(owners[who])):
+			unknown.append("%s: %s" % [who, owners[who]])
+	check("every wired panel has a constructor here", unknown.is_empty(),
+		"add to `build`: %s" % ", ".join(unknown))
+
+	# What each class actually has.
+	var props := {}
+	for who in owners:
+		var cls := String(owners[who])
+		if not build.has(cls):
+			continue
+		var node: Object = build[cls].call()
+		var have := {}
+		for entry in node.get_property_list():
+			have[String(entry["name"])] = true
+		props[who] = have
+		if node is Node:
+			(node as Node).free()
+		else:
+			node.free()
+
+	# Every assignment main.gd makes to one of them.
+	var use := RegEx.new()
+	use.compile("(?m)^\\t+(\\w+)\\.(\\w+) = ")
+	var missing := PackedStringArray()
+	var checked := 0
+	for m in use.search_all(src):
+		var who := m.get_string(1)
+		var prop := m.get_string(2)
+		if not props.has(who):
+			continue
+		checked += 1
+		if not (props[who] as Dictionary).has(prop):
+			missing.append("%s.%s" % [who, prop])
+
+	# The premise. If nothing were matched this would pass while testing air --
+	# which is the commonest defect in this suite.
+	check("assignments were found to check (%d)" % checked, checked >= 10)
+	check("main.gd sets nothing that does not exist", missing.is_empty(),
+		", ".join(missing))
+
+## Wherever the game waits for a decision, a controller must be able to give it.
+##
+## Found in play 2026-09-23, on the Legion Go S: with a missile weapon you could
+## open the targeting cursor, move it, and cancel -- but never fire. Aim mode and
+## look mode tested `enter` alone, while four other places also accepted `.`, and
+## a pad sends no `enter`. Six copies of one condition, and the two that
+## disagreed were the two no controller could use.
+##
+## Reads MainScene.CONFIRM rather than restating the list, because a test that
+## keeps its own copy of the thing under test is how the copies drift -- which is
+## the bug this is guarding against.
+func _test_a_pad_can_answer_every_prompt() -> void:
+	var cfg := PadConfig.new()
+	var pressable := {}
+	for button in cfg.binds:
+		pressable[int(cfg.binds[button])] = true
+	for dir in Gamepad.STICK_KEYS:
+		pressable[int(Gamepad.STICK_KEYS[dir])] = true
+
+	# The premise: an empty set would make the check below pass by vacuum.
+	check("a default pad sends something (%d keys)" % pressable.size(),
+		pressable.size() >= 10)
+	check("the confirm list is not empty (%d)" % MainScene.CONFIRM.size(),
+		MainScene.CONFIRM.size() > 0)
+
+	var reachable := PackedStringArray()
+	for k in MainScene.CONFIRM:
+		if pressable.has(int(k)):
+			reachable.append(OS.get_keycode_string(int(k)))
+	check("a pad can say yes (%s)" % ", ".join(reachable),
+		not reachable.is_empty(),
+		"none of CONFIRM is on a button or the stick")
+
+	# And say no. Cancelling is escape everywhere, which Start sends.
+	check("and a pad can back out", pressable.has(KEY_ESCAPE))
+
+	# The general rule this bug belonged to: a pad press carries no modifiers,
+	# so any prompt answered only by a shifted key is unanswerable from one.
+	for k in MainScene.CONFIRM:
+		check("\"%s\" needs no modifier" % OS.get_keycode_string(int(k)),
+			int(k) != KEY_COLON and int(k) != KEY_PLUS
+			and int(k) != KEY_GREATER and int(k) != KEY_LESS)
+
 ## Every action a run REQUIRES has to be reachable from a controller.
 ##
 ## Measured 2026-09-21 and it was not: descend, ascend, pray and the torch were
@@ -3507,16 +3638,30 @@ func _test_panels_do_not_overflow() -> void:
 	var side_limit: float = float(widths.get("Sidebar", 256.0)) - Sidebar.PAD * 2.0
 	var worst := ""
 	var worst_w := 0.0
-	for row in Sidebar.essential_keys():
-		var a := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-		var b := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	# MEASURED AGAINST THE LEGEND, which is the panel that draws these now.
+	#
+	# It used to be the sidebar, and the sidebar's short list never included the
+	# long rows -- "v / letters / symbols / pictures" is 261px against 228px of
+	# sidebar. Pointing the old guard at the full table failed immediately, which
+	# is the guard working: those rows were never sidebar rows, and the sidebar
+	# does not draw any now.
+	#
+	# The legend lays out four columns across the window, at one point smaller.
+	var legend_col: float = (1600.0 - 48.0 - LegendPanel.PAD * 2.0) / 4.0
+	var legend_size := LegendPanel.font_size_default() - 1
+	for row in Sidebar.KEYS:
+		var a := font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1,
+			legend_size).x
+		var b := font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1,
+			legend_size).x
 		if a + b > worst_w:
 			worst_w = a + b
 			worst = "%s / %s" % [row[0], row[1]]
 	# A gap, not a touch: two strings that exactly meet read as one word.
-	check("no key row collides with its action",
-		worst_w + 8.0 <= side_limit,
-		"%.0f + gap > %.0f px -- %s" % [worst_w, side_limit, worst])
+	check("no key row collides with its action in the legend",
+		worst_w + 8.0 <= legend_col - LegendPanel.GLYPH_X - 12.0,
+		"%.0f + gap > %.0f px -- %s"
+		% [worst_w, legend_col - LegendPanel.GLYPH_X - 12.0, worst])
 
 	# The same collision, one helper over. STAT rows draw a label left and a
 	# value right against the same edge, exactly as key rows do, and only the
@@ -3702,12 +3847,27 @@ func _test_panels_do_not_overflow() -> void:
 		sum_w + 8.0 <= sum_col,
 		"%.0f + gap > %.0f px -- %s" % [sum_w, sum_col, sum_worst])
 
-	# The KEYS block is anchored to the bottom of the panel by its own length,
-	# which is the fix that stopped the last recurrence.
-	var keys_h := Sidebar.LINE * float(Sidebar.essential_keys().size() + 1) + Sidebar.PAD
-	var side_h: float = 736.0 - 16.0
-	check("the keys block fits above the frame edge", keys_h < side_h,
-		"%.0f >= %.0f px" % [keys_h, side_h])
+	# THE KEY LIST IS GONE FROM THE SIDEBAR. `HERE` answers "what do I press
+	# now" better than a static list did, and the legend still renders every row
+	# from Sidebar.KEYS -- so all the sidebar needs is a way to find it.
+	var help_cfg := PadConfig.new()
+	for on_pad in [false, true]:
+		var line := "press %s for help" % help_cfg.label(KEY_QUESTION, on_pad)
+		var w := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		check("the help line fits the sidebar on %s (\"%s\" %.0f <= %.0f px)"
+			% ["a pad" if on_pad else "a keyboard", line, w, side_limit],
+			w <= side_limit)
+	check("it names the key on a keyboard",
+		help_cfg.label(KEY_QUESTION, false) == "?",
+		help_cfg.label(KEY_QUESTION, true))
+	check("and the button on a pad",
+		help_cfg.label(KEY_QUESTION, true) == PadConfig.button_name(
+			help_cfg.button_for_key(KEY_QUESTION)),
+		help_cfg.label(KEY_QUESTION, true))
+
+	# The legend still has every row, which is where the list really belonged.
+	check("the legend still lists every key (%d)" % Sidebar.KEYS.size(),
+		Sidebar.KEYS.size() >= 12)
 
 
 # ---------------------------------------------------------- symbol theme ----
@@ -5776,6 +5936,192 @@ func _test_the_build_is_named() -> void:
 	check("the clock and the build stamp share a line without colliding",
 		used <= room, "%.0f > %.0f px" % [used, room])
 	panel.free()
+
+## The contextual block must agree with what the key actually does.
+##
+## Brad, 2026-09-23: he learned the keys from the sidebar and then stopped
+## seeing it, because it never changed. Making it contextual is the fix -- but a
+## panel that derives its own answer would eventually promise something the game
+## does not do, so it reads GameState.actions_here(), and this checks that the
+## answer matches player_pickup.
+func _test_the_sidebar_says_what_is_here() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	gs.player.hp = gs.player.max_hp
+
+	# The premise: open floor offers nothing, so a later "it offers X" cannot
+	# pass by the list simply always being full.
+	gs.map.set_tile(5, 5, Tiles.FLOOR)
+	check("plain floor offers nothing", gs.actions_here().is_empty(),
+		str(gs.actions_here()))
+
+	var cases := {
+		Tiles.STAIRS_DOWN: "go down",
+		Tiles.STAIRS_UP: "climb",
+		Tiles.SHRINE: "pray",
+		Tiles.FUNGUS: "eat the fungus",
+	}
+	for tile in cases:
+		gs.map.set_tile(5, 5, tile)
+		var rows := gs.actions_here()
+		check("%s is offered" % cases[tile], rows.size() == 1
+			and String(rows[0][1]) == String(cases[tile]),
+			str(rows))
+		check("  and it is the action key", rows.size() == 1
+			and int(rows[0][0]) == KEY_G)
+
+	# RUBBLE IS OFFERED ONLY WHEN THE KEY WOULD WORK. Reported from play: the
+	# panel offered "knap a stone" while carrying no sling, and pressing it was
+	# refused. A hint that promises what the key will not do is worse than none,
+	# because the player believes it and stops trusting the rest of them.
+	gs.map.set_tile(5, 5, Tiles.RUBBLE)
+	check("rubble offers nothing without a sling", gs.actions_here().is_empty(),
+		str(gs.actions_here()))
+	check("and the key agrees", not gs.player_pickup())
+
+	var sling := Item.make(&"sling")
+	sling.ammo = 0
+	gs.player.inventory.append(sling)
+	check("with a sling in the pack it is offered",
+		str(gs.actions_here()).findn("knap a stone") >= 0, str(gs.actions_here()))
+	check("and the key agrees there too", gs.player_pickup())
+
+	# A full sling has nowhere to put it, so it must stop being offered.
+	gs.map.set_tile(5, 5, Tiles.RUBBLE)
+	sling.ammo = sling.ammo_max
+	check("a full sling is not offered rubble", gs.actions_here().is_empty(),
+		str(gs.actions_here()))
+	check("and that key is refused too", not gs.player_pickup())
+	gs.player.inventory.erase(sling)
+
+	# Punctuation reads as itself, not as its name. Seen in play: the panel
+	# said "period  warm yourself", which reads as an instruction to type a word.
+	check("a full stop is shown as '.'", PadConfig.key_name(KEY_PERIOD) == ".",
+		PadConfig.key_name(KEY_PERIOD))
+	check("and a question mark as '?'", PadConfig.key_name(KEY_QUESTION) == "?",
+		PadConfig.key_name(KEY_QUESTION))
+	check("a letter is still just the letter", PadConfig.key_name(KEY_G) == "g",
+		PadConfig.key_name(KEY_G))
+	check("and escape stays readable", PadConfig.key_name(KEY_ESCAPE) == "esc",
+		PadConfig.key_name(KEY_ESCAPE))
+
+	# An item underfoot wins, exactly as it does in player_pickup -- or the
+	# panel would promise the stairs while the key picks up a sword.
+	gs.map.set_tile(5, 5, Tiles.STAIRS_DOWN)
+	var sword := Item.make(&"short_sword")
+	sword.x = 5
+	sword.y = 5
+	gs.ground.append(sword)
+	var rows := gs.actions_here()
+	check("an item underfoot is offered before the stairs",
+		rows.size() == 1 and String(rows[0][1]).findn("short sword") >= 0,
+		str(rows))
+
+	# And the panel's promise must match what the key DOES.
+	check("and pressing it really does pick it up", gs.player_pickup())
+	check("the stairs are offered on the next press",
+		String(gs.actions_here()[0][1]) == "go down", str(gs.actions_here()))
+
+	# THE PANEL HAS ITS OWN RECTANGLE NOW, so height no longer has to be pinned.
+	# What matters instead is that it always offers a way out for a lost player,
+	# and that it never clips -- which is what drove it out of the sidebar.
+	var bar := HerePanel.new()
+	bar.state = gs
+	bar.pad_cfg = PadConfig.new()
+
+	gs.map.set_tile(5, 5, Tiles.STAIRS_DOWN)
+	check("the panel says what is here", str(bar.rows()).findn("go down") >= 0,
+		str(bar.rows()))
+	var last: Array = bar.rows()[-1]
+	check("and always a way to every key", String(last[1]) == "every key",
+		str(bar.rows()))
+
+	# While the cursor is up the keys genuinely mean something else, and that is
+	# when a player is most likely to be lost -- it is how the missile bug was
+	# found in the first place.
+	bar.aiming = true
+	check("aiming names the shoot key",
+		str(bar.rows()).findn("shoot") >= 0, str(bar.rows()))
+	check("and how to cycle targets",
+		str(bar.rows()).findn("next target") >= 0, str(bar.rows()))
+	check("and still offers every key",
+		String(bar.rows()[-1][1]) == "every key")
+	bar.aiming = false
+
+	# NOTHING MAY CLIP. The sidebar was 256px and the longest line is 276px, so
+	# it cut mid-word and collided with the key beside it. This panel is 588px
+	# and the guard measures the real strings against the real width.
+	var face: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var room: float = 588.0 - HerePanel.PAD * 2.0 - HerePanel.KEY_COL
+	var widest := ""
+	var widest_px := 0.0
+	for tile in [Tiles.STAIRS_DOWN, Tiles.STAIRS_UP, Tiles.SHRINE,
+			Tiles.FUNGUS, Tiles.RUBBLE]:
+		gs.map.set_tile(5, 5, tile)
+		for row in bar.rows():
+			var w := face.get_string_size(String(row[1]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+			if w > widest_px:
+				widest_px = w
+				widest = String(row[1])
+	# The worst case is a long item name, which is what actually overflowed.
+	var long_item := Item.make(&"war_axe")
+	if long_item != null:
+		long_item.element = &"leech"
+		long_item.x = 5
+		long_item.y = 5
+		gs.map.set_tile(5, 5, Tiles.FLOOR)
+		gs.ground.append(long_item)
+		for row in bar.rows():
+			var w := face.get_string_size(String(row[1]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+			if w > widest_px:
+				widest_px = w
+				widest = String(row[1])
+		gs.ground.erase(long_item)
+	check("the widest line fits the panel (\"%s\" %.0f <= %.0f px)"
+		% [widest, widest_px, room], widest_px <= room)
+
+	# And the key column holds the longest BUTTON name, not just the letters.
+	var key_px := face.get_string_size(PadConfig.button_name(JOY_BUTTON_DPAD_DOWN),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+	check("the key column fits a button name (%.0f <= %.0f px)"
+		% [key_px, HerePanel.KEY_COL], key_px <= HerePanel.KEY_COL)
+
+	# Labels follow the device the player is USING, not what is plugged in --
+	# a Steam Deck's pad is always connected even when somebody is typing.
+	gs.map.set_tile(5, 5, Tiles.STAIRS_DOWN)
+	bar.pad_input = false
+	var typed := str(bar.rows())
+	bar.pad_input = true
+	var held := str(bar.rows())
+	check("a keyboard player is shown letters", typed.findn("\"g\"") >= 0, typed)
+	check("a pad player is shown buttons", held.findn("\"B\"") >= 0, held)
+	check("and they differ", typed != held)
+
+	var bare := PadConfig.new()
+	bare.binds.clear()
+	bar.pad_cfg = bare
+	check("an unbound action falls back to its keyboard name",
+		str(bar.rows()).findn("\"g\"") >= 0, str(bar.rows()))
+	bar.free()
+
+	# Warming is offered only when it would work.
+	var b := _arena(21, 11)
+	b.player.x = 5
+	b.player.y = 5
+	b.map.set_tile(6, 5, Tiles.BRAZIER)
+	b.brazier_charge[Vector2i(6, 5)] = GameState.BRAZIER_CHARGE
+	b.player.hp = b.player.max_hp
+	var full := b.actions_here()
+	check("a brazier is not offered at full health", full.is_empty(), str(full))
+	b.player.hp = b.player.max_hp - 5
+	var hurt := b.actions_here()
+	check("but it is when you are hurt", hurt.size() == 1
+		and String(hurt[0][1]) == "warm yourself", str(hurt))
+	check("and it is the WAIT key, not the action key",
+		int(hurt[0][0]) == KEY_PERIOD)
 
 ## One key, and the square decides what it means.
 ##

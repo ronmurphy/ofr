@@ -1,3 +1,4 @@
+class_name MainScene
 extends Control
 
 ## Wires the simulation to the three panels and translates input into intents.
@@ -18,6 +19,7 @@ extends Control
 @onready var pad_setup: PadPanel = $PadSetup
 @onready var talk: TalkPanel = $Talk
 @onready var overview: MapPanel = $Overview
+@onready var here: HerePanel = $Here
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -58,6 +60,25 @@ var _aim_targets: Array = []
 var _aim_index := 0
 ## Set when the cursor is aiming a thrown object rather than a launcher.
 var _throw_index := -1
+
+## "YES, DO IT." Every place the game waits for a decision reads this.
+##
+## Found in play on a Legion Go S, 2026-09-23: this condition was written out
+## six times and two copies disagreed -- aim mode and look mode accepted only
+## `enter`, while the menu, the legend, the pack and the talk panel also took
+## `.`. A controller sends no `enter`, so the two odd ones out were exactly the
+## two a pad could not use: you could open the targeting cursor with a missile
+## weapon, move it, cancel it, and never fire.
+##
+## Same shape as the stairs bug a day earlier -- an action reachable only
+## through a key no pad can send -- and the same lesson the comment above
+## `accepts_element` has been making all along: copies of one condition are how
+## the copies stop agreeing.
+##
+## `.` is the pad's confirm because that is what it already meant everywhere
+## else: a default pad sends it from A, and the menu has always chosen its
+## highlighted row with it.
+const CONFIRM: Array[int] = [KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER]
 
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
@@ -209,6 +230,11 @@ func _process(delta: float) -> void:
 	else:
 		sidebar.hovered = grid.hovered_cell()
 	sidebar.queue_redraw()
+	sidebar.pad_input = _pad_input
+	here.pad_input = _pad_input
+	here.aiming = _aiming
+	here.look_mode = _look
+	here.queue_redraw()
 
 	if not state.travelling():
 		return
@@ -295,17 +321,44 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Feeds a keycode through the same door a real keypress comes in by, so every
 ## panel stays unaware that a controller exists.
+## True while a synthesised keypress is being dispatched.
+##
+## Load-bearing for telling the two devices apart: a controller press ARRIVES as
+## a key event, because that is the whole design of the input layer. Without this
+## guard the handler below would see it, conclude the player had just typed
+## something, and flip the labels back to letters on every button press.
+var _synthetic := false
+
+## Which device the player last actually USED -- not what is plugged in.
+##
+## The difference is a real player: Stephanie plays on a Steam Deck with a
+## Bluetooth keyboard. The Deck's pad is part of the hardware and therefore
+## always connected, so asking "is a controller present" would label the sidebar
+## with buttons while she typed.
+##
+## Seeded from what is connected, so a handheld shows buttons before its owner
+## has touched anything, then corrected by the first real input either way. That
+## also makes the startup enumeration race harmless -- a wrong initial guess
+## fixes itself the moment somebody does something.
+var _pad_input := false
+
 func _press(key: int) -> void:
+	_synthetic = true
+	_pad_input = true
 	var fake := InputEventKey.new()
 	fake.keycode = key
 	fake.pressed = true
 	_unhandled_key_input(fake)
+	_synthetic = false
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key_event := event as InputEventKey
 	if key_event == null or not key_event.pressed or key_event.echo:
 		return
 	var key: int = key_event.keycode
+	# A real keypress, not one the pad layer fabricated. See `_synthetic`.
+	if not _synthetic:
+		_pad_input = false
 
 	# Asked before the run begins, so it takes keys ahead of every other panel.
 	# It needs the EVENT rather than the keycode: a keycode cannot tell "a" from
@@ -373,7 +426,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			inventory.move_hover(-1 if key == KEY_UP else 1)
 			_refresh()
 			return
-		if key == KEY_PERIOD or key == KEY_ENTER or key == KEY_KP_ENTER:
+		if key in CONFIRM:
 			var on := inventory.hovered()
 			if on >= 0:
 				if inventory.throw_mode:
@@ -431,7 +484,26 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_end_aim()
 		elif key == KEY_TAB:
 			_cycle_target(-1 if key_event.shift_pressed else 1)
-		elif key == KEY_ENTER or key == KEY_KP_ENTER:
+		# THE D-PAD, CONTEXTUALLY. Brad's call, 2026-09-23.
+		#
+		# `tab` cycles targets and a pad cannot send it, so with a bowstring
+		# drawn the only way to a distant monster was walking the cursor there
+		# with the stick -- slow enough to matter in a fight.
+		#
+		# Left and right are the torch and praying elsewhere, and both are
+		# meaningless while aiming, so the d-pad is genuinely idle here. "Left
+		# and right through a list" also needs no explaining, which the hint bar
+		# will have to do for everything else.
+		#
+		# Written as the KEYS those buttons send rather than as button indices,
+		# because that is the whole design of the input layer -- which does mean
+		# rebinding the torch moves this with it. That is the correct behaviour
+		# and worth knowing.
+		elif key == KEY_T:
+			_cycle_target(-1)
+		elif key == KEY_P:
+			_cycle_target(1)
+		elif key in CONFIRM:
 			_fire_at_cursor()
 		elif MOVES.has(key):
 			var step: Vector2i = MOVES[key]
@@ -454,7 +526,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if _look:
-		if key == KEY_ESCAPE or key == KEY_ENTER or key == KEY_KP_ENTER:
+		if key == KEY_ESCAPE or key in CONFIRM:
 			_end_look()
 		elif MOVES.has(key):
 			var step: Vector2i = MOVES[key]
@@ -660,6 +732,11 @@ func _bind_state(s: GameState) -> void:
 	state = s
 	grid.state = s
 	sidebar.state = s
+	# So the contextual block can name BUTTONS on a handheld, not letters.
+	sidebar.pad_cfg = pad.cfg
+	here.state = s
+	here.pad_cfg = pad.cfg
+	_pad_input = not Input.get_connected_joypads().is_empty()
 	log_view.state = s
 	inventory.state = s
 	menu.state = s

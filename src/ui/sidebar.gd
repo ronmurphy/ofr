@@ -82,6 +82,11 @@ static func essential_keys() -> Array:
 	out.append(["?", "all keys", true])
 	return out
 
+## Live bindings and which device is in the player's hands, both set by main.gd
+## so the help line can name a BUTTON on a handheld.
+var pad_cfg: PadConfig = null
+var pad_input := false
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if font == null:
@@ -328,13 +333,25 @@ func _draw() -> void:
 	# once pushed the last baseline exactly onto the frame with a hard-coded
 	# number -- the fourth time something in this panel had overrun its edge
 	# because a count had to be kept in step with a list by hand.
-	var shown := essential_keys()
-	y = size.y - PAD - LINE * float(shown.size() + 1)
-	_line(font_bold, y, "KEYS", Palette.UI_DIM)
-	y += LINE
-	for row in shown:
-		_key_row(y, row[0], row[1])
-		y += LINE
+	# ONE LINE WHERE A LIST USED TO BE.
+	#
+	# The block taught Brad the keys and then went on occupying a third of the
+	# panel to remind him of something he knew. `HERE` answers "what do I press
+	# NOW" better than a static list ever did, and it ends with the way to the
+	# full reference on every square -- so all this has to do is make sure
+	# somebody staring at the SIDEBAR still finds it.
+	#
+	# `Sidebar.KEYS` stays: the legend screen renders the complete list from it,
+	# and that is what it was always really for.
+	#
+	# Named through the bindings, so it reads "press Back for help" on a
+	# handheld. A hint that names a key the player's device does not have is the
+	# exact bug this panel has been fixing all week.
+	y = size.y - PAD - LINE
+	var how := PadConfig.key_name(KEY_QUESTION)
+	if pad_cfg != null:
+		how = pad_cfg.label(KEY_QUESTION, pad_input)
+	_line(font, y, "press %s for help" % how, Palette.UI_DIM)
 
 func _line(f: Font, y: float, text: String, color: Color) -> void:
 	draw_string(f, Vector2(PAD, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)

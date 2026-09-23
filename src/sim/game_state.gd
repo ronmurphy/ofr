@@ -4078,6 +4078,54 @@ func player_descend() -> bool:
 	award_xp(earned)
 	return true
 
+## WHAT THIS SQUARE OFFERS, RIGHT NOW. Drives the sidebar's contextual block.
+##
+## Sim-side rather than in the panel, because it is a question about the world
+## and `player_pickup` already answers it. Two places deciding what `g` does
+## here would be the same divergence the confirm keys just had -- and this one
+## would be worse, because the panel would be telling the player something the
+## game does not do.
+##
+## Ordered by what happens FIRST: an item underfoot wins, exactly as it does in
+## player_pickup, so the line never promises the stairs while the key picks up a
+## sword.
+func actions_here() -> Array:
+	var out := []
+	if game_over:
+		return out
+
+	var here := items_at(player.x, player.y)
+	if not here.is_empty():
+		var it: Item = here[0]
+		out.append([KEY_G, "gather arrows" if it.id == &"arrows"
+			else "pick up the %s" % it.name])
+	else:
+		match map.get_tile(player.x, player.y):
+			Tiles.STAIRS_DOWN:
+				out.append([KEY_G, "go down"])
+			Tiles.STAIRS_UP:
+				out.append([KEY_G, "climb"])
+			Tiles.SHRINE:
+				out.append([KEY_G, "pray"])
+			Tiles.FUNGUS:
+				out.append([KEY_G, "eat the fungus"])
+			Tiles.RUBBLE:
+				# Only when there is somewhere for the stone to GO. Reported
+				# from play: the panel offered this with no sling carried, and
+				# the key then refused it. A hint that promises something the
+				# key will not do is worse than no hint, because the player
+				# believes it and stops trusting the rest.
+				if _stone_holder() != null:
+					out.append([KEY_G, "knap a stone"])
+
+	# Warming is the one thing worth saying about a NEIGHBOURING cell, because
+	# it is the only action whose opportunity you can stand next to and miss.
+	# Only while hurt -- offering it at full health would be noise, and
+	# player_wait refuses it anyway.
+	if player.hp < player.max_hp and _adjacent_brazier().x >= 0:
+		out.append([KEY_PERIOD, "warm yourself"])
+	return out
+
 func player_pickup() -> bool:
 	if game_over:
 		return false
@@ -4188,6 +4236,23 @@ func _eat_fungus() -> bool:
 ## The world is not the constraint. A floor grows about thirty rubble tiles,
 ## so there are sixty to ninety stones lying around; what limits a sling is
 ## that it holds ten and every reload is a turn.
+## The sling a knapped stone would go into, or null when there is none with room.
+##
+## In HAND first, then the pack -- Gabe's point: rubble could only be worked
+## while the sling was equipped, so topping up meant swapping to it and back, a
+## turn at each end.
+##
+## Extracted so the sidebar hint and the action itself cannot disagree. They did:
+## the panel offered "knap a stone" while carrying no sling at all.
+func _stone_holder() -> Item:
+	var held: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	if held != null and held.ammo_kind == &"stone" and held.ammo < held.ammo_max:
+		return held
+	for it in player.inventory:
+		if it.ammo_kind == &"stone" and it.ammo < it.ammo_max:
+			return it
+	return null
+
 func _knap_stones() -> bool:
 	# THE ONE IN HAND FIRST, THEN THE PACK.
 	#
@@ -4201,20 +4266,12 @@ func _knap_stones() -> bool:
 	# sling is full" are different refusals and the old code could only say the
 	# first one.
 	var held: Variant = player.equipped.get(Item.Slot.WEAPON, null)
-	var sling: Item = null
+	var sling := _stone_holder()
 	var any_sling := false
-	if held != null and held.ammo_kind == &"stone":
-		any_sling = true
-		if held.ammo < held.ammo_max:
-			sling = held
-	if sling == null:
-		for it in player.inventory:
-			if it.ammo_kind != &"stone":
-				continue
+	for it in player.inventory:
+		if it.ammo_kind == &"stone":
 			any_sling = true
-			if it.ammo < it.ammo_max:
-				sling = it
-				break
+			break
 	if sling == null:
 		msg_log.add("You have all the stones you can carry." if any_sling
 			else "Loose stone, and nothing to sling it with.",
