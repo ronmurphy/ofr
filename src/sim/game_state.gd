@@ -506,26 +506,9 @@ const CORRUPT_MAX_BASE := 5
 ## Floor under a corrupted thing's cost, so the pool cannot fill with rats.
 const CORRUPT_MIN_COST := 3
 
-const ROOM_THREAT_BASE := 10
-const ROOM_THREAT_PER_DEPTH := 2
-## Caverns are open ground, so a lone character cannot use a doorway to turn
-## being outnumbered into a series of duels. Less forgiving terrain, smaller
-## ceiling.
-## What a cave is allowed to hold, as a share of a room's budget -- for a cave
-## of TYPICAL size. Bigger caverns scale up from here, smaller ones down.
-const CAVE_THREAT_SCALE := 0.7
-
-## The walkable cells in an average cave, measured across 388 of them. The
-## scale above is expressed against this number so that an average cave keeps
-## exactly the budget it always had: this redistributes danger by size, it does
-## not add any.
-const CAVE_TYPICAL_CELLS := 113
-
-## Floor and ceiling on that scaling. The upper bound is the thing that matters:
-## a cave is never deadlier than a room, which is the bound the old flat 0.7 was
-## really there to keep.
-const CAVE_SCALE_MIN := 0.5
-const CAVE_SCALE_MAX := 1.0
+## The threat ceilings live in `threat.gd` now -- arithmetic that reaches for no
+## state at all, which is what made it the one seam worth taking. TIER_FADE and
+## TIER_GRACE below stayed: they belong to monster ROLLING, not to the ceiling.
 
 
 ## How fast a monster stops appearing once the dungeon has moved past its tier.
@@ -1360,8 +1343,10 @@ func move_cost_for(actor: Entity, x: int, y: int) -> int:
 		m += 0.6
 	return int(round(Scheduler.ACTION_COST * m * chill))
 
+## Kept as a method because five call sites and two measurement tools use it,
+## and because `effective_depth()` is the one piece of state the sum needs.
 func room_threat_ceiling() -> int:
-	return ROOM_THREAT_BASE + ROOM_THREAT_PER_DEPTH * effective_depth()
+	return Threat.room_ceiling(effective_depth())
 
 ## The walkable cavern inside a cave's bounding box.
 ##
@@ -1402,9 +1387,7 @@ func cave_cells(region: Rect2i) -> int:
 ## A floor typically carries one large cave, one small and a couple of ordinary
 ## ones, so this sorts them rather than lifting them.
 func cave_threat_ceiling_for(cells: int) -> int:
-	var scale := CAVE_THREAT_SCALE * float(cells) / float(CAVE_TYPICAL_CELLS)
-	return int(round(room_threat_ceiling()
-		* clampf(scale, CAVE_SCALE_MIN, CAVE_SCALE_MAX)))
+	return Threat.cave_ceiling(effective_depth(), cells)
 
 ## Makes sure the player meets a gem at least once, early.
 ##

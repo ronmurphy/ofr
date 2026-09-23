@@ -290,9 +290,11 @@ func _spawns() -> void:
 		var threat := int(entry.get("threat", 0))
 		var afford := 0
 		for d in range(1, 21):
-			if int(round(float(GameState.ROOM_THREAT_BASE
-					+ GameState.ROOM_THREAT_PER_DEPTH * d)
-					* GameState.CAVE_THREAT_SCALE)) >= threat:
+			# Through Threat now, which is also the point of it having moved:
+			# this used to restate the sum from three constants, and a probe
+			# that recomputes what the game computes is a probe that can be
+			# wrong about the game.
+			if Threat.cave_ceiling(d, Threat.CAVE_TYPICAL_CELLS) >= threat:
 				afford = d
 				break
 		print("%-16s %8d %7.0f%% %9.1f %s"

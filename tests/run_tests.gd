@@ -117,6 +117,7 @@ func _initialize() -> void:
 	_test_a_pad_can_finish_the_game()
 	_test_a_pad_can_answer_every_prompt()
 	_test_main_only_sets_properties_that_exist()
+	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
@@ -3193,6 +3194,60 @@ func _scene_widths() -> Dictionary:
 ## by hand has already failed twice: the controller row was added to the
 ## keyboard and left dead to the mouse, and the text size row -- added FOR
 ## handhelds -- could not be pressed from a handheld at all.
+## The threat ceilings, now that they are arithmetic rather than a method.
+##
+## Split out of GameState 2026-09-23 after an outside review proposed seven
+## modules; this was the only one worth taking, because it is the only one that
+## reaches for no state. Testable without building a dungeon to ask it a
+## question, which is the concrete payoff and the reason it was worth doing.
+func _test_threat_ceilings() -> void:
+	# A room grows steadily with depth. The survivability guarantee rests on
+	# this being predictable.
+	check("a room ceiling rises with depth",
+		Threat.room_ceiling(5) > Threat.room_ceiling(1))
+	check("by a fixed step",
+		Threat.room_ceiling(5) - Threat.room_ceiling(4) == Threat.ROOM_PER_DEPTH,
+		"%d" % (Threat.room_ceiling(5) - Threat.room_ceiling(4)))
+
+	# THE INVARIANT THE UPPER BOUND EXISTS FOR: a cave is never deadlier than a
+	# room, however large it is. That is what the old flat 0.7 was really there
+	# to keep, and what the size scaling had to preserve.
+	var worst := 0
+	for d in range(1, 20):
+		for cells in [1, 20, 113, 400, 2000, 99999]:
+			var cave := Threat.cave_ceiling(d, cells)
+			var room := Threat.room_ceiling(d)
+			if cave > room:
+				worst = maxi(worst, cave - room)
+	check("no cave is ever deadlier than a room", worst == 0,
+		"exceeded by %d" % worst)
+
+	# An average cave keeps exactly the budget it had before size scaling --
+	# this redistributes danger, it does not add any.
+	for d in range(1, 20):
+		var typical := Threat.cave_ceiling(d, Threat.CAVE_TYPICAL_CELLS)
+		var flat := int(round(Threat.room_ceiling(d) * Threat.CAVE_SCALE))
+		check("depth %d: an average cave is unchanged (%d vs %d)"
+			% [d, typical, flat], typical == flat)
+
+	# Bigger caverns hold bigger things; cramped ones do not.
+	check("a big cavern outranks a cramped one",
+		Threat.cave_ceiling(8, 400) > Threat.cave_ceiling(8, 20))
+	check("and the floor stops a tiny one reaching zero",
+		Threat.cave_ceiling(8, 1) > 0, "%d" % Threat.cave_ceiling(8, 1))
+
+	# GameState still answers the same question, since five call sites and two
+	# measurement tools ask it that way.
+	var gs := _arena(21, 11)
+	gs.depth = 6
+	check("GameState agrees with the module",
+		gs.room_threat_ceiling() == Threat.room_ceiling(gs.effective_depth()),
+		"%d vs %d" % [gs.room_threat_ceiling(),
+			Threat.room_ceiling(gs.effective_depth())])
+	check("and for caves too",
+		gs.cave_threat_ceiling_for(200)
+		== Threat.cave_ceiling(gs.effective_depth(), 200))
+
 ## Every property main.gd assigns to a panel must actually exist on it.
 ##
 ## Found the hard way 2026-09-23: the sidebar's contextual block was moved out to
