@@ -340,8 +340,17 @@ func total_defense() -> int:
 ## of the same catalogue and `_maybe_enchant` can put the stone on one. Brad's
 ## standing rule: if the player can have something, so can the monsters.
 func block_amount() -> int:
+	return offhand_tier(&"block")
+
+## The shield hand's tier, if the shield carries this particular stone.
+##
+## One question for all three shield gems, because they differ only in WHAT
+## they do with the tier -- blocking subtracts it, reflect returns it, bash
+## adds twice it. Three near-identical lookups is how three of them stop
+## agreeing about what counts as a shield.
+func offhand_tier(el: StringName) -> int:
 	var off: Variant = equipped.get(Item.Slot.OFFHAND, null)
-	if off == null or off.element != &"block":
+	if off == null or off.element != el:
 		return 0
 	return off.defense_bonus
 

@@ -6477,6 +6477,44 @@ func protected_cell(c: Vector2i) -> bool:
 			return true
 	return false
 
+## Everything that follows from a death, wherever the blow came from.
+##
+## EXTRACTED so the shield's reflect can kill. A blow turned back on its owner
+## has to drop loot, wake the neighbours, be remembered for the shovel and pay
+## experience exactly as a swing does -- and writing a second copy of that here
+## is the same mistake as a test that rebuilds a monster by hand. The copy
+## looks right, drifts the first time any of it changes, and nothing says so.
+func _settle_death(victim: Entity, killer: Entity) -> void:
+	if victim.is_player:
+		game_over = true
+		death_cause = "killed by a %s" % killer.name
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
+		write_morgue()
+		write_death_dump()
+		msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
+	else:
+		msg_log.add("The %s dies." % victim.name, Color(0.65, 0.70, 0.85))
+		events.append({"kind": &"kill",
+			"to": Vector2i(victim.x, victim.y)})
+		# Remembered BEFORE the loot drop empties it, so what stands up
+		# again is wearing what it fought you in. Serialised with the run,
+		# because a suspend in the five turns after a big kill must not
+		# quietly cost you the dig.
+		_remember_the_dead(victim)
+		_rattle_the_ranks(victim)
+		_drop_loot(victim)
+		if victim.risen:
+			_settle_the_grave()
+		# Your side's kills, not just your own. An ally that stole your
+		# experience would be a reward you are punished for spending --
+		# the same mistake as taxing the threat ceiling when one arrives.
+		# Its kills are credited to the run because the run paid a grave
+		# for them, permanently, and there is no getting that back.
+		if killer.faction == Entity.Faction.PLAYER:
+			award_xp(victim.threat)
+			_tally_in("kills", victim.name)
+
+
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		power_override: int = -1) -> void:
 	var atk := attacker.total_power() if power_override < 0 else power_override
@@ -6487,6 +6525,23 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	var clumsy := power_override < 0 and not ranged and attacker.total_range() > 1
 	if clumsy:
 		atk = maxi(1, int(attacker.power / 2))
+
+	# THE SHIELD AS A WEAPON. Twice the tier: buckler +2, kite +4, tower +6.
+	#
+	# Melee only, and only on a real swing -- a shield bash at bowshot is not a
+	# thing, and `power_override` is how thrown rocks and gem effects borrow
+	# this function, none of which are you shoving a shield into somebody.
+	#
+	# Added to `atk` rather than to the final damage, so it flows through the
+	# same subtraction and the same floor as any other power. That means it
+	# also lifts the floor, which is correct: hitting harder should reach past
+	# heavy armour, and that IS what the floor is for.
+	#
+	# AFTER the clumsy penalty, not before, or swinging a bow would halve the
+	# bash too. A launcher claims the offhand so the two cannot co-occur today,
+	# but the ordering should not depend on that staying true.
+	if not ranged and power_override < 0:
+		atk += attacker.offhand_tier(&"bash") * 2
 
 	var raw := atk - defender.total_defense() + rng.randi_range(-1, 1)
 	# What it was struck WITH, before the floor is applied -- so a resisted
@@ -6631,31 +6686,31 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 				% attacker.name, Color(0.90, 0.55, 0.40))
 
 	if not defender.alive:
-		if defender.is_player:
-			game_over = true
-			death_cause = "killed by a %s" % attacker.name
-			events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
-			write_morgue()
-			write_death_dump()
-			msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
-		else:
-			msg_log.add("The %s dies." % defender.name, Color(0.65, 0.70, 0.85))
-			events.append({"kind": &"kill",
-				"to": Vector2i(defender.x, defender.y)})
-			# Remembered BEFORE the loot drop empties it, so what stands up
-			# again is wearing what it fought you in. Serialised with the run,
-			# because a suspend in the five turns after a big kill must not
-			# quietly cost you the dig.
-			_remember_the_dead(defender)
-			_rattle_the_ranks(defender)
-			_drop_loot(defender)
-			if defender.risen:
-				_settle_the_grave()
-			# Your side's kills, not just your own. An ally that stole your
-			# experience would be a reward you are punished for spending --
-			# the same mistake as taxing the threat ceiling when one arrives.
-			# Its kills are credited to the run because the run paid a grave
-			# for them, permanently, and there is no getting that back.
-			if attacker.faction == Entity.Faction.PLAYER:
-				award_xp(defender.threat)
-				_tally_in("kills", defender.name)
+		_settle_death(defender, attacker)
+
+	# THE BLOW GIVEN BACK. Tier damage to whoever swung, melee only.
+	#
+	# Requires the defender to still be STANDING: a shield held by someone who
+	# just died turning nothing, and it keeps two deaths from resolving inside
+	# one blow, which is the kind of ordering that produces a corpse that still
+	# drops loot twice.
+	#
+	# Dealt straight rather than through _attack, deliberately. Routing it back
+	# through here would fire the attacker's own gems, their knockback, their
+	# noise, and -- if both sides wore mirrors -- reflect forever.
+	if not ranged and defender.alive and attacker.alive:
+		var thrown_back := defender.offhand_tier(&"reflect")
+		if thrown_back > 0:
+			attacker.take_damage(thrown_back)
+			if defender.is_player:
+				msg_log.add("Your shield throws it back for %d." % thrown_back,
+					Color(0.70, 0.86, 0.96))
+			elif attacker.is_player:
+				msg_log.add("The %s's shield throws it back for %d."
+					% [defender.name, thrown_back], Color(0.95, 0.62, 0.35))
+			if attacker.is_player:
+				_tally("taken", thrown_back)
+			# Through the same door a swing uses, so a kill by reflect still
+			# drops loot, wakes the floor and pays experience.
+			if not attacker.alive:
+				_settle_death(attacker, defender)

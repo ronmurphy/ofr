@@ -253,6 +253,28 @@ const CATALOGUE := {
 		"element": &"block", "min_depth": 3, "weight": 0,
 	},
 
+	## The other two for the shield hand, and the reason there are three.
+	##
+	## Brad's argument, and it overruled mine: one stone per slot is not a
+	## choice, it is "this effect or nothing". Three that all want the same
+	## permanent binding is where the decision lives -- turn blows aside, give
+	## them back, or stop defending and start hitting with the thing.
+	##
+	## All three read the SAME tier table, so a tower shield is the best at
+	## whichever you pick and the ladder never needs a second set of numbers.
+	&"gem_mirror": {
+		"name": "gem of the mirror", "app": &"gem", "kind": Kind.GEM,
+		"element": &"reflect", "min_depth": 4, "weight": 0,
+	},
+	## Bash is the odd one: the only shield stone that is not defensive at all.
+	## Twice the tier, because it competes with a WEAPON binding for your
+	## attention -- at tier alone a buckler would add one damage and nobody
+	## would ever spend a gem on it.
+	&"gem_boss": {
+		"name": "gem of the boss", "app": &"gem", "kind": Kind.GEM,
+		"element": &"bash", "min_depth": 4, "weight": 0,
+	},
+
 	## The first unique. It claims the WEAPON hand and gives no power, which is
 	## the whole cost: as a rat you cannot fight at all, and taking the ring
 	## off mid-fight is a turn spent becoming a person again in front of
@@ -524,7 +546,7 @@ func accepts_element(el: StringName) -> bool:
 	# the slot selects shields and misses bows for free. The `defense_bonus`
 	# guard is the ring lesson again -- blocking scales with tier, so a tier-0
 	# offhand would eat the stone and turn nothing aside.
-	if el == &"block":
+	if el == &"block" or el == &"reflect" or el == &"bash":
 		return slot == Slot.OFFHAND and defense_bonus > 0
 	# Every other element is still weapons-only. Opening the gate above opened
 	# it for ONE stone, not for all of them: a mail shirt of frost would be a
@@ -845,6 +867,7 @@ static func enchant_chance(effective: int) -> float:
 ## makes you want the gem more, which is why sharing the pool costs nothing.
 const FOUND_ELEMENTS: Array[StringName] = [
 	&"fire", &"frost", &"leech", &"return", &"crag", &"block",
+	&"reflect", &"bash",
 ]
 
 ## Rolls an element onto a generated item, if the dice and the item both allow.

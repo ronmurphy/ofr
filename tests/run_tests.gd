@@ -145,6 +145,7 @@ func _initialize() -> void:
 	_test_gems_bite()
 	_test_gem_of_returning()
 	_test_gem_of_the_bulwark()
+	_test_the_other_two_shield_stones()
 	_test_g_is_the_action_key()
 	_test_the_build_is_named()
 	_test_a_rat_may_creep_past()
@@ -5874,6 +5875,128 @@ func _test_g_is_the_action_key() -> void:
 		said = String(line.get("text", ""))
 	check("and says it is full rather than that you have none",
 		said.findn("carry") >= 0, said)
+
+## Total damage over `n` swings.
+##
+## A single blow carries `rng.randi_range(-1, 1)`, and a buckler's bash is +2 --
+## the noise is the same size as the effect. The first version of these checks
+## compared one swing against one swing and reported a bash travelling down a
+## bowstring when the real difference was a die roll.
+func _swing_total(gs: GameState, who: Entity, at: Entity, n: int,
+		ranged := false) -> int:
+	var total := 0
+	for i in n:
+		at.hp = 9999
+		gs._attack(who, at, ranged)
+		total += 9999 - at.hp
+	return total
+
+## Three stones, one slot, one permanent choice.
+##
+## Brad's argument and it overruled mine: one gem per slot is "this effect or
+## nothing", which is not a choice at all. These have to be genuinely different
+## from each other or the slot is decoration.
+func _test_the_other_two_shield_stones() -> void:
+	var kite := Item.make(&"kite_shield")
+	var mail := Item.make(&"chain_mail")
+	var dagger := Item.make(&"dagger")
+
+	check("a shield takes the mirror", kite.accepts_element(&"reflect"))
+	check("and the boss", kite.accepts_element(&"bash"))
+	check("body armour takes neither",
+		not mail.accepts_element(&"reflect") and not mail.accepts_element(&"bash"))
+	check("nor does a blade",
+		not dagger.accepts_element(&"reflect") and not dagger.accepts_element(&"bash"))
+
+	# --- BASH: the shield as a weapon ------------------------------------
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	var orc := _spawn(gs, "orc", 6, 5)
+	orc.max_hp = 9999
+	orc.hp = 9999
+	var swings := 30
+	gs.player.equipped.erase(Item.Slot.OFFHAND)
+	var bare := _swing_total(gs, gs.player, orc, swings)
+	check("an unbossed swing lands for something (%d over %d)" % [bare, swings],
+		bare > 0)
+
+	# Each tier must beat the one below it, not merely beat nothing.
+	var last := bare
+	for tier in [&"buckler", &"kite_shield", &"tower_shield"]:
+		var sh := Item.make(tier)
+		sh.element = &"bash"
+		gs.player.equipped[Item.Slot.OFFHAND] = sh
+		var with := _swing_total(gs, gs.player, orc, swings)
+		check("a %s hits harder than the tier below (%d vs %d over %d)"
+			% [sh.name, with, last, swings], with > last)
+		last = with
+
+	# A shield with no stone must add NOTHING, or bash is just what shields do
+	# and the gem is decoration. Compared as an average so the rng cannot make
+	# a real difference look like noise or the reverse.
+	var plain := Item.make(&"tower_shield")
+	gs.player.equipped[Item.Slot.OFFHAND] = plain
+	var unbound := _swing_total(gs, gs.player, orc, swings)
+	check("but a shield with no stone adds nothing (%d vs %d over %d)"
+		% [unbound, bare, swings],
+		absi(unbound - bare) <= swings, "outside the rng band")
+
+	# Bash is for swinging, not shooting.
+	var shooter := Item.make(&"tower_shield")
+	shooter.element = &"bash"
+	gs.player.equipped[Item.Slot.OFFHAND] = shooter
+	var shot := _swing_total(gs, gs.player, orc, swings, true)
+	gs.player.equipped.erase(Item.Slot.OFFHAND)
+	var unshot := _swing_total(gs, gs.player, orc, swings, true)
+	check("and a bash does not travel down a bowstring (%d vs %d over %d)"
+		% [shot, unshot, swings],
+		absi(shot - unshot) <= swings, "outside the rng band")
+
+	# --- REFLECT: the blow given back -------------------------------------
+	var r := _arena(21, 11)
+	r.player.x = 5
+	r.player.y = 5
+	var biter := _spawn(r, "orc", 6, 5)
+	biter.max_hp = 9999
+	biter.hp = 9999
+	r.player.equipped.erase(Item.Slot.OFFHAND)
+	r.player.hp = 9999
+	r._attack(biter, r.player)
+	check("without a mirror the attacker takes nothing", biter.hp == 9999,
+		"%d" % (9999 - biter.hp))
+
+	var mirror := Item.make(&"kite_shield")
+	mirror.element = &"reflect"
+	r.player.equipped[Item.Slot.OFFHAND] = mirror
+	r.player.hp = 9999
+	r._attack(biter, r.player)
+	check("with one, it comes back by the tier (%d)" % (9999 - biter.hp),
+		9999 - biter.hp == mirror.defense_bonus)
+
+	# Melee only -- an arrow is not a blow your shield can turn around.
+	biter.hp = 9999
+	r.player.hp = 9999
+	r._attack(biter, r.player, true)
+	check("an arrow is not thrown back", biter.hp == 9999,
+		"%d" % (9999 - biter.hp))
+
+	# AND IT HAS TO BE ABLE TO KILL, through the same door a swing uses.
+	var k := _arena(21, 11)
+	k.player.x = 5
+	k.player.y = 5
+	var doomed := _spawn(k, "giant rat", 6, 5)
+	check("the doomed rat exists", doomed != null)
+	var tower := Item.make(&"tower_shield")
+	tower.element = &"reflect"
+	k.player.equipped[Item.Slot.OFFHAND] = tower
+	k.player.hp = 9999
+	doomed.hp = 1
+	var xp_before := k.player.xp
+	k._attack(doomed, k.player)
+	check("a reflected blow can kill", not doomed.alive)
+	check("and it pays experience like any other kill (%d -> %d)"
+		% [xp_before, k.player.xp], k.player.xp > xp_before)
 
 ## The shield hand finally holds something, and it reaches past the floor.
 func _test_gem_of_the_bulwark() -> void:
