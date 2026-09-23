@@ -70,7 +70,14 @@ func rows() -> Array:
 		out.append([press_name(KEY_PERIOD), "done"])
 	elif state != null:
 		for row in state.actions_here():
-			out.append([press_name(int(row[0])), String(row[1])])
+			# A third element is the PAD's own route to the same action, for
+			# the handful a controller cannot reach by the keyboard key --
+			# restarting after death is the only one today.
+			var key := int(row[0])
+			if row.size() > 2 and pad_input and pad_cfg != null \
+					and pad_cfg.button_for_key(int(row[2])) >= 0:
+				key = int(row[2])
+			out.append([press_name(key), String(row[1])])
 
 	# Always reachable, always last. A player who is lost needs one thing on
 	# screen that leads to everything else, and this panel can be empty.

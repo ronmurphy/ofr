@@ -6136,6 +6136,37 @@ func _test_the_sidebar_says_what_is_here() -> void:
 		str(bar.rows()).findn("\"g\"") >= 0, str(bar.rows()))
 	bar.free()
 
+	# DEATH IS A CONTEXT. Third bug of this shape in a week: the log said
+	# "Press R to begin again" and `r` is not bindable to a pad.
+	var dead := _arena(21, 11)
+	dead.player.x = 5
+	dead.player.y = 5
+	check("a living player is not told to begin again",
+		str(dead.actions_here()).findn("begin again") < 0, str(dead.actions_here()))
+	dead.game_over = true
+	var over := dead.actions_here()
+	check("a dead one is", over.size() == 1
+		and String(over[0][1]) == "begin again", str(over))
+	check("the keyboard is told r", int(over[0][0]) == KEY_R)
+	check("and a pad route is offered beside it", over[0].size() > 2
+		and MainScene.CONFIRM.has(int(over[0][2])),
+		"%d" % (int(over[0][2]) if over[0].size() > 2 else -1))
+
+	var dead_bar := HerePanel.new()
+	dead_bar.state = dead
+	dead_bar.pad_cfg = PadConfig.new()
+	dead_bar.pad_input = false
+	check("so a keyboard player reads r",
+		str(dead_bar.rows()).findn("\"r\"") >= 0, str(dead_bar.rows()))
+	dead_bar.pad_input = true
+	check("and a pad player reads a button they have",
+		str(dead_bar.rows()).findn("\"A\"") >= 0, str(dead_bar.rows()))
+	dead_bar.free()
+
+	# The instruction must not name a key again.
+	check("the death message names no key",
+		"You die.".findn("press") < 0)
+
 	# Warming is offered only when it would work.
 	var b := _arena(21, 11)
 	b.player.x = 5

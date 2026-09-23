@@ -223,7 +223,9 @@ func _draw() -> void:
 
 	# Three states, not two: showing what you have, walking through a rebind,
 	# and finished. The first is new -- it used to open straight into the walk.
-	var note := "press any button to start rebinding     esc  leave"
+	# Not "any button" any more -- that was the bug two people hit. The footers
+	# below name the three that do something; this says what the screen is for.
+	var note := "your controller, as it stands     nothing changes until you ask"
 	if _listening and _at < PadConfig.WALK.size():
 		note = "press a button for each line"
 	elif _listening:

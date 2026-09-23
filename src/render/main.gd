@@ -601,6 +601,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if key == KEY_R:
 		_start_new_run()
 		return
+	# A CONTROLLER HAS NO R. On the death screen the confirm button begins the
+	# next run -- guarded by game_over so it cannot restart a live one, which is
+	# the difference between a convenience and a disaster.
+	if state.game_over and key in CONFIRM:
+		_start_new_run()
+		return
 
 	# Shift+/ on most layouts, plus F1 for anyone who expects help there.
 	if key == KEY_QUESTION or key == KEY_F1 \

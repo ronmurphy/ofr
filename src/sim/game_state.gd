@@ -4091,7 +4091,19 @@ func player_descend() -> bool:
 ## sword.
 func actions_here() -> Array:
 	var out := []
+	# DEAD IS A CONTEXT TOO, and the one where a player most needs telling.
+	#
+	# Found in play on a Legion Go S: the log said "Press R to begin again" and
+	# `r` is not bindable to a pad. Not a dead end -- Start opens the menu and
+	# "abandon this run" is in it -- but an instruction naming a key the device
+	# does not have is the third bug of that exact shape this week, after the
+	# stairs and the missile confirm.
+	#
+	# The third element is the PAD's route to the same action, used when one is
+	# in hand. `r` stays what a keyboard is told, because that is what it has
+	# always been and muscle memory is worth more than consistency here.
 	if game_over:
+		out.append([KEY_R, "begin again", KEY_PERIOD])
 		return out
 
 	var here := items_at(player.x, player.y)
@@ -6543,7 +6555,9 @@ func _settle_death(victim: Entity, killer: Entity) -> void:
 		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
 		write_morgue()
 		write_death_dump()
-		msg_log.add("You die. Press R to begin again.", Color(1.0, 0.35, 0.35))
+		# No key named here. The panel says which one, in the language of
+		# whatever the player is holding.
+		msg_log.add("You die.", Color(1.0, 0.35, 0.35))
 	else:
 		msg_log.add("The %s dies." % victim.name, Color(0.65, 0.70, 0.85))
 		events.append({"kind": &"kill",
