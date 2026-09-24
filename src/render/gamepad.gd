@@ -63,18 +63,16 @@ var cfg := PadConfig.new()
 ## this game can cost a run.
 const STICK_DEADZONE := 0.6
 
-## Auto-repeat while the stick is held, in seconds: the first step is instant,
-## and then it walks.
-##
-## Without this a held stick fires once per frame -- sixty moves a second in a
-## game where one move can be fatal. The d-pad needs none of this because it
-## sends one event per press.
-const STICK_FIRST := 0.35
-const STICK_AGAIN := 0.12
+## Auto-repeat while the stick is held -- through HoldRepeat, the same timing the
+## keyboard now uses. This file used to keep its own copy with its own
+## constants, and that copy never honoured its first-step pause; see
+## hold_repeat.gd for the whole story.
+var _repeat := HoldRepeat.new()
 
-var _dir := Vector2i.ZERO
-var _hold := 0.0
-var _walked := false
+## True when the last direction stick_key() returned came from HOLDING the
+## stick rather than pushing it. main.gd asks, because a repeat is the thing
+## that stops when a monster is in view -- a fresh push is always honoured.
+var last_was_repeat := false
 
 ## The eight directions, as the arrow and diagonal keys the map already reads.
 const STICK_KEYS := {
@@ -120,18 +118,8 @@ func stick_key(delta: float) -> int:
 		if want == Vector2i.ZERO:
 			want = Vector2i(signi(int(raw.x * 2.0)), signi(int(raw.y * 2.0)))
 
-	if want == Vector2i.ZERO:
-		_dir = Vector2i.ZERO
-		_walked = false
-		return 0
-	if want != _dir:
-		_dir = want
-		_hold = 0.0
-		_walked = true
-		return STICK_KEYS.get(want, 0)
-	_hold += delta
-	if _hold >= (STICK_AGAIN if _walked else STICK_FIRST):
-		_hold = 0.0
-		_walked = true
-		return STICK_KEYS.get(want, 0)
-	return 0
+	# 0 for a centred stick, which is what resets the repeat.
+	var key: int = int(STICK_KEYS.get(want, 0)) if want != Vector2i.ZERO else 0
+	var out: int = _repeat.tick(key, delta, true)
+	last_was_repeat = _repeat.last_was_repeat
+	return out

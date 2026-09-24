@@ -741,6 +741,7 @@ var shrine_known: Dictionary = {}
 var forge_cap_bonus := 0
 var torch_flare := 0
 var turns: int = 0
+
 ## Energy spent by the player, which is game TIME rather than player actions.
 ##
 ## `turns` counts keypresses: one step is one turn whether it crossed clean
@@ -2846,6 +2847,17 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 ## A sleeper is still the ONLY exemption. Anything suspicious or awake stops
 ## you in either form, because those can act, and a rat that gets noticed has
 ## no hands to answer with.
+## Is there anything in sight that should stop the player being carried along?
+##
+## ONE RULE, deliberately the same one click-to-travel has always used. Holding a
+## direction to repeat steps, and keeping the pack open between actions, both
+## stop on it -- anything that keeps acting on your behalf stops the moment the
+## world has something to say. Brad's overshoot complaint is the reason it had
+## to be this strict: with a patroller in view each press is ONE step, so you
+## can stop three squares short of its path instead of walking into it.
+func threat_in_view() -> bool:
+	return not _travel_stoppers().is_empty()
+
 func _travel_stoppers() -> Array:
 	if not ratted():
 		return visible_monsters()
@@ -4407,8 +4419,14 @@ func player_use(index: int) -> bool:
 	# One action for the whole list: a potion is drunk, a sword is wielded.
 	# The player should not have to remember which verb a slot wants.
 	if item.is_equipment():
+		var putting_on := not player.is_equipped(item)
 		_toggle_equip(item)
-		_end_player_turn()
+		# Time to get INTO it -- see Item.don_turns. Taking it off is one turn.
+		var took := item.don_turns if putting_on else 1
+		if took > 1:
+			msg_log.add("It takes %d turns to get into the %s." % [took, item.name],
+				Color(0.80, 0.78, 0.62))
+		_end_player_turn(Scheduler.ACTION_COST * took)
 		return true
 
 	# A refused effect costs neither the item nor the turn. Wasting a potion to
@@ -4417,6 +4435,12 @@ func player_use(index: int) -> bool:
 		return false
 	player.inventory.remove_at(index)
 	item.letter = ""
+	# EVERY potion and every meal costs a turn. A "first one each turn is free"
+	# rule, after D&D's bonus action, was built and taken out again on
+	# 2026-09-24. Free in combat it makes fights easier, which Brad did not
+	# want; free only out of combat it does nearly nothing, because a turn with
+	# nothing hostile in view is worth almost nothing. There was no version of
+	# it that earned its place. _test_every_draught_costs_a_turn holds the line.
 	_end_player_turn()
 	return true
 

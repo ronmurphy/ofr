@@ -126,6 +126,19 @@ var throw_range: int = 0
 var base_power_bonus: int = 0
 var base_defense_bonus: int = 0
 
+## How many turns it takes to PUT THIS ON. One for almost everything.
+##
+## Brad's, 2026-09-24, from D&D where donning armour takes minutes rather than
+## a moment: leather 2, chain 3, plate 4. Shields and weapons stay at one --
+## the swap key already makes changing weapons a single reflex, and that is the
+## point of it. Taking armour OFF stays one turn.
+##
+## What it buys is preparation: armour becomes something you change in an empty
+## room, ideally beside a brazier, rather than mid-fight. Charged as TIME, the
+## same way deep water is -- one action that costs four actions' worth -- so the
+## world gets its turns while you are half into a hauberk.
+var don_turns: int = 1
+
 ## A dagger tops out at +4, a short sword at +6, leather at +3, and so on.
 const MAX_UPGRADES := 2
 
@@ -446,15 +459,15 @@ const CATALOGUE := {
 
 	&"leather_armour": {
 		"name": "leather armour", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7,
+		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7, "don": 2,
 	},
 	&"chain_mail": {
 		"name": "chain mail", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 3, "min_depth": 3, "weight": 5,
+		"slot": Slot.ARMOR, "defense": 3, "min_depth": 3, "weight": 5, "don": 3,
 	},
 	&"plate_mail": {
 		"name": "plate mail", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 5, "min_depth": 5, "weight": 2,
+		"slot": Slot.ARMOR, "defense": 5, "min_depth": 5, "weight": 2, "don": 4,
 	},
 }
 
@@ -476,6 +489,7 @@ static func make(item_id: StringName) -> Item:
 	it.forge_bonus = data.get("forge", 0)
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
+	it.don_turns = int(data.get("don", 1))
 	it.range_bonus = data.get("range", 1)
 	it.ammo_max = data.get("ammo_max", 0)
 	it.ammo_kind = data.get("ammo_kind", &"")

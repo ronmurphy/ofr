@@ -55,6 +55,20 @@ var _look_at := Vector2i.ZERO
 ## shoots it outright. Right-click rather than left, so aiming can never be
 ## confused with the click-to-travel that shares the map.
 var _aiming := false
+
+## Holding a movement key walks, the way holding the stick always has.
+##
+## Read straight off the keyboard each frame rather than from the OS's own key
+## repeat, which is filtered out on purpose -- its speed is whatever the player's
+## desktop is set to, so it would feel different on every machine. This way the
+## keyboard and the stick share one timing (HoldRepeat) and one rate.
+var _key_repeat := HoldRepeat.new()
+## The movement key last pressed on a real keyboard, while it is still down.
+var _held_move_key := 0
+## Set when a held direction ran into something -- a blow landed on you, or the
+## step turned into a swing. Stays set until the key or stick is released, so
+## holding a direction can never carry you into a fight you did not start.
+var _repeat_blocked := false
 var _aim_at := Vector2i.ZERO
 var _aim_targets: Array = []
 var _aim_index := 0
@@ -277,7 +291,22 @@ func _process(delta: float) -> void:
 	# now the only thing that navigates, so it has to be heard everywhere.
 	var held := pad.stick_key(delta)
 	if held != 0:
-		_press(held)
+		if not pad.last_was_repeat:
+			# A fresh push is always honoured, and it clears the brake.
+			_repeat_blocked = false
+			_press(held)
+		elif not _world_has_focus() or _may_repeat():
+			# Menus and the pack still repeat freely -- the brake is about the
+			# MAP, where a repeat is a step you did not individually choose.
+			_press(held)
+
+	# The keyboard's equivalent. First press already happened as an event;
+	# this only supplies the repeats.
+	if _held_move_key != 0 and not Input.is_key_pressed(_held_move_key):
+		_held_move_key = 0
+	var again: int = _key_repeat.tick(_held_move_key, delta, false)
+	if again != 0 and _world_has_focus() and _may_repeat():
+		_step(MOVES[again])
 
 	# WHICH DEVICE IS IN THEIR HANDS, updated BEFORE the modal return below.
 	#
@@ -418,6 +447,27 @@ func _press(key: int) -> void:
 	fake.pressed = true
 	_unhandled_key_input(fake)
 	_synthetic = false
+
+## Is the MAP what the player is looking at -- no panel, no cursor?
+func _world_has_focus() -> bool:
+	return not (inventory.visible or menu.visible or legend.visible
+		or summary.visible or name_entry.visible or pad_setup.visible
+		or talk.visible or overview.visible or _aiming or _look)
+
+## May a HELD direction take another step? See GameState.threat_in_view for
+## the rule and why it is the one travel already used.
+func _may_repeat() -> bool:
+	return not _repeat_blocked and not state.game_over \
+		and not state.threat_in_view()
+
+## One step on the map, watched for the things that should stop a held key.
+func _step(d: Vector2i) -> void:
+	var hp_was := state.player.hp
+	var dealt_was := int(state.stats.get("dealt", 0))
+	if state.player_move(d.x, d.y):
+		_refresh()
+	if state.player.hp < hp_was or int(state.stats.get("dealt", 0)) > dealt_was:
+		_repeat_blocked = true
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key_event := event as InputEventKey
@@ -703,9 +753,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if MOVES.has(key):
-		var d: Vector2i = MOVES[key]
-		if state.player_move(d.x, d.y):
-			_refresh()
+		if not _synthetic:
+			# A fresh press on a real keyboard: start timing a hold from here,
+			# and release the brake.
+			_held_move_key = key
+			_repeat_blocked = false
+		_step(MOVES[key])
 		return
 
 	match key:
@@ -951,10 +1004,47 @@ func _close_inventory() -> void:
 
 ## A refused item (drinking at full health) keeps the panel open, so the click
 ## is not punished by having to reopen and re-read the list.
+## THE PACK STAYS OPEN. Brad, 2026-09-24: he wanted to drink, drink, swap
+## armour and then close it himself, and it shut after every single use.
+##
+## It used to close for a real reason -- each use costs a turn, the monsters
+## act, and the pack covers the map -- so it now closes ITSELF on the same rule
+## as a held direction: if you are hurt, or something you had not seen comes
+## into view. Anything that keeps acting on your behalf stops the moment the
+## world has something to say.
 func _use_item(index: int) -> void:
+	var watch := _watch_pack()
+	var id: StringName = state.player.inventory[index].id \
+		if index >= 0 and index < state.player.inventory.size() else &""
 	if state.player_use(index):
-		_close_inventory()
+		inventory.settle_hover(id)
+		_close_pack_if_threatened(watch)
 	_refresh()
+
+## What to compare against after a pack action: health, and who was in view.
+func _watch_pack() -> Dictionary:
+	var seen := {}
+	for e in state.visible_monsters():
+		seen[e.get_instance_id()] = true
+	return {"hp": state.player.hp, "seen": seen}
+
+func _close_pack_if_threatened(watch: Dictionary) -> void:
+	if not inventory.visible:
+		return
+	var why := ""
+	if state.player.hp < int(watch["hp"]):
+		why = "Something hurts you. You look up from the pack."
+	else:
+		for e in state.visible_monsters():
+			if not (watch["seen"] as Dictionary).has(e.get_instance_id()):
+				why = "A %s comes into view. You look up from the pack." % e.name
+				break
+	if why != "":
+		msg_log_add(why)
+		_close_inventory()
+
+func msg_log_add(text: String) -> void:
+	state.msg_log.add(text, Color(0.95, 0.62, 0.35))
 
 ## Forging keeps the panel open, so the result is visible and a second merge
 ## does not need the list reopened.
@@ -974,7 +1064,9 @@ func _merge_item(index: int) -> void:
 		else:
 			state.player_bind(index)
 	else:
-		state.player_merge(index)
+		var watch := _watch_pack()
+		if state.player_merge(index):
+			_close_pack_if_threatened(watch)
 	_refresh()
 
 ## The weapon chosen from the bind shortlist.
@@ -985,7 +1077,12 @@ func _on_bind_chosen(target: int) -> void:
 	_refresh()
 
 func _drop_item(index: int) -> void:
-	state.player_drop(index)
+	var watch := _watch_pack()
+	var id: StringName = state.player.inventory[index].id \
+		if index >= 0 and index < state.player.inventory.size() else &""
+	if state.player_drop(index):
+		inventory.settle_hover(id)
+		_close_pack_if_threatened(watch)
 	_refresh()
 
 func _refresh() -> void:

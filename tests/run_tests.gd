@@ -118,6 +118,10 @@ func _initialize() -> void:
 	_test_a_pad_can_answer_every_prompt()
 	_test_a_pad_is_never_a_letter_in_the_pack()
 	_test_button_pictures()
+	_test_holding_a_direction()
+	_test_armour_takes_time()
+	_test_every_draught_costs_a_turn()
+	_test_the_pack_stays_open()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3334,6 +3338,156 @@ func _test_main_only_sets_properties_that_exist() -> void:
 	check("assignments were found to check (%d)" % checked, checked >= 10)
 	check("main.gd sets nothing that does not exist", missing.is_empty(),
 		", ".join(missing))
+
+## Holding a direction walks, at one shared rate, and pauses before it starts.
+func _test_holding_a_direction() -> void:
+	check("four steps a second (%.2fs apart)" % HoldRepeat.AGAIN,
+		is_equal_approx(HoldRepeat.AGAIN, 0.25))
+	check("and a longer pause before the first repeat",
+		HoldRepeat.FIRST > HoldRepeat.AGAIN)
+
+	# The stick: a push steps at once.
+	var r := HoldRepeat.new()
+	check("a push steps immediately", r.tick(KEY_UP, 0.016, true) == KEY_UP)
+	check("  and that step is not a repeat", not r.last_was_repeat)
+
+	# THE BUG THIS REPLACED. The stick marked itself "already walking" on its
+	# first step, so the first repeat came AGAIN seconds later and FIRST was
+	# never used -- a push held a moment too long was two steps. Brad's
+	# overshooting was partly this.
+	var t := 0.0
+	var early := 0
+	while t + 0.02 < HoldRepeat.FIRST:
+		if r.tick(KEY_UP, 0.02, true) != 0:
+			early += 1
+		t += 0.02
+	check("nothing repeats before the first pause is over (%d early)" % early,
+		early == 0)
+	var got := 0
+	for i in 5:
+		got = r.tick(KEY_UP, 0.02, true)
+		if got != 0:
+			break
+	check("then it repeats", got == KEY_UP)
+	check("  as a repeat", r.last_was_repeat)
+
+	# After that, every AGAIN seconds.
+	var gaps := 0
+	var since := 0.0
+	var hits := PackedFloat32Array()
+	for i in 200:
+		since += 0.01
+		if r.tick(KEY_UP, 0.01, true) != 0:
+			hits.append(since)
+			since = 0.0
+			gaps += 1
+		if gaps >= 3:
+			break
+	check("then every %.2fs (%s)" % [HoldRepeat.AGAIN, str(hits)],
+		hits.size() >= 3 and absf(hits[1] - HoldRepeat.AGAIN) < 0.02)
+
+	# Letting go resets it; a change of direction is a fresh push.
+	check("letting go stops it", r.tick(0, 0.5, true) == 0)
+	check("a new direction steps at once", r.tick(KEY_LEFT, 0.016, true) == KEY_LEFT)
+
+	# The keyboard: its first step is the key EVENT, so the timer must not take
+	# it a second time.
+	var k := HoldRepeat.new()
+	check("a held key does not double its first step",
+		k.tick(KEY_UP, 0.016, false) == 0)
+
+	# THE STOP RULE: repeats stop with a hostile in view -- the rule travel has
+	# always used, now shared.
+	var gs := _arena(21, 11)
+	gs.player.x = 5
+	gs.player.y = 5
+	check("an empty room holds no threat", not gs.threat_in_view())
+	var gob := _spawn(gs, "goblin", 9, 5)
+	check("a goblin in plain sight does", gs.threat_in_view(),
+		"at %d,%d" % [gob.x, gob.y])
+
+## Putting on armour takes turns; shields, weapons and taking it off do not.
+func _test_armour_takes_time() -> void:
+	check("leather takes 2", Item.make(&"leather_armour").don_turns == 2)
+	check("chain takes 3", Item.make(&"chain_mail").don_turns == 3)
+	check("plate takes 4", Item.make(&"plate_mail").don_turns == 4)
+	check("a shield takes 1", Item.make(&"kite_shield").don_turns == 1)
+	check("a weapon takes 1", Item.make(&"war_axe").don_turns == 1)
+
+	for pair in [[&"plate_mail", 4], [&"leather_armour", 2], [&"tower_shield", 1]]:
+		var gs := _arena(21, 11)
+		var it := Item.make(pair[0])
+		gs.give_item(it)
+		var i := gs.player.inventory.find(it)
+		var was := gs.elapsed
+		check("putting on %s works" % it.name, gs.player_use(i))
+		check("  and costs %d turns of time (%d)" % [pair[1], gs.elapsed - was],
+			gs.elapsed - was == Scheduler.ACTION_COST * int(pair[1]))
+		if int(pair[1]) > 1:
+			var off_was := gs.elapsed
+			gs.player_use(i)
+			check("  taking it off costs one",
+				gs.elapsed - off_was == Scheduler.ACTION_COST)
+
+## Every potion and every meal costs a turn. Brad's ruling, 2026-09-24.
+##
+## A "first one each turn is free" rule was built and removed the same day: free
+## in a fight it makes fights easier, and free only out of one it changes almost
+## nothing. It went unnoticed while it existed -- nothing asserted that drinking
+## costs a turn -- so this does, and the decision cannot drift back quietly.
+func _test_every_draught_costs_a_turn() -> void:
+	var gs := _arena(21, 11)
+	gs.player.max_hp = 100
+	gs.player.hp = 10
+	var a := Item.make(&"potion_healing")
+	var b := Item.make(&"potion_healing")
+	var meat := Item.make(&"meat")
+	gs.give_item(a)
+	gs.give_item(b)
+	gs.give_item(meat)
+	var t0 := gs.turns
+	check("a potion works", gs.player_use(gs.player.inventory.find(a)))
+	check("  and costs a turn", gs.turns == t0 + 1, "%d -> %d" % [t0, gs.turns])
+	check("so does the second", gs.player_use(gs.player.inventory.find(b))
+		and gs.turns == t0 + 2)
+	check("and a meal", gs.player_use(gs.player.inventory.find(meat))
+		and gs.turns == t0 + 3)
+	check("meat is filed with the potions", meat.kind == Item.Kind.POTION)
+
+## The pack stays open between actions, and keeps its highlight honest.
+func _test_the_pack_stays_open() -> void:
+	var gs := _arena(21, 11)
+	gs.player.max_hp = 100
+	gs.player.hp = 10
+	var p1 := Item.make(&"potion_healing")
+	var p2 := Item.make(&"potion_healing")
+	var sc := Item.make(&"scroll_light")
+	gs.give_item(p1)
+	gs.give_item(p2)
+	gs.give_item(sc)
+	var bag := InventoryPanel.new()
+	bag.state = gs
+
+	# Another potion slid into the slot: the highlight may stay.
+	bag._hover_index = gs.player.inventory.find(p1)
+	gs.player.inventory.remove_at(bag._hover_index)
+	bag._hover_index = gs.player.inventory.find(p2)
+	bag.settle_hover(&"potion_healing")
+	check("with another potion there, the highlight stays",
+		bag._hover_index == gs.player.inventory.find(p2))
+
+	# Something else slid in: it must clear, or the next confirm reads a scroll.
+	bag._hover_index = gs.player.inventory.find(sc)
+	bag.settle_hover(&"potion_healing")
+	check("with a scroll there instead, it clears", bag._hover_index == -1)
+	bag.free()
+
+	# main.gd must no longer close the pack after every use.
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var use_at := src.find("func _use_item(")
+	var body := src.substr(use_at, src.find("\nfunc ", use_at + 5) - use_at)
+	check("using an item no longer closes the pack by itself",
+		body.find("_close_inventory()") < 0 and body.find("_close_pack_if_threatened") >= 0)
 
 ## Controller buttons drawn as PICTURES, from Kenney's Xbox Series font.
 ##

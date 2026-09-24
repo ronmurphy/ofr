@@ -378,6 +378,21 @@ func move_hover(step: int) -> void:
 	queue_redraw()
 
 ## What the highlight is on, or -1.
+## After an action, keep the highlight only if it still sits on the SAME KIND of
+## thing.
+##
+## The highlight remembers a POSITION, not an item. Now that the pack stays open,
+## drinking the last potion slides whatever was next into that slot -- often a
+## scroll -- and the next press of confirm would read it. With another potion
+## there, the highlight stays and "drink, drink" works as intended; with
+## anything else there, it clears and the player has to choose again.
+func settle_hover(prev_id: StringName) -> void:
+	if _hover_index < 0 or state == null \
+			or _hover_index >= state.player.inventory.size() \
+			or state.player.inventory[_hover_index].id != prev_id:
+		_hover_index = -1
+	queue_redraw()
+
 func hovered() -> int:
 	return _hover_index if selectable().has(_hover_index) else -1
 
