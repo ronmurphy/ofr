@@ -83,8 +83,21 @@ The resolution is a pattern: anything whose number of draws varies with content
 gets its **own** `RandomNumberGenerator`, seeded from the run but drawn
 separately — currently three of them (graves, enchantments, the trader).
 
-This constraint also shapes refactoring. A change that looks purely cosmetic can
-silently alter draw order. There is a tool that fingerprints generation — hashing
+**Where the risk concentrates: generation.** Every draw in the game happens
+there — 49 call sites in the level generator alone, against zero in most other
+files. That inverts the usual intuition about refactoring. Generation is the
+most *conceptually* separable part of the codebase (rooms, caves, vaults,
+connectivity are obviously distinct jobs) and the most *practically* dangerous
+to touch, because the order of those draws is precisely what a seed reproduces.
+Move one pass relative to another and every seeded run silently becomes a
+different dungeon.
+
+The only extraction made on these grounds so far went the other way: a module of
+pure arithmetic that reaches for no state **and makes no draws**. Both halves
+mattered. "Reaches for nothing" alone is not the test.
+
+This constraint also shapes refactoring generally. A change that looks purely
+cosmetic can silently alter draw order. There is a tool that fingerprints generation — hashing
 the items, their rolled properties and the monster populations across 20
 seed/depth combinations — so a refactor can be proven behaviour-identical rather
 than assumed to be. A test suite cannot catch this class of bug: a determinism

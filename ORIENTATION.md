@@ -74,6 +74,13 @@ this project spends most of its effort preventing.
 The one extraction that passed that test reached for nothing at all:
 `src/sim/threat.gd`, pure arithmetic over a depth and a cell count.
 
+**And that is only half the test.** The other half is whether the code
+makes RANDOM DRAWS. Generation is the most conceptually separable part of
+this codebase and the most dangerous to touch, because every draw happens
+there and their ORDER is what a seed reproduces. `src/sim/mapgen.gd` has
+49 rng call sites; `src/sim/threat.gd` has none. Splitting the former is
+the highest-risk refactor available here, not the safest one.
+
 ## The files
 
 48 files, 18199 lines.
