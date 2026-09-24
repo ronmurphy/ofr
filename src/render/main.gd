@@ -20,6 +20,7 @@ extends Control
 @onready var talk: TalkPanel = $Talk
 @onready var overview: MapPanel = $Overview
 @onready var here: HerePanel = $Here
+@onready var trade: TradePanel = $Trade
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
@@ -230,6 +231,8 @@ func _ready() -> void:
 	legend.map_requested.connect(_open_overview)
 	overview.legend_requested.connect(_open_legend)
 	pad_setup.closed.connect(_refresh)
+	talk.finished.connect(_on_talk_finished)
+	trade.closed.connect(_refresh)
 	pad_setup.log_requested.connect(pad.start_log)
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
@@ -317,6 +320,7 @@ func _process(delta: float) -> void:
 	# allowed to short-circuit the frame.
 	sidebar.pad_input = _pad_input
 	legend.pad_input = _pad_input
+	trade.pad_input = _pad_input
 	inventory.pad_input = _pad_input
 
 	if menu.visible or legend.visible:
@@ -392,6 +396,8 @@ func _maybe_talk(evts: Array) -> void:
 		if ev.get("kind", &"") != &"talk":
 			continue
 		var who := String(ev.get("who", "trader"))
+		# Trading starts where the talking ends -- see _on_talk_finished.
+		_trade_after_talk = true
 		if TraderTalk.intro_seen():
 			talk.open(who, TraderTalk.greeting())
 		else:
@@ -448,11 +454,22 @@ func _press(key: int) -> void:
 	_unhandled_key_input(fake)
 	_synthetic = false
 
+## Set when the conversation now showing is the trader's, so its end opens
+## the counter. The same panel shows bestiary portraits, which must not.
+var _trade_after_talk := false
+
+func _on_talk_finished() -> void:
+	if _trade_after_talk and state.trader_here():
+		_trade_after_talk = false
+		trade.open()
+	_trade_after_talk = false
+	_refresh()
+
 ## Is the MAP what the player is looking at -- no panel, no cursor?
 func _world_has_focus() -> bool:
 	return not (inventory.visible or menu.visible or legend.visible
 		or summary.visible or name_entry.visible or pad_setup.visible
-		or talk.visible or overview.visible or _aiming or _look)
+		or talk.visible or overview.visible or trade.visible or _aiming or _look)
 
 ## May a HELD direction take another step? See GameState.threat_in_view for
 ## the rule and why it is the one travel already used.
@@ -492,6 +509,20 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# A conversation is modal and takes keys before any other panel.
 	if talk.visible:
 		talk.handle_key(key)
+		_refresh()
+		return
+
+	if trade.visible:
+		# A PAD IS NEVER A LETTER HERE EITHER -- the lesson of the pack, applied
+		# before anyone could find it the hard way. A pad press may only move,
+		# confirm, ask for the enchant, or leave.
+		if _synthetic:
+			if key == PACK_BACK_KEY:
+				key = KEY_ESCAPE
+			elif not (key in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESCAPE,
+					PACK_FORGE_KEY] or key in CONFIRM):
+				return
+		trade.handle_key(key)
 		_refresh()
 		return
 
@@ -884,6 +915,8 @@ func _bind_state(s: GameState) -> void:
 	legend.pad_cfg = pad.cfg
 	inventory.pad_cfg = pad.cfg
 	here.state = s
+	trade.state = s
+	trade.pad_cfg = pad.cfg
 	here.pad_cfg = pad.cfg
 	_pad_input = not Input.get_connected_joypads().is_empty()
 	log_view.state = s

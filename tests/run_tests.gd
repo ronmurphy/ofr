@@ -122,6 +122,11 @@ func _initialize() -> void:
 	_test_armour_takes_time()
 	_test_every_draught_costs_a_turn()
 	_test_the_pack_stays_open()
+	_test_trade_prices()
+	_test_the_trader_deals()
+	_test_the_trader_remembers_the_dead()
+	_test_the_counter()
+	_test_the_counter_by_mouse_and_keys()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3294,6 +3299,7 @@ func _test_main_only_sets_properties_that_exist() -> void:
 		"TalkPanel": func() -> Object: return TalkPanel.new(),
 		"MapPanel": func() -> Object: return MapPanel.new(),
 		"HerePanel": func() -> Object: return HerePanel.new(),
+		"TradePanel": func() -> Object: return TradePanel.new(),
 		"SoundDeck": func() -> Object: return SoundDeck.new(),
 	}
 	var unknown := PackedStringArray()
@@ -3338,6 +3344,461 @@ func _test_main_only_sets_properties_that_exist() -> void:
 	check("assignments were found to check (%d)" % checked, checked >= 10)
 	check("main.gd sets nothing that does not exist", missing.is_empty(),
 		", ".join(missing))
+
+## What things are worth to the trader. Settled 2026-09-23; see BACKLOG.md.
+func _test_trade_prices() -> void:
+	# Every piece of ordinary equipment has a tier; nothing else does.
+	var tiered := 0
+	var missing := PackedStringArray()
+	for key in Item.CATALOGUE:
+		var data: Dictionary = Item.CATALOGUE[key]
+		var equip: bool = int(data.get("slot", -1)) >= 0
+		if equip and not data.get("unique", false):
+			if int(data.get("tier", 0)) > 0:
+				tiered += 1
+			else:
+				missing.append(String(key))
+	check("every ordinary piece of equipment has a tier (%d)" % tiered,
+		missing.is_empty() and tiered >= 13, ", ".join(missing))
+
+	check("a dagger is worth 1", Trade.worth(Item.make(&"dagger")) == 1)
+	check("a short sword 3", Trade.worth(Item.make(&"short_sword")) == 3)
+	check("a war axe 9", Trade.worth(Item.make(&"war_axe")) == 9)
+	check("so three daggers are a short sword",
+		Trade.worth(Item.make(&"dagger")) * 3 == Trade.worth(Item.make(&"short_sword")))
+	check("cross-category counts the same: leather is a dagger",
+		Trade.worth(Item.make(&"leather_armour")) == Trade.worth(Item.make(&"dagger")))
+
+	# Worth what it cost to make. A +2 took two more of the same to forge.
+	var plus := Item.make(&"dagger")
+	plus.boosts = 2
+	check("a +2 dagger is worth three daggers", Trade.worth(plus) == 3,
+		"%d" % Trade.worth(plus))
+	var magic := Item.make(&"short_sword")
+	magic.element = &"frost"
+	check("a bound gem adds %d" % Trade.MAGIC,
+		Trade.worth(magic) == 3 + Trade.MAGIC, "%d" % Trade.worth(magic))
+
+	# THE TRADER CONVERTS WITHIN A CURRENCY, NEVER ACROSS.
+	var gem := Item.make(&"gem_frost")
+	check("a gem is not equipment points", Trade.worth(gem) == 0)
+	check("  but the trader does take it", Trade.refusal(gem) == "")
+
+	# What it will not take, and says why in words that are true.
+	check("never the amulet", Trade.refusal(Item.make(&"amulet")) != "")
+	check("never a unique", Trade.refusal(Item.make(&"rat_ring")) != "")
+	var pot := Trade.refusal(Item.make(&"potion_healing"))
+	check("a potion is SOLD, not bought (\"%s\")" % pot, pot.findn("sell") >= 0)
+	var arrows := Trade.refusal(Item.make(&"arrows"))
+	check("arrows are refused without claiming the trader sells them",
+		arrows != "" and arrows.findn("sell") < 0, arrows)
+	check("meat is refused -- hunting is not income",
+		Trade.refusal(Item.make(&"meat")) != "")
+	check("a potion has a price to BUY it", Trade.price(Item.make(&"potion_healing")) > 0)
+
+## Buying and selling across the counter, on a real floor with a real trader.
+func _test_the_trader_deals() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	# The premise. Every check below is vacuous without a trader to deal with.
+	check("floor one has a trader", gs.trader_here())
+	if not gs.trader_here():
+		return
+	check("  and something on the shelves (%d)" % gs.trader_stock.size(),
+		gs.trader_stock.size() > 0)
+
+	# Floor one sells floor one's things: nothing that belongs deeper.
+	var deep := PackedStringArray()
+	for entry in gs.trader_stock:
+		var it: Item = entry["item"]
+		if it.tier > 0 and int(Item.CATALOGUE[it.id].get("min_depth", 99)) > 3:
+			deep.append(it.name)
+	check("the first trader sells nothing from deeper bands", deep.is_empty(),
+		", ".join(deep))
+
+	# SELL, and the slate goes up by the worth.
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	var d1 := Item.make(&"dagger")
+	var d2 := Item.make(&"dagger")
+	var d3 := Item.make(&"dagger")
+	for it in [d1, d2, d3]:
+		gs.give_item(it)
+	var stocked := gs.trader_stock.size()
+	check("selling a dagger works", gs.trade_sell(gs.player.inventory.find(d1)))
+	check("  credit is 1", gs.trader_credit == 1, "%d" % gs.trader_credit)
+	check("  it goes on the shelf", gs.trader_stock.size() == stocked + 1)
+	check("  and leaves the pack", not gs.player.inventory.has(d1))
+
+	# PAR: buying it straight back costs exactly what it earned.
+	var back := gs.trader_stock.size() - 1
+	check("and it can be bought straight back", gs.trade_buy(back))
+	check("  for exactly what it earned", gs.trader_credit == 0, "%d" % gs.trader_credit)
+
+	# Refused when you cannot afford it -- and NOTHING changes.
+	var sword_at := -1
+	for i in gs.trader_stock.size():
+		if (gs.trader_stock[i]["item"] as Item).id == &"short_sword":
+			sword_at = i
+	check("the first trader stocks a short sword", sword_at >= 0)
+	var shelf := gs.trader_stock.size()
+	var pack := gs.player.inventory.size()
+	check("a short sword is refused on 0 credit", not gs.trade_buy(sword_at))
+	check("  and nothing moved", gs.trader_stock.size() == shelf
+		and gs.player.inventory.size() == pack and gs.trader_credit == 0)
+
+	# Three daggers buy it.
+	for it in [d1, d2, d3]:
+		var at := gs.player.inventory.find(it)
+		if at >= 0:
+			gs.trade_sell(at)
+	check("three daggers make 3 credit", gs.trader_credit == 3, "%d" % gs.trader_credit)
+	for i in gs.trader_stock.size():
+		if (gs.trader_stock[i]["item"] as Item).id == &"short_sword":
+			sword_at = i
+	check("and buy the short sword", gs.trade_buy(sword_at) and gs.trader_credit == 0)
+
+	# Selling what you are WEARING takes it off first.
+	var worn := Item.make(&"leather_armour")
+	gs.give_item(worn)
+	gs.player.equipped[Item.Slot.ARMOR] = worn
+	check("worn armour can be sold", gs.trade_sell(gs.player.inventory.find(worn)))
+	check("  and is no longer worn", gs.player.equipped.get(Item.Slot.ARMOR, null) == null)
+
+	# What it refuses, it keeps out of the pack AND off the slate.
+	var p := Item.make(&"potion_healing")
+	gs.give_item(p)
+	var before := gs.trader_credit
+	check("a potion is refused", not gs.trade_sell(gs.player.inventory.find(p)))
+	check("  and stays in the pack", gs.player.inventory.has(p)
+		and gs.trader_credit == before)
+
+	# GEMS FOR GEMS.
+	for el in [&"gem_frost", &"gem_frost"]:
+		var g := Item.make(el)
+		gs.give_item(g)
+		gs.trade_sell(gs.player.inventory.find(g))
+	check("two gems are not enough", not gs.trade_buy_gem(&"leech"))
+	var g3 := Item.make(&"gem_frost")
+	gs.give_item(g3)
+	gs.trade_sell(gs.player.inventory.find(g3))
+	var credit_before_gem := gs.trader_credit
+	check("three gems buy one of your choice", gs.trade_buy_gem(&"leech"))
+	var has_leech := false
+	for it in gs.player.inventory:
+		if it.id == &"gem_leech":
+			has_leech = true
+	check("  and it is the one chosen", has_leech)
+	check("  and equipment credit was not touched", gs.trader_credit == credit_before_gem)
+
+	# THE ENCHANT ROLL: 9 points, once per trader.
+	var target := Item.make(&"short_sword")
+	gs.give_item(target)
+	var ti := gs.player.inventory.find(target)
+	gs.trader_credit = 0
+	check("an enchant needs %d credit" % Trade.ENCHANT, not gs.trade_enchant(ti))
+	gs.trader_credit = Trade.ENCHANT * 2
+	check("with it, the trader works the blade", gs.trade_enchant(ti))
+	check("  it is magic now (%s)" % target.display_name(), target.element != &"")
+	check("  and it could legally hold that", target.accepts_element(target.element))
+	check("  and cost %d" % Trade.ENCHANT, gs.trader_credit == Trade.ENCHANT)
+	var other := Item.make(&"dagger")
+	gs.give_item(other)
+	check("but only once per trader",
+		not gs.trade_enchant(gs.player.inventory.find(other)) and other.element == &"")
+
+	# The counter survives a suspend.
+	gs.trader_credit = 5
+	var dict := gs.to_dict()
+	var loaded := GameState.new(1)
+	check("a save with a trader loads", loaded.apply_dict(dict))
+	check("  the trader is relinked", loaded.trader_here())
+	check("  the slate is kept", loaded.trader_credit == 5, "%d" % loaded.trader_credit)
+	check("  the shelves are kept", loaded.trader_stock.size() == gs.trader_stock.size())
+	check("  and the roll stays spent", loaded.trader_rolled)
+
+## Most players will trade with a mouse and a keyboard. The first version was
+## built for the pad and barely served either: hovering did nothing, so a mouse
+## player sold blind; the gem chooser could not be clicked; the wheel did not
+## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+func _test_the_counter_by_mouse_and_keys() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	if not gs.trader_here():
+		check("there is a trader for the mouse to use", false)
+		return
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	var dag := Item.make(&"dagger")
+	var axe := Item.make(&"war_axe")
+	gs.give_item(dag)
+	gs.give_item(axe)
+
+	var t := TradePanel.new()
+	t.state = gs
+	t.size = Vector2(1600, 900)
+	t.open()
+
+	# HOVER shows the price without selling anything.
+	var axe_row := gs.player.inventory.find(axe)
+	var over := InputEventMouseMotion.new()
+	over.position = t._row_rect(TradePanel.PACK, axe_row).get_center()
+	t._gui_input(over)
+	check("hovering an item highlights it", t.side == TradePanel.PACK
+		and int(t._at[TradePanel.PACK]) == axe_row)
+	check("and the info line gives its price (\"%s\")" % t.info(), t.info().findn("9") >= 0)
+	check("without selling it", gs.player.inventory.has(axe) and gs.trader_credit == 0)
+
+	# Hovering the SHELF moves across.
+	var shelf_over := InputEventMouseMotion.new()
+	shelf_over.position = t._row_rect(TradePanel.SHELF, 0).get_center()
+	t._gui_input(shelf_over)
+	check("hovering the shelf moves the highlight there", t.side == TradePanel.SHELF)
+
+	# A CLICK acts on what is under it.
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = t._row_rect(TradePanel.PACK, gs.player.inventory.find(dag)).get_center()
+	t._gui_input(click)
+	check("clicking a pack item sells it", not gs.player.inventory.has(dag)
+		and gs.trader_credit == 1)
+
+	# The WHEEL walks the highlight.
+	t.side = TradePanel.SHELF
+	t._at[TradePanel.SHELF] = 0
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.position = t._row_rect(TradePanel.SHELF, 0).get_center()
+	t._gui_input(wheel)
+	check("the wheel moves down the shelf", int(t._at[TradePanel.SHELF]) == 1)
+
+	# The GEM CHOOSER answers to clicks.
+	for i in 3:
+		var g := Item.make(&"gem_crag")
+		gs.give_item(g)
+		gs.trade_sell(gs.player.inventory.find(g))
+	t.choosing_gem = true
+	t._gem_at = 0
+	var pick := InputEventMouseButton.new()
+	pick.button_index = MOUSE_BUTTON_LEFT
+	pick.pressed = true
+	pick.position = t._gem_row_rect(2).get_center()
+	var wanted := StringName(t.gem_choices()[2])
+	t._gui_input(pick)
+	var got := false
+	for it in gs.player.inventory:
+		if Trade.is_gem(it) and it.element == wanted:
+			got = true
+	check("clicking a gem in the chooser takes it (%s)" % wanted, got and not t.choosing_gem)
+
+	# A click outside the chooser backs out of it.
+	t.choosing_gem = true
+	var away := InputEventMouseButton.new()
+	away.button_index = MOUSE_BUTTON_LEFT
+	away.pressed = true
+	away.position = Vector2(5, 5)
+	t._gui_input(away)
+	check("clicking outside the chooser closes it", not t.choosing_gem)
+
+	# VI-KEYS AND THE NUMPAD move, as the arrows do.
+	t.side = TradePanel.PACK
+	t.handle_key(KEY_L)
+	check("l moves to the shelf", t.side == TradePanel.SHELF)
+	t.handle_key(KEY_H)
+	check("h moves back to the pack", t.side == TradePanel.PACK)
+	t.handle_key(KEY_KP_6)
+	check("the numpad moves too", t.side == TradePanel.SHELF)
+	t._at[TradePanel.SHELF] = 0
+	t.handle_key(KEY_J)
+	check("j moves down", int(t._at[TradePanel.SHELF]) == 1)
+	t.handle_key(KEY_K)
+	check("k moves up", int(t._at[TradePanel.SHELF]) == 0)
+
+	# The keyboard footer tells a mouse player they can point.
+	t.pad_input = false
+	check("the keyboard footer mentions pointing and clicking",
+		t.footer().findn("click") >= 0 and t.footer().findn("point") >= 0, t.footer())
+	t.free()
+
+## The trade screen: two columns, four verbs, and no letter keys at all.
+func _test_the_counter() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	check("there is a trader to trade with", gs.trader_here())
+	if not gs.trader_here():
+		return
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	var dag := Item.make(&"dagger")
+	var pot := Item.make(&"potion_healing")
+	gs.give_item(dag)
+	gs.give_item(pot)
+
+	var t := TradePanel.new()
+	t.state = gs
+	t.open()
+	check("it opens on your pack", t.side == TradePanel.PACK)
+	check("with a row for each thing you carry", t.pack_rows().size() == 2)
+	check("and the shelf ends with the gem exchange",
+		t.shelf_rows()[-1] == TradePanel.GEM_ROW)
+
+	# The info line teaches the economy by looking.
+	t._at[TradePanel.PACK] = gs.player.inventory.find(pot)
+	check("a potion's line says why it is refused (\"%s\")" % t.info(),
+		t.info().findn("sell") >= 0)
+	t._at[TradePanel.PACK] = gs.player.inventory.find(dag)
+	check("a dagger's line says what it is worth", t.info().findn("1") >= 0, t.info())
+
+	# LETTERS DO NOTHING. The pack's letter trap cannot happen here.
+	var credit := gs.trader_credit
+	for k in [KEY_G, KEY_A, KEY_C, KEY_O, KEY_T, KEY_P, KEY_W, KEY_B]:
+		t.handle_key(k)
+	check("no letter key sells anything", gs.trader_credit == credit
+		and gs.player.inventory.has(dag))
+
+	# Confirm sells what is highlighted.
+	t._at[TradePanel.PACK] = gs.player.inventory.find(dag)
+	check("confirm sells the highlighted item", t.handle_key(KEY_PERIOD)
+		and gs.trader_credit == credit + 1 and not gs.player.inventory.has(dag))
+
+	# Right goes to the shelf, confirm buys.
+	t.handle_key(KEY_RIGHT)
+	check("right moves to the shelf", t.side == TradePanel.SHELF)
+	var back := -1
+	for i in gs.trader_stock.size():
+		if gs.trader_stock[i]["item"] == dag:
+			back = i
+	t._at[TradePanel.SHELF] = back
+	check("and confirm buys it back", t.handle_key(KEY_PERIOD)
+		and gs.player.inventory.has(dag) and gs.trader_credit == credit)
+
+	# Stones for a gem, through the chooser.
+	for i in 3:
+		var g := Item.make(&"gem_fire")
+		gs.give_item(g)
+		gs.trade_sell(gs.player.inventory.find(g))
+	t.side = TradePanel.SHELF
+	t._at[TradePanel.SHELF] = t.shelf_rows().size() - 1
+	t.handle_key(KEY_PERIOD)
+	check("the gem row opens a chooser", t.choosing_gem)
+	t.handle_key(KEY_DOWN)
+	var chosen := StringName(t.gem_choices()[1])
+	t.handle_key(KEY_PERIOD)
+	var got := false
+	for it in gs.player.inventory:
+		if Trade.is_gem(it) and it.element == chosen:
+			got = true
+	check("and gives the gem chosen (%s)" % chosen, got and not t.choosing_gem)
+
+	# Leaving.
+	t.handle_key(KEY_ESCAPE)
+	check("escape leaves the counter", not t.visible)
+
+	# The footer speaks the player's device.
+	t.pad_cfg = PadConfig.new()
+	t.pad_input = true
+	var pad_line := t.footer()
+	check("on a pad the footer names no keyboard key (\"%s\")" % pad_line,
+		pad_line.findn("enter") < 0 and pad_line.findn("esc") < 0
+		and pad_line.findn("click") < 0)
+	t.pad_input = false
+	check("on a keyboard it does", t.footer().findn("enter") >= 0)
+	t.free()
+
+	# main.gd filters pad presses BEFORE the counter sees them.
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var at := src.find("if trade.visible:")
+	var guard := src.find("if _synthetic:", at)
+	var handed := src.find("trade.handle_key(", at)
+	check("main.gd filters pad presses before the counter sees them",
+		at >= 0 and guard > at and handed > guard,
+		"at %d, guard %d, handed %d" % [at, guard, handed])
+
+## Relics: the last of a twice-dead hero's kit, sold once and never again.
+func _test_the_trader_remembers_the_dead() -> void:
+	var path := GameState.MORGUE_PATH
+	check("the morgue is a scratch file here", path.find("scratch") >= 0, path)
+	if path.find("scratch") < 0:
+		return
+	var had := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+	var ron := "2026-09-01 10:00:00  level 3  killed by a goblin on depth 3, empty-handed, after 900 turns; bearing dagger, short sword (frost); known as Ron; reclaimed"
+	var ann := "2026-09-02 10:00:00  level 2  killed by a rat on depth 2, empty-handed, after 400 turns; bearing leather armour; known as Ann"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_line(ron)
+	f.store_line(ann)
+	f.close()
+
+	# The morgue format has two ends; both must know about "sold".
+	var both := Morgue.parse(ron + "; sold")
+	check("a reclaimed and sold line still parses", both.get("reclaimed", false)
+		and both.get("sold", false) and both.get("name", "") == "Ron", str(both))
+
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var relic := -1
+	for i in gs.trader_stock.size():
+		if String(gs.trader_stock[i]["hero"]) == "Ron":
+			relic = i
+	check("a reclaimed hero's kit is on the shelf", relic >= 0)
+	var never_ann := true
+	for entry in gs.trader_stock:
+		if String(entry["hero"]) == "Ann":
+			never_ann = false
+	check("but not a hero who was never reclaimed", never_ann)
+	if relic < 0:
+		return
+	var it: Item = gs.trader_stock[relic]["item"]
+	check("it is the MOST valuable piece they carried (%s)" % it.display_name(),
+		it.id == &"short_sword" and it.element == &"frost")
+
+	gs.trader_credit = Trade.worth(it)
+	check("buying it works", gs.trade_buy(relic))
+	var rec: Array = Morgue.records(path)
+	var sold := false
+	for r in rec:
+		if r.get("name", "") == "Ron" and r.get("sold", false):
+			sold = true
+	check("and the morgue marks Ron sold", sold)
+
+	# Marking again must not corrupt the line -- the old ends_with check would
+	# have appended a second "reclaimed" after "sold".
+	for r in rec:
+		if r.get("name", "") == "Ron":
+			Morgue.mark_reclaimed(path, String(r["line"]))
+	var still := false
+	for r in Morgue.records(path):
+		if r.get("name", "") == "Ron" and r.get("reclaimed", false) and r.get("sold", false):
+			still = true
+	check("re-marking a sold hero leaves the line readable", still)
+
+	var next := GameState.new(4041)
+	next.new_game()
+	var again := false
+	for entry in next.trader_stock:
+		if String(entry["hero"]) == "Ron":
+			again = true
+	check("a later run never offers Ron's kit again", not again)
+
+	# A hero reclaimed during THIS run already dropped their kit on that floor.
+	var f2 := FileAccess.open(path, FileAccess.WRITE)
+	f2.store_line(ron)
+	f2.close()
+	var run := GameState.new(4042)
+	run.new_game()
+	run.reclaimed_this_run.append(ron)
+	run.trader_stock = []
+	run._stock_trader()
+	var dup := false
+	for entry in run.trader_stock:
+		if String(entry["hero"]) == "Ron":
+			dup = true
+	check("nor one reclaimed earlier in this same run", not dup)
+
+	var restore := FileAccess.open(path, FileAccess.WRITE)
+	restore.store_string(had)
+	restore.close()
 
 ## Holding a direction walks, at one shared rate, and pauses before it starts.
 func _test_holding_a_direction() -> void:

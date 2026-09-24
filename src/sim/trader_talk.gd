@@ -79,6 +79,6 @@ static func greeting() -> Array:
 	return [
 		{"text": "You are still going.\n\nGood. Tell me how it is down there.",
 		 "art": TRADER_ART},
-		{"text": "I have nothing to offer you yet. Soon.\n\nCome back when I have got the stock out of my bag.",
+		{"text": "Show me what you are carrying.\n\nI will take anything that is not the amulet, and you can have anything on my shelf that you can pay for.",
 		 "art": TRADER_ART},
 	]

@@ -22,7 +22,7 @@ extends RefCounted
 ## from before the run recorder, lines from before gear was logged, and lines
 ## with either or both. `nemesis` is `[^;]+?` rather than `.+?` so it cannot
 ## swallow the clause that follows it.
-const PATTERN := "level (?<level>\\d+)\\s+(?<cause>.+?) on depth (?<depth>\\d+), (?<carried>[^,]*), after (?<turns>\\d+) turns(?:; (?<slain>\\d+) slain(?:, most often (?<nemesis>[^;]+?))?)?(?:; bearing (?<gear>[^;]+?))?(?:; known as (?<name>[^;]+?))?(?:; (?<reclaimed>reclaimed))?\\s*$"
+const PATTERN := "level (?<level>\\d+)\\s+(?<cause>.+?) on depth (?<depth>\\d+), (?<carried>[^,]*), after (?<turns>\\d+) turns(?:; (?<slain>\\d+) slain(?:, most often (?<nemesis>[^;]+?))?)?(?:; bearing (?<gear>[^;]+?))?(?:; known as (?<name>[^;]+?))?(?:; (?<reclaimed>reclaimed))?(?:; (?<sold>sold))?\\s*$"
 
 ## Names for the dead who never gave one.
 ##
@@ -151,6 +151,10 @@ static func parse(line: String) -> Dictionary:
 	# catalogue -- and a grave that only ever gets READ should not have to.
 	if m.get_string("reclaimed") != "":
 		rec["reclaimed"] = true
+	# The trader sold this hero's kit to somebody. It is not offered again, in
+	# this run or any other -- see GameState's trader stock.
+	if m.get_string("sold") != "":
+		rec["sold"] = true
 	# Adding a group to PATTERN is only half of adding a field: nothing reaches
 	# the record unless it is pulled out here. The first version of the name
 	# matched perfectly and never appeared, because this block did not know to
@@ -224,6 +228,25 @@ static func epitaph(rec: Dictionary) -> Array:
 ## write interrupted halfway would take every run with it. If any step fails,
 ## the original is left exactly as it was and the caller is told.
 static func mark_reclaimed(path: String, raw_line: String) -> bool:
+	return _add_clause(path, raw_line, "reclaimed")
+
+## The trader has sold the last of this hero's kit. Written after `reclaimed`,
+## which is the order PATTERN reads them in.
+static func mark_sold(path: String, raw_line: String) -> bool:
+	return _add_clause(path, raw_line, "sold")
+
+## Appends "; <clause>" to one line of the morgue, safely.
+##
+## One routine for every mark, because the morgue is the one file in this game
+## that cannot be regenerated, and a second copy of the careful part is a second
+## place for it to go wrong.
+##
+## "Already there" is checked as a CLAUSE, not with ends_with. With two marks a
+## line ends "; reclaimed; sold", so asking whether it ends with "; reclaimed"
+## says no -- and the first version would have appended "reclaimed" a second
+## time, producing a line PATTERN cannot read. A hero lost to the parser loses
+## their epitaph, their grave and their kit at once.
+static func _add_clause(path: String, raw_line: String, clause: String) -> bool:
 	if raw_line.strip_edges() == "":
 		return false
 	var lines := PackedStringArray()
@@ -241,9 +264,9 @@ static func mark_reclaimed(path: String, raw_line: String) -> bool:
 			break
 	if hit < 0:
 		return false
-	if lines[hit].ends_with("; reclaimed"):
+	if Array(lines[hit].split("; ")).has(clause):
 		return true
-	lines[hit] = lines[hit] + "; reclaimed"
+	lines[hit] = lines[hit] + "; " + clause
 
 	var temp := path + ".tmp"
 	var out := FileAccess.open(temp, FileAccess.WRITE)

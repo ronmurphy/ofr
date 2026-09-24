@@ -1033,6 +1033,7 @@ func _init(seed_value: int = 0) -> void:
 func new_game() -> void:
 	depth = 1
 	turns = 0
+	reclaimed_this_run = []
 	game_over = false
 	# A fresh run has met nothing. Cleared here as well as at declaration
 	# because new_game() is also the restart path.
@@ -1578,8 +1579,201 @@ func _open_chest(at: Vector2i) -> void:
 ## folds 11 onto 9, and 9 is a band's last floor, not its first.
 const TRADER_FLOORS := [1, 4, 7, 11, 14, 17]
 
+## The lowest and highest effective-depth floor a band covers, read from Bands
+## rather than written out again, so the two cannot disagree.
+static func _band_span(band: int) -> Vector2i:
+	var lo := 999
+	var hi := -1
+	for d in range(1, MAX_DEPTH + 1):
+		if Bands.of(d) == band:
+			lo = mini(lo, d)
+			hi = maxi(hi, d)
+	return Vector2i(lo, hi)
+
+## Fill the trader's shelves.
+##
+## EQUIPMENT: one of every tradeable piece that belongs to this band or the one
+## before it, by `min_depth`. Brad's rule -- a trader is a reliable way to fill a
+## gap, not a lottery, and by floor 10 the whole catalogue has been on offer.
+## Plain, never enchanted: magic is the enchant roll's job.
+##
+## CONSUMABLES: PROVISIONAL counts, not yet settled with Brad.
+##
+## RELICS: up to three twice-dead heroes, each represented by the most valuable
+## piece of their kit, drawn from the morgue. Eligible once reclaimed, never
+## once sold, and never if reclaimed during this very run.
+func _stock_trader() -> void:
+	var here := Bands.mirrored(effective_depth())
+	var band := Bands.of(here)
+	var lo := _band_span(maxi(band - 1, 0)).x
+	var hi := _band_span(band).y
+	for key in Item.CATALOGUE:
+		var data: Dictionary = Item.CATALOGUE[key]
+		if int(data.get("tier", 0)) <= 0 or data.get("unique", false):
+			continue
+		var md := int(data.get("min_depth", 999))
+		if md < lo or md > hi:
+			continue
+		trader_stock.append({"item": Item.make(key), "relic": "", "hero": ""})
+
+	for key in [&"potion_healing", &"potion_healing", &"scroll_light", &"scroll_blink"]:
+		var it := Item.make(key)
+		if it != null and int(Item.CATALOGUE[key].get("min_depth", 999)) <= here:
+			trader_stock.append({"item": it, "relic": "", "hero": ""})
+
+	var heroes: Array = []
+	for rec in Morgue.records(MORGUE_PATH):
+		if not rec.get("reclaimed", false) or rec.get("sold", false):
+			continue
+		if reclaimed_this_run.has(String(rec.get("line", ""))):
+			continue
+		var best: Item = null
+		for piece in rec.get("gear", []):
+			var it := Item.from_display_name(String(piece))
+			if it != null and Trade.worth(it) > 0 \
+					and (best == null or Trade.worth(it) > Trade.worth(best)):
+				best = it
+		if best != null:
+			heroes.append({"item": best, "relic": String(rec["line"]),
+				"hero": Morgue.name_of(rec)})
+	# Fisher-Yates through trader_rng, never Array.shuffle(): that draws on
+	# Godot's global rng and makes every seeded run unrepeatable.
+	for i in range(heroes.size() - 1, 0, -1):
+		var j := trader_rng.randi_range(0, i)
+		var tmp = heroes[i]
+		heroes[i] = heroes[j]
+		heroes[j] = tmp
+	for i in mini(3, heroes.size()):
+		trader_stock.append(heroes[i])
+
+## Is there a trader to deal with on this floor?
+func trader_here() -> bool:
+	return trader != null and trader.alive
+
+## Put something from the pack on the counter.
+func trade_sell(index: int) -> bool:
+	if not trader_here() or index < 0 or index >= player.inventory.size():
+		return false
+	var it: Item = player.inventory[index]
+	var no := Trade.refusal(it)
+	if no != "":
+		msg_log.add(no, Color(0.85, 0.75, 0.55))
+		return false
+	if player.is_equipped(it):
+		player.equipped.erase(it.slot)
+	player.inventory.remove_at(index)
+	it.letter = ""
+	if Trade.is_gem(it):
+		trader_gems += 1
+		msg_log.add("The trader takes the %s. (%d of %d toward a gem of your choice)"
+			% [it.name, trader_gems, Trade.GEMS_FOR_ONE], Color(0.80, 0.85, 0.95))
+		return true
+	var w := Trade.worth(it)
+	trader_credit += w
+	trader_stock.append({"item": it, "relic": "", "hero": ""})
+	msg_log.add("The trader takes the %s. (+%d, %d on the slate)"
+		% [it.display_name(), w, trader_credit], Color(0.80, 0.85, 0.95))
+	return true
+
+## Take something off the trader's shelf.
+func trade_buy(stock_index: int) -> bool:
+	if not trader_here() or stock_index < 0 or stock_index >= trader_stock.size():
+		return false
+	var entry: Dictionary = trader_stock[stock_index]
+	var it: Item = entry["item"]
+	var cost := Trade.price(it)
+	if cost > trader_credit:
+		msg_log.add("\"That is %d. You have %d with me.\"" % [cost, trader_credit],
+			Color(0.85, 0.75, 0.55))
+		return false
+	if not give_item(it):
+		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
+		return false
+	trader_credit -= cost
+	trader_stock.remove_at(stock_index)
+	if String(entry["relic"]) != "":
+		Morgue.mark_sold(MORGUE_PATH, String(entry["relic"]))
+		msg_log.add("You take %s's %s. \"They would want it used.\""
+			% [entry["hero"], it.display_name()], Color(0.80, 0.85, 0.95))
+	else:
+		msg_log.add("You take the %s. (%d left on the slate)"
+			% [it.display_name(), trader_credit], Color(0.80, 0.85, 0.95))
+	return true
+
+## Three offered gems for one of your choice.
+func trade_buy_gem(el: StringName) -> bool:
+	if not trader_here() or not Item.ELEMENTS.has(el):
+		return false
+	if trader_gems < Trade.GEMS_FOR_ONE:
+		msg_log.add("\"Bring me %d stones and choose one.\"" % Trade.GEMS_FOR_ONE,
+			Color(0.85, 0.75, 0.55))
+		return false
+	var gem := Item.make(StringName(Item.ELEMENTS[el]["gem"]))
+	if gem == null or not give_item(gem):
+		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
+		return false
+	trader_gems -= Trade.GEMS_FOR_ONE
+	msg_log.add("You take the %s." % gem.name, Color(0.80, 0.85, 0.95))
+	return true
+
+## The trader puts something random into an item of yours. Once per trader.
+func trade_enchant(index: int) -> bool:
+	if not trader_here() or index < 0 or index >= player.inventory.size():
+		return false
+	if trader_rolled:
+		msg_log.add("\"I have done what I can for you. Once is all I have.\"",
+			Color(0.85, 0.75, 0.55))
+		return false
+	if trader_credit < Trade.ENCHANT:
+		msg_log.add("\"That is %d. You have %d with me.\"" % [Trade.ENCHANT, trader_credit],
+			Color(0.85, 0.75, 0.55))
+		return false
+	var it: Item = player.inventory[index]
+	var legal: Array[StringName] = []
+	if it.is_equipment() and not it.unique and it.element == &"":
+		for el in Item.found_elements():
+			if it.accepts_element(el):
+				legal.append(el)
+	if legal.is_empty():
+		msg_log.add("\"There is nothing I can put in that.\"", Color(0.85, 0.75, 0.55))
+		return false
+	it.element = legal[trader_rng.randi_range(0, legal.size() - 1)]
+	trader_credit -= Trade.ENCHANT
+	trader_rolled = true
+	msg_log.add("The trader works at it a while. It is %s now." % it.display_name(),
+		Color(0.80, 0.85, 0.95))
+	return true
+
 ## Where the trader stands, once per floor that has one. Null everywhere else.
 var trader: Entity = null
+
+## THE TRADER'S SIDE OF THE COUNTER, for the trader on this floor.
+##
+## The economy lives in Trade (prices) and BACKLOG.md (why). This is the
+## state, and all of it resets when a floor with a trader is built.
+##
+## Each entry is {"item": Item, "relic": <morgue line or "">, "hero": <name>}.
+## A relic is the last of a twice-dead hero's kit; buying it marks that hero
+## `sold` in the morgue so no later run can buy it again.
+var trader_stock: Array = []
+## Points on the slate. Selling adds, buying spends. What is left stays with
+## this trader while you are on this floor -- come back as often as you like --
+## and is gone when you leave it.
+##
+## CREDIT rather than "pick what to give for each purchase", because it is the
+## simplest model that fits everything agreed: the trader takes anything, the
+## affordable list regenerates after each purchase, and there is no question of
+## which offered items were "used up". And selling puts the item into the
+## stock at the same price, so a mistaken sale can be bought straight back.
+var trader_credit: int = 0
+## Gems are their own currency -- see Trade. Offered gems count here.
+var trader_gems: int = 0
+## One enchant roll per trader. A SERVICE rather than a good: goods are limited
+## by stock and price, a service has no stock, so it needs a rule.
+var trader_rolled: bool = false
+## Heroes reclaimed during THIS run. Their kit already dropped on the floor
+## where they fell, so selling it back two floors later would be a duplicate.
+var reclaimed_this_run: Array = []
 
 ## Stood in a room, not wandering.
 ##
@@ -1632,6 +1826,10 @@ func _trader_cell(room: Rect2i) -> Vector2i:
 
 func _place_trader() -> void:
 	trader = null
+	trader_stock = []
+	trader_credit = 0
+	trader_gems = 0
+	trader_rolled = false
 	if not TRADER_FLOORS.has(effective_depth()):
 		return
 	if room_rects.is_empty():
@@ -1698,6 +1896,9 @@ func _place_trader() -> void:
 	t.scavenges = false
 	entities.append(t)
 	trader = t
+	# After placement, so how much the stock draws cannot move where the trader
+	# stands. Both come from trader_rng, and placement has already finished.
+	_stock_trader()
 
 ## Opens a sack, and hands back whatever the tables gave.
 ##
@@ -2136,6 +2337,7 @@ func _settle_the_grave() -> void:
 	var rec: Dictionary = grave_at.get(risen_grave, {})
 	if rec.has("line"):
 		Morgue.mark_reclaimed(MORGUE_PATH, String(rec["line"]))
+		reclaimed_this_run.append(String(rec["line"]))
 	if map.get_tile(risen_grave.x, risen_grave.y) == Tiles.GRAVE:
 		map.set_tile(risen_grave.x, risen_grave.y, Tiles.FLOOR)
 	grave_at.erase(risen_grave)
@@ -4852,7 +5054,22 @@ func to_dict() -> Dictionary:
 		"flare": torch_flare,
 		"entities": mobs, "player": entities.find(player),
 		"ground": loot, "log": lines,
+		"trader": _trader_to_dict(),
+		"reclaimed_run": reclaimed_this_run,
 	}
+
+## The trader's counter, for the suspend slot. It was never saved before
+## because it only ever talked; with stock and credit, a suspend would have
+## restocked the shelves and wiped the slate.
+func _trader_to_dict() -> Dictionary:
+	var stock := []
+	for entry in trader_stock:
+		stock.append({"item": (entry["item"] as Item).to_dict(),
+			"relic": entry["relic"], "hero": entry["hero"]})
+	return {"stock": stock, "credit": trader_credit, "gems": trader_gems,
+		"rolled": trader_rolled,
+		# Strings, like the main rng: JSON would round a 64-bit state.
+		"rng": [str(trader_rng.seed), str(trader_rng.state)]}
 
 func apply_dict(d: Dictionary) -> bool:
 	if int(d.get("version", 0)) != SAVE_VERSION:
@@ -4962,6 +5179,27 @@ func apply_dict(d: Dictionary) -> bool:
 	# Derived, never stored: the torch is rebuilt from the saved torch_lit.
 	player.light = LightSource.new(player.x, player.y, TORCH_RADIUS,
 		Color(1.00, 0.72, 0.36), Color(0.30, 0.34, 0.55), 1.0, true)
+
+	# The trader, relinked by faction -- it is the only neutral thing on a floor.
+	trader = null
+	for e in entities:
+		if e.faction == Entity.Faction.NEUTRAL and e.alive:
+			trader = e
+	var tr: Dictionary = d.get("trader", {})
+	trader_stock = []
+	for entry in tr.get("stock", []):
+		var it := Item.from_dict(entry.get("item", {}))
+		if it != null:
+			trader_stock.append({"item": it, "relic": String(entry.get("relic", "")),
+				"hero": String(entry.get("hero", ""))})
+	trader_credit = int(tr.get("credit", 0))
+	trader_gems = int(tr.get("gems", 0))
+	trader_rolled = bool(tr.get("rolled", false))
+	var trng: Array = tr.get("rng", [])
+	if trng.size() == 2:
+		trader_rng.seed = str(trng[0]).to_int()
+		trader_rng.state = str(trng[1]).to_int()
+	reclaimed_this_run = Array(d.get("reclaimed_run", []))
 
 	ground = []
 	for entry in d.get("ground", []):

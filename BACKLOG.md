@@ -29,87 +29,37 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Shield gems (bulwark, mirror, boss) | `Item.ELEMENTS` |
 | G as the universal action key | `player_pickup()` |
 | Build stamp | `BuildInfo.BUILD`, `tools/stamp_build.sh` |
+| The trader's shop | `Trade`, `TradePanel`, `GameState.trade_*` |
+| Keyboard hold-to-walk, shared with the stick | `HoldRepeat` |
+| Armour takes turns to put on | `Item.don_turns` |
+| Controller button pictures | `PadGlyphs`, Kenney Xbox Series font |
 
 ---
 
 ## Next up
 
-**1. The trader's shop.** Economy fully specified 2026-09-23. Build next.
+**1. Tune the trader.** Built 2026-09-24; the full economy is in `src/sim/trade.gd`
+and its reasoning in the memory notes. These numbers were NEVER settled and are
+marked PROVISIONAL in the code -- play decides them:
 
-**Currency: tier points.** Three denominations, one word per catalogue row, no
-per-item prices to tune or protect from farming.
+- **What consumables cost to buy:** 3 points each for a healing potion, a scroll
+  of light and a scroll of blinking. A short sword buys a potion.
+- **How many consumables are stocked:** two potions and one of each scroll.
+- **How many relics a trader shows:** up to three twice-dead heroes, each as the
+  most valuable piece of their kit.
+- **Which equipment is stocked:** one of every piece whose `min_depth` falls in
+  this band or the one before. Floor 1 offers min_depth 1-3; floor 7 offers 4-9.
 
-```
-tier 1 = 1 point    dagger, leather, buckler, sling
-tier 2 = 3 points   short sword, chain mail, kite shield, short bow
-tier 3 = 9 points   war axe, plate, tower shield, war bow, mace
-```
+Decided while building, worth a second look:
 
-You select what to offer, it sums, you see what you can afford. Cross-category
-is allowed and is the whole point -- the original complaint was spare slings and
-leather armours carried "just in case", and leather is the most abundant thing
-in the game at 6.8 per run.
+- **Credit, not swaps.** Selling puts points on the trader's slate and the item on
+  the shelf at the same price; buying spends points. The slate stays with that
+  trader while you are on the floor and is lost when you leave.
+- **Trading costs no turns**, like talking to the trader always has.
+- **Uniques and the amulet cannot be traded.** Neither can arrows or bones.
+- **The counter opens after the trader speaks**, including if the story is skipped.
 
-**An item is worth what it cost to make.** A `+2 dagger` consumed daggers to
-become that, so it counts as those daggers. No special case for upgraded,
-enchanted or bound items; value conserves and merging is never punished.
-
-**Gems trade only for gems.** Three duplicates for one of your choice. The
-principle: THE TRADER CONVERTS WITHIN A CURRENCY, NOT ACROSS THEM. Equipment is
-fungible junk; a gem is what the whole magic system runs on. Price a gem in
-equipment points and nine daggers buy magic, which ends the chest's reason to
-exist.
-
-**A BOUND gem is not a gem.** It adds a flat +9 to the item's price. Not a
-loophole: a free gem is PORTABLE and CHOSEN, which is what makes it the better
-prize; a bound one is locked to that item forever, so buying it is buying one
-magic weapon rather than magic in general.
-
-**Found magic and bound magic are priced identically, because the code cannot
-tell them apart** -- `Item.element` is one field, set by generation at
-`item.gd:947` and by binding at `game_state.gd:3873`. Distinguishing them would
-need a provenance field read by one consumer, to draw a distinction the player
-cannot perceive either.
-
-**Consumables: the trader SELLS but does not BUY.** Their value is situational
-(a potion at full health on floor 1 against one at 5 hp on floor 9), so every
-fixed price is wrong in both directions. And meat comes from hunting -- giving
-it trade value turns hunting into income and quietly undoes the scarcity the
-caves are built on.
-
-**Morgue relics need no special rule.** Measured against Brad's real morgue (18
-deaths, 8 reclaimed): 13 plain items, 8 with a `+N`, 2 with a gem. The best was
-`leather armour +3`. Most relics are an ordinary dagger somebody died holding, so
-a flat premium would overprice the majority. The points rule already handles it:
-ordinary relics are cheap because they are ordinary, and the interesting ones are
-expensive because of what they carry.
-
-**One enchant roll per trader.** The trader will put something random in an item
-for 9 points -- the same bargain the world already offers, since found magic
-exists as "the stopgap that makes you want the gem more". A gem is still better
-because it is portable and chosen; this is neither. Capped because it is the one
-SERVICE rather than a good: goods are limited by stock and price, a service has
-no stock. Six meetings a run (`TRADER_FLOORS` 1, 4, 7, 11, 14, 17), so six rolls
-maximum.
-
-**Stock: the current band plus the one before it**, so everything is available by
-floor 10. Finite, and it does NOT refresh. You may return to the trader as often
-as you like while on that floor; nothing stops you and nothing rewards you.
-
-**The Diablo loop cannot happen here and needs no rule against it.** It depends
-on renewable income; this floor's loot is finite, nothing respawns, and the
-dungeon is one-way.
-
-**"The list regenerates after each purchase" means the AFFORDABLE list**, not new
-stock. You spent points, so fewer things are in reach. If stock regenerated the
-trader would be a vending machine and the finite economy would collapse.
-
-**Still to decide while building:** whether `tier` is an explicit catalogue
-column (recommended) or inferred from `power + defense` (it is not: a mace and a
-war bow are both 5, a short bow and chain mail are both 3, and those are not fair
-swaps).
-
-**2. Keyboard auto-repeat.** The stick is the only input in the game that
+**2. ~~Keyboard auto-repeat.~~ DONE 2026-09-24.** The stick is the only input in the game that
 repeats; the d-pad physically cannot, and the keyboard is silenced by the
 `echo` filter in `main.gd`. Brad wants desktop to feel like the handheld. Agreed
 numbers: `STICK_AGAIN` 0.12 → ~0.25 (8 steps/sec felt like too many), keep

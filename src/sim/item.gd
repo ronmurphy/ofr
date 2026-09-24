@@ -139,6 +139,15 @@ var base_defense_bonus: int = 0
 ## world gets its turns while you are half into a hauberk.
 var don_turns: int = 1
 
+## What this is worth to the trader, as one of three denominations. 0 means it
+## cannot be traded at all.
+##
+## Explicit rather than inferred from stats, because stats do not track ROLE: a
+## mace and a war bow are both power 5, a short bow and chain mail both 3, and
+## neither pair is a fair swap. One word per catalogue row, and a new item needs
+## no balance pass. See Trade for what the tiers are worth.
+var tier: int = 0
+
 ## A dagger tops out at +4, a short sword at +6, leather at +3, and so on.
 const MAX_UPGRADES := 2
 
@@ -364,15 +373,15 @@ const CATALOGUE := {
 
 	&"dagger": {
 		"name": "dagger", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 2, "dmg": &"pierce", "throw": 5, "min_depth": 1, "weight": 7,
+		"slot": Slot.WEAPON, "power": 2, "dmg": &"pierce", "throw": 5, "min_depth": 1, "tier": 1, "weight": 7,
 	},
 	&"short_sword": {
 		"name": "short sword", "app": &"weapon", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 4, "dmg": &"slash", "throw": 3, "min_depth": 2, "weight": 5,
+		"slot": Slot.WEAPON, "power": 4, "dmg": &"slash", "throw": 3, "min_depth": 2, "tier": 2, "weight": 5,
 	},
 	&"war_axe": {
 		"name": "war axe", "app": &"axe", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 7, "dmg": &"slash", "throw": 2, "min_depth": 4, "weight": 3,
+		"slot": Slot.WEAPON, "power": 7, "dmg": &"slash", "throw": 2, "min_depth": 4, "tier": 3, "weight": 3,
 	},
 	## The melee answer to bone and stone.
 	##
@@ -387,7 +396,7 @@ const CATALOGUE := {
 	&"mace": {
 		"name": "mace", "app": &"mace", "kind": Kind.WEAPON,
 		"slot": Slot.WEAPON, "power": 5, "dmg": &"blunt", "throw": 1,
-		"min_depth": 3, "weight": 4,
+		"min_depth": 3, "tier": 3, "weight": 4,
 	},
 
 	&"sling": {
@@ -406,17 +415,17 @@ const CATALOGUE := {
 		# and a war bow's eight. The sling stays the thing you use when
 		# something is nearly on you and you have free stones from the rubble.
 		"name": "sling", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 1, "dmg": &"blunt", "range": 4, "min_depth": 1, "weight": 5,
+		"slot": Slot.WEAPON, "power": 1, "dmg": &"blunt", "range": 4, "min_depth": 1, "tier": 1, "weight": 5,
 		"ammo_max": 30, "ammo_kind": &"stone",
 	},
 	&"short_bow": {
 		"name": "short bow", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 3, "dmg": &"pierce", "range": 7, "min_depth": 3, "weight": 4,
+		"slot": Slot.WEAPON, "power": 3, "dmg": &"pierce", "range": 7, "min_depth": 3, "tier": 2, "weight": 4,
 		"ammo_max": 16, "ammo_kind": &"arrow",
 	},
 	&"war_bow": {
 		"name": "war bow", "app": &"launcher", "kind": Kind.WEAPON,
-		"slot": Slot.WEAPON, "power": 5, "dmg": &"pierce", "range": 8, "min_depth": 6, "weight": 3,
+		"slot": Slot.WEAPON, "power": 5, "dmg": &"pierce", "range": 8, "min_depth": 6, "tier": 3, "weight": 3,
 		"ammo_max": 20, "ammo_kind": &"arrow",
 	},
 
@@ -439,15 +448,15 @@ const CATALOGUE := {
 	## larger and the extra would do literally nothing.
 	&"buckler": {
 		"name": "buckler", "app": &"shield", "kind": Kind.ARMOR,
-		"slot": Slot.OFFHAND, "defense": 1, "min_depth": 1, "weight": 6,
+		"slot": Slot.OFFHAND, "defense": 1, "min_depth": 1, "tier": 1, "weight": 6,
 	},
 	&"kite_shield": {
 		"name": "kite shield", "app": &"shield", "kind": Kind.ARMOR,
-		"slot": Slot.OFFHAND, "defense": 2, "min_depth": 3, "weight": 4,
+		"slot": Slot.OFFHAND, "defense": 2, "min_depth": 3, "tier": 2, "weight": 4,
 	},
 	&"tower_shield": {
 		"name": "tower shield", "app": &"shield", "kind": Kind.ARMOR,
-		"slot": Slot.OFFHAND, "defense": 3, "min_depth": 6, "weight": 2,
+		"slot": Slot.OFFHAND, "defense": 3, "min_depth": 6, "tier": 3, "weight": 2,
 	},
 
 	## Spent arrows lying on the floor. Never rolled as loot -- they only exist
@@ -459,15 +468,15 @@ const CATALOGUE := {
 
 	&"leather_armour": {
 		"name": "leather armour", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "weight": 7, "don": 2,
+		"slot": Slot.ARMOR, "defense": 1, "min_depth": 1, "tier": 1, "weight": 7, "don": 2,
 	},
 	&"chain_mail": {
 		"name": "chain mail", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 3, "min_depth": 3, "weight": 5, "don": 3,
+		"slot": Slot.ARMOR, "defense": 3, "min_depth": 3, "tier": 2, "weight": 5, "don": 3,
 	},
 	&"plate_mail": {
 		"name": "plate mail", "app": &"armour", "kind": Kind.ARMOR,
-		"slot": Slot.ARMOR, "defense": 5, "min_depth": 5, "weight": 2, "don": 4,
+		"slot": Slot.ARMOR, "defense": 5, "min_depth": 5, "tier": 3, "weight": 2, "don": 4,
 	},
 }
 
@@ -490,6 +499,7 @@ static func make(item_id: StringName) -> Item:
 	it.power_bonus = data.get("power", 0)
 	it.defense_bonus = data.get("defense", 0)
 	it.don_turns = int(data.get("don", 1))
+	it.tier = int(data.get("tier", 0))
 	it.range_bonus = data.get("range", 1)
 	it.ammo_max = data.get("ammo_max", 0)
 	it.ammo_kind = data.get("ammo_kind", &"")
