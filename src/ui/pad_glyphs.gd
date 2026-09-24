@@ -21,10 +21,27 @@ static func glyph_font() -> Font:
 		_glyph_font = load(PadConfig.GLYPH_FONT)
 	return _glyph_font
 
-## The picture is drawn a little LARGER than the words around it: Kenney drew
-## these as badges with a margin inside the em square, and at text size an A
-## button reads as a dot.
-const GLYPH_SCALE := 1.35
+## HOW BIG, derived from measurements rather than chosen by eye.
+##
+## The first version used 1.35x, a guess, and on the itch build every button
+## came out as a DOT -- Brad's screenshot, 2026-09-24. The reason is in the two
+## fonts' own numbers, read with fontTools:
+##
+##     Kenney button body     0.48 em tall, sitting ON the baseline,
+##                            centred 0.24 em above it
+##     JetBrainsMono capital  0.73 em
+##
+## So at 1.35x a button came out slightly SHORTER than a capital letter, and the
+## letter printed inside the circle was far too small to read.
+##
+## Target: a button 1.4 capital letters tall. Big enough to read the letter in
+## it, and still inside every line it is drawn on -- 17px on HERE's 24px line,
+## 15px on the 21px lines of the sidebar and the legend.
+const GLYPH_BODY_EM := 0.48
+const GLYPH_CENTRE_EM := 0.24
+const TEXT_CAP_EM := 0.73
+const BUTTON_IN_CAPS := 1.4
+const GLYPH_SCALE := BUTTON_IN_CAPS * TEXT_CAP_EM / GLYPH_BODY_EM
 
 ## The line broken into [text, is_glyph] runs.
 static func runs(text: String) -> Array:
@@ -63,10 +80,15 @@ static func draw(canvas: CanvasItem, pos: Vector2, text: String, text_font: Font
 		var s := String(r[0])
 		if r[1]:
 			var gs := int(size * GLYPH_SCALE)
-			# Sit the badge on the text's centre line rather than its baseline,
-			# or a larger glyph hangs below the words beside it.
-			var lift := (glyph_font().get_ascent(gs) - text_font.get_ascent(size)) * 0.5
-			canvas.draw_string(glyph_font(), Vector2(x, pos.y + lift), s,
+			# Centre the button's BODY on the middle of a capital letter.
+			#
+			# The first version lined up the two fonts' ascent values, which says
+			# nothing about where Kenney actually put the picture: it sits on the
+			# baseline and rises only 0.48 em, so the ascent is mostly empty air.
+			# These are the measured centres, so the badge is optically level
+			# with the words rather than hanging off their baseline.
+			var drop := GLYPH_CENTRE_EM * gs - TEXT_CAP_EM * 0.5 * size
+			canvas.draw_string(glyph_font(), Vector2(x, pos.y + drop), s,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, gs, color)
 			x += glyph_font().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
 		else:

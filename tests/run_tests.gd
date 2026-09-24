@@ -3393,6 +3393,19 @@ func _test_button_pictures() -> void:
 		check("  and the picture run is only the picture",
 			String(parts[1][0]) == pic)
 	check("a plain line is one run", PadGlyphs.runs("press ? for help").size() == 1)
+
+	# SIZE. The first version drew every button as a DOT on the itch build,
+	# because 1.35x of a 0.48 em body is shorter than a capital letter. The body
+	# must read as a button -- bigger than the capitals beside it -- and still
+	# fit inside the line it is drawn on, in every panel that draws one.
+	var in_caps := PadGlyphs.GLYPH_BODY_EM * PadGlyphs.GLYPH_SCALE / PadGlyphs.TEXT_CAP_EM
+	check("a button stands taller than a capital letter (%.2fx)" % in_caps,
+		in_caps >= 1.2 and in_caps <= 1.6)
+	for panel in [["HERE", 17, HerePanel.LINE], ["sidebar", 15, Sidebar.LINE],
+			["legend", LegendPanel.font_size_default() - 1, LegendPanel.LINE]]:
+		var tall: float = PadGlyphs.GLYPH_BODY_EM * int(int(panel[1]) * PadGlyphs.GLYPH_SCALE)
+		check("  and fits the %s line (%.0f <= %.0f px)" % [panel[0], tall, panel[2]],
+			tall <= float(panel[2]))
 	check("and has a width", PadGlyphs.width("press ? for help", text, 15) > 0.0)
 
 	# EVERY FILE THAT ASKS FOR A PICTURE MUST DRAW THROUGH PadGlyphs. A future
