@@ -99,12 +99,15 @@ const KEYS := [
 static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
 	if not on_pad:
 		return String(row[0])
+	# The stick is not a button and has no binding, so it is named here.
+	if String(row[1]) == "move":
+		return String.chr(PadConfig.STICK_GLYPH)
 	if row.size() > 3 and String(row[3]) != "":
 		return String(row[3])
 	if int(row[2]) != 0 and cfg != null:
-		var button := cfg.button_for_key(int(row[2]))
-		if button >= 0:
-			return PadConfig.button_name(button)
+		var shown := cfg.icon(int(row[2]), true)
+		if shown != "":
+			return shown
 	return String(row[0])
 
 ## Live bindings and which device is in the player's hands, both set by main.gd
@@ -375,8 +378,9 @@ func _draw() -> void:
 	y = size.y - PAD - LINE
 	var how := PadConfig.key_name(KEY_QUESTION)
 	if pad_cfg != null:
-		how = pad_cfg.label(KEY_QUESTION, pad_input)
-	_line(font, y, "press %s for help" % how, Palette.UI_DIM)
+		how = pad_cfg.icon(KEY_QUESTION, pad_input)
+	PadGlyphs.draw(self, Vector2(PAD, y), "press %s for help" % how, font,
+		font_size, Palette.UI_DIM)
 
 func _line(f: Font, y: float, text: String, color: Color) -> void:
 	draw_string(f, Vector2(PAD, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)

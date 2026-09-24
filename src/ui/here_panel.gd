@@ -56,7 +56,7 @@ func _ready() -> void:
 func press_name(key: int) -> String:
 	if pad_cfg == null:
 		return PadConfig.key_name(key)
-	return pad_cfg.label(key, pad_input)
+	return pad_cfg.icon(key, pad_input)
 
 ## The rows to draw: what applies now, and always a way to the full list.
 func rows() -> Array:
@@ -96,8 +96,11 @@ func _draw() -> void:
 	y += LINE
 
 	for row in rows():
-		draw_string(font, Vector2(PAD, y), String(row[0]),
-			HORIZONTAL_ALIGNMENT_LEFT, KEY_COL, font_size, Palette.STAIRS)
+		# Through PadGlyphs, because on a pad this column is a PICTURE of the
+		# button drawn from its own font -- see pad_glyphs.gd for why that must
+		# not be left to the text font's fallbacks.
+		PadGlyphs.draw(self, Vector2(PAD, y), String(row[0]), font, font_size,
+			Palette.STAIRS)
 		draw_string(font, Vector2(PAD + KEY_COL, y), String(row[1]),
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2.0 - KEY_COL,
 			font_size, Palette.UI_TEXT)

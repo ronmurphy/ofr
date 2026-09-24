@@ -138,6 +138,45 @@ static func key_name(key: int) -> String:
 		return String(KEY_NAMES[key])
 	return OS.get_keycode_string(key).to_lower()
 
+## The PICTURE of each button, as a codepoint in Kenney's Xbox Series font.
+##
+## Xbox rather than Steam Deck or PlayStation, by Brad's reasoning: PC pad
+## players are overwhelmingly on an Xbox or Steam controller, the Deck puts the
+## same letters in the same places, and every label in this game already uses
+## Xbox NAMES. Start and Back are drawn as the Series controller's Menu and View
+## icons, because that is what is printed on the buttons being pressed.
+##
+## These are private-use codepoints and they mean something ONLY in that font --
+## Kenney's Steam Deck file uses the very same numbers for different pictures --
+## so a string carrying one must be drawn through PadGlyphs, never handed to
+## the text font and hoped for.
+const GLYPH_FONT := "res://assets/fonts/kenney_input_xbox_series.ttf"
+const BUTTON_GLYPHS := {
+	JOY_BUTTON_A: 0xE004, JOY_BUTTON_B: 0xE006,
+	JOY_BUTTON_X: 0xE01E, JOY_BUTTON_Y: 0xE020,
+	JOY_BUTTON_LEFT_SHOULDER: 0xE043, JOY_BUTTON_RIGHT_SHOULDER: 0xE049,
+	JOY_BUTTON_START: 0xE014, JOY_BUTTON_BACK: 0xE01C,
+	JOY_BUTTON_LEFT_STICK: 0xE053, JOY_BUTTON_RIGHT_STICK: 0xE05B,
+	JOY_BUTTON_DPAD_UP: 0xE035, JOY_BUTTON_DPAD_DOWN: 0xE024,
+	JOY_BUTTON_DPAD_LEFT: 0xE028, JOY_BUTTON_DPAD_RIGHT: 0xE02B,
+}
+## The left stick itself, for "move" -- it is not a button and has no index.
+const STICK_GLYPH := 0xE04F
+
+## Is this character one of the button pictures above?
+static func is_glyph(cp: int) -> bool:
+	return cp == STICK_GLYPH or BUTTON_GLYPHS.values().has(cp)
+
+## Like `label`, but a PICTURE of the button when a pad is in hand and one
+## exists. Falls back to the name, then to the keyboard key, so it never goes
+## blank. Anything drawing the result must go through PadGlyphs.
+func icon(key: int, on_pad: bool) -> String:
+	if on_pad:
+		var button := button_for_key(key)
+		if button >= 0 and BUTTON_GLYPHS.has(button):
+			return String.chr(int(BUTTON_GLYPHS[button]))
+	return label(key, on_pad)
+
 ## What to show the player for this action, in the language of what they hold.
 ##
 ## An instance method because it needs the LIVE bindings: on a pad, `?` is

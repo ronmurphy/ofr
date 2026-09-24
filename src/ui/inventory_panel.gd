@@ -15,6 +15,12 @@ signal throw_requested(index: int)
 signal bind_requested(index: int)
 signal close_requested()
 
+## Live bindings and which device the player last used, set by main.gd, so the
+## footer names BUTTONS on a handheld. It said "shift+click a ● item to FORGE"
+## on a Legion Go S, where there is no shift, no click and no letters.
+var pad_cfg: PadConfig = null
+var pad_input := false
+
 ## GEMS is last so the existing order is untouched -- `cycle_filter` wraps on
 ## FILTERS.size(), so appending is safe and inserting would shuffle the tabs
 ## under a player who has learned where they are.
@@ -297,6 +303,49 @@ func _gui_input(event: InputEvent) -> void:
 	elif click.button_index == MOUSE_BUTTON_RIGHT:
 		drop_requested.emit(hit)
 
+## The pack's footer for a keyboard and mouse.
+func _keyboard_footer() -> String:
+	if throw_mode:
+		return "pick something to hurl  ·  click or press its letter  ·  esc cancel"
+	if bind_mode:
+		var g: String = "the gem"
+		if bind_gem >= 0 and bind_gem < state.player.inventory.size():
+			g = state.player.inventory[bind_gem].display_name()
+		return "set %s into which weapon?  ·  click or press its letter  ·  esc cancel" % g
+	if state.can_forge_here():
+		# Embers get their own line. The two costs are nothing alike -- one
+		# spends hit points you can see on the bar, the other spends quiet --
+		# and a player who read the first line would otherwise have no reason
+		# to expect the second.
+		if state.forging_in_embers():
+			return "shift+click a ● item to FORGE in the embers  ·  loud, and final"
+		return "shift+click or shift+letter a ● item to FORGE it  ·  click use  ·  esc"
+	return "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
+
+## The pack's footer for a controller, named through the live bindings.
+##
+## Empty on a keyboard, where the long-standing lines below still apply. Split
+## out so the suite can read the words a pad player is actually shown.
+func footer() -> String:
+	if not pad_input or pad_cfg == null:
+		return ""
+	var ok := pad_cfg.icon(KEY_PERIOD, true)
+	var out := pad_cfg.icon(KEY_ESCAPE, true)
+	var forge := pad_cfg.icon(MainScene.PACK_FORGE_KEY, true)
+	if throw_mode:
+		return "pick something to hurl  ·  %s throw  ·  %s cancel" % [
+			ok, pad_cfg.icon(KEY_F, true)]
+	if bind_mode:
+		return "set it into which weapon?  ·  %s set  ·  %s cancel" % [ok, out]
+	var back := pad_cfg.icon(MainScene.PACK_BACK_KEY, true)
+	if state != null and state.forging_in_embers():
+		return "%s forge a ● item in the embers  ·  loud, and final  ·  %s close" % [
+			forge, back]
+	# One line for the whole layout. The d-pad verbs are written as arrows
+	# because that is what the player's thumb is on; the face buttons by name.
+	return "%s use  ·  %s forge  ·  ▼ drop  ·  ► throw  ·  %s close" % [
+		ok, forge, back]
+
 ## Every item index currently on screen, in the order they are drawn.
 ##
 ## Built from the same `_row_rects()` the mouse hit-tests against, so the
@@ -378,28 +427,16 @@ func _draw() -> void:
 
 	# The forge line only appears where forging is possible, so it teaches the
 	# mechanic exactly when it is relevant instead of being permanent clutter.
-	var hint := "click use/equip  ·  right-click drop  ·  tab filter  ·  esc close"
-	if throw_mode:
-		hint = "pick something to hurl  ·  click or press its letter  ·  esc cancel"
-	elif bind_mode:
-		var g: String = "the gem"
-		if bind_gem >= 0 and bind_gem < state.player.inventory.size():
-			g = state.player.inventory[bind_gem].display_name()
-		hint = "set %s into which weapon?  ·  click or press its letter  ·  esc cancel" % g
-	elif state.can_forge_here():
-		hint = "shift+click a ● item to FORGE it with a spare  ·  click use  ·  esc"
-		# Embers get their own line. The two costs are nothing alike -- one
-		# spends hit points you can see on the bar, the other spends quiet --
-		# and a player who read the first line would otherwise have no reason
-		# to expect the second.
-		if state.forging_in_embers():
-			hint = "shift+click a ● item to FORGE in the embers  ·  loud, and final"
+	# A pad gets its own words (footer()); a keyboard keeps the long-standing
+	# lines, which are right for a keyboard and wrong for anything else.
+	var hint := footer()
+	if hint == "":
+		hint = _keyboard_footer()
 	var hs := font_size - 2
-	while hs > 9 and font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x \
-			> PANEL_W - PAD * 2.0:
+	while hs > 9 and PadGlyphs.width(hint, font, hs) > PANEL_W - PAD * 2.0:
 		hs -= 1
-	draw_string(font, Vector2(p.position.x + PAD, p.end.y - PAD), hint,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, hs, Palette.UI_DIM)
+	PadGlyphs.draw(self, Vector2(p.position.x + PAD, p.end.y - PAD), hint, font,
+		hs, Palette.UI_DIM)
 
 func _draw_chip(chip: Dictionary) -> void:
 	var active: bool = chip["id"] == filter

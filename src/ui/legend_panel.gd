@@ -296,9 +296,9 @@ func _control_column(x: float, y: float, w: float) -> void:
 	# what a key does.
 	for row in Sidebar.KEYS:
 		var base := y + font.get_ascent(font_size)
-		draw_string(font, Vector2(x + GLYPH_X, base),
-			Sidebar.key_label(row, pad_cfg, pad_input),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 1, Palette.UI_DIM)
+		PadGlyphs.draw(self, Vector2(x + GLYPH_X, base),
+			Sidebar.key_label(row, pad_cfg, pad_input), font, font_size - 1,
+			Palette.UI_DIM)
 		draw_string(font, Vector2(x + GLYPH_X, base), row[1],
 			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1, Palette.UI_TEXT)
 		y += LINE

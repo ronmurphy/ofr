@@ -116,6 +116,8 @@ func _initialize() -> void:
 	_test_every_menu_row_is_reachable()
 	_test_a_pad_can_finish_the_game()
 	_test_a_pad_can_answer_every_prompt()
+	_test_a_pad_is_never_a_letter_in_the_pack()
+	_test_button_pictures()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3333,6 +3335,200 @@ func _test_main_only_sets_properties_that_exist() -> void:
 	check("main.gd sets nothing that does not exist", missing.is_empty(),
 		", ".join(missing))
 
+## Controller buttons drawn as PICTURES, from Kenney's Xbox Series font.
+##
+## Drawn directly from that face, never through the text font's fallbacks: the
+## sidebar once reached its icons that way and on the itch web build every one
+## came out as a tofu box, while desktop and the suite saw nothing wrong.
+func _test_button_pictures() -> void:
+	var face: Font = load(PadConfig.GLYPH_FONT)
+	check("the button font ships", face != null)
+	var text: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+
+	# Every picture we name must exist in the face we draw it from.
+	var missing := PackedStringArray()
+	var all_cps: Array = PadConfig.BUTTON_GLYPHS.values()
+	all_cps.append(PadConfig.STICK_GLYPH)
+	for cp in all_cps:
+		if not face.has_char(int(cp)):
+			missing.append("U+%04X" % int(cp))
+	check("the button font has every picture we name (%d)" % all_cps.size(),
+		missing.is_empty(), ", ".join(missing))
+
+	# And the TEXT font must NOT have them. That is the whole reason for drawing
+	# them directly: if the text face carried these codepoints it would draw its
+	# own (different) glyph, and if it relies on a fallback the web build loses it.
+	var in_text := PackedStringArray()
+	for cp in all_cps:
+		if text.has_char(int(cp)):
+			in_text.append("U+%04X" % int(cp))
+	check("the text font claims none of them", in_text.is_empty(),
+		", ".join(in_text))
+
+	# Every button a default pad actually uses has a picture.
+	var cfg := PadConfig.new()
+	var bare := PackedStringArray()
+	for b in cfg.binds:
+		if not PadConfig.BUTTON_GLYPHS.has(int(b)):
+			bare.append(PadConfig.button_name(int(b)))
+	check("every bound button has a picture", bare.is_empty(), ", ".join(bare))
+
+	# icon() gives a picture on a pad and the plain key on a keyboard.
+	check("on a keyboard, icon() is still the key",
+		cfg.icon(KEY_G, false) == "g", cfg.icon(KEY_G, false))
+	check("on a pad it is B's picture",
+		cfg.icon(KEY_G, true) == String.chr(int(PadConfig.BUTTON_GLYPHS[JOY_BUTTON_B])))
+	var unbound := PadConfig.new()
+	unbound.binds.clear()
+	check("and it never goes blank", unbound.icon(KEY_G, true) == "g",
+		unbound.icon(KEY_G, true))
+
+	# A mixed line splits into text and picture runs, in order.
+	var pic := String.chr(int(PadConfig.BUTTON_GLYPHS[JOY_BUTTON_BACK]))
+	var parts := PadGlyphs.runs("press %s for help" % pic)
+	check("a mixed line splits into three runs (%d)" % parts.size(), parts.size() == 3)
+	if parts.size() == 3:
+		check("  words, picture, words",
+			not parts[0][1] and parts[1][1] and not parts[2][1])
+		check("  and the picture run is only the picture",
+			String(parts[1][0]) == pic)
+	check("a plain line is one run", PadGlyphs.runs("press ? for help").size() == 1)
+	check("and has a width", PadGlyphs.width("press ? for help", text, 15) > 0.0)
+
+	# EVERY FILE THAT ASKS FOR A PICTURE MUST DRAW THROUGH PadGlyphs. A future
+	# panel that calls icon() and hands the result to draw_string would draw the
+	# text font's version of a private-use codepoint -- nothing on desktop if it
+	# is lucky, a box on the web build -- and nothing else would notice.
+	var careless := PackedStringArray()
+	for dir in ["res://src/ui/", "res://src/render/"]:
+		var da := DirAccess.open(dir)
+		if da == null:
+			continue
+		for f in da.get_files():
+			if not f.ends_with(".gd"):
+				continue
+			var src := FileAccess.get_file_as_string(dir + f)
+			var asks := src.find(".icon(") >= 0 or src.find("key_label(") >= 0
+			if asks and src.find("PadGlyphs.") < 0 and f != "pad_glyphs.gd":
+				careless.append(f)
+	check("every panel that shows button pictures draws them directly",
+		careless.is_empty(), ", ".join(careless))
+
+## Inside the pack, a controller press must never select an item by letter.
+##
+## Found 2026-09-24 while chasing a smaller bug (forging was shift+click, which a
+## pad cannot send). In the pack `a`-`z` choose the item wearing that letter, and
+## a pad press ARRIVES as a keycode -- so seven buttons silently used whatever
+## item matched: B equipped g, R3 equipped a, L3 read the scroll at c.
+func _test_a_pad_is_never_a_letter_in_the_pack() -> void:
+	var cfg := PadConfig.new()
+	var allowed := {&"": true, &"close": true, &"forge": true, &"use": true,
+		&"drop": true, &"throw": true}
+
+	# The premise: the pad really does send letter keys, or this proves nothing.
+	var lettered := 0
+	for b in cfg.binds:
+		var k := int(cfg.binds[b])
+		if k >= KEY_A and k <= KEY_Z:
+			lettered += 1
+	check("a default pad sends letter keys (%d buttons)" % lettered, lettered >= 5)
+
+	# Every button, in every mode, may only close the pack, forge, or do nothing.
+	var bad := PackedStringArray()
+	for mode in [[false, false], [true, false], [false, true]]:
+		for b in cfg.binds:
+			var k := int(cfg.binds[b])
+			var act: StringName = MainScene.pad_pack_action(k, mode[0], mode[1])
+			if not allowed.has(act):
+				bad.append("%s -> %s" % [PadConfig.button_name(int(b)), act])
+	check("no pad button does anything but a named action in the pack",
+		bad.is_empty(), ", ".join(bad))
+
+	# The ones that must work.
+	check("Start closes the pack",
+		MainScene.pad_pack_action(KEY_ESCAPE, false, false) == &"close")
+	check("and the throw picker",
+		MainScene.pad_pack_action(KEY_ESCAPE, true, false) == &"close")
+	check("and the bind picker",
+		MainScene.pad_pack_action(KEY_ESCAPE, false, true) == &"close")
+	check("Y forges the highlighted item",
+		MainScene.pad_pack_action(MainScene.PACK_FORGE_KEY, false, false) == &"forge")
+	check("and that key is on a pad button",
+		cfg.button_for_key(MainScene.PACK_FORGE_KEY) >= 0)
+	check("but not while picking something to throw",
+		MainScene.pad_pack_action(MainScene.PACK_FORGE_KEY, true, false) == &"")
+
+	# THE LAYOUT. Face buttons do what players expect; the d-pad carries the
+	# item verbs. Every verb acts on the HIGHLIGHTED row, never on a letter.
+	check("B backs out of the pack",
+		MainScene.pad_pack_action(MainScene.PACK_BACK_KEY, false, false) == &"close")
+	check("and out of both pickers",
+		MainScene.pad_pack_action(MainScene.PACK_BACK_KEY, true, false) == &"close"
+		and MainScene.pad_pack_action(MainScene.PACK_BACK_KEY, false, true) == &"close")
+	check("d-pad up uses", MainScene.pad_pack_action(
+		MainScene.PACK_USE_KEY, false, false) == &"use")
+	check("d-pad down drops", MainScene.pad_pack_action(
+		MainScene.PACK_DROP_KEY, false, false) == &"drop")
+	check("d-pad left forges", MainScene.pad_pack_action(
+		MainScene.PACK_FORGE_ALT, false, false) == &"forge")
+	check("d-pad right throws", MainScene.pad_pack_action(
+		MainScene.PACK_THROW_KEY, false, false) == &"throw")
+
+	# DROP MUST NEVER SIT ON A FACE BUTTON. It is the one verb that cannot be
+	# taken back, and a face button is where a thumb lands by habit.
+	var face := [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y]
+	var drops_on_face := PackedStringArray()
+	for b in face:
+		var k := cfg.key_for_button(b)
+		if MainScene.pad_pack_action(k, false, false) == &"drop":
+			drops_on_face.append(PadConfig.button_name(b))
+	check("drop is never on a face button", drops_on_face.is_empty(),
+		", ".join(drops_on_face))
+	check("but IS reachable from the pad",
+		cfg.button_for_key(MainScene.PACK_DROP_KEY) >= 0)
+
+	# Nothing acts while choosing what to throw or which weapon takes a gem --
+	# those pickers are answered by confirm, and a stray verb would be chaos.
+	for k in [MainScene.PACK_USE_KEY, MainScene.PACK_DROP_KEY,
+			MainScene.PACK_THROW_KEY, MainScene.PACK_FORGE_KEY]:
+		check("%s is inert in the throw picker" % OS.get_keycode_string(k),
+			MainScene.pad_pack_action(k, true, false) == &"")
+		check("and in the bind picker",
+			MainScene.pad_pack_action(k, false, true) == &"")
+
+	# AND main.gd must actually route pad presses through it before any letter
+	# lookup -- the rule is worthless if the guard is below the thing it guards.
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var pack := src.find("if inventory.visible:")
+	var guard := src.find("if _synthetic:", pack)
+	var first_letter := src.find("letter_to_index(", pack)
+	check("main.gd guards pad presses before any letter lookup",
+		pack >= 0 and guard > pack and first_letter > guard,
+		"pack %d, guard %d, first letter lookup %d" % [pack, guard, first_letter])
+
+	# The footer tells a pad player about the forge in their own words.
+	var gs := _arena(21, 11)
+	var bag := InventoryPanel.new()
+	bag.state = gs
+	bag.pad_cfg = cfg
+	bag.pad_input = false
+	check("a keyboard gets no pad footer", bag.footer() == "")
+	bag.pad_input = true
+	var said := bag.footer()
+	check("a pad gets one (\"%s\")" % said, said != "")
+	check("and it names no key a pad lacks",
+		said.findn("click") < 0 and said.findn("shift") < 0
+		and said.findn("letter") < 0 and said.findn("esc") < 0, said)
+	check("and it tells a pad player how to drop", said.findn("drop") >= 0, said)
+
+	# The arrows must exist in the font the pack draws with. A glyph missing from
+	# the bundled font still looks right in an editor and a desktop build,
+	# because both fall back to a system font -- and a web build ships a box.
+	var pack_font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	for ch in ["▼", "►"]:
+		check("the pack font has %s" % ch, pack_font.has_char(ch.unicode_at(0)))
+	bag.free()
+
 ## Wherever the game waits for a decision, a controller must be able to give it.
 ##
 ## Found in play 2026-09-23, on the Legion Go S: with a missile weapon you could
@@ -3944,7 +4140,8 @@ func _test_panels_do_not_overflow() -> void:
 	check("keyboard-only actions are named, not blank",
 		keyboard_only.size() <= 4, ", ".join(keyboard_only))
 	check("walking still says stick on a pad",
-		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, true) == "stick",
+		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, true)
+		== String.chr(PadConfig.STICK_GLYPH),
 		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, true))
 	check("and arrows on a keyboard",
 		Sidebar.key_label(Sidebar.KEYS[0], leg_cfg, false).findn("arrows") >= 0)
@@ -6181,7 +6378,10 @@ func _test_the_sidebar_says_what_is_here() -> void:
 	bar.pad_input = true
 	var held := str(bar.rows())
 	check("a keyboard player is shown letters", typed.findn("\"g\"") >= 0, typed)
-	check("a pad player is shown buttons", held.findn("\"B\"") >= 0, held)
+	# On a pad the key column is a PICTURE of the button now, drawn from the
+	# Kenney face -- so what the row carries is that glyph, not the letter B.
+	var b_pic := String.chr(int(PadConfig.BUTTON_GLYPHS[JOY_BUTTON_B]))
+	check("a pad player is shown the B button", held.findn(b_pic) >= 0, held)
 	check("and they differ", typed != held)
 
 	var bare := PadConfig.new()
@@ -6214,8 +6414,10 @@ func _test_the_sidebar_says_what_is_here() -> void:
 	check("so a keyboard player reads r",
 		str(dead_bar.rows()).findn("\"r\"") >= 0, str(dead_bar.rows()))
 	dead_bar.pad_input = true
-	check("and a pad player reads a button they have",
-		str(dead_bar.rows()).findn("\"A\"") >= 0, str(dead_bar.rows()))
+	check("and a pad player sees a button they have",
+		str(dead_bar.rows()).findn(
+			String.chr(int(PadConfig.BUTTON_GLYPHS[JOY_BUTTON_A]))) >= 0,
+		str(dead_bar.rows()))
 	dead_bar.free()
 
 	# The instruction must not name a key again.

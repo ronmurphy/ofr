@@ -80,6 +80,64 @@ var _throw_index := -1
 ## highlighted row with it.
 const CONFIRM: Array[int] = [KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER]
 
+## What a CONTROLLER press means inside the pack.
+##
+## Found in play, 2026-09-24: forging was `shift+click` or `shift+letter`, and a
+## pad sends neither. Looking into it turned up something worse. In the pack,
+## `a`-`z` select the item carrying that letter -- and a pad press ARRIVES as a
+## keycode, because that is the whole design of the input layer. So seven pad
+## buttons silently used whichever item happened to wear their letter: B equipped
+## item g, R3 item a, L3 read the scroll at c, the d-pad drank or read o, t, p. A
+## stray thumb on a stick click could burn a scroll.
+##
+## So a pad press is NEVER a letter in the pack. It can close it, it can forge
+## (or set a gem into) the highlighted item, and nothing else -- choosing and
+## moving are handled above this, by confirm and the stick.
+##
+## Pure and static so the suite can check it without starting the scene, whose
+## `_ready` loads a suspended run and so destroys it.
+##
+## THE LAYOUT, which is two layers on purpose (Brad's d-pad idea, 2026-09-24).
+##
+## Face buttons do what every other game has taught a player to expect: A takes
+## the thing, B backs out, Y is the second action. The D-PAD carries the item
+## verbs -- it is idle while the pack is open, and four directions are exactly
+## the four things you do to an item here.
+##
+## DROP LIVES ONLY ON THE D-PAD. It is the one action that cannot be taken back,
+## so it must not sit on a face button a thumb lands on by habit. Brad's case for
+## having it at all: 15% hp, mid-band, a bear's meat at your feet and a third
+## spare dagger in the pack.
+##
+## Keys, not buttons, because that is the whole input layer -- which means these
+## follow the bindings: rebind the torch and d-pad-left's forge goes with it.
+const PACK_FORGE_KEY := KEY_X       ## Y
+const PACK_BACK_KEY := KEY_G        ## B
+const PACK_USE_KEY := KEY_O         ## d-pad up
+const PACK_DROP_KEY := KEY_GREATER  ## d-pad down
+const PACK_FORGE_ALT := KEY_T       ## d-pad left
+const PACK_THROW_KEY := KEY_P       ## d-pad right
+
+static func pad_pack_action(key: int, throw_mode: bool, bind_mode: bool) -> StringName:
+	if key == KEY_ESCAPE or key == PACK_BACK_KEY:
+		return &"close"
+	if throw_mode:
+		return &"close" if key == KEY_F else &""
+	if bind_mode:
+		return &""
+	match key:
+		KEY_I:
+			return &"close"
+		PACK_FORGE_KEY, PACK_FORGE_ALT:
+			return &"forge"
+		PACK_USE_KEY:
+			return &"use"
+		PACK_DROP_KEY:
+			return &"drop"
+		PACK_THROW_KEY:
+			return &"throw"
+	return &""
+
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
 	KEY_UP: Vector2i(0, -1), KEY_DOWN: Vector2i(0, 1),
@@ -230,6 +288,7 @@ func _process(delta: float) -> void:
 	# allowed to short-circuit the frame.
 	sidebar.pad_input = _pad_input
 	legend.pad_input = _pad_input
+	inventory.pad_input = _pad_input
 
 	if menu.visible or legend.visible:
 		return
@@ -452,6 +511,26 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				inventory.cycle_filter(-1 if key == KEY_LEFT else 1)
 				_refresh()
 				return
+
+		# A PAD IS NEVER A LETTER HERE. Everything below this line reads keys as
+		# item letters, so a controller press must not reach it. See
+		# pad_pack_action for the bug this closes.
+		if _synthetic:
+			match pad_pack_action(key, inventory.throw_mode, inventory.bind_mode):
+				&"close":
+					_close_inventory()
+				&"forge", &"use", &"drop", &"throw":
+					# Every item verb acts on the HIGHLIGHTED row -- which the
+					# player can see -- never on a letter, which they cannot.
+					var on := inventory.hovered()
+					if on >= 0:
+						match pad_pack_action(key, inventory.throw_mode,
+								inventory.bind_mode):
+							&"forge": _merge_item(on)
+							&"use": _use_item(on)
+							&"drop": _drop_item(on)
+							&"throw": _on_throw_chosen(on)
+			return
 
 		if inventory.throw_mode:
 			if key == KEY_ESCAPE or key == KEY_F:
@@ -750,6 +829,7 @@ func _bind_state(s: GameState) -> void:
 	# So the contextual block can name BUTTONS on a handheld, not letters.
 	sidebar.pad_cfg = pad.cfg
 	legend.pad_cfg = pad.cfg
+	inventory.pad_cfg = pad.cfg
 	here.state = s
 	here.pad_cfg = pad.cfg
 	_pad_input = not Input.get_connected_joypads().is_empty()

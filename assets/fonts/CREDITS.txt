@@ -31,3 +31,14 @@ than from the theme tables.
 CC BY 4.0 asks for attribution rather than only for the licence text to travel
 with the work, which is why Font Awesome and Microsoft are named here and not
 merely pointed at a file.
+
+kenney_input_xbox_series.ttf
+    Input Prompts 1.5A, by Kenney (www.kenney.nl).
+    Creative Commons Zero (CC0) -- public domain, no attribution required;
+    credited here anyway. Copied unchanged from the licensed pack Brad bought.
+
+    Used for the controller BUTTON glyphs in hints and footers. Drawn directly
+    from this file rather than reached through a text font's fallbacks, because
+    fallback resolution has already failed once in the web export: the sidebar
+    reached its icons that way and on itch every one came out as a tofu box.
+
