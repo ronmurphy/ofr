@@ -3934,7 +3934,7 @@ func _test_panels_do_not_overflow() -> void:
 			typed_k == String(row[0]), typed_k)
 		if typed_k != held_k:
 			changed += 1
-		elif int(row[3]) != 0:
+		elif int(row[2]) != 0:
 			keyboard_only.append("%s (%s)" % [row[1], typed_k])
 	# The premise: if nothing changed, the whole feature is doing nothing.
 	check("a pad player sees different labels (%d of %d rows)"

@@ -39,12 +39,16 @@ const LINE := 21.0
 
 ## The canonical key table, and now the only place that draws it is the legend.
 ##
-## FOUR COLUMNS. The third marked the handful once kept permanently in the
-## sidebar; that block is gone -- HerePanel answers "what do I press now" far
-## better than a static list did -- but the flag is kept because the legend still
-## reads it and something else may want the short version again.
+## THREE COLUMNS: what a keyboard is told, what the action is, and the KEYCODE
+## that makes the legend device-aware.
 ##
-## THE FOURTH IS THE KEYCODE, and it is what makes the legend device-aware.
+## There was a fourth -- a flag marking the handful once kept permanently in the
+## sidebar. That block is gone (HerePanel answers "what do I press now" far
+## better than a static list did), and when it went, the flag became something
+## nothing read. The comment left behind claimed "the legend still reads it",
+## which was simply false: the legend iterates every row. A flag nothing consults
+## is a lie, and one defended by a wrong comment is the worse kind -- both were
+## written by this session, eighteen hours apart.
 ##
 ## Without it this screen was the last place in the game still naming keys a
 ## handheld does not have: it read `w  swap reach / blade` on a Legion Go S,
@@ -58,33 +62,33 @@ const LINE := 21.0
 ## real but is not a button: the stick walks, and saying "arrows" to somebody
 ## holding a Legion Go is simply wrong.
 const KEYS := [
-	["arrows / hjklyubn", "move", true, 0, "stick"],
-	[". or 5", "wait / rest", true, KEY_PERIOD, ""],
-	[">", "descend", false, KEY_GREATER, ""],
-	["<", "ascend", false, KEY_LESS, ""],
-	["x", "look", true, KEY_X, ""],
-	["g", "pick up", true, KEY_G, ""],
-	["i", "inventory", true, KEY_I, ""],
-	["t", "torch", false, KEY_T, ""],
-	["f / right-click", "shoot", true, KEY_F, ""],
-	["w", "swap reach / blade", true, KEY_W, ""],
+	["arrows / hjklyubn", "move", 0, "stick"],
+	[". or 5", "wait / rest", KEY_PERIOD, ""],
+	[">", "descend", KEY_GREATER, ""],
+	["<", "ascend", KEY_LESS, ""],
+	["x", "look", KEY_X, ""],
+	["g", "pick up", KEY_G, ""],
+	["i", "inventory", KEY_I, ""],
+	["t", "torch", KEY_T, ""],
+	["f / right-click", "shoot", KEY_F, ""],
+	["w", "swap reach / blade", KEY_W, ""],
 	# Essential only while somebody is standing with you, which the sidebar
 	# cannot express -- so it lives in the full list, where a player goes
 	# looking the first time an ally does something they did not want.
-	["a", "ally: heel / loose", false, KEY_A, ""],
+	["a", "ally: heel / loose", KEY_A, ""],
 	## Worth finding: a shut door buys a turn against a goblin, three against
 	## a bear, and nothing at all against a rabbit.
-	["c", "close a door", false, KEY_C, ""],
-	["f (no bow)", "throw", false, KEY_F, ""],
-	["p", "pray at a shrine", false, KEY_P, ""],
-	["m  - +", "sound", false, 0, ""],
-	["v", "letters / symbols / pictures", false, KEY_V, ""],
+	["c", "close a door", KEY_C, ""],
+	["f (no bow)", "throw", KEY_F, ""],
+	["p", "pray at a shrine", KEY_P, ""],
+	["m  - +", "sound", 0, ""],
+	["v", "letters / symbols / pictures", KEY_V, ""],
 	# Motion, and it is an accessibility setting before it is a taste one --
 	# effects like these stop some people playing games at all.
-	["e", "still / simple / full", false, KEY_E, ""],
-	["o", "the map", false, KEY_O, ""],
-	["esc", "menu", false, KEY_ESCAPE, ""],
-	["click", "travel", false, 0, "--"],
+	["e", "still / simple / full", KEY_E, ""],
+	["o", "the map", KEY_O, ""],
+	["esc", "menu", KEY_ESCAPE, ""],
+	["click", "travel", 0, "--"],
 ]
 
 ## What to show in the first column, for whoever is holding whatever.
@@ -95,22 +99,13 @@ const KEYS := [
 static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
 	if not on_pad:
 		return String(row[0])
-	if row.size() > 4 and String(row[4]) != "":
-		return String(row[4])
-	if int(row[3]) != 0 and cfg != null:
-		var button := cfg.button_for_key(int(row[3]))
+	if row.size() > 3 and String(row[3]) != "":
+		return String(row[3])
+	if int(row[2]) != 0 and cfg != null:
+		var button := cfg.button_for_key(int(row[2]))
 		if button >= 0:
 			return PadConfig.button_name(button)
 	return String(row[0])
-
-## What the sidebar itself shows: the essentials, plus the way to everything.
-static func essential_keys() -> Array:
-	var out := []
-	for row in KEYS:
-		if row[2]:
-			out.append(row)
-	out.append(["?", "all keys", true])
-	return out
 
 ## Live bindings and which device is in the player's hands, both set by main.gd
 ## so the help line can name a BUTTON on a handheld.
@@ -430,11 +425,6 @@ func _gear_up(item: Item) -> String:
 func _gear_el(item: Item) -> String:
 	return "" if item.element == &"" else " %s" % item.element
 
-func _gear_extra(item: Item) -> String:
-	return _gear_up(item) + _gear_el(item)
-
-func _gear_text(item: Item) -> String:
-	return _gear_glyph(item) + _gear_words(item) + _gear_extra(item)
 
 ## One equipment row: the picture, then whatever of the words will fit.
 func _gear_row(y: float, label: String, item: Item, numbers: String,
@@ -567,23 +557,6 @@ func _fit(text: String, reserve: float = 0.0) -> String:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > limit:
 		out = out.substr(0, out.length() - 1)
 	return out + ".."
-
-## What a gear row's words come out as, once the label and the icon have taken
-## their share of the line.
-##
-## Public and pure so the suite can check it without a canvas: the previous
-## version of this was a helper only the tests called, which is dead code with a
-## passing check in front of it. This one is what the row actually draws.
-func icon_row_words(label: String, glyph: String, text: String,
-		keep: String = "") -> String:
-	var avail := _room_for(label, glyph)
-	if keep == "":
-		return _fit(text, size.x - PAD * 2.0 - avail)
-	var kw := font.get_string_size(keep, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	if kw >= avail:
-		# Even the protected part does not fit; it alone gets the room.
-		return _fit(keep, size.x - PAD * 2.0 - avail)
-	return _fit(text, size.x - PAD * 2.0 - avail + kw) + keep
 
 ## How much width the words have left, once the label and the icon have taken
 ## theirs.
