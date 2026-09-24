@@ -34,27 +34,80 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 
 ## Next up
 
-**1. The trader's shop.** The strongest thing on this list and the most nearly
-ready.
+**1. The trader's shop.** Economy fully specified 2026-09-23. Build next.
 
-Stock comes from the **morgue**: characters who were reclaimed (raised as a
-bone ally) and then died again. Those never come back, so this is the last
-chance at a twice-dead character's kit.
+**Currency: tier points.** Three denominations, one word per catalogue row, no
+per-item prices to tune or protect from farming.
 
-It is not duplication of the existing drop. Brad's argument: for a reclaimed
-ally's gear to be stranded, the character carrying it very likely died too — so
-whoever meets the trader is a **later character entirely**. The stock is
-cross-run, which is what makes the morgue an economy rather than a record.
+```
+tier 1 = 1 point    dagger, leather, buckler, sling
+tier 2 = 3 points   short sword, chain mail, kite shield, short bow
+tier 3 = 9 points   war axe, plate, tower shield, war bow, mace
+```
 
-Already in place: `morgue.gd` records `bearing <gear>` per entry, carries a
-`reclaimed` marker, and has `mark_reclaimed()`. `Faction.NEUTRAL` is real now —
-the trader uses it.
+You select what to offer, it sums, you see what you can afford. Cross-category
+is allowed and is the whole point -- the original complaint was spare slings and
+leather armours carried "just in case", and leather is the most abundant thing
+in the game at 6.8 per run.
 
-Not money. Brad reframed Gabe and David's merchant idea as **trade at band
-boundaries** — swap duplicates for what you lack — because money needs prices
-for everything and then needs protecting from farming, while trade only needs
-"is this a fair swap". The forge already taught the player that two of a thing
-makes a better one.
+**An item is worth what it cost to make.** A `+2 dagger` consumed daggers to
+become that, so it counts as those daggers. No special case for upgraded,
+enchanted or bound items; value conserves and merging is never punished.
+
+**Gems trade only for gems.** Three duplicates for one of your choice. The
+principle: THE TRADER CONVERTS WITHIN A CURRENCY, NOT ACROSS THEM. Equipment is
+fungible junk; a gem is what the whole magic system runs on. Price a gem in
+equipment points and nine daggers buy magic, which ends the chest's reason to
+exist.
+
+**A BOUND gem is not a gem.** It adds a flat +9 to the item's price. Not a
+loophole: a free gem is PORTABLE and CHOSEN, which is what makes it the better
+prize; a bound one is locked to that item forever, so buying it is buying one
+magic weapon rather than magic in general.
+
+**Found magic and bound magic are priced identically, because the code cannot
+tell them apart** -- `Item.element` is one field, set by generation at
+`item.gd:947` and by binding at `game_state.gd:3873`. Distinguishing them would
+need a provenance field read by one consumer, to draw a distinction the player
+cannot perceive either.
+
+**Consumables: the trader SELLS but does not BUY.** Their value is situational
+(a potion at full health on floor 1 against one at 5 hp on floor 9), so every
+fixed price is wrong in both directions. And meat comes from hunting -- giving
+it trade value turns hunting into income and quietly undoes the scarcity the
+caves are built on.
+
+**Morgue relics need no special rule.** Measured against Brad's real morgue (18
+deaths, 8 reclaimed): 13 plain items, 8 with a `+N`, 2 with a gem. The best was
+`leather armour +3`. Most relics are an ordinary dagger somebody died holding, so
+a flat premium would overprice the majority. The points rule already handles it:
+ordinary relics are cheap because they are ordinary, and the interesting ones are
+expensive because of what they carry.
+
+**One enchant roll per trader.** The trader will put something random in an item
+for 9 points -- the same bargain the world already offers, since found magic
+exists as "the stopgap that makes you want the gem more". A gem is still better
+because it is portable and chosen; this is neither. Capped because it is the one
+SERVICE rather than a good: goods are limited by stock and price, a service has
+no stock. Six meetings a run (`TRADER_FLOORS` 1, 4, 7, 11, 14, 17), so six rolls
+maximum.
+
+**Stock: the current band plus the one before it**, so everything is available by
+floor 10. Finite, and it does NOT refresh. You may return to the trader as often
+as you like while on that floor; nothing stops you and nothing rewards you.
+
+**The Diablo loop cannot happen here and needs no rule against it.** It depends
+on renewable income; this floor's loot is finite, nothing respawns, and the
+dungeon is one-way.
+
+**"The list regenerates after each purchase" means the AFFORDABLE list**, not new
+stock. You spent points, so fewer things are in reach. If stock regenerated the
+trader would be a vending machine and the finite economy would collapse.
+
+**Still to decide while building:** whether `tier` is an explicit catalogue
+column (recommended) or inferred from `power + defense` (it is not: a mace and a
+war bow are both 5, a short bow and chain mail are both 3, and those are not fair
+swaps).
 
 **2. Keyboard auto-repeat.** The stick is the only input in the game that
 repeats; the d-pad physically cannot, and the keyboard is silenced by the
