@@ -1335,6 +1335,20 @@ func can_step(fx: int, fy: int, nx: int, ny: int) -> bool:
 		return true
 	return map.is_walkable(nx, fy) and map.is_walkable(fx, ny)
 
+## Where a creature may step when it is NOT following the pathfinder -- going
+## round a friend, wandering, fleeing. `can_step` plus the rule the pathfinder
+## already keeps: never onto a pit or a trap.
+##
+## The three hand-rolled steppers asked only `can_step`, and pits are walkable
+## (they must be, or the player could not fall in). So a bone ally going round
+## the player could sidestep onto a pit -- and there it stayed for good, because
+## the pathfinder treats avoided ground as solid and cannot plan one step OFF
+## it. Brad saw an ally standing in a pit, never moving again (2026-09-20).
+## Monsters do not fall through pits; they keep off them, as items and spawns
+## already do (`_can_rest_on`) and as a shove already refuses to push them in.
+func can_creature_step(fx: int, fy: int, nx: int, ny: int) -> bool:
+	return can_step(fx, fy, nx, ny) and not Tiles.is_avoided(map.get_tile(nx, ny))
+
 func move_cost_for(actor: Entity, x: int, y: int) -> int:
 	# Frost is on the CREATURE, not the ground, so it is charged before the
 	# flying exemption rather than after. A chilled wyvern is still flying; it
@@ -6302,7 +6316,7 @@ func _around(actor: Entity, target: Vector2i) -> Vector2i:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if not can_step(actor.x, actor.y, nx, ny):
+			if not can_creature_step(actor.x, actor.y, nx, ny):
 				continue
 			if entity_at(nx, ny) != null:
 				continue
@@ -6583,7 +6597,7 @@ func _step_random(actor: Entity) -> void:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if can_step(actor.x, actor.y, nx, ny) and entity_at(nx, ny) == null:
+			if can_creature_step(actor.x, actor.y, nx, ny) and entity_at(nx, ny) == null:
 				opts.append(Vector2i(nx, ny))
 	if opts.is_empty():
 		return
@@ -6605,7 +6619,7 @@ func _step_away(actor: Entity, foe: Entity) -> bool:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if not can_step(actor.x, actor.y, nx, ny) or entity_at(nx, ny) != null:
+			if not can_creature_step(actor.x, actor.y, nx, ny) or entity_at(nx, ny) != null:
 				continue
 			var d := Los.steps(nx, ny, foe.x, foe.y)
 			if d > best_d:

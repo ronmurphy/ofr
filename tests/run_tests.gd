@@ -135,6 +135,7 @@ func _initialize() -> void:
 	_test_the_counter()
 	_test_the_counter_by_mouse_and_keys()
 	_test_the_trader_piles()
+	_test_creatures_keep_out_of_pits()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3607,6 +3608,91 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## Creatures off the pathfinder -- going round a friend, wandering, fleeing --
+## never step onto a pit. Brad saw a bone ally stand in one for good: the
+## pathfinder treats a pit as solid, so nothing on one can plan a step off it.
+##
+## Each case is run twice: once with the only way out a PIT (must refuse), and
+## once with the same cell as FLOOR (must take it). Without the second, "it did
+## not move onto the pit" would pass just as well for a creature that could not
+## move at all.
+func _test_creatures_keep_out_of_pits() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var c := Vector2i(20, 20)
+	# A walled pocket: the creature at c, stone all round.
+	var pocket := func(open: Array, tile: int) -> void:
+		for y in range(c.y - 3, c.y + 4):
+			for x in range(c.x - 3, c.x + 4):
+				gs.map.set_tile(x, y, Tiles.WALL)
+		gs.map.set_tile(c.x, c.y, Tiles.FLOOR)
+		for o in open:
+			var cell: Vector2i = o
+			gs.map.set_tile(cell.x, cell.y, tile)
+	# The player is parked far away so it blocks nothing here.
+	gs.player.x = 80
+	gs.player.y = 40
+	var bones := Entity.new("bone ally", &"skeleton", c.x, c.y)
+	bones.faction = Entity.Faction.PLAYER
+	gs.entities = [gs.player, bones]
+
+	# GOING ROUND A FRIEND. Target three east, a friend in the way; the one
+	# neighbour that gets closer is north-east.
+	var ne := Vector2i(c.x + 1, c.y - 1)
+	var east := Vector2i(c.x + 1, c.y)
+	pocket.call([east, ne, Vector2i(c.x, c.y - 1), Vector2i(c.x + 2, c.y),
+		Vector2i(c.x + 3, c.y)], Tiles.FLOOR)
+	gs.map.set_tile(ne.x, ne.y, Tiles.PIT)
+	var friend := Entity.new("ally", &"skeleton", east.x, east.y)
+	friend.faction = Entity.Faction.PLAYER
+	gs.entities.append(friend)
+	var target := Vector2i(c.x + 3, c.y)
+	check("going round a friend, it will not step onto a pit",
+		gs._around(bones, target) == Vector2i(-1, -1), str(gs._around(bones, target)))
+	gs.map.set_tile(ne.x, ne.y, Tiles.FLOOR)
+	check("  but takes the same cell as floor", gs._around(bones, target) == ne,
+		str(gs._around(bones, target)))
+	gs.map.set_tile(ne.x, ne.y, Tiles.TRAP)
+	check("  and will not step onto a trap either",
+		gs._around(bones, target) == Vector2i(-1, -1))
+	gs.entities.erase(friend)
+
+	# WANDERING. The only way out is east.
+	pocket.call([east], Tiles.PIT)
+	var onto_pit := 0
+	for i in 30:
+		bones.x = c.x
+		bones.y = c.y
+		gs._step_random(bones)
+		if Vector2i(bones.x, bones.y) == east:
+			onto_pit += 1
+	check("wandering, it never steps onto a pit (%d of 30)" % onto_pit, onto_pit == 0)
+	pocket.call([east], Tiles.FLOOR)
+	bones.x = c.x
+	bones.y = c.y
+	gs._step_random(bones)
+	check("  but does wander onto floor", Vector2i(bones.x, bones.y) == east)
+
+	# FLEEING. Something to the west; the only way further off is east.
+	var foe := Entity.new("orc", &"orc", c.x - 1, c.y)
+	foe.faction = Entity.Faction.MONSTER
+	gs.entities.append(foe)
+	pocket.call([east, Vector2i(c.x - 1, c.y)], Tiles.FLOOR)
+	gs.map.set_tile(east.x, east.y, Tiles.PIT)
+	bones.x = c.x
+	bones.y = c.y
+	check("fleeing, it will not escape into a pit", not gs._step_away(bones, foe)
+		and Vector2i(bones.x, bones.y) == c)
+	gs.map.set_tile(east.x, east.y, Tiles.FLOOR)
+	check("  but flees onto floor", gs._step_away(bones, foe)
+		and Vector2i(bones.x, bones.y) == east)
+
+	# And the player may still walk into one on purpose -- that is how you fall.
+	gs.map.set_tile(east.x, east.y, Tiles.PIT)
+	check("the player's step still allows a pit; only creatures are kept off",
+		gs.can_step(c.x, c.y, east.x, east.y)
+		and not gs.can_creature_step(c.x, c.y, east.x, east.y))
+
 ## The trader's piles: the shelf sorted by what a thing is FOR, by mouse, keys
 ## and pad alike; and what the player sold shown as theirs.
 func _test_the_trader_piles() -> void:
