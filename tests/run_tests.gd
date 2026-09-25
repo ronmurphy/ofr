@@ -3370,10 +3370,29 @@ func _test_trade_prices() -> void:
 		Trade.worth(Item.make(&"leather_armour")) == Trade.worth(Item.make(&"dagger")))
 
 	# Worth what it cost to make. A +2 took two more of the same to forge.
+	# Forged the way the brazier forges, never by setting a field: the first
+	# version of this check wrote `boosts = 2`, a field equipment never uses,
+	# and so agreed with a pricing bug that sold every forged item at base.
 	var plus := Item.make(&"dagger")
-	plus.boosts = 2
+	plus.upgrade()
+	plus.upgrade()
+	check("the premise: it reads as a +2 (%s)" % plus.display_name(),
+		plus.display_name() == "dagger +2")
 	check("a +2 dagger is worth three daggers", Trade.worth(plus) == 3,
 		"%d" % Trade.worth(plus))
+	var coat := Item.make(&"leather_armour")
+	coat.upgrade()
+	check("armour counts its forging too", Trade.worth(coat) == 2,
+		"%d" % Trade.worth(coat))
+	# And as the morgue gives it back, which is how relics are priced.
+	var buried := Item.from_display_name("leather armour +2")
+	check("a buried leather armour +2 is worth three",
+		buried != null and Trade.worth(buried) == 3,
+		"%d" % (Trade.worth(buried) if buried != null else -1))
+	var bow := Item.from_display_name("short bow +1")
+	check("a buried short bow +1 is worth six",
+		bow != null and Trade.worth(bow) == 6,
+		"%d" % (Trade.worth(bow) if bow != null else -1))
 	var magic := Item.make(&"short_sword")
 	magic.element = &"frost"
 	check("a bound gem adds %d" % Trade.MAGIC,
@@ -3407,14 +3426,46 @@ func _test_the_trader_deals() -> void:
 	check("  and something on the shelves (%d)" % gs.trader_stock.size(),
 		gs.trader_stock.size() > 0)
 
-	# Floor one sells floor one's things: nothing that belongs deeper.
-	var deep := PackedStringArray()
+	# Floor one sells tier 1 and nothing stronger. The first version put a mace
+	# on this shelf -- one hit for anything on floor one.
+	var strong := PackedStringArray()
+	var has_dagger := false
 	for entry in gs.trader_stock:
 		var it: Item = entry["item"]
-		if it.tier > 0 and int(Item.CATALOGUE[it.id].get("min_depth", 99)) > 3:
-			deep.append(it.name)
-	check("the first trader sells nothing from deeper bands", deep.is_empty(),
-		", ".join(deep))
+		if String(entry["relic"]) != "":
+			continue
+		if it.tier > 1:
+			strong.append(it.name)
+		has_dagger = has_dagger or it.id == &"dagger"
+	check("the first trader sells nothing above tier 1", strong.is_empty(),
+		", ".join(strong))
+	check("  but does sell a dagger", has_dagger)
+
+	# The same stocking, deeper. Restocked in place on this floor's trader: the
+	# shelf is built from the tier rule and the depth, nothing else on the map.
+	var tiers_at := func(desc_depth: int, climbing: bool) -> Array:
+		gs.depth = desc_depth
+		gs.ascending = climbing
+		gs.trader_stock = []
+		gs._stock_trader()
+		var seen: Array = []
+		for entry in gs.trader_stock:
+			var it: Item = entry["item"]
+			if String(entry["relic"]) == "" and it.tier > 0 and not seen.has(it.tier):
+				seen.append(it.tier)
+		seen.sort()
+		return seen
+	var caves: Array = tiers_at.call(4, false)
+	check("floor four sells tiers 1 and 2 (%s)" % str(caves), caves == [1, 2])
+	var fort: Array = tiers_at.call(7, false)
+	check("floor seven sells tiers 2 and 3, no daggers (%s)" % str(fort), fort == [2, 3])
+	# The climb is keyed on where the player has BEEN, not mirrored: floor 17
+	# is "upper" to everything else, and would otherwise sell daggers again.
+	var climb: Array = tiers_at.call(3, true)
+	check("the climb's floor 17 sells tiers 2 and 3 (%s)" % str(climb), climb == [2, 3])
+	check("  and it is floor 17 (%d)" % gs.effective_depth(), gs.effective_depth() == 17)
+	# Back to floor one for everything below, which trades on this shelf.
+	tiers_at.call(1, false)
 
 	# SELL, and the slate goes up by the worth.
 	gs.player.inventory.clear()
@@ -3435,15 +3486,16 @@ func _test_the_trader_deals() -> void:
 	check("and it can be bought straight back", gs.trade_buy(back))
 	check("  for exactly what it earned", gs.trader_credit == 0, "%d" % gs.trader_credit)
 
-	# Refused when you cannot afford it -- and NOTHING changes.
-	var sword_at := -1
+	# Refused when you cannot afford it -- and NOTHING changes. A potion, not a
+	# short sword: floor one sells tier 1 only, and a potion costs the same 3.
+	var buy_at := -1
 	for i in gs.trader_stock.size():
-		if (gs.trader_stock[i]["item"] as Item).id == &"short_sword":
-			sword_at = i
-	check("the first trader stocks a short sword", sword_at >= 0)
+		if (gs.trader_stock[i]["item"] as Item).id == &"potion_healing":
+			buy_at = i
+	check("the first trader stocks a healing potion", buy_at >= 0)
 	var shelf := gs.trader_stock.size()
 	var pack := gs.player.inventory.size()
-	check("a short sword is refused on 0 credit", not gs.trade_buy(sword_at))
+	check("a potion is refused on 0 credit", not gs.trade_buy(buy_at))
 	check("  and nothing moved", gs.trader_stock.size() == shelf
 		and gs.player.inventory.size() == pack and gs.trader_credit == 0)
 
@@ -3454,9 +3506,9 @@ func _test_the_trader_deals() -> void:
 			gs.trade_sell(at)
 	check("three daggers make 3 credit", gs.trader_credit == 3, "%d" % gs.trader_credit)
 	for i in gs.trader_stock.size():
-		if (gs.trader_stock[i]["item"] as Item).id == &"short_sword":
-			sword_at = i
-	check("and buy the short sword", gs.trade_buy(sword_at) and gs.trader_credit == 0)
+		if (gs.trader_stock[i]["item"] as Item).id == &"potion_healing":
+			buy_at = i
+	check("and buy the potion", gs.trade_buy(buy_at) and gs.trader_credit == 0)
 
 	# Selling what you are WEARING takes it off first.
 	var worn := Item.make(&"leather_armour")
@@ -3513,9 +3565,26 @@ func _test_the_trader_deals() -> void:
 	var loaded := GameState.new(1)
 	check("a save with a trader loads", loaded.apply_dict(dict))
 	check("  the trader is relinked", loaded.trader_here())
-	check("  the slate is kept", loaded.trader_credit == 5, "%d" % loaded.trader_credit)
+	check("  the credit is kept", loaded.trader_credit == 5, "%d" % loaded.trader_credit)
 	check("  the shelves are kept", loaded.trader_stock.size() == gs.trader_stock.size())
 	check("  and the roll stays spent", loaded.trader_rolled)
+
+	# A suspend from the build before the trader: the trader stands on the floor
+	# but the save has no shelves. It must stock them, or the first playtest
+	# happens again -- a trader with nothing to sell.
+	var old: Dictionary = gs.to_dict()
+	old.erase("trader")
+	var aged := GameState.new(1)
+	check("a save from before the trader loads", aged.apply_dict(old))
+	check("  the trader is there", aged.trader_here())
+	check("  and has stocked its shelves (%d)" % aged.trader_stock.size(),
+		aged.trader_stock.size() > 0)
+	# But a shelf the player emptied is a real state, not a missing one.
+	gs.trader_stock = []
+	var bare := GameState.new(1)
+	check("a save with an emptied shelf loads", bare.apply_dict(gs.to_dict()))
+	check("  and stays empty", bare.trader_here() and bare.trader_stock.is_empty(),
+		"%d" % bare.trader_stock.size())
 
 ## Most players will trade with a mouse and a keyboard. The first version was
 ## built for the pad and barely served either: hovering did nothing, so a mouse
@@ -3640,6 +3709,16 @@ func _test_the_counter() -> void:
 	t.state = gs
 	t.open()
 	check("it opens on your pack", t.side == TradePanel.PACK)
+	# With nothing to sell, it opens where there is something to do.
+	var bare_gs := GameState.new(4040)
+	bare_gs.new_game()
+	bare_gs.player.inventory.clear()
+	bare_gs.player.equipped.clear()
+	var bare := TradePanel.new()
+	bare.state = bare_gs
+	bare.open()
+	check("an empty pack opens on the shelf", bare.side == TradePanel.SHELF)
+	bare.free()
 	check("with a row for each thing you carry", t.pack_rows().size() == 2)
 	check("and the shelf ends with the gem exchange",
 		t.shelf_rows()[-1] == TradePanel.GEM_ROW)

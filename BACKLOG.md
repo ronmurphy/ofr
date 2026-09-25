@@ -47,13 +47,23 @@ marked PROVISIONAL in the code -- play decides them:
 - **How many consumables are stocked:** two potions and one of each scroll.
 - **How many relics a trader shows:** up to three twice-dead heroes, each as the
   most valuable piece of their kit.
-- **Which equipment is stocked:** one of every piece whose `min_depth` falls in
-  this band or the one before. Floor 1 offers min_depth 1-3; floor 7 offers 4-9.
+
+Settled with Brad, 2026-09-24:
+
+- **Which equipment is stocked** goes by tier and by how deep the player has
+  BEEN: floors 1-3 sell tier 1; 4-6 tiers 1 and 2; 7 and deeper tiers 2 and 3,
+  no tier 1. Floor 6 is the last chance to buy a dagger. Not mirrored on the
+  climb -- every climb trader sells tiers 2 and 3. (The first version used a
+  `min_depth` window and put a mace on the floor-1 shelf.)
+- **Forged items are worth their forging** (`upgrade_level`). The first version
+  read `boosts`, which equipment never uses, and sold every +N at base price.
+- **Words on the counter:** "credit" and "gems", not "slate" and "stones" --
+  stones are sling ammunition.
 
 Decided while building, worth a second look:
 
-- **Credit, not swaps.** Selling puts points on the trader's slate and the item on
-  the shelf at the same price; buying spends points. The slate stays with that
+- **Credit, not swaps.** Selling puts points on your credit and the item on
+  the shelf at the same price; buying spends points. The credit stays with that
   trader while you are on the floor and is lost when you leave.
 - **Trading costs no turns**, like talking to the trader always has.
 - **Uniques and the amulet cannot be traded.** Neither can arrows or bones.

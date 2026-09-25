@@ -1579,22 +1579,31 @@ func _open_chest(at: Vector2i) -> void:
 ## folds 11 onto 9, and 9 is a band's last floor, not its first.
 const TRADER_FLOORS := [1, 4, 7, 11, 14, 17]
 
-## The lowest and highest effective-depth floor a band covers, read from Bands
-## rather than written out again, so the two cannot disagree.
-static func _band_span(band: int) -> Vector2i:
-	var lo := 999
-	var hi := -1
-	for d in range(1, MAX_DEPTH + 1):
-		if Bands.of(d) == band:
-			lo = mini(lo, d)
-			hi = maxi(hi, d)
-	return Vector2i(lo, hi)
+## Which tiers of equipment a trader stocks, by how deep the player has BEEN.
+##
+## Brad's rule, 2026-09-24: the upper floors sell tier 1, the caves tier 1 and 2,
+## and from the fortress on tier 2 and 3 -- no tier 1, because by then a dagger
+## is too weak to be worth a place on the shelf, and the trader knows it. So
+## floor 6 is the last chance to BUY a dagger; the dungeon still drops them.
+##
+## Deliberately NOT mirrored, unlike almost everything else keyed on a floor.
+## The climb reuses the descent's bands, which would put a floor-17 trader back
+## to selling daggers to someone carrying a +3 war axe. Every climb trader
+## sells what the deepest floors do, because that is where the player has been.
+## (The first version keyed this on `min_depth` and a two-band window, which
+## put a mace -- tier 3, one hit for anything on floor 1 -- on the first shelf.)
+static func trader_tiers(effective: int) -> Array:
+	var deepest := mini(effective, MAX_DEPTH)
+	if deepest <= 3:
+		return [1]
+	if deepest <= 6:
+		return [1, 2]
+	return [2, 3]
 
 ## Fill the trader's shelves.
 ##
-## EQUIPMENT: one of every tradeable piece that belongs to this band or the one
-## before it, by `min_depth`. Brad's rule -- a trader is a reliable way to fill a
-## gap, not a lottery, and by floor 10 the whole catalogue has been on offer.
+## EQUIPMENT: one of every tradeable piece in the tiers `trader_tiers` allows.
+## Brad's rule -- a trader is a reliable way to fill a gap, not a lottery.
 ## Plain, never enchanted: magic is the enchant roll's job.
 ##
 ## CONSUMABLES: PROVISIONAL counts, not yet settled with Brad.
@@ -1603,22 +1612,17 @@ static func _band_span(band: int) -> Vector2i:
 ## piece of their kit, drawn from the morgue. Eligible once reclaimed, never
 ## once sold, and never if reclaimed during this very run.
 func _stock_trader() -> void:
-	var here := Bands.mirrored(effective_depth())
-	var band := Bands.of(here)
-	var lo := _band_span(maxi(band - 1, 0)).x
-	var hi := _band_span(band).y
+	var tiers := trader_tiers(effective_depth())
+	var deepest := mini(effective_depth(), MAX_DEPTH)
 	for key in Item.CATALOGUE:
 		var data: Dictionary = Item.CATALOGUE[key]
-		if int(data.get("tier", 0)) <= 0 or data.get("unique", false):
-			continue
-		var md := int(data.get("min_depth", 999))
-		if md < lo or md > hi:
+		if data.get("unique", false) or not tiers.has(int(data.get("tier", 0))):
 			continue
 		trader_stock.append({"item": Item.make(key), "relic": "", "hero": ""})
 
 	for key in [&"potion_healing", &"potion_healing", &"scroll_light", &"scroll_blink"]:
 		var it := Item.make(key)
-		if it != null and int(Item.CATALOGUE[key].get("min_depth", 999)) <= here:
+		if it != null and int(Item.CATALOGUE[key].get("min_depth", 999)) <= deepest:
 			trader_stock.append({"item": it, "relic": "", "hero": ""})
 
 	var heroes: Array = []
@@ -1671,7 +1675,7 @@ func trade_sell(index: int) -> bool:
 	var w := Trade.worth(it)
 	trader_credit += w
 	trader_stock.append({"item": it, "relic": "", "hero": ""})
-	msg_log.add("The trader takes the %s. (+%d, %d on the slate)"
+	msg_log.add("The trader takes the %s. (+%d, %d credit)"
 		% [it.display_name(), w, trader_credit], Color(0.80, 0.85, 0.95))
 	return true
 
@@ -1696,7 +1700,7 @@ func trade_buy(stock_index: int) -> bool:
 		msg_log.add("You take %s's %s. \"They would want it used.\""
 			% [entry["hero"], it.display_name()], Color(0.80, 0.85, 0.95))
 	else:
-		msg_log.add("You take the %s. (%d left on the slate)"
+		msg_log.add("You take the %s. (%d credit left)"
 			% [it.display_name(), trader_credit], Color(0.80, 0.85, 0.95))
 	return true
 
@@ -1705,7 +1709,7 @@ func trade_buy_gem(el: StringName) -> bool:
 	if not trader_here() or not Item.ELEMENTS.has(el):
 		return false
 	if trader_gems < Trade.GEMS_FOR_ONE:
-		msg_log.add("\"Bring me %d stones and choose one.\"" % Trade.GEMS_FOR_ONE,
+		msg_log.add("\"Bring me %d gems and choose one.\"" % Trade.GEMS_FOR_ONE,
 			Color(0.85, 0.75, 0.55))
 		return false
 	var gem := Item.make(StringName(Item.ELEMENTS[el]["gem"]))
@@ -5200,6 +5204,12 @@ func apply_dict(d: Dictionary) -> bool:
 		trader_rng.seed = str(trng[0]).to_int()
 		trader_rng.state = str(trng[1]).to_int()
 	reclaimed_this_run = Array(d.get("reclaimed_run", []))
+	# A save written before the trader existed has no shelves to restore, yet
+	# the floor still has its trader standing on it. Without this the player
+	# meets a trader with nothing to sell -- which is what happened on the
+	# first playtest, 2026-09-24, from a suspend made the day before.
+	if trader != null and not d.has("trader"):
+		_stock_trader()
 
 	ground = []
 	for entry in d.get("ground", []):

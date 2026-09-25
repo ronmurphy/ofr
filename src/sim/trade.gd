@@ -64,7 +64,11 @@ static func is_gem(it: Item) -> bool:
 static func worth(it: Item) -> int:
 	if it == null or not refusal(it).is_empty() or is_gem(it):
 		return 0
-	var base: int = int(POINTS.get(it.tier, 0)) * (1 + it.boosts)
+	# `upgrade_level`, never `boosts`. Equipment keeps its forging in its power
+	# and defense bonuses and leaves `boosts` at zero -- that field is for
+	# consumables. The first version read `boosts`, so every forged weapon and
+	# armour sold at base price, and its test set `boosts` by hand and agreed.
+	var base: int = int(POINTS.get(it.tier, 0)) * (1 + it.upgrade_level())
 	return base + (MAGIC if it.element != &"" else 0)
 
 ## What the trader ASKS for this. Equipment at par; consumables off the list.

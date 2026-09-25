@@ -36,7 +36,7 @@ const COL_GAP := 40.0
 
 const PACK := 0
 const SHELF := 1
-## The last row on the shelf is not an item: it trades stones for a gem.
+## The last row on the shelf is not an item: it trades three gems for one of your choice.
 const GEM_ROW := -1
 
 ## The movement keys a roguelike player already has under their fingers --
@@ -52,7 +52,7 @@ const ALIASES := {
 var side := PACK
 var _at := [0, 0]
 var _top := [0, 0]
-## Choosing which gem to take for three stones.
+## Choosing which gem to take for the three given.
 var choosing_gem := false
 var _gem_at := 0
 
@@ -65,7 +65,9 @@ func _ready() -> void:
 		font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
 
 func open() -> void:
-	side = PACK
+	# An empty pack has nothing to sell, and a highlight parked on nothing
+	# makes enter do nothing -- Brad met exactly that on a fresh floor one.
+	side = PACK if not pack_rows().is_empty() else SHELF
 	_at = [0, 0]
 	_top = [0, 0]
 	choosing_gem = false
@@ -186,7 +188,7 @@ func _act() -> void:
 			choosing_gem = true
 			_gem_at = 0
 		else:
-			state.msg_log.add("\"Bring me %d stones and choose one.\"" % Trade.GEMS_FOR_ONE,
+			state.msg_log.add("\"Bring me %d gems and choose one.\"" % Trade.GEMS_FOR_ONE,
 				Color(0.85, 0.75, 0.55))
 	else:
 		state.trade_buy(int(row))
@@ -302,7 +304,7 @@ func info() -> String:
 	if state == null:
 		return ""
 	if choosing_gem:
-		return "choose the gem you will take for %d stones" % Trade.GEMS_FOR_ONE
+		return "choose the gem you will take for your %d" % Trade.GEMS_FOR_ONE
 	var row = current()
 	if row == null:
 		return ""
@@ -312,16 +314,16 @@ func info() -> String:
 		if no != "":
 			return no
 		if Trade.is_gem(it):
-			return "a stone: %d of these buy a gem of your choice" % Trade.GEMS_FOR_ONE
+			return "a gem: give me %d and choose any one you like" % Trade.GEMS_FOR_ONE
 		return "worth %d to the trader" % Trade.worth(it)
 	if int(row) == GEM_ROW:
-		return "%d stones on the counter; %d buy a gem of your choice" % [
-			state.trader_gems, Trade.GEMS_FOR_ONE]
+		return "%d of %d gems given; %d buy a gem of your choice" % [
+			state.trader_gems, Trade.GEMS_FOR_ONE, Trade.GEMS_FOR_ONE]
 	var entry: Dictionary = state.trader_stock[int(row)]
 	var it2: Item = entry["item"]
 	if String(entry["hero"]) != "":
 		return "all that is left of %s. Nobody will sell it again." % entry["hero"]
-	return "costs %d" % Trade.price(it2)
+	return "costs %d  ·  you have %d credit" % [Trade.price(it2), state.trader_credit]
 
 ## The footer, in the language of whatever the player is holding.
 func footer() -> String:
@@ -351,10 +353,10 @@ func _draw() -> void:
 
 	draw_string(font_bold, Vector2(x0, y), "THE TRADER", HORIZONTAL_ALIGNMENT_LEFT, -1,
 		font_size + 2, Palette.STAIRS)
-	var slate := "slate %d  ·  stones %d/%d  ·  enchant %s" % [
+	var purse := "credit %d  ·  gems %d/%d  ·  enchant %s" % [
 		state.trader_credit, state.trader_gems, Trade.GEMS_FOR_ONE,
 		"spent" if state.trader_rolled else "ready"]
-	draw_string(font, Vector2(x0, y), slate, HORIZONTAL_ALIGNMENT_RIGHT,
+	draw_string(font, Vector2(x0, y), purse, HORIZONTAL_ALIGNMENT_RIGHT,
 		PANEL.x - PAD * 2.0, font_size - 1, Palette.UI_TEXT)
 
 	var head_y := p.position.y + PAD + 34.0 + asc
@@ -404,12 +406,12 @@ func _draw_row(which: int, slot: int, row: Variant, lit: bool) -> void:
 			right = "--"
 			bright = false
 		elif Trade.is_gem(it):
-			right = "stone"
+			right = "gem"
 		else:
 			right = "+%d" % Trade.worth(it)
 	elif int(row) == GEM_ROW:
 		text = "a gem of your choice"
-		right = "%d stones" % Trade.GEMS_FOR_ONE
+		right = "%d gems" % Trade.GEMS_FOR_ONE
 		bright = state.trader_gems >= Trade.GEMS_FOR_ONE
 	else:
 		var entry: Dictionary = state.trader_stock[int(row)]
