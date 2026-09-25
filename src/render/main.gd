@@ -319,6 +319,7 @@ func _process(delta: float) -> void:
 	# poll above: anything a modal needs has to be set before the modal is
 	# allowed to short-circuit the frame.
 	sidebar.pad_input = _pad_input
+	sidebar.naming = name_entry.visible
 	legend.pad_input = _pad_input
 	trade.pad_input = _pad_input
 	name_entry.pad_input = _pad_input

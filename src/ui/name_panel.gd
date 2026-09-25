@@ -27,6 +27,9 @@ const BOX_W := 600.0
 ## One grid cell's height, and the gap between cells.
 const CELL_H := 30.0
 const GAP := 6.0
+## Where the grid starts, in lines below the top padding: under the title, the
+## field, the hint and the first heading.
+const GRID_TOP := 4.3
 const NAMES_PER_ROW := 6
 const LETTERS_PER_ROW := 10
 
@@ -129,7 +132,7 @@ func cell_at(p: Vector2i) -> Dictionary:
 
 ## Where the grid starts: under the title, the field and the list heading.
 func _box() -> Rect2:
-	var h := PAD * 2.0 + LINE * 4.0 + _grid_height() + LINE * 2.0
+	var h := PAD * 2.0 + LINE * GRID_TOP + _grid_height() + LINE * 1.5
 	return Rect2(((size - Vector2(BOX_W, h)) * 0.5).floor(), Vector2(BOX_W, h))
 
 func _grid_height() -> float:
@@ -142,7 +145,10 @@ func cell_rect(p: Vector2i) -> Rect2:
 	var all := rows()
 	var box := _box()
 	var inner := BOX_W - PAD * 2.0
-	var y := box.position.y + PAD + LINE * 3.5
+	# 4.3 lines down, not 3.5: at 3.5 the "leave it blank" line sat on top of
+	# the first heading (seen on itch, 2026-09-25 -- the first time this panel
+	# was looked at rather than measured).
+	var y := box.position.y + PAD + LINE * GRID_TOP
 	var name_rows := ceili(float(names().size()) / float(NAMES_PER_ROW))
 	for r in p.y:
 		y += CELL_H + GAP

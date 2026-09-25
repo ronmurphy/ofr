@@ -27,6 +27,11 @@ extends Control
 @export var font_size: int = 15
 
 var state: GameState
+## True while the name screen is open. A new run is rolled a name up front, so
+## that every run is named even when nothing asks -- and that rolled name used
+## to sit here above the HP bar while the player was still choosing one, as if
+## the choice had already been made. Brad spotted it on itch, 2026-09-25.
+var naming := false
 var hovered := Vector2i(-1, -1)
 var look_mode := false
 var aiming := false
@@ -135,6 +140,12 @@ func _process(_delta: float) -> void:
 ## Breathing room between a row's left text and its right-aligned number.
 const GAP := 8.0
 
+## The name above the HP bar. Dashes while one is still being chosen.
+func shown_name() -> String:
+	if naming:
+		return "--"
+	return state.player_name if state.player_name != "" else "OFR"
+
 func _draw() -> void:
 	if state == null:
 		return
@@ -149,8 +160,7 @@ func _draw() -> void:
 	# it is the only place the name is visible during a run -- and because the
 	# name matters later: it goes on your gravestone, and a future run's bone
 	# ally will carry it.
-	_line(font_bold, y, state.player_name if state.player_name != "" else "OFR",
-		Palette.STAIRS)
+	_line(font_bold, y, shown_name(), Palette.STAIRS)
 	y += LINE
 	if state.won:
 		_line(font_bold, y, "ESCAPED  turn %d" % state.turns, Palette.STAIRS)

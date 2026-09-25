@@ -3840,6 +3840,20 @@ func _test_naming_without_a_keyboard() -> void:
 	check("the box fits the window", Rect2(Vector2.ZERO, n.size).encloses(box))
 	n.free()
 
+	# The sidebar does not name you before you have chosen.
+	var bar := Sidebar.new()
+	var named := GameState.new(4040)
+	named.new_game()
+	bar.state = named
+	check("the premise: a new run already has a rolled name (%s)" % named.player_name,
+		named.player_name != "")
+	bar.naming = true
+	check("while choosing, the sidebar shows no name (%s)" % bar.shown_name(),
+		bar.shown_name() == "--")
+	bar.naming = false
+	check("  and shows it once chosen", bar.shown_name() == named.player_name)
+	bar.free()
+
 	# main.gd hands a pad press to the panel as a MEANING, before any typing.
 	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
 	var at := src.find("if name_entry.visible:")

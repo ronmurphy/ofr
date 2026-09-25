@@ -40,6 +40,63 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 
 ---
 
+## Roadmap — the themes ahead
+
+Written 2026-09-25 to share with the testers. Updates now come in THEMES
+rather than one idea at a time, so each one can set up the next. Only next
+week is scheduled; the rest is order, not dates.
+
+**Just done (this week, being played now).** The trader and its shop. Monsters
+that get past each other in doorways instead of jamming. Naming your character
+on a controller. A flared torch that can relight a brazier, and a race against
+the flare to do it. Creatures no longer get stuck in pits.
+
+**Next week: the breathe pass.** The dungeon should feel alive. All of it
+respects the three motion settings (still / simple / full).
+- *Impact:* a flash when something is hit, sparks in the colour of a magic
+  weapon, monsters that shatter into pieces when they die, a red edge when you
+  are hurt, a ring of light when you level up.
+- *Living light:* fungus that slowly breathes light, magic weapons that tint
+  your torchlight, and a map memory that fades the longer ago you saw it —
+  except the landmarks (stairs, doors, braziers, shrines, the trader).
+- *Colour by region:* the entrance faintly green, as if you came in from a
+  forest; the caves earth brown and grey; the fortress stone greys; the climb
+  back out tinged purple with corruption.
+- *Small life:* spores drifting off fungus, drips in the caves, bubbles over
+  mud, dust in your torchlight.
+- *Miasma:* big fungus clusters give off a sickly cloud that hurts anything
+  crossing it. Rabbits are immune.
+
+**After that: the combat update.** Tactics in the spirit of AD&D 2nd edition.
+- Creatures get a FACING. Attacking with a friend on the far side of your
+  target (flanking) does +1; attacking from behind does +2, and the shield may
+  not count. It works both ways — packs will flank you.
+- Monsters that tire of waiting in a queue look for another way round, which
+  is to say they learn to flank on purpose.
+- Polearms: javelin (thrown), spear, halberd. They reach two squares and a hit
+  passes through to a second enemy in line. Two-handed, so no shield. Fight over
+  an ally's shoulder, hold a doorway.
+
+**A scroll session.** Spells, as scrolls: single-use, or charged for several
+uses. More than combat. Fireball and teleport have been discussed; the rest is
+to design.
+
+**Someday: a 3D mode.** A key swaps between the classic view and a 3D one:
+tilted overhead like Diablo, turning in 90-degree steps like Final Fantasy
+Tactics, with the same colours and letters — walls stand up as blocks,
+creatures as upright letters, and the torch throws real shadows. It never shows
+more than classic would, and the turn can snap instantly for anyone who gets
+motion sick. Not the "Wizardry-style combat view" declined below: that was a
+separate screen for fights; this is a way of seeing the whole game. It starts
+as a small experiment.
+
+**Smaller ideas waiting their turn:** wolves (a pack that ignores you unless
+provoked); a fungus bag (carry fungus as bait and light); gems from rubble
+(being built now); shooting a wall into existence with a crag gem; monsters
+that shut doors behind them; the coliseum.
+
+---
+
 ## Next up
 
 **1. Tune the trader.** Built 2026-09-24; the full economy is in `src/sim/trade.gd`
@@ -152,6 +209,12 @@ similar ground more interestingly. **Dodge stays parked**: it fights
 the map" axis: every door the player has seen was closed until they opened it,
 so a closed door reads as unexplored. Something that shuts one behind itself
 turns the player's own map-reading against them.
+- **It conflicts with a tell that already exists** (noted 2026-09-25). Creatures
+  open doors and bears smash them, but nothing ever SHUTS one --
+  `_through_the_door` says so on purpose: an open door you left shut is how you
+  know something came through. Door-closers would blur that signal to add a new
+  one. A design call for Brad, not a build; not to be confused with last week's
+  door work (squeezing, shouldering, `c` to close), which is done.
 
 ---
 
@@ -228,6 +291,10 @@ brazier charges in every reader's head.
 - **New Game Plus.** Not declined, deliberately deferred: you have to beat the
   game to see it. If built, scale monster stats, their THREAT and the ceiling by
   one multiplier together, or a doubled ceiling just buys twelve rats.
+- **An item that lets you fly.** Asked for by David; declined 2026-09-25.
+  Flying over everything would stop about three quarters of all combat — the
+  game is built on positioning, doors, corridors and terrain, and flight
+  deletes all four.
 - **Wizardry-style 3D combat view.** The original vision, dropped early:
   encounter frequency kills modal view-switching. The renderer seam keeps it
   addable.
