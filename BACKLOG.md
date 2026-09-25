@@ -33,6 +33,10 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Keyboard hold-to-walk, shared with the stick | `HoldRepeat` |
 | Armour takes turns to put on | `Item.don_turns` |
 | Controller button pictures | `PadGlyphs`, Kenney Xbox Series font |
+| Creatures keep off pits when not pathfinding | `can_creature_step` |
+| Traffic: friends swap in doorways and corridors | `_gives_way`, `Entity.want` |
+| Naming a character on a controller (name list + alphabet) | `NamePanel.pad_act` |
+| A flared torch rekindles a brazier (the race) | `FLARE_KINDLE`, `player_kindle` |
 
 ---
 
@@ -90,26 +94,10 @@ keyboard and no file manager the only place a diagnostic can go is on screen.
 
 ## Known gaps
 
-**A controller cannot name a character.** Found 2026-09-23. The name prompt
-takes typed characters, and a pad sends none. It is NOT a softlock — `escape`
-closes the panel and Start sends escape, so a pad player starts the run with the
-default name.
-
-Brad wants both, 2026-09-23:
-
-1. **A pregenerated name list**, cycled with the d-pad and confirmed with A,
-   offered *beside* the typing field rather than instead of it. Cheap, and it
-   suits a game whose characters are mostly remembered by how they died.
-2. **A modal alphabet keyboard** with d-pad navigation — the way every console
-   did it until the last generation or so.
-
-Note on "someone has probably written a drop-in for this": likely, but the
-integration would probably cost more than writing it. The panel already exists
-(`NamePanel`), it already accumulates into a `typed` string, and the grid
-navigation is the same shape as the inventory highlight and the pad walk-through
-— a cursor over cells, d-pad to move, A to choose. An addon would have to be
-taught this project's keycode vocabulary, which is the part that is actually
-specific to us. Estimate: a small panel, not a dependency.
+**~~A controller cannot name a character.~~ FIXED 2026-09-25.** Both of Brad's
+asks were built: the dungeon's own names to pick from (never the rare three --
+they are found, not chosen), and an alphabet walked by the d-pad or stick. A
+chooses, B erases, Y flips the case, Start begins. Typing is unchanged.
 
 **InputMap, and when it would be worth migrating.** Suggested by a reviewer, and
 the design document names it as the strongest criticism of the input layer. It

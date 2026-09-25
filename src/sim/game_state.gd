@@ -234,6 +234,25 @@ const CLAMOUR_RING := 24
 ## A flared torch, in turns. It cannot be smothered while it burns -- that is
 ## the curse half: you see much further, and so does everything else.
 const FLARE_TURNS := 100
+
+## THE FLARE REKINDLES. Brad's design, 2026-09-25, and a race.
+##
+## Held to a brazier, a flared torch gives its fire to it: the brazier is FILLED
+## to a level set by how much flare is left, and the flare is spent doing it.
+## The fresher the flare, the bigger the fire -- 15, which is more than any
+## brazier is ever built with -- so finding the shrine starts a clock, and the
+## flare's own curse (everything sees you coming) runs the whole way.
+##
+## FILLED TO, never added to. A dead brazier gains the most, which is Brad's
+## intent -- this is the ONLY thing in the game that brings back a brazier gone
+## black (a scroll of light reaches only a guttered one) -- a weak fire gains
+## less, and one already burning at or above the tier is refused so a flare is
+## never thrown away on nothing. The best use is usually a fire the player
+## killed EARLIER on the floor, raked down or forged out, so the race is a run
+## back across known ground. Under 25 turns the flare is light and curse only.
+##
+## Each row: at least this many flare turns left -> fill the brazier to this.
+const FLARE_KINDLE := [[75, 15], [50, 10], [25, 5]]
 const FLARE_MULTIPLIER := 2
 ## How long the shrine of the quiet keeps a floor from noticing you. Long
 ## enough to move, or to get the torch out and leave on your own terms.
@@ -4277,6 +4296,92 @@ func _adjacent_spent_brazier() -> Vector2i:
 	return Vector2i(-1, -1)
 
 ## A lit brazier beside the player with something left in it.
+## Ground that `player_pickup` acts on before it ever looks at a brazier.
+const _TILES_THE_KEY_TAKES := [Tiles.FUNGUS, Tiles.RUBBLE, Tiles.STAIRS_DOWN,
+	Tiles.STAIRS_UP, Tiles.SHRINE]
+
+## How full a flare with this many turns left would fill a brazier. 0 when it
+## is too far gone to kindle anything.
+static func flare_kindle(turns_left: int) -> int:
+	for row in FLARE_KINDLE:
+		if turns_left >= int(row[0]):
+			return int(row[1])
+	return 0
+
+## Any brazier beside the player, lit, guttered or black.
+func _adjacent_any_brazier() -> Vector2i:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			var t := map.get_tile(c.x, c.y)
+			if t == Tiles.BRAZIER or t == Tiles.BRAZIER_SPENT or t == Tiles.BRAZIER_DEAD:
+				return c
+	return Vector2i(-1, -1)
+
+## What a brazier holds now, for the flare's purposes: a guttered or black one
+## holds nothing.
+func _brazier_holds(c: Vector2i) -> int:
+	if map.get_tile(c.x, c.y) != Tiles.BRAZIER:
+		return 0
+	return int(brazier_charge.get(c, 0))
+
+## The neighbouring brazier the flare would do the most for, or (-1, -1) when
+## there is none it can improve. With two beside you, the emptier one -- the
+## flare's best use, and the player should not have to aim.
+func flare_target() -> Vector2i:
+	var give := flare_kindle(torch_flare)
+	if torch_flare <= 0 or give <= 0:
+		return Vector2i(-1, -1)
+	var best := Vector2i(-1, -1)
+	var best_holds := give
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			var t := map.get_tile(c.x, c.y)
+			if t != Tiles.BRAZIER and t != Tiles.BRAZIER_SPENT and t != Tiles.BRAZIER_DEAD:
+				continue
+			var holds := _brazier_holds(c)
+			if holds < best_holds:
+				best_holds = holds
+				best = c
+	return best
+
+## The flare, given to a brazier. Refuses -- keeping the flare -- when it would
+## do nothing, and says why.
+func player_kindle() -> bool:
+	if game_over:
+		return false
+	var c := flare_target()
+	if c.x < 0:
+		if torch_flare > 0 and flare_kindle(torch_flare) <= 0:
+			msg_log.add("Your flare is too far gone to kindle anything.",
+				Color(0.7, 0.6, 0.4))
+		else:
+			msg_log.add("The fire already burns hotter than your torch.",
+				Color(0.7, 0.6, 0.4))
+		return false
+	_travel.clear()
+	var give := flare_kindle(torch_flare)
+	var was := map.get_tile(c.x, c.y)
+	map.set_tile(c.x, c.y, Tiles.BRAZIER)
+	brazier_charge[c] = give
+	# A live fire again; the ember clock belongs to the next time it dies.
+	ember_until.erase(c)
+	torch_flare = 0
+	_gather_lights()
+	# Back on the watch's round: guards tend fires, and a relit one is a fire.
+	_lay_the_beat()
+	_tally("kindled")
+	if was == Tiles.BRAZIER_DEAD:
+		msg_log.add("You thrust the flaring torch into the black brazier. It catches, "
+			+ "and roars. (%d)" % give, Color(1.00, 0.82, 0.45))
+	else:
+		msg_log.add("You give the flare to the fire. It roars up. (%d)" % give,
+			Color(1.00, 0.82, 0.45))
+	msg_log.add("Your torch settles to an ordinary flame.", Color(0.80, 0.75, 0.60))
+	_end_player_turn()
+	return true
+
 func _adjacent_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
 		for dx in [-1, 0, 1]:
@@ -4357,6 +4462,16 @@ func actions_here() -> Array:
 	# player_wait refuses it anyway.
 	if player.hp < player.max_hp and _adjacent_brazier().x >= 0:
 		out.append([KEY_PERIOD, "warm yourself"])
+	# The flare's offer, only when it would do something -- and only when the
+	# key would actually reach it. player_pickup acts on what is underfoot
+	# first, and on RUBBLE it tries to knap even with no sling (and refuses),
+	# which this list deliberately does not advertise -- so the test is the
+	# key's own, not "did anything above claim g".
+	if items_at(player.x, player.y).is_empty() \
+			and not map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES:
+		var fire := flare_target()
+		if fire.x >= 0:
+			out.append([KEY_G, "kindle the brazier (%d)" % flare_kindle(torch_flare)])
 	return out
 
 func player_pickup() -> bool:
@@ -4396,6 +4511,11 @@ func player_pickup() -> bool:
 			return player_ascend()
 		if under == Tiles.SHRINE:
 			return player_pray()
+		# Nothing underfoot to act on: a flared torch next to a brazier gives
+		# it the fire. A brazier is never underfoot -- it is an obstacle -- so
+		# this is the one neighbouring-cell act the key has.
+		if torch_flare > 0 and _adjacent_any_brazier().x >= 0:
+			return player_kindle()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
@@ -4949,6 +5069,16 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 		if torch_flare == 0:
 			msg_log.add("The flare gutters down to an ordinary flame.",
 				Color(0.80, 0.75, 0.60))
+		elif flare_kindle(torch_flare) != flare_kindle(torch_flare + 1):
+			# The race made visible: each step down is said, so the player
+			# learns the flare is worth less by the turn without doing sums.
+			var now := flare_kindle(torch_flare)
+			if now > 0:
+				msg_log.add("Your flare dims. It would kindle a fire to %d now." % now,
+					Color(0.95, 0.80, 0.45))
+			else:
+				msg_log.add("Your flare is too far gone to kindle a fire. It is only "
+					+ "light now.", Color(0.80, 0.75, 0.60))
 	_burn_the_fires_down()
 	_let_the_stone_settle()
 	update_vision()
@@ -6272,6 +6402,12 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	if route.is_empty():
 		return
 	var step: Vector2i = route[0]
+	# Where it is going, for anything that bumps into it. Recorded whether or
+	# not the step succeeds: "I moved last turn" and "I am stuck" both have to
+	# answer the question, or a friend walking freely ahead of you in a queue
+	# reads as standing idle and gets swapped backwards.
+	actor.want = step
+	actor.want_turn = turns
 	var blocker := entity_at(step.x, step.y)
 	if blocker != null:
 		# YOUR OWN SIDE IS NOT A WALL.
@@ -6285,13 +6421,15 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 		# far side, because its one step was onto the player's cell and it gave
 		# up rather than going round.
 		#
-		# Deliberately narrowed to the same faction. A monster blocked by
-		# another monster keeps today's behaviour of simply waiting, which
-		# reads fine in a corridor and -- more to the point -- is a difficulty
-		# question nobody has measured. Teaching every creature in the game to
-		# flow around its neighbours is a real change to how packs reach you,
-		# and it does not belong in a bug fix for allies.
+		# The other side IS a wall: a creature never walks through something
+		# it would fight. Its own side it first tries to swap with (see
+		# `_gives_way` -- head-on and idle friends trade places), and failing
+		# that, to go round. Monsters have always gone round monsters; a comment
+		# here once claimed they "simply wait", and the code never did.
 		if blocker.faction != actor.faction:
+			return
+		if _gives_way(actor, blocker):
+			_swap_places(actor, blocker)
 			return
 		step = _around(actor, target)
 		if step.x < 0:
@@ -6301,6 +6439,73 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
 	actor.x = step.x
 	actor.y = step.y
+
+## How long a creature's last intent counts as current, in turns. Wider than
+## one because not everything acts every turn: a slow creature walking a queue
+## still means to walk it between its moves.
+const TRAFFIC_MEMORY := 3
+
+## TRAFFIC: will this friend trade places so `actor` can pass?
+##
+## Brad, 2026-09-24/25: kobolds jammed in doorways facing opposite ways, and
+## lines of four where nobody could tell who was going where. Going round is no
+## help in a doorway or a corridor -- there is no round -- so two creatures
+## that each wait for the other waited for ever. The rules, in order:
+##
+##   1. Never the player. Allies go round you, and you can swap with them.
+##   2. Never a friend who is FIGHTING (next to something it would attack).
+##      Without this the one behind would swap forward every turn and the
+##      player would face a fresh attacker each turn -- a rotating shield wall,
+##      which is a large hidden difficulty change, not a traffic fix.
+##   3. HEAD-ON: its last intent was MY cell. We want each other's squares;
+##      we swap and both get on. A line of three with one going the other way
+##      is this, once per turn, until the one has passed through.
+##   4. QUEUE: its last intent was somewhere else. It is going my way and is
+##      held up itself; I wait my turn, as a queue should.
+##   5. IDLE: no intent lately -- a guard on its post, a sleeper, a creature
+##      eating. It gives way, one cell back, and walks back on its own turn.
+##
+## Fixed rules, no rng, so a seeded run replays the same. The obvious next
+## step -- a creature that tires of a queue and takes another way round, which
+## is to say FLANKS -- is deliberately not here: it changes how fights play,
+## and gets its own build once this one has been played.
+func _gives_way(actor: Entity, blocker: Entity) -> bool:
+	if blocker.is_player or not blocker.alive:
+		return false
+	if _engaged(blocker):
+		return false
+	if blocker.want_turn >= turns - TRAFFIC_MEMORY:
+		return blocker.want == Vector2i(actor.x, actor.y)
+	return true
+
+## Is this creature next to something it would fight?
+func _engaged(e: Entity) -> bool:
+	for o in entities:
+		if o == e or not o.alive:
+			continue
+		if maxi(absi(o.x - e.x), absi(o.y - e.y)) == 1 and e.hostile_to(o):
+			return true
+	return false
+
+## Two friends trade squares. The one moving pays for the step; the one moved
+## pays nothing and still takes its own turn, as an ally does when the player
+## swaps with it. Both cells hold a creature, so neither can be a pit.
+##
+## A SLEEPER moved aside stirs -- Brad's call. It wakes to suspicion, the state
+## a noise leaves things in, and does NOT learn where the player is: a kobold
+## elbowed by its friend has no reason to know. A guard walking its round is
+## unaware too, but awake; being passed in a doorway is nothing to it.
+func _swap_places(actor: Entity, blocker: Entity) -> void:
+	var from := Vector2i(actor.x, actor.y)
+	_last_move_cost = move_cost_for(actor, blocker.x, blocker.y)
+	actor.x = blocker.x
+	actor.y = blocker.y
+	blocker.x = from.x
+	blocker.y = from.y
+	if blocker.activity == Entity.Activity.SLEEPING \
+			and blocker.alertness == Entity.Alert.ASLEEP:
+		blocker.alertness = Entity.Alert.SUSPICIOUS
+		blocker.calm_turns = 0
 
 ## A way past a friend: the free neighbour that gets closest to `target`.
 ##

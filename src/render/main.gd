@@ -321,6 +321,7 @@ func _process(delta: float) -> void:
 	sidebar.pad_input = _pad_input
 	legend.pad_input = _pad_input
 	trade.pad_input = _pad_input
+	name_entry.pad_input = _pad_input
 	inventory.pad_input = _pad_input
 
 	if menu.visible or legend.visible:
@@ -540,7 +541,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	if name_entry.visible:
-		name_entry.handle_key(key_event)
+		# A pad sends no characters, so its presses are MEANINGS here -- move,
+		# choose, erase, begin -- read from the live bindings. A keyboard
+		# types, exactly as before.
+		if _synthetic:
+			name_entry.pad_act(NamePanel.pad_action(pad.cfg, key))
+		else:
+			name_entry.handle_key(key_event)
 		_refresh()
 		return
 
@@ -925,6 +932,7 @@ func _bind_state(s: GameState) -> void:
 	here.state = s
 	trade.state = s
 	trade.pad_cfg = pad.cfg
+	name_entry.pad_cfg = pad.cfg
 	here.pad_cfg = pad.cfg
 	_pad_input = not Input.get_connected_joypads().is_empty()
 	log_view.state = s

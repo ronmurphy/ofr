@@ -290,6 +290,18 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
 	y += LINE
 
+	# The flare's prize, while it burns: what it would fill a brazier to right
+	# now. Its own row because the sidebar is too narrow for both on one line,
+	# and because this is the number the race is run against.
+	if state.torch_flare > 0:
+		var kindle := GameState.flare_kindle(state.torch_flare)
+		draw_string(font, Vector2(PAD, y), "kindles",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+		draw_string(font, Vector2(PAD, y), str(kindle) if kindle > 0 else "--",
+			HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
+			Palette.AMULET if kindle > 0 else Palette.UI_DIM)
+		y += LINE
+
 	# The party, and ONLY when there is one. A row that is empty nine tenths of
 	# the time is furniture; this costs no space at all until somebody is
 	# standing with you.

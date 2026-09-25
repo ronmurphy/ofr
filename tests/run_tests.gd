@@ -136,6 +136,9 @@ func _initialize() -> void:
 	_test_the_counter_by_mouse_and_keys()
 	_test_the_trader_piles()
 	_test_creatures_keep_out_of_pits()
+	_test_traffic()
+	_test_naming_without_a_keyboard()
+	_test_the_flare_rekindles()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3608,6 +3611,371 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## THE FLARE REKINDLES: a flared torch fills a brazier to a level set by how much
+## flare is left, and is spent doing it. Brad's design, 2026-09-25.
+func _test_the_flare_rekindles() -> void:
+	check("the tiers: 100 and 75 fill to 15",
+		GameState.flare_kindle(100) == 15 and GameState.flare_kindle(75) == 15)
+	check("  74 and 50 to 10", GameState.flare_kindle(74) == 10
+		and GameState.flare_kindle(50) == 10)
+	check("  49 and 25 to 5", GameState.flare_kindle(49) == 5
+		and GameState.flare_kindle(25) == 5)
+	check("  under 25, nothing -- light and curse only",
+		GameState.flare_kindle(24) == 0 and GameState.flare_kindle(1) == 0)
+
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var c := Vector2i(20, 20)
+	var east := Vector2i(c.x + 1, c.y)
+	var west := Vector2i(c.x - 1, c.y)
+	# A clear patch of floor with one brazier beside the player.
+	var reset := func(tile: int, holds: int) -> void:
+		for y in range(c.y - 2, c.y + 3):
+			for x in range(c.x - 2, c.x + 3):
+				gs.map.set_tile(x, y, Tiles.FLOOR)
+				gs.brazier_charge.erase(Vector2i(x, y))
+		gs.map.set_tile(east.x, east.y, tile)
+		if tile == Tiles.BRAZIER:
+			gs.brazier_charge[east] = holds
+		gs.player.x = c.x
+		gs.player.y = c.y
+		gs.ground = gs.ground.filter(func(it: Item) -> bool:
+			return absi(it.x - c.x) > 2 or absi(it.y - c.y) > 2)
+		gs.entities = [gs.player]
+	var offers := func() -> bool:
+		for a in gs.actions_here():
+			if String(a[1]).begins_with("kindle"):
+				return true
+		return false
+
+	# A BLACK BRAZIER, a fresh flare: the only thing that brings one back.
+	reset.call(Tiles.BRAZIER_DEAD, 0)
+	gs.torch_flare = 100
+	check("the premise: a black brazier beside you", gs._adjacent_any_brazier() == east)
+	check("the sidebar offers to kindle it", offers.call())
+	var turn := gs.turns
+	check("the action key kindles it", gs.player_pickup())
+	check("  it is lit again", gs.map.get_tile(east.x, east.y) == Tiles.BRAZIER)
+	check("  and full to 15 -- more than a fresh one holds (%d)" % int(gs.brazier_charge.get(east, 0)),
+		int(gs.brazier_charge.get(east, 0)) == 15)
+	check("  the flare is spent", gs.torch_flare == 0)
+	check("  and it took a turn", gs.turns == turn + 1)
+
+	# A WEAK FIRE is filled TO the tier, not added to.
+	reset.call(Tiles.BRAZIER, 3)
+	gs.torch_flare = 60
+	check("a weak fire kindles", gs.player_pickup())
+	check("  to the tier, 10 -- not 3 + 10 (%d)" % int(gs.brazier_charge.get(east, 0)),
+		int(gs.brazier_charge.get(east, 0)) == 10)
+
+	# ALREADY HOTTER: refused, and the flare is kept.
+	reset.call(Tiles.BRAZIER, 12)
+	gs.torch_flare = 60
+	check("the premise: the flare is lit (60) beside a fire of 12", gs.torch_flare == 60)
+	check("a fire hotter than the flare is not offered", not offers.call())
+	check("  and the key refuses it", not gs.player_pickup())
+	check("  keeping the flare", gs.torch_flare == 60)
+	check("  and the fire as it was", int(gs.brazier_charge.get(east, 0)) == 12)
+
+	# TOO FAR GONE: under 25 the flare kindles nothing.
+	reset.call(Tiles.BRAZIER_DEAD, 0)
+	gs.torch_flare = 20
+	check("under 25 turns, no offer", not offers.call())
+	check("  and the key refuses", not gs.player_pickup() and gs.torch_flare == 20)
+
+	# TWO BESIDE YOU: the emptier one, without the player having to aim.
+	reset.call(Tiles.BRAZIER, 6)
+	gs.map.set_tile(west.x, west.y, Tiles.BRAZIER_DEAD)
+	gs.torch_flare = 90
+	check("with two beside you, the black one is chosen", gs.flare_target() == west)
+	gs.map.set_tile(west.x, west.y, Tiles.FLOOR)
+
+	# THE KEY'S OWN ORDER. On rubble with no sling the key tries to knap (and
+	# refuses); the sidebar must not promise a kindle the key will not do.
+	reset.call(Tiles.BRAZIER_DEAD, 0)
+	gs.map.set_tile(c.x, c.y, Tiles.RUBBLE)
+	gs.torch_flare = 100
+	check("standing on rubble, no kindle is promised", not offers.call())
+	gs.map.set_tile(c.x, c.y, Tiles.FLOOR)
+
+	# THE RACE, SAID: each step down is announced.
+	reset.call(Tiles.FLOOR, 0)
+	gs.torch_flare = 75
+	var before := gs.msg_log.entries.size()
+	gs.player_wait()
+	var said := ""
+	for i in range(before, gs.msg_log.entries.size()):
+		said += str(gs.msg_log.entries[i])
+	check("the flare dropping a step is announced (%d left)" % gs.torch_flare,
+		gs.torch_flare == 74 and said.findn("kindle a fire to 10") >= 0, said)
+	before = gs.msg_log.entries.size()
+	gs.player_wait()
+	var quiet := gs.msg_log.entries.size() == before
+	check("  but not every turn", quiet)
+
+## A controller can name a character. Until 2026-09-25 it could not: a pad sends
+## no characters, so every pad player was named by the dungeon. Now there is a
+## list of names to pick and an alphabet to spell with -- and typing, which is
+## how everyone else does it, must be exactly as it was.
+func _test_naming_without_a_keyboard() -> void:
+	var n := NamePanel.new()
+	n.size = Vector2(1600, 900)
+	var got := {"name": null}
+	n.chosen.connect(func(x: String) -> void: got["name"] = x)
+
+	check("the list offers the dungeon's names", NamePanel.names() == Morgue.ROLLED)
+	var rare_on_list := false
+	for r in Morgue.ROLLED_RARE:
+		rare_on_list = rare_on_list or NamePanel.names().has(r)
+	check("  but never the rare ones -- they are found, not chosen", not rare_on_list)
+
+	# The pad's meanings, from the live bindings.
+	var cfg := PadConfig.new()
+	var said := func(button: int) -> StringName:
+		return NamePanel.pad_action(cfg, cfg.key_for_button(button))
+	check("A chooses", said.call(JOY_BUTTON_A) == &"press")
+	check("B erases", said.call(JOY_BUTTON_B) == &"erase")
+	check("Y flips the case", said.call(JOY_BUTTON_Y) == &"case")
+	check("Start begins", said.call(JOY_BUTTON_START) == &"begin")
+	check("the d-pad moves", said.call(JOY_BUTTON_DPAD_DOWN) == &"down"
+		and said.call(JOY_BUTTON_DPAD_LEFT) == &"left")
+	check("the stick moves", NamePanel.pad_action(cfg, KEY_UP) == &"up")
+	check("X means nothing here", said.call(JOY_BUTTON_X) == &"")
+
+	# PICK A NAME: one press, and the cursor waits on "begin".
+	n.open()
+	n.pad_act(&"right")
+	n.pad_act(&"press")
+	check("picking a name fills the field (%s)" % n.typed, n.typed == Morgue.ROLLED[1])
+	check("  and the cursor moves to begin",
+		n.cell_at(n.at).get("value", &"") == &"begin")
+	n.pad_act(&"press")
+	check("  so the next press starts the run as that name (%s)" % str(got["name"]),
+		got["name"] == Morgue.ROLLED[1] and not n.visible)
+
+	# SPELL ONE. A capital, then small letters, as a phone does.
+	n.open()
+	var name_rows := ceili(float(NamePanel.names().size()) / float(NamePanel.NAMES_PER_ROW))
+	for i in name_rows:
+		n.pad_act(&"down")
+	check("the premise: the cursor is on the alphabet (%s)" % str(n.cell_at(n.at)),
+		n.cell_at(n.at).get("kind", &"") == &"letter")
+	n.pad_act(&"press")                     # A
+	n.pad_act(&"right")
+	n.pad_act(&"right")
+	n.pad_act(&"press")                     # c
+	check("spelling gives a capital then small letters (%s)" % n.typed, n.typed == "Ac")
+	n.pad_act(&"case")
+	n.pad_act(&"press")                     # C
+	check("  and the case can be flipped by hand (%s)" % n.typed, n.typed == "AcC")
+	n.pad_act(&"erase")
+	check("B erases one letter (%s)" % n.typed, n.typed == "Ac")
+	for i in Morgue.NAME_MAX + 5:
+		n.pad_act(&"press")
+	check("a name stops at %d letters (%d)" % [Morgue.NAME_MAX, n.typed.length()],
+		n.typed.length() == Morgue.NAME_MAX)
+	n.pad_act(&"begin")
+	check("Start begins with what was spelled", got["name"] == Morgue.clean_name(n.typed))
+
+	# Blank still means "the dungeon names you" -- main.gd rolls on "".
+	n.open()
+	n.pad_act(&"begin")
+	check("an empty field still hands back blank", got["name"] == "")
+
+	# THE KEYBOARD, unchanged: it types.
+	n.open()
+	for ch in "Ann":
+		var k := InputEventKey.new()
+		k.pressed = true
+		k.unicode = ch.unicode_at(0)
+		n.handle_key(k)
+	var bs := InputEventKey.new()
+	bs.pressed = true
+	bs.keycode = KEY_BACKSPACE
+	n.handle_key(bs)
+	check("typing still types, backspace still erases (%s)" % n.typed, n.typed == "An")
+	var enter := InputEventKey.new()
+	enter.pressed = true
+	enter.keycode = KEY_ENTER
+	n.handle_key(enter)
+	check("  and enter begins", got["name"] == "An")
+
+	# THE MOUSE: hover moves the cursor, a click picks.
+	n.open()
+	var over := InputEventMouseMotion.new()
+	over.position = n.cell_rect(Vector2i(2, 1)).get_center()
+	n._gui_input(over)
+	check("hovering a name moves the cursor to it", n.at == Vector2i(2, 1))
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = n.cell_rect(Vector2i(2, 1)).get_center()
+	n._gui_input(click)
+	check("clicking a name picks it (%s)" % n.typed,
+		n.typed == Morgue.ROLLED[NamePanel.NAMES_PER_ROW + 2])
+
+	# THE LAYOUT, measured -- the screen could not be photographed while this
+	# was written. Every cell inside the box, and no two overlapping.
+	var box := n._box()
+	var cells: Array = []
+	var outside := PackedStringArray()
+	var all := n.rows()
+	for r in all.size():
+		for c in (all[r] as Array).size():
+			var rect := n.cell_rect(Vector2i(c, r))
+			if not box.encloses(rect):
+				outside.append("%d,%d" % [c, r])
+			cells.append(rect)
+	check("every button sits inside the box", outside.is_empty(), ", ".join(outside))
+	var overlaps := 0
+	for i in cells.size():
+		for j in range(i + 1, cells.size()):
+			if (cells[i] as Rect2).intersects(cells[j] as Rect2):
+				overlaps += 1
+	check("and no two overlap (%d cells)" % cells.size(), overlaps == 0 and cells.size() > 30)
+	var last: Rect2 = cells[-1]
+	check("the grid ends above the footer line",
+		last.end.y < box.end.y - NamePanel.PAD - 12.0,
+		"%.0f vs %.0f" % [last.end.y, box.end.y - NamePanel.PAD])
+	check("the box fits the window", Rect2(Vector2.ZERO, n.size).encloses(box))
+	n.free()
+
+	# main.gd hands a pad press to the panel as a MEANING, before any typing.
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var at := src.find("if name_entry.visible:")
+	var pad_first := src.find("name_entry.pad_act(", at)
+	var typing := src.find("name_entry.handle_key(", at)
+	check("main.gd gives the pad its own path into the name screen",
+		at >= 0 and pad_first > at and typing > pad_first)
+
+## TRAFFIC: friends that meet in a corridor or a doorway get past each other.
+##
+## Brad saw kobolds jam at a door facing opposite ways, and lines of four stuck
+## with nobody able to tell who was going where. Every case here is a one-wide
+## corridor with an open door in the middle -- the place "go round" cannot help.
+func _test_traffic() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var c := Vector2i(30, 20)
+	var west := Vector2i(c.x - 7, c.y)
+	var east := Vector2i(c.x + 7, c.y)
+	for y in range(c.y - 2, c.y + 3):
+		for x in range(c.x - 9, c.x + 10):
+			gs.map.set_tile(x, y, Tiles.WALL)
+	for x in range(west.x, east.x + 1):
+		gs.map.set_tile(x, c.y, Tiles.FLOOR)
+	gs.map.set_tile(c.x, c.y, Tiles.DOOR_OPEN)
+	gs.pathfinder.refresh(gs.map)
+	gs.player.x = 80
+	gs.player.y = 40
+
+	var make := func(at: int, faction: int) -> Entity:
+		var e := Entity.new("kobold", &"kobold", at, c.y)
+		e.faction = faction
+		e.alertness = Entity.Alert.AWAKE
+		e.activity = Entity.Activity.PATROLLING
+		return e
+	# One round: each walker steps toward its goal, in list order, then the
+	# turn advances -- as the scheduler would run them.
+	var run := func(walkers: Array, goals: Array, rounds: int) -> void:
+		for r in rounds:
+			for i in walkers.size():
+				gs._step_toward(walkers[i], goals[i])
+			gs.turns += 1
+
+	# HEAD-ON AT THE DOOR: one each side, going opposite ways.
+	var a: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	var b: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, a, b]
+	check("the premise: they face each other through the door",
+		b.x == c.x and a.x == c.x - 1)
+	run.call([a, b], [east, west], 6)
+	check("head-on at a door, they get past each other (%d, %d)" % [a.x, b.x],
+		a.x > c.x and b.x < c.x - 1)
+
+	# THREE ONE WAY, ONE THE OTHER. The one passes through the line.
+	var w1: Entity = make.call(c.x - 3, Entity.Faction.MONSTER)
+	var w2: Entity = make.call(c.x - 2, Entity.Faction.MONSTER)
+	var w3: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	var e1: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, w1, w2, w3, e1]
+	run.call([w1, w2, w3, e1], [east, east, east, west], 12)
+	check("one against a line of three passes through it (%d vs %d..%d)"
+		% [e1.x, mini(w1.x, mini(w2.x, w3.x)), maxi(w1.x, maxi(w2.x, w3.x))],
+		e1.x < mini(w1.x, mini(w2.x, w3.x)))
+	check("  and the three get through the door too",
+		w1.x > c.x and w2.x > c.x and w3.x > c.x)
+
+	# TWO AND TWO.
+	var p1: Entity = make.call(c.x - 2, Entity.Faction.MONSTER)
+	var p2: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	var q1: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	var q2: Entity = make.call(c.x + 1, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, p1, p2, q1, q2]
+	run.call([p1, p2, q1, q2], [east, east, west, west], 12)
+	check("two and two untangle (%d %d | %d %d)" % [p1.x, p2.x, q1.x, q2.x],
+		mini(p1.x, p2.x) > maxi(q1.x, q2.x))
+
+	# A QUEUE DOES NOT CHURN, AND A FIGHTER IS NEVER SWAPPED OUT. The front one
+	# is fighting the player; the two behind want to reach the player too.
+	gs.player.x = c.x + 1
+	gs.player.y = c.y
+	var front: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	var mid: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	var back: Entity = make.call(c.x - 2, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, front, mid, back]
+	var at_player := Vector2i(gs.player.x, gs.player.y)
+	var churned := 0
+	for r in 6:
+		gs._step_toward(mid, at_player)
+		gs._step_toward(back, at_player)
+		gs.turns += 1
+		if front.x != c.x or mid.x != c.x - 1 or back.x != c.x - 2:
+			churned += 1
+	check("the premise: the front one is fighting", gs._engaged(front))
+	check("a queue behind a fight holds its order (%d rounds moved)" % churned,
+		churned == 0)
+	check("  so the player faces the same attacker, not a fresh one each turn",
+		front.x == c.x)
+	gs.player.x = 80
+	gs.player.y = 40
+
+	# IDLE GIVES WAY, and a sleeper stirs without learning where you are.
+	var walker: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	var sleeper: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	sleeper.activity = Entity.Activity.SLEEPING
+	gs.entities = [gs.player, walker, sleeper]
+	gs._step_toward(walker, east)
+	check("a sleeper in the doorway gives way", walker.x == c.x and sleeper.x == c.x - 1)
+	check("  and stirs", sleeper.alertness == Entity.Alert.SUSPICIOUS)
+	check("  without learning where the player is", sleeper.last_seen == Vector2i(-1, -1))
+	var guard: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	guard.alertness = Entity.Alert.ASLEEP
+	var passer: Entity = make.call(c.x - 1, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, passer, guard]
+	gs._step_toward(passer, east)
+	check("a guard standing its post gives way too", passer.x == c.x and guard.x == c.x - 1)
+	check("  but is not stirred by it -- it was awake", guard.alertness == Entity.Alert.ASLEEP)
+
+	# NEVER ACROSS SIDES. An ally meets a monster in the door: they would fight,
+	# so neither walks through the other. Must-succeed first: two allies DO swap.
+	var ally1: Entity = make.call(c.x - 1, Entity.Faction.PLAYER)
+	var ally2: Entity = make.call(c.x, Entity.Faction.PLAYER)
+	gs.entities = [gs.player, ally1, ally2]
+	gs._step_toward(ally1, east)
+	check("allies swap with allies", ally1.x == c.x and ally2.x == c.x - 1)
+	var ally3: Entity = make.call(c.x - 1, Entity.Faction.PLAYER)
+	var foe: Entity = make.call(c.x, Entity.Faction.MONSTER)
+	gs.entities = [gs.player, ally3, foe]
+	gs._step_toward(ally3, east)
+	check("but never with something they would fight", ally3.x == c.x - 1 and foe.x == c.x)
+
+	# The intent survives a save, so a jam untangles the same after a reload.
+	var kept := Entity.from_dict(e1.to_dict())
+	check("a creature's intent is saved (%s at %d)" % [str(kept.want), kept.want_turn],
+		kept.want == e1.want and kept.want_turn == e1.want_turn and e1.want_turn >= 0)
+
 ## Creatures off the pathfinder -- going round a friend, wandering, fleeing --
 ## never step onto a pit. Brad saw a bone ally stand in one for good: the
 ## pathfinder treats a pit as solid, so nothing on one can plan a step off it.

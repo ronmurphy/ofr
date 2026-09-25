@@ -148,6 +148,15 @@ var patrols := false
 ## Which post on the circuit it is walking towards.
 var patrol_at: int = 0
 
+## TRAFFIC. The cell this creature last meant to step into, and the turn it
+## meant to. Written by every pathfinding step, moved or blocked, so a friend
+## that bumps into it can ask "where are you going?" -- toward me (head-on: we
+## swap), somewhere else (a queue: I wait), or nowhere lately (idle: you give
+## way). See GameState._traffic. Saved, so a jam untangles the same way after
+## a reload as it would have without one.
+var want := Vector2i(-1, -1)
+var want_turn: int = -1
+
 var name: String = "thing"
 var appearance: StringName = &"unknown"
 var x: int
@@ -398,6 +407,7 @@ func to_dict() -> Dictionary:
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
+		"want": [want.x, want.y], "want_turn": want_turn,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
@@ -444,6 +454,9 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))
 	e.pursue_turns = int(d.get("pursue_turns", DEFAULT_PURSUIT))
+	var wanted: Array = d.get("want", [-1, -1])
+	e.want = Vector2i(int(wanted[0]), int(wanted[1]))
+	e.want_turn = int(d.get("want_turn", -1))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#
