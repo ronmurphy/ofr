@@ -1017,6 +1017,14 @@ static func uniques(depth: int) -> Array[StringName]:
 	return out
 
 static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
+	var pool := gems_at(depth)
+	if pool.is_empty():
+		return null
+	return make(pool[rng.randi_range(0, pool.size() - 1)])
+
+## The gems that can turn up at this depth. Empty on the first floor: gems are
+## held back until the second, which is where the pity gem starts looking.
+static func gems_at(depth: int) -> Array[StringName]:
 	var pool: Array[StringName] = []
 	for key in CATALOGUE:
 		var data: Dictionary = CATALOGUE[key]
@@ -1025,9 +1033,7 @@ static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
 		if int(data.get("min_depth", 999)) > depth:
 			continue
 		pool.append(key)
-	if pool.is_empty():
-		return null
-	return make(pool[rng.randi_range(0, pool.size() - 1)])
+	return pool
 
 static func roll(rng: RandomNumberGenerator, depth: int,
 		enchant_rng: RandomNumberGenerator = null) -> Item:

@@ -557,6 +557,28 @@ var enchant_rng := RandomNumberGenerator.new()
 ## the floor is already populated, so taking it from the main stream would make
 ## the number of draws depend on whether this depth has a trader at all.
 var trader_rng := RandomNumberGenerator.new()
+
+## GEMS IN THE RUBBLE. Brad's, 2026-09-25: one rubble pile on each floor hides a
+## gem, and knapping that pile finds it.
+##
+## One per floor, not a chance per pile, and the reasoning was measured rather
+## than guessed. Rubble runs from none to over a hundred piles a floor (averages
+## 20-40 by band -- and the caves carry LESS than the upper floors, not more),
+## so any flat per-pile chance would pay rubble-heavy floors several times over.
+## One hidden pile makes the odds simply the SHARE of the floor you worked:
+## knap a quarter of it, a one-in-four chance; knap all of it, certain. That is
+## both of Brad's framings at once -- "1 out of the floor's rubble" and "clear
+## every pile and the last one pays".
+##
+## Rolled, never chosen: choosing belongs to the trader's three-for-one, and a
+## chooser for something found in a pile of stones felt wrong to Brad. At most
+## one a floor, so it cannot be farmed, and only a sling can knap -- which gives
+## the weakest weapon in the game a reason to stay in the pack.
+##
+## Its own rng, seeded from the run and the floor, so hiding it draws nothing
+## from the main stream and every floor generates exactly as it did before.
+var geode := Vector2i(-1, -1)
+var geode_rng := RandomNumberGenerator.new()
 var map: DungeonMap
 var light_map: LightMap
 var pathfinder: Pathfinder
@@ -608,6 +630,27 @@ const GRAVE_RISE_CHANCE := 0.45
 ## Reads the morgue -- the file that has been written every death since the
 ## game existed and never once been read back. Deaths only: someone who walked
 ## out into daylight is not buried down here.
+## Chooses this floor's gem pile. Scans in a fixed order and draws once from
+## its own stream, so the same run always hides it under the same pile.
+func _hide_the_geode() -> void:
+	geode = Vector2i(-1, -1)
+	# Effective depth, so a climb floor does not hide its gem wherever the
+	# descent floor it mirrors did.
+	geode_rng.seed = int(rng.seed) ^ (effective_depth() * 3266489917) ^ 0x6E0D
+	# Not where no gem can exist yet. Floor one has none to give, and a pile
+	# hidden there was found by the suite quietly eating itself: the knap
+	# consumed it and the roll came back empty.
+	if Item.gems_at(effective_depth()).is_empty():
+		return
+	var piles: Array[Vector2i] = []
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == Tiles.RUBBLE:
+				piles.append(Vector2i(x, y))
+	if piles.is_empty():
+		return
+	geode = piles[geode_rng.randi_range(0, piles.size() - 1)]
+
 func _place_graves() -> void:
 	var here: Array = []
 	for rec in _morgue():
@@ -1214,6 +1257,9 @@ func build_level() -> void:
 	# keep out of authored rooms. Called any earlier and it would be checking
 	# the previous floor's vaults.
 	_place_corrupted()
+	# Last of all, once every tile is final: graves, the chest and the trader
+	# can all take a rubble cell, and the gem must be under one that stays.
+	_hide_the_geode()
 
 	# AFTER the floor is populated, so `_nearest_restable` routes them around
 	# whatever is already standing there. They arrive beside the player rather
@@ -4645,6 +4691,22 @@ func _knap_stones() -> bool:
 	var into := "" if sling == held else " into the %s in your pack" % sling.name
 	msg_log.add("You work a stone loose from the rubble%s. (%d/%d)"
 		% [into, sling.ammo, sling.ammo_max], Color(0.80, 0.78, 0.70))
+	# The floor's gem pile. Only reachable through a knap that SUCCEEDS: a full
+	# pouch refuses above on every pile alike, so trying piles with no room can
+	# never tell you which one holds it.
+	var here := Vector2i(player.x, player.y)
+	if here == geode:
+		geode = Vector2i(-1, -1)
+		var gem := Item.roll_gem(geode_rng, effective_depth())
+		if gem != null:
+			gem_found = true
+			_tally("geodes")
+			msg_log.add("Something glints in the broken stone: a %s!" % gem.name,
+				Color(0.85, 0.90, 1.00))
+			if not give_item(gem):
+				_drop_item_at(gem, here)
+				msg_log.add("Your pack is full; it lies at your feet.",
+					Color(0.9, 0.55, 0.35))
 	_end_player_turn()
 	return true
 
@@ -5224,7 +5286,11 @@ func _trader_to_dict() -> Dictionary:
 	return {"stock": stock, "credit": trader_credit, "gems": trader_gems,
 		"rolled": trader_rolled,
 		# Strings, like the main rng: JSON would round a 64-bit state.
-		"rng": [str(trader_rng.seed), str(trader_rng.state)]}
+		"rng": [str(trader_rng.seed), str(trader_rng.state)],
+		# The gem pile rides with the trader's record rather than beside it:
+		# both are "this floor's hidden state", saved and restored together.
+		"geode": [geode.x, geode.y],
+		"geode_rng": [str(geode_rng.seed), str(geode_rng.state)]}
 
 func apply_dict(d: Dictionary) -> bool:
 	if int(d.get("version", 0)) != SAVE_VERSION:
@@ -5355,6 +5421,13 @@ func apply_dict(d: Dictionary) -> bool:
 	if trng.size() == 2:
 		trader_rng.seed = str(trng[0]).to_int()
 		trader_rng.state = str(trng[1]).to_int()
+	# A save from before gems were hidden in rubble has none on this floor.
+	var hidden: Array = tr.get("geode", [-1, -1])
+	geode = Vector2i(int(hidden[0]), int(hidden[1]))
+	var grng: Array = tr.get("geode_rng", [])
+	if grng.size() == 2:
+		geode_rng.seed = str(grng[0]).to_int()
+		geode_rng.state = str(grng[1]).to_int()
 	reclaimed_this_run = Array(d.get("reclaimed_run", []))
 	# A save written before the trader existed has no shelves to restore, yet
 	# the floor still has its trader standing on it. Without this the player

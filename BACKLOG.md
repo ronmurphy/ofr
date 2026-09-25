@@ -37,6 +37,7 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Traffic: friends swap in doorways and corridors | `_gives_way`, `Entity.want` |
 | Naming a character on a controller (name list + alphabet) | `NamePanel.pad_act` |
 | A flared torch rekindles a brazier (the race) | `FLARE_KINDLE`, `player_kindle` |
+| One gem hidden in each floor's rubble (floor 2 on) | `geode`, `_hide_the_geode` |
 
 ---
 
@@ -254,7 +255,10 @@ ascent is a sneak game.
 - Watch the caves. Fungus is the deliberate replacement for potions down there,
   so hoarding softens exactly the pressure that band is built on.
 
-**Gems from somewhere other than chests.** Brad's, 2026-09-22: sack ultra-rares,
+**Gems from somewhere other than chests.** ~~Rubble~~ BUILT 2026-09-25 as one
+hidden gem pile per floor, found by knapping -- odds = the share of the floor's
+rubble you work. Measured first: rubble runs 0-114 piles a floor, so a flat
+per-pile chance was rejected. Brad's, 2026-09-22: sack ultra-rares,
 or a 1-in-100 chance while knapping rubble. The gem pool is 8 now and `roll_gem`
 picks uniformly, so every new stone dilutes the others — this fixes that while
 giving non-combat actions a payoff.

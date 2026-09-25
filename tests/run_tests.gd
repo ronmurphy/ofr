@@ -139,6 +139,7 @@ func _initialize() -> void:
 	_test_traffic()
 	_test_naming_without_a_keyboard()
 	_test_the_flare_rekindles()
+	_test_a_gem_in_the_rubble()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3611,6 +3612,115 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## GEMS IN THE RUBBLE: one pile per floor hides a gem, found by knapping it.
+func _test_a_gem_in_the_rubble() -> void:
+	# Every floor with rubble hides exactly one, under a pile that is really
+	# rubble; the main stream is not touched, so floors generate as before.
+	var hidden := 0
+	var on_rubble := 0
+	var with_rubble := 0
+	var rng_untouched := true
+	for d in [2, 4, 7, 10]:
+		var gs := GameState.new(5150 + d)
+		gs.new_game()
+		gs.depth = d
+		gs.build_level()
+		var any_rubble := false
+		for y in gs.map.height:
+			for x in gs.map.width:
+				any_rubble = any_rubble or gs.map.get_tile(x, y) == Tiles.RUBBLE
+		if any_rubble:
+			with_rubble += 1
+		var state_before := gs.rng.state
+		var was := gs.geode
+		gs._hide_the_geode()
+		rng_untouched = rng_untouched and gs.rng.state == state_before
+		check("  depth %d: the same pile every time for the same run" % d, gs.geode == was)
+		if gs.geode.x >= 0:
+			hidden += 1
+			if gs.map.get_tile(gs.geode.x, gs.geode.y) == Tiles.RUBBLE:
+				on_rubble += 1
+	# Some floors generate with no rubble at all (seed 5152's floor two does),
+	# so the count is against the floors that HAVE some -- and at least three
+	# of the four must, or this check is measuring nothing.
+	check("every floor with rubble hides a gem (%d of %d)" % [hidden, with_rubble],
+		hidden == with_rubble and with_rubble >= 3)
+	check("  always under real rubble (%d)" % on_rubble, on_rubble == hidden)
+	check("  and hiding it draws nothing from the main stream", rng_untouched)
+	var first := GameState.new(5150)
+	first.new_game()
+	check("floor one hides none -- no gem can be found there yet",
+		first.geode == Vector2i(-1, -1) and Item.gems_at(1).is_empty())
+
+	# Floor two, the first with gems to find.
+	var gs := GameState.new(5150)
+	gs.new_game()
+	gs.depth = 2
+	gs.build_level()
+	# Nothing lying on the piles: the key picks an item up before it knaps.
+	gs.ground = []
+	var sling := Item.make(&"sling")
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.give_item(sling)
+	gs.player.equipped[sling.slot] = sling
+	gs.entities = [gs.player]
+	var gems := func() -> int:
+		var n := 0
+		for it in gs.player.inventory:
+			if it.kind == Item.Kind.GEM:
+				n += 1
+		return n
+	var piles: Array[Vector2i] = []
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.RUBBLE:
+				piles.append(Vector2i(x, y))
+	check("the premise: floor two has rubble and a hidden gem (%d piles)" % piles.size(),
+		piles.size() > 1 and gs.geode.x >= 0)
+	var geode := gs.geode
+
+	# A FULL POUCH finds nothing, even on the gem pile -- or trying piles with
+	# no room would be a gem detector.
+	sling.ammo = sling.ammo_max
+	gs.player.x = geode.x
+	gs.player.y = geode.y
+	check("with a full pouch the gem pile refuses like any other", not gs.player_pickup())
+	check("  no gem, and the gem stays hidden", gems.call() == 0 and gs.geode == geode)
+
+	# CLEAR EVERY PILE: exactly one gem, from the one pile. The pity gem has
+	# usually set gem_found on floor two already, which would let the check
+	# below pass without the rubble doing anything -- so it starts false.
+	gs.gem_found = false
+	var found_at := Vector2i(-1, -1)
+	for c in piles:
+		sling.ammo = 0
+		gs.player.x = c.x
+		gs.player.y = c.y
+		var before: int = gems.call()
+		gs.player_pickup()
+		if gems.call() > before and found_at.x < 0:
+			found_at = c
+	check("clearing every pile finds exactly one gem (%d)" % gems.call(), gems.call() == 1)
+	check("  under the pile that was chosen", found_at == geode)
+	check("  and the floor has no second one", gs.geode == Vector2i(-1, -1))
+	check("  it counts as having met a gem", gs.gem_found)
+
+	# A floor with no rubble hides nothing.
+	for c in piles:
+		gs.map.set_tile(c.x, c.y, Tiles.FLOOR)
+	gs._hide_the_geode()
+	check("a floor with no rubble hides no gem", gs.geode == Vector2i(-1, -1))
+
+	# The hidden pile survives a save.
+	var gs2 := GameState.new(5150)
+	gs2.new_game()
+	gs2.depth = 2
+	gs2.build_level()
+	var loaded := GameState.new(1)
+	check("a save keeps the hidden pile", loaded.apply_dict(gs2.to_dict())
+		and loaded.geode == gs2.geode and gs2.geode.x >= 0)
+
 ## THE FLARE REKINDLES: a flared torch fills a brazier to a level set by how much
 ## flare is left, and is spent doing it. Brad's design, 2026-09-25.
 func _test_the_flare_rekindles() -> void:
