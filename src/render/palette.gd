@@ -147,6 +147,11 @@ const UI_TEXT       := Color("c7c2b4")
 const UI_DIM        := Color("6d6a60")
 const UI_FRAME      := Color("42404a")
 const UI_PANEL_BG   := Color("101118")
+## On the trader's shelf, what the PLAYER sold it -- apart from the trader's own
+## stock and from the gold of a dead hero's relic. Mint rather than blue so it
+## cannot be read as the highlight, and it separates from the gold on lightness
+## and hue both, which survives the red-green dichromacies.
+const TRADE_YOURS   := Color("8fd6b4")
 
 const HP_GOOD       := Color("6fa86b")
 const HP_WARN       := Color("c8a24a")

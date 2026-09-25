@@ -515,14 +515,22 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if trade.visible:
 		# A PAD IS NEVER A LETTER HERE EITHER -- the lesson of the pack, applied
 		# before anyone could find it the hard way. A pad press may only move,
-		# confirm, ask for the enchant, or leave.
+		# confirm, ask for the enchant, turn the piles, or leave.
 		if _synthetic:
+			# The shoulders turn over the trader's piles -- left/right are
+			# taken, they change side. Read through the live bindings, so a
+			# rebound shoulder still does it.
+			var step := TradePanel.pad_pile_step(pad.cfg, key)
+			if step != 0:
+				trade.handle_key(KEY_TAB, step < 0)
+				_refresh()
+				return
 			if key == PACK_BACK_KEY:
 				key = KEY_ESCAPE
 			elif not (key in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESCAPE,
 					PACK_FORGE_KEY] or key in CONFIRM):
 				return
-		trade.handle_key(key)
+		trade.handle_key(key, key_event.shift_pressed)
 		_refresh()
 		return
 

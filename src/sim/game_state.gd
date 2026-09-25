@@ -92,11 +92,14 @@ static func use_scratch_files(tag: String) -> void:
 	#
 	# One path, four readers, so this single line moves all of them.
 	SETTINGS_PATH = "user://scratch_%s_settings.cfg" % tag
+	# And the controller bindings. The suite closes the controller screen, and
+	# closing it saves -- see PadConfig.PATH for what that did to the real file.
+	PadConfig.PATH = "user://scratch_%s_gamepad.cfg" % tag
 
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
 	BestiaryLog.clear_scratch()
-	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH]:
+	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, PadConfig.PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 const SAVE_VERSION := 1
@@ -1674,7 +1677,10 @@ func trade_sell(index: int) -> bool:
 		return true
 	var w := Trade.worth(it)
 	trader_credit += w
-	trader_stock.append({"item": it, "relic": "", "hero": ""})
+	# "yours" marks it on the shelf as something the player brought, so the
+	# counter can show it apart from the trader's own stock (Brad, 2026-09-24:
+	# his sold sling sat among the shop's and looked like theirs).
+	trader_stock.append({"item": it, "relic": "", "hero": "", "yours": true})
 	msg_log.add("The trader takes the %s. (+%d, %d credit)"
 		% [it.display_name(), w, trader_credit], Color(0.80, 0.85, 0.95))
 	return true
@@ -5069,7 +5075,8 @@ func _trader_to_dict() -> Dictionary:
 	var stock := []
 	for entry in trader_stock:
 		stock.append({"item": (entry["item"] as Item).to_dict(),
-			"relic": entry["relic"], "hero": entry["hero"]})
+			"relic": entry["relic"], "hero": entry["hero"],
+			"yours": bool(entry.get("yours", false))})
 	return {"stock": stock, "credit": trader_credit, "gems": trader_gems,
 		"rolled": trader_rolled,
 		# Strings, like the main rng: JSON would round a 64-bit state.
@@ -5195,7 +5202,8 @@ func apply_dict(d: Dictionary) -> bool:
 		var it := Item.from_dict(entry.get("item", {}))
 		if it != null:
 			trader_stock.append({"item": it, "relic": String(entry.get("relic", "")),
-				"hero": String(entry.get("hero", ""))})
+				"hero": String(entry.get("hero", "")),
+				"yours": bool(entry.get("yours", false))})
 	trader_credit = int(tr.get("credit", 0))
 	trader_gems = int(tr.get("gems", 0))
 	trader_rolled = bool(tr.get("rolled", false))

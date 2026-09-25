@@ -59,6 +59,12 @@ Settled with Brad, 2026-09-24:
   read `boosts`, which equipment never uses, and sold every +N at base price.
 - **Words on the counter:** "credit" and "gems", not "slate" and "stones" --
   stones are sling ammunition.
+- **The trader's piles.** The shelf sorts the way a monster that collects would
+  sort a hoard, by what a thing is for: everything, things that cut, things you
+  wear, things to hide behind, bottles and scrolls, what the dead left. Picture
+  buttons with counts; tab / shift+tab, LB / RB, click or wheel. A hero's item
+  carries a skull. What the player sold is mint on the shelf and the trader says
+  "You gave me this." Brad asked for creativity here, not a copy of the pack.
 
 Decided while building, worth a second look:
 

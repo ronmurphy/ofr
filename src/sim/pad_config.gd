@@ -17,7 +17,12 @@ extends RefCounted
 ## Stored beside settings.cfg rather than with the morgue: this describes the
 ## player's hardware, not their run, and it must survive a death.
 
-const PATH := "user://gamepad.cfg"
+## A variable, not a constant, so GameState.use_scratch_files can move it. The
+## suite drives the controller screen, and closing that screen SAVES -- while
+## this was a constant, every suite run from 2026-09-22 to 2026-09-24 wrote the
+## tests' half-finished walk-through over Brad's real bindings (three buttons
+## bound, the rest gone, because `load_saved` takes the file wholesale).
+static var PATH := "user://gamepad.cfg"
 
 ## Button index -> the keycode it should behave as.
 ##

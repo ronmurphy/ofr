@@ -30,6 +30,13 @@ func _initialize() -> void:
 	var had_settings := FileAccess.file_exists("user://settings.cfg")
 	if had_settings:
 		settings_before = FileAccess.get_file_as_string("user://settings.cfg")
+	# The same tripwire for the controller bindings, which the suite overwrote
+	# on every run for two days before anyone noticed. Redirected now; this
+	# proves the redirect held.
+	var pad_before := ""
+	var had_pad := FileAccess.file_exists("user://gamepad.cfg")
+	if had_pad:
+		pad_before = FileAccess.get_file_as_string("user://gamepad.cfg")
 	print("")
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
@@ -127,6 +134,7 @@ func _initialize() -> void:
 	_test_the_trader_remembers_the_dead()
 	_test_the_counter()
 	_test_the_counter_by_mouse_and_keys()
+	_test_the_trader_piles()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -235,6 +243,15 @@ func _initialize() -> void:
 		settings_after == settings_before,
 		"before=%s after=%s" % [settings_before.replace("\n", " "),
 			settings_after.replace("\n", " ")])
+	check("the controller bindings are redirected (%s)" % PadConfig.PATH,
+		PadConfig.PATH.contains("scratch_"))
+	var has_pad := FileAccess.file_exists("user://gamepad.cfg")
+	var pad_after := ""
+	if has_pad:
+		pad_after = FileAccess.get_file_as_string("user://gamepad.cfg")
+	check("gamepad.cfg is in the same state it started in",
+		had_pad == has_pad and pad_after == pad_before,
+		"before=%s after=%s" % [pad_before, pad_after])
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -3590,6 +3607,131 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## The trader's piles: the shelf sorted by what a thing is FOR, by mouse, keys
+## and pad alike; and what the player sold shown as theirs.
+func _test_the_trader_piles() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	check("there is a trader to sort", gs.trader_here())
+	if not gs.trader_here():
+		return
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	# A relic by hand: the scratch morgue may hold no heroes at all.
+	gs.trader_stock.append({"item": Item.make(&"dagger"), "relic": "x", "hero": "Ron"})
+	var t := TradePanel.new()
+	t.state = gs
+	t.size = Vector2(1600, 900)
+	t.open()
+	check("it opens on everything", t.pile == 0
+		and t.shelf_rows().size() == gs.trader_stock.size() + 1)
+
+	# Every pile holds only its own, keeps the gem row, and counts true.
+	var wrong := PackedStringArray()
+	for p in range(1, TradePanel.PILES.size()):
+		t.set_pile(p)
+		var rows := t.shelf_rows()
+		if rows.is_empty() or int(rows[-1]) != TradePanel.GEM_ROW:
+			wrong.append("%s lost the gem row" % TradePanel.PILES[p]["id"])
+		for r in rows:
+			if int(r) != TradePanel.GEM_ROW and not TradePanel.in_pile(p, gs.trader_stock[int(r)]):
+				wrong.append("%s holds %s" % [TradePanel.PILES[p]["id"],
+					(gs.trader_stock[int(r)]["item"] as Item).name])
+		if t.pile_count(p) != rows.size() - 1:
+			wrong.append("%s miscounts" % TradePanel.PILES[p]["id"])
+	check("each pile holds only its own and keeps the gem row", wrong.is_empty(),
+		", ".join(wrong))
+
+	# And the piles are not all empty, which would pass the above vacuously.
+	var ids_in := func(p: int) -> Array:
+		t.set_pile(p)
+		var out: Array = []
+		for r in t.shelf_rows():
+			if int(r) != TradePanel.GEM_ROW:
+				out.append((gs.trader_stock[int(r)]["item"] as Item).id)
+		return out
+	var cut: Array = ids_in.call(1)
+	check("things that cut: the dagger and sling (%s)" % str(cut),
+		cut.has(&"dagger") and cut.has(&"sling") and not cut.has(&"leather_armour"))
+	check("things you wear: leather", (ids_in.call(2) as Array).has(&"leather_armour"))
+	check("things to hide behind: the buckler", (ids_in.call(3) as Array).has(&"buckler"))
+	check("bottles and scrolls: the potion", (ids_in.call(4) as Array).has(&"potion_healing"))
+	var dead: Array = ids_in.call(5)
+	check("what the dead left: Ron's dagger alone (%s)" % str(dead), dead == [&"dagger"])
+
+	# Nothing the trader stocks is homeless -- the pack once hid a gem this way.
+	var homeless := PackedStringArray()
+	for entry in gs.trader_stock:
+		var housed := false
+		for p in range(1, 5):
+			housed = housed or TradePanel.in_pile(p, entry)
+		if not housed:
+			homeless.append((entry["item"] as Item).name)
+	check("everything on the shelf has a pile", homeless.is_empty(), ", ".join(homeless))
+
+	# Keyboard: tab and shift+tab, from the pack side too.
+	t.open()
+	t.side = TradePanel.PACK
+	t.handle_key(KEY_TAB)
+	check("tab turns to the next pile", t.pile == 1)
+	check("  and brings the highlight to the shelf", t.side == TradePanel.SHELF)
+	t.handle_key(KEY_TAB, true)
+	check("shift+tab turns back", t.pile == 0)
+	t.handle_key(KEY_TAB, true)
+	check("  and wraps to the last", t.pile == TradePanel.PILES.size() - 1)
+
+	# Pad: the shoulders, through the live bindings.
+	var cfg := PadConfig.new()
+	check("the left shoulder turns back",
+		TradePanel.pad_pile_step(cfg, cfg.key_for_button(JOY_BUTTON_LEFT_SHOULDER)) == -1)
+	check("the right shoulder turns on",
+		TradePanel.pad_pile_step(cfg, cfg.key_for_button(JOY_BUTTON_RIGHT_SHOULDER)) == 1)
+	check("A does not turn the piles",
+		TradePanel.pad_pile_step(cfg, cfg.key_for_button(JOY_BUTTON_A)) == 0)
+
+	# Mouse: hovering names a pile, clicking turns to it and buys nothing, the
+	# wheel over the piles turns them.
+	t.open()
+	var credit := gs.trader_credit
+	var stocked := gs.trader_stock.size()
+	var over := InputEventMouseMotion.new()
+	over.position = t._pile_rect(2).get_center()
+	t._gui_input(over)
+	check("hovering a pile names it (\"%s\")" % t.info(), t.info().findn("wear") >= 0)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = t._pile_rect(3).get_center()
+	t._gui_input(click)
+	check("clicking a pile turns to it", t.pile == 3)
+	check("  and buys nothing", gs.trader_credit == credit
+		and gs.trader_stock.size() == stocked and gs.player.inventory.is_empty())
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.position = t._pile_rect(0).get_center()
+	t._gui_input(wheel)
+	check("the wheel over the piles turns them", t.pile == 4)
+
+	# What the player sold is marked as theirs, and says so.
+	var mine := Item.make(&"sling")
+	gs.give_item(mine)
+	check("the premise: a sling sold", gs.trade_sell(gs.player.inventory.find(mine)))
+	var entry: Dictionary = gs.trader_stock[-1]
+	check("  is marked as yours", entry["item"] == mine and bool(entry.get("yours", false)))
+	t.open()
+	t.side = TradePanel.SHELF
+	t._at[TradePanel.SHELF] = t.shelf_rows().find(gs.trader_stock.size() - 1)
+	check("its line says you gave it (\"%s\")" % t.info(), t.info().findn("you gave me") >= 0)
+	t._at[TradePanel.SHELF] = 0
+	check("the trader's own stock does not (\"%s\")" % t.info(),
+		t.info().findn("you gave me") < 0 and t.info().findn("costs") >= 0)
+	var loaded := GameState.new(1)
+	check("a save keeps it", loaded.apply_dict(gs.to_dict())
+		and bool(loaded.trader_stock[-1].get("yours", false))
+		and not bool(loaded.trader_stock[0].get("yours", false)))
+	t.free()
+
 func _test_the_counter_by_mouse_and_keys() -> void:
 	var gs := GameState.new(4040)
 	gs.new_game()
