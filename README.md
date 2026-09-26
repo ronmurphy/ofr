@@ -62,6 +62,8 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
 | `w` | swap between your best launcher and your best blade (costs a turn) |
 | `v` | cycle the view: letters, symbols, or pictures |
+| `q` | toggle between the classic grid and the tilted 3D view |
+| `[` / `]` | turn the 3D camera left or right by 90°; the right stick also turns it |
 | `R` | new game |
 
 ## Items
@@ -316,13 +318,25 @@ the rest of the game.
 
 ## View modes
 
-`v` cycles how the dungeon is drawn. Three modes:
+`v` cycles the classic grid's three drawing modes:
 
 | | |
 |---|---|
 | **letters** | `+ ' ~ , * Ω` and `! ? ) } [ "` -- the original |
 | **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` -- no new font needed |
 | **pictures** | icons, from an 18KB font subset |
+
+`q` switches between that classic grid and a tilted 3D view. The 3D view uses
+the same picture glyphs as camera-facing labels, keeps the game's palette and
+map visibility, and turns in 90° steps with `[` / `]` or the right stick. The
+camera turns around the player; movement and targeting follow its orientation
+while still using the same map cells. Procedural flagstone and masonry surfaces,
+terrain-specific floor glyphs when no icon-font picture exists, icon billboards
+for mapped terrain, a modeled pit opening, distinct stone forms with matching
+floor bases, local feature lights and soft ambient occlusion add depth while
+retaining the game's glyph art. The pause-menu text size also scales the 3D
+labels and billboards. Left-click travel and right-click targeting also work in
+the rotated view. On a controller, `q` is bound to d-pad up by default.
 
 In **symbols**, terrain and items change and creatures never do -- the font has
 no animals in it at all, so there was nothing to change them to.

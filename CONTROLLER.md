@@ -84,7 +84,8 @@ cat /proc/bus/input/devices     # does the OS list a pad at all?
 
 ## 3. Defaults, so most people never open the rebinding screen
 
-D-pad walks · `A` wait · `B` pick up · `X` inventory · `Y` look · `LB` shoot ·
+D-pad up toggles the 3D/classic view · down descends · left toggles the torch ·
+right prays · `A` wait · `B` pick up · `X` inventory · `Y` look · `LB` shoot ·
 `RB` swap reach/blade · `Start` menu.
 
 That's the Xbox-style layout most handhelds report as. Right for most, wrong
@@ -95,9 +96,12 @@ key. So `Y` really is the `x` key, and that's correct rather than a mismatch.
 
 **The left stick needs no binding.** It's polled, quantised to the same eight
 directions the keyboard has, with press-once-then-repeat so a held stick
-doesn't fire sixty moves a second. **Diagonals come from the stick** — asking
-anyone to bind eight directions on a four-way d-pad is a poor first
-experience, so the d-pad stays four-way and the stick covers the corners.
+doesn't fire sixty moves a second. The d-pad's four buttons handle contextual
+actions rather than movement; the stick covers all eight movement directions.
+In the 3D view, the right stick turns the camera left or right in 90° steps.
+The left stick moves relative to the camera, so pushing up always walks toward
+the top of the screen.
+The overview remains available by paging from the legend.
 
 ## 4. The pause menu works entirely from the pad
 
@@ -115,12 +119,12 @@ size and the map redraws behind the menu as you go.
 
 `Esc` → `g`, or click **controller** in the pause menu.
 
-It asks for fourteen bindings in order:
+It asks for the bindings in order:
 
 ```
-move up · move down · move left · move right · wait/rest · pick up
-inventory · look · shoot · swap reach/blade · close a door
-ally heel/loose · the legend · menu
+move up · move down · move left · move right · wait/rest · pick up · inventory
+look · shoot · swap reach/blade · close a door · ally heel/loose · the legend
+classic/3D view · menu · descend · ascend · torch · pray
 ```
 
 Directions come first on purpose: anyone who gives up halfway still has a

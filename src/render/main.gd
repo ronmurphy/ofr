@@ -9,6 +9,7 @@ extends Control
 ## party, or a second view drop in later without rewriting the game.
 
 @onready var grid: GlyphGrid = $Grid
+@onready var diorama: DioramaView = $Diorama
 @onready var sidebar: Sidebar = $Sidebar
 @onready var log_view: MessageView = $Log
 @onready var inventory: InventoryPanel = $Inventory
@@ -24,6 +25,9 @@ extends Control
 @onready var sound: SoundDeck = $Sound
 
 var state: GameState
+## The concrete view currently receiving map state, mouse input and effects.
+## Both renderers implement the small surface consumed by this controller.
+var _map_view: Variant
 
 ## Held for the life of the scene on purpose. This is a JavaScriptObject, and
 ## one that goes out of scope is collected -- after which the browser's
@@ -168,6 +172,7 @@ const MOVES := {
 }
 
 func _ready() -> void:
+	_map_view = grid
 	# `godot --pad-log` (or the exported binary with the same flag) prints every
 	# joypad event instead of acting on it. There is no other way to learn what
 	# a particular handheld calls its buttons.
@@ -217,6 +222,8 @@ func _ready() -> void:
 		_refresh()
 	grid.cell_clicked.connect(_on_cell_clicked)
 	grid.cell_right_clicked.connect(_on_cell_right_clicked)
+	diorama.cell_clicked.connect(_on_cell_clicked)
+	diorama.cell_right_clicked.connect(_on_cell_right_clicked)
 	inventory.use_requested.connect(_use_item)
 	inventory.drop_requested.connect(_drop_item)
 	inventory.merge_requested.connect(_merge_item)
@@ -245,14 +252,15 @@ func _ready() -> void:
 	# application is not. Ask before it happens, and write the slot when the
 	# page goes away regardless.
 	RenderTheme.load_settings()
+	_select_map_view(RenderTheme.diorama_enabled())
 	Effects.load_settings()
 	# The setting has to take effect at launch and not only when the key is
 	# pressed, or a player who chose "full" last session opens the game with
 	# the shader detached and no motion at all.
-	grid.apply_effects_mode()
+	_map_view.apply_effects_mode()
 	# Same reasoning as the line above: a size chosen last session has to be in
 	# force before the first frame, not only once the menu is opened.
-	grid.apply_text_size()
+	_map_view.apply_text_size()
 	Platform.guard_against_leaving(true)
 	_page_hidden_cb = Platform.on_page_hidden(_on_page_hidden)
 	_refresh()
@@ -276,7 +284,7 @@ func _cycle_text_size() -> void:
 	var said := RenderTheme.cycle_size()
 	if state != null:
 		state.msg_log.add(said, Color(0.70, 0.74, 0.80))
-	grid.apply_text_size()
+	_map_view.apply_text_size()
 	_refresh()
 
 func _process(delta: float) -> void:
@@ -311,6 +319,18 @@ func _process(delta: float) -> void:
 	if again != 0 and _world_has_focus() and _may_repeat():
 		_step(MOVES[again])
 
+	# The right stick has no gameplay binding, so it turns the 3D camera in
+	# deliberate quarter-turns. One turn per push; centre it before turning again.
+	if _map_view == diorama and _world_has_focus():
+		var right_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
+		if absf(right_x) >= 0.75 and not _diorama_stick_down:
+			diorama.rotate_view(1 if right_x > 0.0 else -1)
+			_diorama_stick_down = true
+		elif absf(right_x) < 0.30:
+			_diorama_stick_down = false
+	else:
+		_diorama_stick_down = false
+
 	# WHICH DEVICE IS IN THEIR HANDS, updated BEFORE the modal return below.
 	#
 	# The legend is drawn while that return is firing, so setting this after it
@@ -332,7 +352,7 @@ func _process(delta: float) -> void:
 	elif _aiming:
 		sidebar.hovered = _aim_at
 	else:
-		sidebar.hovered = grid.hovered_cell()
+		sidebar.hovered = _map_view.hovered_cell()
 	sidebar.queue_redraw()
 	here.pad_input = _pad_input
 	here.aiming = _aiming
@@ -446,6 +466,7 @@ var _synthetic := false
 ## also makes the startup enumeration race harmless -- a wrong initial guess
 ## fixes itself the moment somebody does something.
 var _pad_input := false
+var _diorama_stick_down := false
 
 func _press(key: int) -> void:
 	_synthetic = true
@@ -481,6 +502,7 @@ func _may_repeat() -> bool:
 
 ## One step on the map, watched for the things that should stop a held key.
 func _step(d: Vector2i) -> void:
+	d = _map_relative_direction(d)
 	var hp_was := state.player.hp
 	var dealt_was := int(state.stats.get("dealt", 0))
 	if state.player_move(d.x, d.y):
@@ -691,7 +713,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif key in CONFIRM:
 			_fire_at_cursor()
 		elif MOVES.has(key):
-			var step: Vector2i = MOVES[key]
+			var step: Vector2i = _map_relative_direction(MOVES[key])
 			_aim_at.x = clampi(_aim_at.x + step.x, 0, state.map.width - 1)
 			_aim_at.y = clampi(_aim_at.y + step.y, 0, state.map.height - 1)
 			_update_aim()
@@ -714,11 +736,24 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if key == KEY_ESCAPE or key in CONFIRM:
 			_end_look()
 		elif MOVES.has(key):
-			var step: Vector2i = MOVES[key]
+			var step: Vector2i = _map_relative_direction(MOVES[key])
 			_look_at.x = clampi(_look_at.x + step.x, 0, state.map.width - 1)
 			_look_at.y = clampi(_look_at.y + step.y, 0, state.map.height - 1)
-			grid.look_cursor = _look_at
+			_map_view.look_cursor = _look_at
 			_refresh()
+		return
+
+	# Renderer switching is free and available wherever the map has focus.
+	# `v` remains the classic letters / symbols / pictures cycle. Q is also the
+	# default d-pad-up binding. Older saved pad layouts still send O here; the
+	# overview remains one page away through the legend.
+	if key == KEY_Q or (_synthetic and key == KEY_O):
+		state.msg_log.add(RenderTheme.toggle_diorama(), Color(0.70, 0.74, 0.80))
+		_select_map_view(RenderTheme.diorama_enabled())
+		_refresh()
+		return
+	if _map_view == diorama and (key == KEY_BRACKETLEFT or key == KEY_BRACKETRIGHT):
+		diorama.rotate_view(-1 if key == KEY_BRACKETLEFT else 1)
 		return
 
 	if key == KEY_M:
@@ -730,7 +765,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# able to flip back and forth and decide which one you can read faster.
 	if key == KEY_E:
 		state.msg_log.add(Effects.cycle(), Color(0.70, 0.74, 0.80))
-		grid.apply_effects_mode()
+		_map_view.apply_effects_mode()
 		_refresh()
 		return
 
@@ -742,7 +777,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	if key == KEY_V:
 		state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
-		grid.forget_metrics()
+		_map_view.forget_metrics()
 		_refresh()
 		return
 
@@ -847,13 +882,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if state.player_close_door():
 				_refresh()
 
+func _map_relative_direction(direction: Vector2i) -> Vector2i:
+	if _map_view == diorama:
+		return diorama.map_relative_direction(direction)
+	return direction
+
 func _on_cell_clicked(cell: Vector2i) -> void:
 	_end_look()
 	if state.game_over:
 		return
 	if state.begin_travel(cell):
 		_travel_accum = 0.0
-		_refresh()
+	_refresh()
 
 ## Look mode is available after death too -- reading the room that killed you
 ## is half of what makes a run worth losing.
@@ -863,7 +903,7 @@ func _toggle_look() -> void:
 		return
 	_look = true
 	_look_at = Vector2i(state.player.x, state.player.y)
-	grid.look_cursor = _look_at
+	_map_view.look_cursor = _look_at
 	sidebar.look_mode = true
 	_refresh()
 
@@ -871,7 +911,7 @@ func _end_look() -> void:
 	if not _look:
 		return
 	_look = false
-	grid.look_cursor = Vector2i(-1, -1)
+	_map_view.look_cursor = Vector2i(-1, -1)
 	sidebar.look_mode = false
 	_refresh()
 
@@ -925,6 +965,7 @@ func _start_new_run() -> void:
 func _bind_state(s: GameState) -> void:
 	state = s
 	grid.state = s
+	diorama.state = s
 	sidebar.state = s
 	# So the contextual block can name BUTTONS on a handheld, not letters.
 	sidebar.pad_cfg = pad.cfg
@@ -946,6 +987,30 @@ func _bind_state(s: GameState) -> void:
 	summary.close()
 	_summary_shown = false
 	_refresh()
+
+## Shows one map renderer while both keep the same simulation state. Panels and
+## gameplay input stay shared; only the map presentation and its mouse picking
+## switch.
+func _select_map_view(use_diorama: bool) -> void:
+	_map_view = diorama if use_diorama else grid
+	grid.visible = not use_diorama
+	diorama.visible = use_diorama
+	grid.set_process(not use_diorama)
+	diorama.set_process(use_diorama)
+	if state == null:
+		return
+	_map_view.state = state
+	_map_view.look_cursor = _look_at if _look else Vector2i(-1, -1)
+	var aim_line: Array[Vector2i] = []
+	if _aiming:
+		aim_line = Los.path(state.player.x, state.player.y, _aim_at.x, _aim_at.y)
+	_map_view.set_aim_state(
+		_aim_at if _aiming else Vector2i(-1, -1),
+		aim_line,
+		grid.aim_valid if use_diorama else diorama.aim_valid)
+	_map_view.sync_motion()
+	_map_view.refresh_preview()
+	_map_view.queue_redraw()
 
 func _begin_throw_pick() -> void:
 	if state.game_over:
@@ -995,8 +1060,8 @@ func _end_aim() -> void:
 	_aiming = false
 	_aim_targets = []
 	_throw_index = -1
-	grid.aim_cursor = Vector2i(-1, -1)
-	grid.aim_line = []
+	var no_aim_line: Array[Vector2i] = []
+	_map_view.set_aim_state(Vector2i(-1, -1), no_aim_line, false)
 	sidebar.aiming = false
 	_refresh()
 
@@ -1009,13 +1074,15 @@ func _cycle_target(step: int) -> void:
 	_update_aim()
 
 func _update_aim() -> void:
-	grid.aim_cursor = _aim_at
+	var aim_line: Array[Vector2i] = Los.path(
+		state.player.x, state.player.y, _aim_at.x, _aim_at.y)
+	var valid := false
 	if _throw_index >= 0 and _throw_index < state.player.inventory.size():
 		var held: Item = state.player.inventory[_throw_index]
-		grid.aim_valid = state.can_reach(_aim_at, held.throw_range)
+		valid = state.can_reach(_aim_at, held.throw_range)
 	else:
-		grid.aim_valid = state.can_fire_at(_aim_at)
-	grid.aim_line = Los.path(state.player.x, state.player.y, _aim_at.x, _aim_at.y)
+		valid = state.can_fire_at(_aim_at)
+	_map_view.set_aim_state(_aim_at, aim_line, valid)
 	_refresh()
 
 func _fire_at_cursor() -> void:
@@ -1155,17 +1222,17 @@ func _refresh() -> void:
 	# already resolved them; this is purely showing the player what happened.
 	# Settle first, then start the new step. Anything still sliding finishes
 	# instantly, so a held key never queues up a backlog of animation.
-	grid.settle_motion()
-	grid.sync_motion()
+	_map_view.settle_motion()
+	_map_view.sync_motion()
 	# One queue, two consumers. The renderer ignores what has no picture and
 	# the deck ignores what has no sound, which is why neither has to know the
 	# other exists.
 	var evts := state.take_events()
-	grid.play_events(evts)
+	_map_view.play_events(evts)
 	sound.play_events(evts)
 	_maybe_talk(evts)
-	grid.refresh_preview()
-	grid.queue_redraw()
+	_map_view.refresh_preview()
+	_map_view.queue_redraw()
 	sidebar.queue_redraw()
 	log_view.queue_redraw()
 	inventory.queue_redraw()

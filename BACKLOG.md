@@ -84,14 +84,21 @@ respects the three motion settings (still / simple / full).
 uses. More than combat. Fireball and teleport have been discussed; the rest is
 to design.
 
-**Someday: a 3D mode.** A key swaps between the classic view and a 3D one:
-tilted overhead like Diablo, turning in 90-degree steps like Final Fantasy
-Tactics, with the same colours and letters — walls stand up as blocks,
-creatures as upright letters, and the torch throws real shadows. It never shows
-more than classic would, and the turn can snap instantly for anyone who gets
-motion sick. Not the "Wizardry-style combat view" declined below: that was a
-separate screen for fights; this is a way of seeing the whole game. It starts
-as a small experiment.
+**3D mode functional; visual iteration underway.** Press `q` to swap between
+the classic view and a tilted overhead view; `[` / `]` or the right stick turns
+it in 90-degree steps, and movement follows the camera. The existing icon-font
+pictures appear as camera-facing labels for creatures, items and features.
+Terrain with an icon-font picture uses that as its primary art; other terrain
+keeps its classic glyph, stamped flat on the floor. Distinct surfaces cover
+cave floor, rubble, water, mud, bones, fungus, stairs, shrines and traps; pits
+have a dark opening and raised rim. Flagstone, masonry and natural rock have
+separate procedural surface detail; pillars and stalagmites have distinct
+shapes and matching floor bases, and braziers, shrines and fungus add local
+colour to the lighting. The pause-menu text size scales Diorama labels and
+billboards. The palette, map visibility and torch shadows carry over. The
+camera view shows fewer map cells than classic. Not the
+"Wizardry-style combat view" declined below: that was a separate screen for
+fights; this is a way of seeing the whole game.
 
 **Smaller ideas waiting their turn:** wolves (a pack that ignores you unless
 provoked); a fungus bag (carry fungus as bait and light); gems from rubble

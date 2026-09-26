@@ -88,6 +88,8 @@ const KEYS := [
 	["p", "pray at a shrine", KEY_P, ""],
 	["m  - +", "sound", 0, ""],
 	["v", "letters / symbols / pictures", KEY_V, ""],
+	["q", "classic / 3D view", KEY_Q, ""],
+	["[ / ] / right stick", "turn 3D camera", 0, ""],
 	# Motion, and it is an accessibility setting before it is a taste one --
 	# effects like these stop some people playing games at all.
 	["e", "still / simple / full", KEY_E, ""],
@@ -107,6 +109,12 @@ static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
 	# The stick is not a button and has no binding, so it is named here.
 	if String(row[1]) == "move":
 		return String.chr(PadConfig.STICK_GLYPH)
+	if String(row[1]) == "classic / 3D view" and cfg != null:
+		# Layouts saved before the 3D key still bind d-pad up to O. main.gd
+		# accepts that old code as the renderer toggle, so describe the button
+		# the player actually has rather than printing an unreachable Q.
+		var key := KEY_Q if cfg.button_for_key(KEY_Q) >= 0 else KEY_O
+		return cfg.icon(key, true)
 	if row.size() > 3 and String(row[3]) != "":
 		return String(row[3])
 	if int(row[2]) != 0 and cfg != null:

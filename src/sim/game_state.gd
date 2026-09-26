@@ -3152,12 +3152,9 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 ## no hands to answer with.
 ## Is there anything in sight that should stop the player being carried along?
 ##
-## ONE RULE, deliberately the same one click-to-travel has always used. Holding a
-## direction to repeat steps, and keeping the pack open between actions, both
-## stop on it -- anything that keeps acting on your behalf stops the moment the
-## world has something to say. Brad's overshoot complaint is the reason it had
-## to be this strict: with a patroller in view each press is ONE step, so you
-## can stop three squares short of its path instead of walking into it.
+## Hostiles in view stop anything acting on the player's behalf. A direct click
+## still takes its one requested step; only the queued part of the route stops.
+## This keeps a player from walking several squares into a patroller's path.
 func threat_in_view() -> bool:
 	return not _travel_stoppers().is_empty()
 
@@ -5081,16 +5078,23 @@ func begin_travel(to: Vector2i) -> bool:
 	if route.is_empty():
 		return false
 	_travel = route
-	return step_travel()
+	# A click is an explicit movement command. If a monster is watching, honour
+	# that command for one cell, then stop the queued travel before it can
+	# overshoot into danger. The next click is another deliberate step.
+	return _step_travel(true)
 
 func travelling() -> bool:
 	return not _travel.is_empty()
 
 ## Advances one step of a queued mouse-travel. Stops for anything interesting.
 func step_travel() -> bool:
+	return _step_travel(false)
+
+func _step_travel(allow_watched_first_step: bool) -> bool:
 	if _travel.is_empty() or game_over:
 		return false
-	if not _travel_stoppers().is_empty():
+	var watched := not _travel_stoppers().is_empty()
+	if watched and not allow_watched_first_step:
 		_travel.clear()
 		msg_log.add("You stop -- something is watching.", Color(0.9, 0.55, 0.35))
 		return false
@@ -5101,6 +5105,8 @@ func step_travel() -> bool:
 		_travel.clear()
 		return false
 	_travel.remove_at(0)
+	if watched:
+		_travel.clear()
 	# Deliberately not player_move(): that clears the travel queue.
 	var cost := move_cost_for(player, next.x, next.y)
 	player.x = next.x

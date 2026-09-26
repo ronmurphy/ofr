@@ -44,6 +44,9 @@ const MODE_NAMES := {
 ## from user://settings.cfg, so anyone who has already chosen keeps their
 ## choice.
 static var _mode: int = Mode.ICONS
+## The map renderer is a separate choice from its glyph theme. The 3D view
+## always uses picture billboards, while `v` keeps cycling the classic themes.
+static var _diorama := false
 static var _instances := {}
 
 ## Pixels per map cell, offered to the player rather than fixed.
@@ -68,6 +71,14 @@ static func active() -> RenderTheme:
 
 static func mode() -> int:
 	return _mode
+
+static func diorama_enabled() -> bool:
+	return _diorama
+
+static func toggle_diorama() -> String:
+	_diorama = not _diorama
+	_save()
+	return "View: %s." % ("3D" if _diorama else "classic")
 
 ## How many modes this build offers.
 ##
@@ -120,6 +131,7 @@ static func load_settings() -> void:
 	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
+	_diorama = bool(cfg.get_value("view", "diorama", false))
 	# Set directly rather than through set_cell_size(), which would write the
 	# file back out during the load that is reading it.
 	var px := int(cfg.get_value("view", "cell", 18))
@@ -129,5 +141,6 @@ static func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("view", "mode", _mode)
+	cfg.set_value("view", "diorama", _diorama)
 	cfg.set_value("view", "cell", _cell)
 	cfg.save(GameState.SETTINGS_PATH)

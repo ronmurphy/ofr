@@ -520,6 +520,12 @@ func sync_motion() -> void:
 		if not seen.has(e):
 			_motion.erase(e)
 
+func set_aim_state(cursor: Vector2i, line: Array[Vector2i], valid: bool) -> void:
+	aim_cursor = cursor
+	aim_line = line
+	aim_valid = valid
+	queue_redraw()
+
 func _visual_cell(e: Entity) -> Vector2:
 	if not _motion.has(e):
 		return Vector2(e.x, e.y)
