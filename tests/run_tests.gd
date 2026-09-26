@@ -3676,6 +3676,29 @@ func _test_the_trader_explains_its_tally() -> void:
 	check("and three gems for one", tally.contains("bring me three")
 		and Trade.GEMS_FOR_ONE == 3)
 
+	# The conversation's footer speaks the player's device.
+	var talker := TalkPanel.new()
+	talker.beats = TraderTalk.greeting(true)
+	check("on a keyboard the conversation says space and esc (\"%s\")" % talker.footer(),
+		talker.footer().contains("space") and talker.footer().contains("esc"))
+	talker.pad_cfg = PadConfig.new()
+	talker.pad_input = true
+	var pad_foot := talker.footer()
+	check("on a pad it names no keyboard key (\"%s\")" % pad_foot,
+		not pad_foot.contains("space") and not pad_foot.contains("esc")
+		and not pad_foot.contains("backspace"))
+	check("  and does name buttons", pad_foot.contains("go on") and pad_foot.contains("leave"))
+	talker._at = 1
+	check("  offering back once there is a page behind", talker.footer().contains("back"))
+	talker.free()
+	# main.gd turns B into leaving, before the conversation sees it.
+	var msrc := FileAccess.get_file_as_string("res://src/render/main.gd")
+	var at_talk := msrc.find("if talk.visible:")
+	var b_leaves := msrc.find("key == PACK_BACK_KEY", at_talk)
+	var talk_handled := msrc.find("talk.handle_key(", at_talk)
+	check("B leaves a conversation on a pad",
+		at_talk >= 0 and b_leaves > at_talk and talk_handled > b_leaves)
+
 	# It fits the conversation panel as laid out on a 1600x900 screen.
 	var panel := TalkPanel.new()
 	panel.font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
@@ -4932,6 +4955,37 @@ func _test_a_pad_is_never_a_letter_in_the_pack() -> void:
 		if k >= KEY_A and k <= KEY_Z:
 			lettered += 1
 	check("a default pad sends letter keys (%d buttons)" % lettered, lettered >= 5)
+
+	# EVERY DOCUMENTED BUTTON REACHES ITS ACTION, through the DEFAULT bindings.
+	#
+	# The checks below this block only prove no button does anything
+	# UNEXPECTED -- and a button that does nothing at all passes them. That is
+	# how a 3D-view patch (2026-09-26) rebound d-pad up from `O` to `Q` while the
+	# pack still listened for `O`, silently killing "use" on every controller,
+	# and this suite stayed green. So: the button, as bound out of the box, and
+	# what it must do.
+	var via := func(button: int) -> StringName:
+		return MainScene.pad_pack_action(cfg.key_for_button(button), false, false)
+	var wiring := {
+		JOY_BUTTON_DPAD_UP: &"use", JOY_BUTTON_DPAD_DOWN: &"drop",
+		JOY_BUTTON_DPAD_LEFT: &"forge", JOY_BUTTON_DPAD_RIGHT: &"throw",
+		JOY_BUTTON_Y: &"forge", JOY_BUTTON_B: &"close", JOY_BUTTON_START: &"close",
+	}
+	var unwired := PackedStringArray()
+	for button in wiring:
+		var got: StringName = via.call(button)
+		if got != wiring[button]:
+			unwired.append("%s -> %s, not %s" % [PadConfig.button_name(int(button)),
+				got if got != &"" else &"nothing", wiring[button]])
+	check("each pack button does its job out of the box (%d)" % wiring.size(),
+		unwired.is_empty(), ", ".join(unwired))
+	# The trader's counter reads the same constants: A confirms, Y enchants, B leaves.
+	check("at the trader, A confirms",
+		cfg.key_for_button(JOY_BUTTON_A) in MainScene.CONFIRM)
+	check("  Y is the enchant key",
+		cfg.key_for_button(JOY_BUTTON_Y) == MainScene.PACK_FORGE_KEY)
+	check("  B is the leave key",
+		cfg.key_for_button(JOY_BUTTON_B) == MainScene.PACK_BACK_KEY)
 
 	# Every button, in every mode, may only close the pack, forge, or do nothing.
 	var bad := PackedStringArray()
@@ -8340,6 +8394,20 @@ func _test_gem_of_the_bulwark() -> void:
 		check("a %s turns exactly its tier (%d off %d)"
 			% [sh.name, big - got, big],
 			big - got == sh.defense_bonus)
+
+	# AT MOST HALF A BLOW. Uncapped, a tower bulwark over heavy armour took every
+	# hit on the climb to 1 -- the young dragon's (power 14) and the arch lich's
+	# (15) included -- so ninety hit points were ninety hits. The table Brad
+	# agreed, 2026-09-26: a floored 4 becomes 2, a floored 3 becomes 2.
+	var capped := Item.make(&"tower_shield")
+	capped.element = &"block"
+	gs.player.equipped[Item.Slot.OFFHAND] = capped
+	for blow in [[14, 2, "a young dragon"], [15, 2, "an arch lich"], [9, 2, "an ogre"]]:
+		gs.player.hp = 9999
+		gs._attack(orc, gs.player, false, int(blow[0]))
+		var landed := 9999 - gs.player.hp
+		check("the bulwark takes %s's floored blow to %d, not 1 (%d)"
+			% [blow[2], int(blow[1]), landed], landed == int(blow[1]))
 
 	# --- it is said out loud ---------------------------------------------
 	var said := false

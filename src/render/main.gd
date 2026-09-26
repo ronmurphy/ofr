@@ -322,6 +322,7 @@ func _process(delta: float) -> void:
 	sidebar.naming = name_entry.visible
 	legend.pad_input = _pad_input
 	trade.pad_input = _pad_input
+	talk.pad_input = _pad_input
 	name_entry.pad_input = _pad_input
 	inventory.pad_input = _pad_input
 
@@ -510,6 +511,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	# A conversation is modal and takes keys before any other panel.
 	if talk.visible:
+		# B leaves, as it does in the pack and at the counter. It used to do
+		# nothing here, which on a pad left Start as the only way out.
+		if _synthetic and key == PACK_BACK_KEY:
+			key = KEY_ESCAPE
 		talk.handle_key(key)
 		_refresh()
 		return
@@ -933,6 +938,7 @@ func _bind_state(s: GameState) -> void:
 	here.state = s
 	trade.state = s
 	trade.pad_cfg = pad.cfg
+	talk.pad_cfg = pad.cfg
 	name_entry.pad_cfg = pad.cfg
 	here.pad_cfg = pad.cfg
 	_pad_input = not Input.get_connected_joypads().is_empty()

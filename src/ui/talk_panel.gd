@@ -30,6 +30,13 @@ signal finished()
 ## `art` is a res:// path or "". A path that fails to load is not an error the
 ## player should ever see -- the line is simply shown on its own.
 var beats: Array = []
+## Live bindings and the device last used, set by main.gd, so the footer names
+## BUTTONS on a handheld. It used to say "space go on / esc leave" to everyone,
+## a pad included -- the same class of wrong instruction as the stairs, the
+## missile confirm and the restart line, found 2026-09-25 while adding the
+## trader's tally page.
+var pad_cfg: PadConfig = null
+var pad_input := false
 var _at := 0
 var _who := ""
 var _art_cache: Dictionary = {}
@@ -83,6 +90,19 @@ func handle_key(key: int) -> bool:
 		_:
 			return false
 	return true
+
+## The footer, in the language of whatever the player is holding. "Back" is
+## only offered once there is a page to go back to.
+func footer() -> String:
+	if pad_input and pad_cfg != null:
+		var ok := pad_cfg.icon(pad_cfg.key_for_button(JOY_BUTTON_A), true)
+		var leave := pad_cfg.icon(pad_cfg.key_for_button(JOY_BUTTON_B), true)
+		if _at > 0:
+			return "%s  go on     ◄  back     %s  leave" % [ok, leave]
+		return "%s  go on     %s  leave" % [ok, leave]
+	if _at > 0:
+		return "space  go on     backspace  back     esc  leave"
+	return "space  go on     esc  leave"
 
 func _advance() -> void:
 	_at += 1
@@ -152,12 +172,9 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_TEXT)
 		y += LINE_H
 
-	var hint := "space  go on     esc  leave"
-	if _at > 0:
-		hint = "space  go on     backspace  back     esc  leave"
-	draw_string(font, Vector2(left, size.y - PAD),
-		"%s        %d / %d" % [hint, _at + 1, beats.size()],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 5, Palette.UI_DIM)
+	PadGlyphs.draw(self, Vector2(left, size.y - PAD),
+		"%s        %d / %d" % [footer(), _at + 1, beats.size()],
+		font, font_size - 5, Palette.UI_DIM)
 
 ## Greedy wrap on spaces, measured with the font that will draw it.
 ##

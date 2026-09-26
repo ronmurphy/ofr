@@ -40,6 +40,9 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | One gem hidden in each floor's rubble (floor 2 on) | `geode`, `_hide_the_geode` |
 | The trader explains its tally with prices (1 / 3 / 9) | `TraderTalk.TALLY` |
 | A blank name no longer changes the seeded run | `GameState.choose_name` |
+| The bulwark turns aside at most half a blow (was near-immunity) | `_attack`, `block_amount` |
+| Pad buttons checked against the pack through the DEFAULT bindings | `_test_a_pad_is_never_a_letter_in_the_pack` |
+| Conversations: pad footer, B leaves | `TalkPanel.footer` |
 
 ---
 

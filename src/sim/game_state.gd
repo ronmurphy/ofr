@@ -7203,7 +7203,15 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	#
 	# Still floored at 1: nothing in this game does nothing, and a tower shield
 	# that made a rat harmless would make the early floors a walk.
-	var turned := defender.block_amount()
+	#
+	# AND AT MOST HALF THE BLOW (Brad, 2026-09-26). Floored only at 1, the block
+	# took EVERY hit on the climb to 1 against a player in plate +2 and a tower
+	# +2 -- young dragon, arch lich, all of it -- because at that defense every
+	# blow already lands on the quarter-power floor, and 4 - 3 is 1. Ninety hit
+	# points became ninety hits. Capped at half, the bulwark still reaches past
+	# the floor, which is what makes it the bulwark: a dragon's 4 becomes 2, an
+	# ogre's 3 becomes 2. Twice as hard to wear down, not ninety times.
+	var turned := mini(defender.block_amount(), dmg / 2)
 	if turned > 0:
 		var before := dmg
 		dmg = maxi(1, dmg - turned)
