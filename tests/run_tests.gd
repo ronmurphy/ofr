@@ -140,6 +140,7 @@ func _initialize() -> void:
 	_test_naming_without_a_keyboard()
 	_test_the_flare_rekindles()
 	_test_a_gem_in_the_rubble()
+	_test_the_trader_explains_its_tally()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3612,6 +3613,45 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## THE TRADER SAYS HOW IT COUNTS, with the scale. Gabe and Brad both stalled on
+## the first counter, where every price is 1; the trader now names 1 / 3 / 9.
+func _test_the_trader_explains_its_tally() -> void:
+	var tally := String(TraderTalk.TALLY["text"])
+	var has_tally := func(script: Array) -> bool:
+		for beat in script:
+			if String(beat["text"]) == tally:
+				return true
+		return false
+	check("the first meeting explains the tally", has_tally.call(TraderTalk.intro()))
+	check("so does every run's floor-one trader", has_tally.call(TraderTalk.greeting(true)))
+	check("  but not the deeper ones, which stay short",
+		not has_tally.call(TraderTalk.greeting(false))
+		and TraderTalk.greeting(false).size() < TraderTalk.greeting(true).size())
+	# Told BEFORE the counter opens, so it comes before the invitation to trade.
+	var g: Array = TraderTalk.greeting(true)
+	check("  and before the invitation to show your pack",
+		String(g[g.size() - 1]["text"]).begins_with("Show me"))
+
+	# The trader quotes prices. If the prices change, these words must too --
+	# this fails first, rather than the trader quietly lying.
+	check("the dagger it quotes is worth 1 (%d)" % Trade.worth(Item.make(&"dagger")),
+		tally.contains("dagger is worth one") and Trade.worth(Item.make(&"dagger")) == 1)
+	check("the short sword, 3 (%d)" % Trade.worth(Item.make(&"short_sword")),
+		tally.contains("short sword, three") and Trade.worth(Item.make(&"short_sword")) == 3)
+	check("the war axe, 9 (%d)" % Trade.worth(Item.make(&"war_axe")),
+		tally.contains("war axe, nine") and Trade.worth(Item.make(&"war_axe")) == 9)
+	check("and three gems for one", tally.contains("bring me three")
+		and Trade.GEMS_FOR_ONE == 3)
+
+	# It fits the conversation panel as laid out on a 1600x900 screen.
+	var panel := TalkPanel.new()
+	panel.font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var lines := panel._wrap(tally, TalkPanel.TEXT_MAX)
+	var room := int((900.0 - TalkPanel.PAD * 4.0) / TalkPanel.LINE_H)
+	check("the tally fits the panel (%d lines of %d)" % [lines.size(), room],
+		lines.size() > 1 and lines.size() <= room)
+	panel.free()
+
 ## GEMS IN THE RUBBLE: one pile per floor hides a gem, found by knapping it.
 func _test_a_gem_in_the_rubble() -> void:
 	# Every floor with rubble hides exactly one, under a pile that is really

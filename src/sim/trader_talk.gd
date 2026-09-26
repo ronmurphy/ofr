@@ -67,18 +67,36 @@ static func intro() -> Array:
 		 "art": TRADER_ART},
 		{"text": "So come and find me when you have something you do not want. I will take it, and I will ask how you are getting on, and you will tell me.\n\nThat is the trade.",
 		 "art": TRADER_ART},
+		TALLY,
 		{"text": "Go carefully.\n\nAnd if you ever reach the top still holding it -- I would like very much to know what the daylight does.",
 		 "art": TRADER_ART},
 	]
 
+## HOW THE COUNTER COUNTS, with the scale -- the rule alone is not enough.
+##
+## Gabe, 2026-09-25: he liked the trader but "it took a moment to figure out
+## the points value", and Brad had stalled the same way on the first night. The
+## cause is floor one itself: it sells tier 1 only, so every number on the
+## counter is 1, and a column of 1s reads as a count rather than a price. The
+## first trader never shows two different values. So the trader SAYS them,
+## 1 / 3 / 9, before the player ever sees the counter.
+const TALLY := {
+	"text": "I keep a tally. What you leave with me, I count; what you take, I count back.\n\nA dagger is worth one to me. A short sword, three. A war axe, nine. Gems I count apart -- bring me three and choose one.",
+	"art": TRADER_ART}
+
 ## Every meeting after the first, until there is something to trade.
 ##
 ## Short on purpose. A player who walks into the trader on floor seven wants to
-## be reminded who this is, not told the whole thing again.
-static func greeting() -> Array:
-	return [
+## be reminded who this is, not told the whole thing again. On FLOOR ONE the
+## tally is said again (Brad's call): it is the first counter of the run, and
+## the one whose prices are all 1.
+static func greeting(first_floor := false) -> Array:
+	var out := [
 		{"text": "You are still going.\n\nGood. Tell me how it is down there.",
 		 "art": TRADER_ART},
-		{"text": "Show me what you are carrying.\n\nI will take anything that is not the amulet, and you can have anything on my shelf that you can pay for.",
-		 "art": TRADER_ART},
 	]
+	if first_floor:
+		out.append(TALLY)
+	out.append({"text": "Show me what you are carrying.\n\nI will take anything that is not the amulet, and you can have anything on my shelf that you can pay for.",
+		 "art": TRADER_ART})
+	return out
