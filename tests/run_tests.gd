@@ -143,6 +143,7 @@ func _initialize() -> void:
 	_test_the_trader_explains_its_tally()
 	_test_a_blank_name_changes_nothing()
 	_test_the_road()
+	_test_doors_shut_behind_guards()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3615,6 +3616,116 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## DOORS SHUT BEHIND THINGS: a guard on its round closes the door it came through.
+## A door you left open and find shut means something careful passed.
+func _test_doors_shut_behind_guards() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var c := Vector2i(30, 20)
+	var west := Vector2i(c.x - 7, c.y)
+	var east := Vector2i(c.x + 7, c.y)
+	var build := func(door: int) -> void:
+		for y in range(c.y - 2, c.y + 3):
+			for x in range(c.x - 9, c.x + 10):
+				gs.map.set_tile(x, y, Tiles.WALL)
+		for x in range(west.x, east.x + 1):
+			gs.map.set_tile(x, c.y, Tiles.FLOOR)
+		gs.map.set_tile(c.x, c.y, door)
+		gs.pathfinder.refresh(gs.map)
+		gs.ground = []
+	gs.player.x = 80
+	gs.player.y = 40
+	var guard_at := func(x: int) -> Entity:
+		var g := Entity.new("kobold", &"kobold", x, c.y)
+		g.faction = Entity.Faction.MONSTER
+		g.patrols = true
+		g.alertness = Entity.Alert.ASLEEP
+		g.activity = Entity.Activity.PATROLLING
+		return g
+
+	# A GUARD ON ITS ROUND, through the real turn logic: it opens the door,
+	# walks through, and shuts it behind it.
+	build.call(Tiles.DOOR_CLOSED)
+	var guard: Entity = guard_at.call(c.x - 2)
+	gs.entities = [gs.player, guard]
+	gs.patrol_route = [east]
+	guard.patrol_at = 0
+	var opened := false
+	for turn in 10:
+		gs._take_ai_turn(guard)
+		gs.turns += 1
+		opened = opened or gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN
+	check("the premise: a guard is a door-opener", guard.door_style() == Entity.Door.OPENS)
+	check("the guard opened the door and went through (at %d)" % guard.x,
+		opened and guard.x > c.x)
+	check("  and shut it behind itself", gs.map.get_tile(c.x, c.y) == Tiles.DOOR_CLOSED)
+
+	# HUNTING, it does not stop to tidy up.
+	build.call(Tiles.DOOR_OPEN)
+	var chaser: Entity = guard_at.call(c.x - 1)
+	chaser.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, chaser]
+	gs._step_toward(chaser, east)
+	gs._step_toward(chaser, east)
+	check("the premise: the chaser is past the door (%d)" % chaser.x, chaser.x == c.x + 1)
+	check("a creature hunting you leaves the door open",
+		not gs._shut_behind(chaser) and gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN)
+
+	# A SQUEEZER never shuts one: it has no hands for doors.
+	build.call(Tiles.DOOR_OPEN)
+	var rat := Entity.new("giant rat", &"rat", c.x - 1, c.y)
+	rat.faction = Entity.Faction.MONSTER
+	rat.alertness = Entity.Alert.ASLEEP
+	gs.entities = [gs.player, rat]
+	gs._step_toward(rat, east)
+	gs._step_toward(rat, east)
+	check("a rat leaves it as it was", rat.x == c.x + 1
+		and not gs._shut_behind(rat) and gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN)
+
+	# NOT ON A FRIEND: the one behind gets through first, then it shuts.
+	build.call(Tiles.DOOR_OPEN)
+	var lead: Entity = guard_at.call(c.x - 1)
+	var follow: Entity = guard_at.call(c.x - 2)
+	gs.entities = [gs.player, lead, follow]
+	gs._step_toward(lead, east)             # lead onto the door
+	gs._step_toward(lead, east)             # lead off it: it means to shut it
+	gs._step_toward(follow, east)
+	gs._step_toward(follow, east)           # follow now IN the doorway
+	check("the premise: the follower is in the doorway, the leader just past it (%d, %d)"
+		% [follow.x, lead.x], follow.x == c.x and lead.x == c.x + 1
+		and lead.shut_behind == c)
+	check("a guard does not shut the door on its friend",
+		not gs._shut_behind(lead) and gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN)
+	gs._step_toward(lead, east)             # the leader walks on
+	gs._step_toward(follow, east)           # the follower steps off the door
+	check("the premise: the follower is the last one through (%d, %d)"
+		% [follow.x, lead.x], follow.x == c.x + 1 and lead.x == c.x + 2)
+	check("  the last one through shuts it (must succeed)",
+		gs._shut_behind(follow) and gs.map.get_tile(c.x, c.y) == Tiles.DOOR_CLOSED)
+
+	# NOT ON SOMETHING LYING IN IT.
+	build.call(Tiles.DOOR_OPEN)
+	var tidy: Entity = guard_at.call(c.x - 1)
+	gs.entities = [gs.player, tidy]
+	var dropped := Item.make(&"dagger")
+	dropped.x = c.x
+	dropped.y = c.y
+	gs._step_toward(tidy, east)
+	gs._step_toward(tidy, east)
+	gs.ground = [dropped]
+	check("a door with something lying in it stays open",
+		not gs._shut_behind(tidy) and gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN)
+
+	# The intent to shut survives a save.
+	var mid: Entity = guard_at.call(c.x - 1)
+	build.call(Tiles.DOOR_OPEN)
+	gs.entities = [gs.player, mid]
+	gs._step_toward(mid, east)
+	gs._step_toward(mid, east)
+	var kept := Entity.from_dict(mid.to_dict())
+	check("a guard's door to shut is saved (%s)" % str(kept.shut_behind),
+		kept.shut_behind == c and mid.shut_behind == c)
+
 ## THE ROAD: the first armour stone, found only in rubble. +1 defense per 4 new
 ## rooms on this floor, up to +3, starting again on each floor.
 func _test_the_road() -> void:

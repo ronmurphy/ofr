@@ -157,6 +157,11 @@ var patrol_at: int = 0
 var want := Vector2i(-1, -1)
 var want_turn: int = -1
 
+## The open door this creature has just stepped off, to shut on its next turn
+## if nobody is following. Only ever set for a door-OPENER that is not hunting.
+## Saved with `want`, for the same reason.
+var shut_behind := Vector2i(-1, -1)
+
 var name: String = "thing"
 var appearance: StringName = &"unknown"
 var x: int
@@ -423,6 +428,7 @@ func to_dict() -> Dictionary:
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
 		"want": [want.x, want.y], "want_turn": want_turn,
+		"shut_behind": [shut_behind.x, shut_behind.y],
 		"travel_rooms": travel_rooms,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
@@ -473,6 +479,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	var wanted: Array = d.get("want", [-1, -1])
 	e.want = Vector2i(int(wanted[0]), int(wanted[1]))
 	e.want_turn = int(d.get("want_turn", -1))
+	var shut: Array = d.get("shut_behind", [-1, -1])
+	e.shut_behind = Vector2i(int(shut[0]), int(shut[1]))
 	e.travel_rooms = int(d.get("travel_rooms", 0))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.

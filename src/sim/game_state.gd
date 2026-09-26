@@ -5716,6 +5716,10 @@ func _take_ai_turn(actor: Entity) -> int:
 	if dread != null and _step_away(actor, dread):
 		return _last_move_cost
 
+	# A careful guard shuts the door it just came through. See _shut_behind.
+	if actor.alertness != Entity.Alert.AWAKE and _shut_behind(actor):
+		return _last_move_cost
+
 	# Opportunistic, and checked BEFORE the activity below rather than being one
 	# of them: a guard can walk its round and still stoop for a blade. Only
 	# while unaware -- nothing stops mid-fight to try on armour.
@@ -6577,8 +6581,55 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	if _through_the_door(actor, step):
 		return
 	_last_move_cost = move_cost_for(actor, step.x, step.y)
+	var from := Vector2i(actor.x, actor.y)
 	actor.x = step.x
 	actor.y = step.y
+	# Stepping OFF an open door: a careful guard will shut it next turn.
+	actor.shut_behind = from if map.get_tile(from.x, from.y) == Tiles.DOOR_OPEN \
+		and actor.door_style() == Entity.Door.OPENS \
+		and actor.alertness != Entity.Alert.AWAKE else Vector2i(-1, -1)
+
+## DOORS SHUT BEHIND THINGS. Brad, 2026-09-25: a deception, and a second tell.
+##
+## Creatures have always opened doors and bears have always smashed them, but
+## nothing shut one -- so an open door you left shut meant "something came
+## through". That stays true. Now a door you left OPEN and find shut means
+## something CAREFUL came through: a guard on its round. The player's own map
+## memory -- every door was shut until they opened it -- is turned against them
+## without erasing the tell they already had.
+##
+## Only door-OPENERS (the patrollers: never a squeezing rat, never a bear),
+## only while NOT hunting (a chaser does not stop to tidy up), only the turn
+## after stepping off it, and only when the doorway is clear and nobody is
+## right behind -- a guard does not shut the door on its own friend or on you.
+##
+## SILENT, unlike the player's door. Monsters open doors silently too, and a
+## noise here would make every guard on its round wake the sleepers along its
+## route, turn after turn -- a hidden difficulty change. It costs the guard its
+## turn, and if you can see the door, the log says so.
+func _shut_behind(actor: Entity) -> bool:
+	var door := actor.shut_behind
+	if door.x < 0:
+		return false
+	actor.shut_behind = Vector2i(-1, -1)
+	if actor.door_style() != Entity.Door.OPENS \
+			or map.get_tile(door.x, door.y) != Tiles.DOOR_OPEN:
+		return false
+	if maxi(absi(actor.x - door.x), absi(actor.y - door.y)) != 1:
+		return false
+	if entity_at(door.x, door.y) != null or not items_at(door.x, door.y).is_empty():
+		return false
+	for e in entities:
+		if e == actor or not e.alive:
+			continue
+		if maxi(absi(e.x - door.x), absi(e.y - door.y)) <= 1:
+			return false
+	map.set_tile(door.x, door.y, Tiles.DOOR_CLOSED)
+	_last_move_cost = Scheduler.ACTION_COST
+	if map.is_visible(door.x, door.y):
+		msg_log.add("The %s pulls the door shut behind it." % actor.name,
+			Color(0.78, 0.74, 0.66))
+	return true
 
 ## How long a creature's last intent counts as current, in turns. Wider than
 ## one because not everything acts every turn: a slow creature walking a queue

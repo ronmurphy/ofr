@@ -45,6 +45,7 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Conversations: pad footer, B leaves | `TalkPanel.footer` |
 | The gem of the road: first armour stone, rubble only, +1 def per 4 rooms (max 3) per floor | `gem_travel`, `travel_bonus`, `_note_rooms` |
 | Trader refuses the road stone; road armour sells only when offered twice | `Trade.refusal`, `road_offered` |
+| Guards shut doors behind them (not hunting, doorway clear, silent) | `_shut_behind`, `Entity.shut_behind` |
 
 ---
 
@@ -222,7 +223,11 @@ blocker is the 24-letter inventory pool, i.e. UI work, and the fungus bag covers
 similar ground more interestingly. **Dodge stays parked**: it fights
 `DAMAGE_FLOOR_FRACTION`, which exists so nothing ever whiffs.
 
-**Doors that close behind things.** Cheapest big win on the "creatures acting on
+**Doors that close behind things.** BUILT 2026-09-26 for door-OPENERS (the
+patrollers) while not hunting; silent, like monsters opening doors. It ADDS a
+tell (open-now-shut = something careful passed) rather than erasing the old
+one (shut-now-open = something came through). Original note follows.
+ Cheapest big win on the "creatures acting on
 the map" axis: every door the player has seen was closed until they opened it,
 so a closed door reads as unexplored. Something that shuts one behind itself
 turns the player's own map-reading against them.
