@@ -43,6 +43,8 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | The bulwark turns aside at most half a blow (was near-immunity) | `_attack`, `block_amount` |
 | Pad buttons checked against the pack through the DEFAULT bindings | `_test_a_pad_is_never_a_letter_in_the_pack` |
 | Conversations: pad footer, B leaves | `TalkPanel.footer` |
+| The gem of the road: first armour stone, rubble only, +1 def per 4 rooms (max 3) per floor | `gem_travel`, `travel_bonus`, `_note_rooms` |
+| Trader refuses the road stone; road armour sells only when offered twice | `Trade.refusal`, `road_offered` |
 
 ---
 
@@ -210,8 +212,12 @@ in code, bypassing the threat ceiling.
 ignore you unless provoked. `Faction.NEUTRAL` exists and is now used by the
 trader, so the enum is real; wolves would be what makes it matter in combat.
 
-**Armour gems.** Travel (heal by exploring: walkable cells / 10, +1 hp each time
-you uncover that many) is the buildable one. **Mule is probably dropped** — its
+**Armour gems.** ~~Travel~~ BUILT 2026-09-26 as the gem of the road -- but as
+DEFENSE per room explored (Castlevania's walk armour), not healing per cell:
+measured, +1 hp per 10 cells was 125-150 hp a floor. It is kept OUT of the loot
+table (`only_from: rubble`), so armour gems in found magic are still at zero --
+the next armour stone is the first of the three the loot table wants. Travel
+(heal by exploring) was the original buildable one. **Mule is probably dropped** — its
 blocker is the 24-letter inventory pool, i.e. UI work, and the fungus bag covers
 similar ground more interestingly. **Dodge stays parked**: it fights
 `DAMAGE_FLOOR_FRACTION`, which exists so nothing ever whiffs.

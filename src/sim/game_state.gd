@@ -1227,6 +1227,10 @@ func build_level() -> void:
 	stats["deepest"] = maxi(int(stats.get("deepest", 0)), depth)
 	cave_regions = gen.caves.duplicate()
 	room_rects = gen.rooms.duplicate()
+	# THE ROAD starts again on every floor: you arrive everywhere at your
+	# weakest. The starting room is marked found now, so it never counts.
+	rooms_found = {0: true}
+	player.travel_rooms = 0
 	hoard_room = -1
 	for i in gen.archetypes.size():
 		if gen.archetypes[i] == MapGen.Archetype.HOARD:
@@ -1757,6 +1761,17 @@ func trade_sell(index: int) -> bool:
 	if no != "":
 		msg_log.add(no, Color(0.85, 0.75, 0.55))
 		return false
+	# ROAD ARMOUR IS OFFERED TWICE. Selling it is allowed -- a player may just
+	# want a different build (Brad) -- but it is the only way this stone ever
+	# leaves you, so the first offer is stopped and said out loud. The game has
+	# no prompt system; as with raking a brazier down, an action with its own
+	# message IS the confirmation. Anything else in between starts it over.
+	if Trade.carries_road(it) and road_offered != it:
+		road_offered = it
+		msg_log.add("The trader stops your hand. \"This carries a stone of the road. Are you sure? Offer it again and it is mine.\"",
+			Color(0.85, 0.75, 0.55))
+		return false
+	road_offered = null
 	if player.is_equipped(it):
 		player.equipped.erase(it.slot)
 	player.inventory.remove_at(index)
@@ -1776,8 +1791,13 @@ func trade_sell(index: int) -> bool:
 		% [it.display_name(), w, trader_credit], Color(0.80, 0.85, 0.95))
 	return true
 
+## Road armour the player has offered once, awaiting the second offer. Not
+## saved: a suspend in the middle of a sale simply asks again.
+var road_offered: Item = null
+
 ## Take something off the trader's shelf.
 func trade_buy(stock_index: int) -> bool:
+	road_offered = null
 	if not trader_here() or stock_index < 0 or stock_index >= trader_stock.size():
 		return false
 	var entry: Dictionary = trader_stock[stock_index]
@@ -1803,7 +1823,10 @@ func trade_buy(stock_index: int) -> bool:
 
 ## Three offered gems for one of your choice.
 func trade_buy_gem(el: StringName) -> bool:
-	if not trader_here() or not Item.ELEMENTS.has(el):
+	road_offered = null
+	# Only what the three-for-one offers: a stone kept out of the economy, like
+	# the gem of the road, cannot be bought by naming it either.
+	if not trader_here() or not Item.chosen_elements().has(el):
 		return false
 	if trader_gems < Trade.GEMS_FOR_ONE:
 		msg_log.add("\"Bring me %d gems and choose one.\"" % Trade.GEMS_FOR_ONE,
@@ -1819,6 +1842,7 @@ func trade_buy_gem(el: StringName) -> bool:
 
 ## The trader puts something random into an item of yours. Once per trader.
 func trade_enchant(index: int) -> bool:
+	road_offered = null
 	if not trader_here() or index < 0 or index >= player.inventory.size():
 		return false
 	if trader_rolled:
@@ -3887,6 +3911,31 @@ func _summon_ally(bone: Item) -> bool:
 	return true
 
 ## Announces a change of footing, once, when it changes.
+## Room index -> true for every room the player has entered on this floor.
+## Room 0 is where the floor starts you, so it is found before you move.
+var rooms_found: Dictionary = {0: true}
+
+## THE ROAD. Counts each new ROOM entered on this floor -- not caves, not
+## corridors, not the room you started in. Only rooms, which is what keeps the
+## gem honest in the caves: measured 2026-09-26, the upper floors average 13
+## rooms, the caves 5, the fortress 9-10, the deep floor 13, so a travel stone
+## grows to +3 up top, barely +1 in the caves, and hunting stays the way to
+## survive down there. Counted whatever you are wearing, so putting the stone
+## on halfway through a floor is worth what you have already walked.
+func _note_rooms() -> void:
+	var here := Vector2i(player.x, player.y)
+	for i in room_rects.size():
+		if rooms_found.has(i) or not room_rects[i].has_point(here):
+			continue
+		var before := player.travel_bonus()
+		rooms_found[i] = true
+		player.travel_rooms = rooms_found.size() - 1
+		var after := player.travel_bonus()
+		if after > before:
+			msg_log.add("The road settles into your armour. (+%d defense)" % after,
+				Color(0.80, 0.88, 0.72))
+		return
+
 func _note_footing() -> void:
 	var here := map.get_tile(player.x, player.y)
 	if here == _last_footing:
@@ -4709,7 +4758,8 @@ func _knap_stones() -> bool:
 	var here := Vector2i(player.x, player.y)
 	if here == geode:
 		geode = Vector2i(-1, -1)
-		var gem := Item.roll_gem(geode_rng, effective_depth())
+		# The rubble roll, which alone can give a gem of the road.
+		var gem := Item.roll_rubble_gem(geode_rng, effective_depth())
 		if gem != null:
 			gem_found = true
 			_tally("geodes")
@@ -5117,6 +5167,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	# that charges the record too.
 	elapsed += cost
 	_note_footing()
+	_note_rooms()
 	var underfoot := map.get_tile(player.x, player.y)
 	# Eight inches of rat crossing a boneyard makes no sound worth hearing.
 	# The sharpest thing the ring buys: it is the only way past a gravestone
@@ -5274,6 +5325,7 @@ func to_dict() -> Dictionary:
 		"grave_risen": grave_risen,
 		"recent_dead": recent_dead,
 		"gem_found": gem_found,
+		"rooms_found": rooms_found.keys(),
 		"player_name": player_name,
 		"uniques": uniques_found.keys(),
 		"risen_grave": [risen_grave.x, risen_grave.y],
@@ -5372,6 +5424,9 @@ func apply_dict(d: Dictionary) -> bool:
 	# on a route written by an older version of this code.
 	_lay_the_beat()
 	gem_found = d.get("gem_found", false)
+	rooms_found = {0: true}
+	for i in d.get("rooms_found", []):
+		rooms_found[int(i)] = true
 	player_name = String(d.get("player_name", ""))
 	uniques_found.clear()
 	for k in d.get("uniques", []):

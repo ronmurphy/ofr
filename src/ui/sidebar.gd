@@ -300,6 +300,19 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
 	y += LINE
 
+	# THE ROAD, while its stone is worn: what exploring this floor has earned.
+	# Shown at +0 too (dimmed), so a player who has just arrived can see there
+	# is something to earn rather than wondering where it went.
+	var armour: Variant = state.player.equipped.get(Item.Slot.ARMOR, null)
+	if armour != null and armour.element == &"travel":
+		var road := state.player.travel_bonus()
+		draw_string(font, Vector2(PAD, y), "road",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+		draw_string(font, Vector2(PAD, y), "+%d defense" % road,
+			HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size,
+			Palette.HP_GOOD if road > 0 else Palette.UI_DIM)
+		y += LINE
+
 	# The flare's prize, while it burns: what it would fill a brazier to right
 	# now. Its own row because the sidebar is too narrow for both on one line,
 	# and because this is the number the race is run against.

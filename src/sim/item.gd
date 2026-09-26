@@ -297,6 +297,25 @@ const CATALOGUE := {
 		"element": &"bash", "min_depth": 4, "weight": 0,
 	},
 
+	## THE ROAD. The first stone for body armour, and deliberately NOT one of
+	## the loot table's -- Brad, 2026-09-26. After Castlevania's walk armour:
+	## the more of a floor you have seen, the better it guards you. +1 defense
+	## for every 4 new rooms entered on this floor, up to +3, and it starts
+	## again at nothing on each new floor, so you arrive everywhere at your
+	## weakest and earn it back by exploring.
+	##
+	## DEFENSE, never block. The bulwark is the one thing past the damage floor;
+	## a second past-the-floor stone took every hit on the climb to 1. As
+	## defense the quarter-power floor still holds, so travel matters in leather
+	## and chain and changes nothing against a dragon.
+	##
+	## Only ever found in rubble (see ELEMENTS `only_from`): the one gem you
+	## have to explore to find, for the armour that rewards exploring.
+	&"gem_travel": {
+		"name": "gem of the road", "app": &"gem", "kind": Kind.GEM,
+		"element": &"travel", "min_depth": 2, "weight": 0,
+	},
+
 	## The first unique. It claims the WEAPON hand and gives no power, which is
 	## the whole cost: as a rat you cannot fight at all, and taking the ring
 	## off mid-fight is a turn spent becoming a person again in front of
@@ -588,6 +607,10 @@ func accepts_element(el: StringName) -> bool:
 			return kind == Kind.WEAPON and range_bonus <= 1
 		&"weapon":
 			return kind == Kind.WEAPON
+		&"armour":
+			# The defense guard is the ring lesson again: a tier-0 body slot
+			# would eat a stone and do nothing with it.
+			return slot == Slot.ARMOR and defense_bonus > 0
 	return false
 
 ## Rebuilds an item from what `display_name()` produced -- "short bow +1" back
@@ -903,6 +926,12 @@ static func enchant_chance(effective: int) -> float:
 ##     melee   weapons only, and not at reach -- frost and leech
 ##     bow     arrows specifically, never a sling
 ##     shield  the offhand, and only when it actually defends
+##     armour  body armour -- the first is `travel`, 2026-09-26
+##
+## `only_from` marks a stone that is NOT part of the loot economy: found magic,
+## monsters' gear, the trader's enchant and three-for-one, chests, shrines and
+## sacks all skip it, and only the named source can produce it. Written here,
+## on the element, so the exception lives in the same one place as the rule.
 ##
 ## Found magic draws on this same list, deliberately. A found "war axe of frost"
 ## locks frost to an axe you may not want; a gem of frost lets you choose the
@@ -924,14 +953,22 @@ const ELEMENTS := {
 	&"block":   {"gem": &"gem_bulwark", "hosts": &"shield"},
 	&"reflect": {"gem": &"gem_mirror",  "hosts": &"shield"},
 	&"bash":    {"gem": &"gem_boss",    "hosts": &"shield"},
+	# LAST, never inserted: the order above is load-bearing for found magic.
+	&"travel":  {"gem": &"gem_travel",  "hosts": &"armour", "only_from": &"rubble"},
 }
 
 ## The elements a generated item can roll, in table order.
 static func found_elements() -> Array[StringName]:
 	var out: Array[StringName] = []
 	for el in ELEMENTS:
-		out.append(el)
+		if not ELEMENTS[el].has("only_from"):
+			out.append(el)
 	return out
+
+## Elements a player may CHOOSE -- the trader's three-for-one. The same list as
+## found magic: a stone kept out of the economy is kept out of the shop too.
+static func chosen_elements() -> Array[StringName]:
+	return found_elements()
 
 ## Rolls an element onto a generated item, if the dice and the item both allow.
 ##
@@ -1022,15 +1059,34 @@ static func roll_gem(rng: RandomNumberGenerator, depth: int) -> Item:
 		return null
 	return make(pool[rng.randi_range(0, pool.size() - 1)])
 
-## The gems that can turn up at this depth. Empty on the first floor: gems are
-## held back until the second, which is where the pity gem starts looking.
+## The gems that can turn up at this depth, from chests, shrines, sacks and the
+## pity placement. Empty on the first floor: gems are held back until the
+## second, which is where the pity gem starts looking. Stones marked
+## `only_from` are left out -- they come from one place and nowhere else.
 static func gems_at(depth: int) -> Array[StringName]:
+	return _gems_at(depth, &"")
+
+## The gems a floor's hidden rubble pile can hold: every ordinary gem, plus the
+## ones only rubble gives. One of the possibilities, never a promise.
+static func rubble_gems_at(depth: int) -> Array[StringName]:
+	return _gems_at(depth, &"rubble")
+
+static func roll_rubble_gem(rng: RandomNumberGenerator, depth: int) -> Item:
+	var pool := rubble_gems_at(depth)
+	if pool.is_empty():
+		return null
+	return make(pool[rng.randi_range(0, pool.size() - 1)])
+
+static func _gems_at(depth: int, source: StringName) -> Array[StringName]:
 	var pool: Array[StringName] = []
 	for key in CATALOGUE:
 		var data: Dictionary = CATALOGUE[key]
 		if data.get("kind", -1) != Kind.GEM:
 			continue
 		if int(data.get("min_depth", 999)) > depth:
+			continue
+		var only := StringName(ELEMENTS.get(data.get("element", &""), {}).get("only_from", &""))
+		if only != &"" and only != source:
 			continue
 		pool.append(key)
 	return pool

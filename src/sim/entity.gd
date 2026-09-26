@@ -339,7 +339,22 @@ func total_defense() -> int:
 	var v := defense
 	for slot in equipped:
 		v += equipped[slot].defense_bonus
-	return v
+	return v + travel_bonus()
+
+## THE ROAD: new rooms entered on this floor, counted by GameState and reset on
+## every new floor. Only the player enters rooms, so on anything else it stays 0
+## -- a monster in travel armour is simply carrying it to you.
+var travel_rooms: int = 0
+const TRAVEL_ROOMS_PER := 4
+const TRAVEL_MAX := 3
+
+## What a gem of the road in the body armour adds to defense right now.
+## Defense, not block -- see `gem_travel` in the catalogue for why.
+func travel_bonus() -> int:
+	var armour: Variant = equipped.get(Item.Slot.ARMOR, null)
+	if armour == null or armour.element != &"travel":
+		return 0
+	return mini(TRAVEL_MAX, travel_rooms / TRAVEL_ROOMS_PER)
 
 ## What the shield hand turns aside, on top of defense and PAST the damage
 ## floor. Zero for everybody without a blocking stone bound, which is almost
@@ -408,6 +423,7 @@ func to_dict() -> Dictionary:
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
 		"want": [want.x, want.y], "want_turn": want_turn,
+		"travel_rooms": travel_rooms,
 		"activity": activity,
 		"flying": flying, "heavy": heavy,
 		"inventory": pack, "equipped": worn,
@@ -457,6 +473,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	var wanted: Array = d.get("want", [-1, -1])
 	e.want = Vector2i(int(wanted[0]), int(wanted[1]))
 	e.want_turn = int(d.get("want_turn", -1))
+	e.travel_rooms = int(d.get("travel_rooms", 0))
 	e.patrol_at = int(d.get("patrol_at", 0))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#

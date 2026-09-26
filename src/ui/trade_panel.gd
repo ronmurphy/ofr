@@ -123,6 +123,9 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	# Walking away from the counter takes back a half-made road armour sale.
+	if state != null:
+		state.road_offered = null
 	closed.emit()
 
 ## Pack rows: every item you carry, by index. Refused ones stay listed, dimmed,
@@ -197,9 +200,10 @@ static func pad_pile_step(cfg: PadConfig, key: int) -> int:
 func _rows(which: int) -> Array:
 	return pack_rows() if which == PACK else shelf_rows()
 
-## Every gem the trader can make, in the element table's own order.
+## Every gem the trader can make, in the element table's own order -- less
+## the ones kept out of the economy, which the trader has never seen.
 func gem_choices() -> Array:
-	return Item.ELEMENTS.keys()
+	return Item.chosen_elements()
 
 ## The row under the highlight on the active side, or null.
 func current() -> Variant:
@@ -452,6 +456,10 @@ func info() -> String:
 			return no
 		if Trade.is_gem(it):
 			return "a gem: give me %d and choose any one you like" % Trade.GEMS_FOR_ONE
+		if Trade.carries_road(it):
+			if state.road_offered == it:
+				return "worth %d  ·  offer it again and it is the trader's" % Trade.worth(it)
+			return "worth %d  ·  it carries a stone of the road" % Trade.worth(it)
 		return "worth %d to the trader" % Trade.worth(it)
 	if int(row) == GEM_ROW:
 		return "%d of %d gems given; %d buy a gem of your choice" % [

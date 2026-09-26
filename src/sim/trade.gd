@@ -56,6 +56,13 @@ const SELLS := {
 	&"scroll_blink": 3,
 }
 
+## The gem of the road's element. Named once, here, for the counter's rules.
+const ROAD := &"travel"
+
+## Armour with the road bound into it: sold only when offered twice.
+static func carries_road(it: Item) -> bool:
+	return it != null and not is_gem(it) and it.element == ROAD
+
 static func is_gem(it: Item) -> bool:
 	return it != null and it.kind == Item.Kind.GEM
 
@@ -86,6 +93,11 @@ static func refusal(it: Item) -> String:
 	if it.kind == Item.Kind.AMULET:
 		return "The trader will not touch it. \"Not that. Never that.\""
 	if is_gem(it):
+		# The one stone the trader will not take -- Brad, 2026-09-26. Every
+		# other gem is a third of a gem of your choice; this one cannot be had
+		# any other way than walking the dungeon, and the trader knows it.
+		if it.element == ROAD:
+			return "The trader turns the stone over and over in its hands. \"A stone of the road. I held one once, a long time ago. I will not take this from you.\""
 		return ""
 	if it.unique:
 		return "\"I have never seen another. I cannot say what it is worth.\""

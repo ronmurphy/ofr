@@ -142,6 +142,7 @@ func _initialize() -> void:
 	_test_a_gem_in_the_rubble()
 	_test_the_trader_explains_its_tally()
 	_test_a_blank_name_changes_nothing()
+	_test_the_road()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3614,6 +3615,162 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## THE ROAD: the first armour stone, found only in rubble. +1 defense per 4 new
+## rooms on this floor, up to +3, starting again on each floor.
+func _test_the_road() -> void:
+	# --- only from rubble -------------------------------------------------
+	check("the premise: the road is in the element table",
+		Item.ELEMENTS.has(&"travel") and Item.CATALOGUE.has(&"gem_travel"))
+	check("found magic never rolls it", not Item.found_elements().has(&"travel"))
+	check("  nor does the trader's three-for-one offer it",
+		not Item.chosen_elements().has(&"travel"))
+	check("chests, shrines and sacks never hold it",
+		not Item.gems_at(10).has(&"gem_travel"))
+	check("the rubble roll can", Item.rubble_gems_at(10).has(&"gem_travel"))
+	check("  alongside the ordinary gems, not instead of them",
+		Item.rubble_gems_at(10).size() == Item.gems_at(10).size() + 1)
+	check("  and not on floor one, where no gem exists yet",
+		Item.rubble_gems_at(1).is_empty())
+	# Found armour: with the road excluded, armour has no stone to roll at all.
+	var erng := RandomNumberGenerator.new()
+	erng.seed = 77
+	var magic_armour := 0
+	for i in 400:
+		var mail := Item._maybe_enchant(Item.make(&"chain_mail"), erng, 19)
+		if mail.element != &"":
+			magic_armour += 1
+	check("no generated armour carries it (%d of 400 enchanted)" % magic_armour,
+		magic_armour == 0)
+	var trader_gs := GameState.new(4040)
+	trader_gs.new_game()
+	trader_gs.trader_gems = Trade.GEMS_FOR_ONE
+	check("naming it at the counter buys nothing", not trader_gs.trade_buy_gem(&"travel"))
+	check("  though a real choice still works (must succeed)",
+		trader_gs.trader_here() and trader_gs.trade_buy_gem(&"fire"))
+
+	# The loose stone is REFUSED, in the trader's voice; an ordinary gem is not.
+	trader_gs.player.inventory.clear()
+	trader_gs.player.equipped.clear()
+	trader_gs.trader_gems = 0
+	var road_stone := Item.make(&"gem_travel")
+	var fire_stone := Item.make(&"gem_fire")
+	trader_gs.give_item(road_stone)
+	trader_gs.give_item(fire_stone)
+	check("the trader will not take a stone of the road",
+		Trade.refusal(road_stone).findn("stone of the road") >= 0
+		and not trader_gs.trade_sell(trader_gs.player.inventory.find(road_stone)))
+	check("  it stays yours", trader_gs.player.inventory.has(road_stone)
+		and trader_gs.trader_gems == 0)
+	check("  while an ordinary gem is taken (must succeed)",
+		trader_gs.trade_sell(trader_gs.player.inventory.find(fire_stone))
+		and trader_gs.trader_gems == 1)
+
+	# ROAD ARMOUR is sold only when offered twice.
+	var road_coat := Item.make(&"leather_armour")
+	road_coat.element = &"travel"
+	var spare := Item.make(&"dagger")
+	trader_gs.give_item(road_coat)
+	trader_gs.give_item(spare)
+	var credit_was := trader_gs.trader_credit
+	check("offering road armour once stops your hand",
+		not trader_gs.trade_sell(trader_gs.player.inventory.find(road_coat)))
+	check("  nothing changes hands", trader_gs.player.inventory.has(road_coat)
+		and trader_gs.trader_credit == credit_was)
+	check("  and the trader says why", trader_gs.msg_log.entries[-1]["text"].findn("stone of the road") >= 0)
+	check("offering it again sells it",
+		trader_gs.trade_sell(trader_gs.player.inventory.find(road_coat))
+		and not trader_gs.player.inventory.has(road_coat)
+		and trader_gs.trader_credit == credit_was + Trade.worth(road_coat))
+	check("  at the full magic price (%d)" % Trade.worth(road_coat),
+		Trade.worth(road_coat) == 1 + Trade.MAGIC)
+	# Anything else in between starts it over.
+	var road_coat2 := Item.make(&"leather_armour")
+	road_coat2.element = &"travel"
+	trader_gs.give_item(road_coat2)
+	trader_gs.trade_sell(trader_gs.player.inventory.find(road_coat2))
+	trader_gs.trade_sell(trader_gs.player.inventory.find(spare))
+	check("selling something else in between means asking again",
+		not trader_gs.trade_sell(trader_gs.player.inventory.find(road_coat2))
+		and trader_gs.player.inventory.has(road_coat2))
+	var counter := TradePanel.new()
+	counter.state = trader_gs
+	counter.close()
+	check("  and so does walking away from the counter", trader_gs.road_offered == null)
+	counter.free()
+
+	# --- what may hold it ---------------------------------------------------
+	check("body armour takes it", Item.make(&"leather_armour").accepts_element(&"travel"))
+	check("  a weapon does not", not Item.make(&"dagger").accepts_element(&"travel"))
+	check("  nor a shield", not Item.make(&"buckler").accepts_element(&"travel"))
+
+	# --- the bonus --------------------------------------------------------
+	var gs := GameState.new(4040)
+	gs.new_game()
+	gs.entities = [gs.player]
+	var coat := Item.make(&"leather_armour")
+	coat.element = &"travel"
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.give_item(coat)
+	gs.player.equipped[coat.slot] = coat
+	# Seventeen small rooms, laid out by hand so the count is exact: room 0 is
+	# the start, then sixteen to walk into.
+	gs.room_rects.clear()
+	for i in 17:
+		gs.room_rects.append(Rect2i(2 + (i % 8) * 10, 2 + (i / 8) * 10, 4, 4))
+	gs.rooms_found = {0: true}
+	gs.player.travel_rooms = 0
+	var enter := func(i: int) -> void:
+		gs.player.x = gs.room_rects[i].position.x + 1
+		gs.player.y = gs.room_rects[i].position.y + 1
+		gs._note_rooms()
+	var plain_def := gs.player.total_defense()
+	enter.call(0)
+	check("the starting room does not count", gs.player.travel_rooms == 0)
+	var steps: Array = []
+	for i in range(1, 17):
+		enter.call(i)
+		steps.append(gs.player.travel_bonus())
+	check("+1 at 4 rooms, +2 at 8, +3 at 12 (%s)" % str(steps),
+		steps[2] == 0 and steps[3] == 1 and steps[7] == 2 and steps[11] == 3)
+	check("  and never past +3 (%d at 16 rooms)" % steps[15], steps[15] == 3)
+	check("it is real defense (%d -> %d)" % [plain_def, gs.player.total_defense()],
+		gs.player.total_defense() == plain_def + 3)
+	enter.call(5)
+	check("a room entered twice counts once", gs.player.travel_rooms == 16)
+	gs.player.x = 1
+	gs.player.y = 1
+	gs._note_rooms()
+	check("a corridor counts for nothing", gs.player.travel_rooms == 16)
+
+	var said := false
+	for line in gs.msg_log.entries:
+		if String(line.get("text", "")).findn("road settles") >= 0:
+			said = true
+	check("the log says when it grows", said)
+
+	gs.player.equipped.erase(coat.slot)
+	check("taken off, it gives nothing", gs.player.travel_bonus() == 0)
+	gs.player.equipped[coat.slot] = coat
+	check("  put back on, what was walked still counts", gs.player.travel_bonus() == 3)
+
+	# Survives a save.
+	var loaded := GameState.new(1)
+	check("a save keeps the road (%d rooms)" % gs.player.travel_rooms,
+		loaded.apply_dict(gs.to_dict()) and loaded.player.travel_rooms == 16
+		and loaded.rooms_found.size() == 17)
+
+	# A new floor starts again at nothing.
+	gs.depth += 1
+	gs.build_level()
+	check("a new floor starts the road again", gs.player.travel_rooms == 0
+		and gs.player.travel_bonus() == 0 and gs.rooms_found.size() == 1)
+
+	# A round trip through its name, for the morgue.
+	var back := Item.from_display_name(coat.display_name())
+	check("road armour round-trips through its name (%s)" % coat.display_name(),
+		back != null and back.element == &"travel")
+
 ## Leaving the name blank must not change the run. It used to roll a second
 ## name from the run's rng, so the same seed played differently depending on
 ## whether you typed one.
@@ -8147,10 +8304,20 @@ func _test_the_element_table_agrees_with_itself() -> void:
 		", ".join(missing))
 
 	# And the reverse: found magic is derived from the table, so the two lists
-	# cannot disagree by construction -- assert that it stayed that way.
+	# cannot disagree by construction -- assert that it stayed that way. Every
+	# element EXCEPT those deliberately marked `only_from` (the gem of the road,
+	# 2026-09-26: the one stone you must explore to find). Exact, so an element
+	# dropping out by accident still fails here.
 	var found := Item.found_elements()
-	check("found magic offers every element (%d)" % found.size(),
-		found.size() == Item.ELEMENTS.size(),
+	var kept_out := 0
+	for el in Item.ELEMENTS:
+		if Item.ELEMENTS[el].has("only_from"):
+			kept_out += 1
+		elif not found.has(el):
+			kept_out -= 1000
+	check("found magic offers every element not kept out (%d, %d kept out)"
+		% [found.size(), kept_out],
+		kept_out >= 0 and found.size() == Item.ELEMENTS.size() - kept_out,
 		"%d vs %d" % [found.size(), Item.ELEMENTS.size()])
 
 	# ORDER IS LOAD-BEARING: _maybe_enchant indexes the legal list with
@@ -8162,7 +8329,8 @@ func _test_the_element_table_agrees_with_itself() -> void:
 	# Every `hosts` rule must be one accepts_element actually implements. A typo
 	# would fall through the match and refuse everything, which reads exactly
 	# like "that item cannot hold it" and is invisible in play.
-	var known := {&"weapon": true, &"melee": true, &"bow": true, &"shield": true}
+	var known := {&"weapon": true, &"melee": true, &"bow": true, &"shield": true,
+		&"armour": true}
 	var bad := PackedStringArray()
 	for h in hosts_seen:
 		if not known.has(h):
@@ -8184,7 +8352,7 @@ func _test_the_element_table_agrees_with_itself() -> void:
 		and not sling.accepts_element(&"return"))
 	check("shield stones are the offhand only",
 		kite.accepts_element(&"block") and not dagger.accepts_element(&"block"))
-	check("and armour still holds nothing", not mail.accepts_element(&"fire")
+	check("and armour holds no weapon or shield stone", not mail.accepts_element(&"fire")
 		and not mail.accepts_element(&"block"))
 
 ## Three stones, one slot, one permanent choice.
