@@ -881,9 +881,9 @@ func _end_look() -> void:
 ## A blank answer is a real answer: GameState rolls one and the player meets it
 ## above the HP bar.
 func _on_name_chosen(chosen_name: String) -> void:
-	state.player_name = chosen_name
-	if state.player_name.strip_edges() == "":
-		state.player_name = Morgue.roll_name(state.rng)
+	# Blank keeps the name new_game rolled; see GameState.choose_name for why
+	# rolling again here made a seed play differently.
+	state.choose_name(chosen_name)
 	_refresh()
 
 func _close_menu() -> void:

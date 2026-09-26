@@ -141,6 +141,7 @@ func _initialize() -> void:
 	_test_the_flare_rekindles()
 	_test_a_gem_in_the_rubble()
 	_test_the_trader_explains_its_tally()
+	_test_a_blank_name_changes_nothing()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3613,6 +3614,38 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## Leaving the name blank must not change the run. It used to roll a second
+## name from the run's rng, so the same seed played differently depending on
+## whether you typed one.
+func _test_a_blank_name_changes_nothing() -> void:
+	var typed := GameState.new(8080)
+	typed.new_game()
+	var blank := GameState.new(8080)
+	blank.new_game()
+	var rolled := blank.player_name
+	check("the premise: the same seed starts in the same place",
+		typed.rng.state == blank.rng.state and rolled != "")
+	typed.choose_name("Brad")
+	blank.choose_name("")
+	check("a typed name is taken (%s)" % typed.player_name, typed.player_name == "Brad")
+	check("a blank name keeps the one the dungeon rolled (%s)" % blank.player_name,
+		blank.player_name == rolled)
+	check("and neither draws from the run -- the seed plays the same either way",
+		typed.rng.state == blank.rng.state)
+	blank.choose_name("   ")
+	check("  spaces alone count as blank", blank.player_name == rolled)
+	var long := GameState.new(8080)
+	long.new_game()
+	long.choose_name("A;name;far;too;long;for;a;stone")
+	check("a typed name is cleaned for the morgue (%s)" % long.player_name,
+		not long.player_name.contains(";")
+		and long.player_name.length() <= Morgue.NAME_MAX)
+	# The bug lived in main.gd, not here, so guard the place it lived: naming a
+	# run goes through choose_name and never rolls a second name.
+	var src := FileAccess.get_file_as_string("res://src/render/main.gd")
+	check("main.gd names the run through choose_name",
+		src.contains("state.choose_name(") and not src.contains("roll_name("))
+
 ## THE TRADER SAYS HOW IT COUNTS, with the scale. Gabe and Brad both stalled on
 ## the first counter, where every price is 1; the trader now names 1 / 3 / 9.
 func _test_the_trader_explains_its_tally() -> void:

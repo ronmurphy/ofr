@@ -1095,6 +1095,18 @@ func _init(seed_value: int = 0) -> void:
 	else:
 		rng.seed = seed_value
 
+## The name the player chose at the start of a run, or blank for "you pick".
+##
+## Blank KEEPS the name new_game already rolled. It used to roll a second one
+## from the run's rng here -- AFTER the floor was built -- so leaving the field
+## blank drew one more number than typing a name did, and the same seed played
+## differently depending on whether you named yourself. new_game's roll comes
+## before build_level and is part of every run's sequence; this draws nothing.
+func choose_name(chosen: String) -> void:
+	var clean := Morgue.clean_name(chosen)
+	if clean != "":
+		player_name = clean
+
 func new_game() -> void:
 	depth = 1
 	turns = 0

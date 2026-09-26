@@ -38,6 +38,8 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Naming a character on a controller (name list + alphabet) | `NamePanel.pad_act` |
 | A flared torch rekindles a brazier (the race) | `FLARE_KINDLE`, `player_kindle` |
 | One gem hidden in each floor's rubble (floor 2 on) | `geode`, `_hide_the_geode` |
+| The trader explains its tally with prices (1 / 3 / 9) | `TraderTalk.TALLY` |
+| A blank name no longer changes the seeded run | `GameState.choose_name` |
 
 ---
 
@@ -143,6 +145,11 @@ repeats; the d-pad physically cannot, and the keyboard is silenced by the
 numbers: `STICK_AGAIN` 0.12 → ~0.25 (8 steps/sec felt like too many), keep
 `STICK_FIRST` 0.35, and **add the attack-stop the stick lacks** — travel already
 has the rule and the comment.
+
+**Saturday 2026-09-26 (small fixes, then play):** the travel armour gem (+1 hp
+per 10 newly uncovered walkable cells); monsters that shut doors behind them
+(Brad wants it -- see "Doors that close behind things"); the conversation
+footer, which names keyboard keys on a pad.
 
 **3. On-screen pad log.** The diagnostic writes to a file, which a handheld
 cannot reach — proved by having to photograph the screen. On a device with no
