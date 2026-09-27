@@ -95,8 +95,15 @@ func handle_key(key: int) -> bool:
 ## only offered once there is a page to go back to.
 func footer() -> String:
 	if pad_input and pad_cfg != null:
-		var ok := pad_cfg.icon(pad_cfg.key_for_button(JOY_BUTTON_A), true)
-		var leave := pad_cfg.icon(pad_cfg.key_for_button(JOY_BUTTON_B), true)
+		# Named by the KEY each action listens for, not by a fixed button --
+		# the same way the pack and the counter name theirs. Leaving is
+		# `PACK_BACK_KEY` (main.gd turns it into escape here) and going on is
+		# the wait key. This used to ask what the B and A BUTTONS were bound
+		# to, which is the right answer only on the default bindings: move
+		# pick-up to X and the footer still said "B leave" while B did nothing
+		# and X was the button that left. Found in the 2026-09-27 hunt.
+		var ok := pad_cfg.icon(KEY_PERIOD, true)
+		var leave := pad_cfg.icon(MainScene.PACK_BACK_KEY, true)
 		if _at > 0:
 			return "%s  go on     ◄  back     %s  leave" % [ok, leave]
 		return "%s  go on     %s  leave" % [ok, leave]

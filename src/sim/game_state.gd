@@ -1808,7 +1808,8 @@ func trade_buy(stock_index: int) -> bool:
 			Color(0.85, 0.75, 0.55))
 		return false
 	if not give_item(it):
-		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
+		msg_log.add("Your pack is full -- sell or drop something to make room for the %s."
+			% it.display_name(), Color(0.9, 0.55, 0.35))
 		return false
 	trader_credit -= cost
 	trader_stock.remove_at(stock_index)
@@ -1834,7 +1835,8 @@ func trade_buy_gem(el: StringName) -> bool:
 		return false
 	var gem := Item.make(StringName(Item.ELEMENTS[el]["gem"]))
 	if gem == null or not give_item(gem):
-		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
+		msg_log.add("Your pack is full -- sell or drop something to make room for the %s."
+			% (gem.name if gem != null else "gem"), Color(0.9, 0.55, 0.35))
 		return false
 	trader_gems -= Trade.GEMS_FOR_ONE
 	msg_log.add("You take the %s." % gem.name, Color(0.80, 0.85, 0.95))
@@ -3024,7 +3026,7 @@ func can_reach(cell: Vector2i, reach: int) -> bool:
 		return false
 	if Los.steps(player.x, player.y, cell.x, cell.y) > reach:
 		return false
-	return Los.clear(map, player.x, player.y, cell.x, cell.y)
+	return Los.clear_both(map, player.x, player.y, cell.x, cell.y)
 
 func can_fire_at(cell: Vector2i) -> bool:
 	return can_reach(cell, player.total_range())
@@ -4403,6 +4405,21 @@ func _adjacent_spent_brazier() -> Vector2i:
 	return Vector2i(-1, -1)
 
 ## A lit brazier beside the player with something left in it.
+## What the action key does on a square that has a use of its own.
+func _use_the_square(under: int) -> bool:
+	match under:
+		Tiles.FUNGUS:
+			return _eat_fungus()
+		Tiles.RUBBLE:
+			return _knap_stones()
+		Tiles.STAIRS_DOWN:
+			return player_descend()
+		Tiles.STAIRS_UP:
+			return player_ascend()
+		Tiles.SHRINE:
+			return player_pray()
+	return false
+
 ## Ground that `player_pickup` acts on before it ever looks at a brazier.
 const _TILES_THE_KEY_TAKES := [Tiles.FUNGUS, Tiles.RUBBLE, Tiles.STAIRS_DOWN,
 	Tiles.STAIRS_UP, Tiles.SHRINE]
@@ -4540,7 +4557,12 @@ func actions_here() -> Array:
 		return out
 
 	var here := items_at(player.x, player.y)
-	if not here.is_empty():
+	# A full pack means the key does what the square is for (see
+	# player_pickup), so the offer has to say the same.
+	var full := player.inventory.size() >= Entity.INVENTORY_MAX
+	if not here.is_empty() and not (full and here[0].id != &"arrows"
+			and here[0].kind != Item.Kind.AMULET
+			and map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES):
 		var it: Item = here[0]
 		out.append([KEY_G, "gather arrows" if it.id == &"arrows"
 			else "pick up the %s" % it.name])
@@ -4608,16 +4630,8 @@ func player_pickup() -> bool:
 		# because every one of these refuses with its own message -- speculative
 		# calls would print "There are no stairs here" on open floor.
 		var under := map.get_tile(player.x, player.y)
-		if under == Tiles.FUNGUS:
-			return _eat_fungus()
-		if under == Tiles.RUBBLE:
-			return _knap_stones()
-		if under == Tiles.STAIRS_DOWN:
-			return player_descend()
-		if under == Tiles.STAIRS_UP:
-			return player_ascend()
-		if under == Tiles.SHRINE:
-			return player_pray()
+		if under in _TILES_THE_KEY_TAKES:
+			return _use_the_square(under)
 		# Nothing underfoot to act on: a flared torch next to a brazier gives
 		# it the fire. A brazier is never underfoot -- it is an obstacle -- so
 		# this is the one neighbouring-cell act the key has.
@@ -4626,7 +4640,26 @@ func player_pickup() -> bool:
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
-		msg_log.add("You cannot carry any more.", Color(0.9, 0.55, 0.35))
+		# A FULL PACK MUST NOT BLOCK THE SQUARE'S OWN USE. Found in the
+		# 2026-09-27 hunt: an item lying on the stairs, with a full pack, made
+		# this key refuse -- and on a pad this key is the only way down or up.
+		# Items do land on stairs (a monster dying there, or what you drop to
+		# make room, which lands back underfoot). So when the item cannot be
+		# taken, the key does what the square is for, and says why the item
+		# stayed. With room in the pack, the item still comes first.
+		var square := map.get_tile(player.x, player.y)
+		# ANY amulet on the square, not only the first item: safe either way
+		# today, but only because of a ground ordering nothing guarantees.
+		if square in _TILES_THE_KEY_TAKES \
+				and not here.any(func(it): return it.kind == Item.Kind.AMULET):
+			msg_log.add("Your pack is full; the %s stays where it lies." % here[0].name,
+				Color(0.7, 0.6, 0.4))
+			return _use_the_square(square)
+		# Say what to DO, for anything -- the amulet included. Brad, 2026-09-27:
+		# no special allowance for the amulet, but the most important pickup in
+		# the game must not be refused with a message that never names it.
+		msg_log.add("Your pack is full -- drop something to make room for the %s."
+			% here[0].name, Color(0.9, 0.55, 0.35))
 		return false
 	var item: Item = here[0]
 	if item.kind == Item.Kind.AMULET:
@@ -5150,6 +5183,18 @@ func step_travel() -> bool:
 	if entity_at(next.x, next.y) != null or not map.is_walkable(next.x, next.y):
 		_travel.clear()
 		return false
+	# A SHUT DOOR IS OPENED, not walked into. Closed doors are walkable -- you
+	# can always get through one -- so the old check let travel set you down
+	# INSIDE a shut, opaque door, skipping the open that player_move does.
+	# Found in the 2026-09-27 hunt: guards shutting doors on a route made it
+	# common, but a route through any door you had shut yourself could do it.
+	# Opening costs the turn, as a step does; travel carries on next turn.
+	# A rat squeezes under instead, exactly as player_move lets it.
+	if map.get_tile(next.x, next.y) == Tiles.DOOR_CLOSED and not ratted():
+		map.set_tile(next.x, next.y, Tiles.DOOR_OPEN)
+		pathfinder.set_solid(next.x, next.y, false)
+		_work_the_door(next, "You pull the door open.")
+		return true
 	_travel.remove_at(0)
 	# Deliberately not player_move(): that clears the travel queue.
 	var cost := move_cost_for(player, next.x, next.y)
@@ -5468,11 +5513,17 @@ func apply_dict(d: Dictionary) -> bool:
 	player.light = LightSource.new(player.x, player.y, TORCH_RADIUS,
 		Color(1.00, 0.72, 0.36), Color(0.30, 0.34, 0.55), 1.0, true)
 
-	# The trader, relinked by faction -- it is the only neutral thing on a floor.
+	# The trader, relinked by WHO it is, not by its side. It used to take the last
+	# living neutral, which was the trader only because it was the only neutral
+	# on a floor -- and neutral was chosen so that others (wolves, mercenaries)
+	# could inherit it. With a second neutral, a save and load would point
+	# `trader` at that one, and its death would stop the real trader trading for
+	# the rest of the floor. Found in the 2026-09-27 hunt.
 	trader = null
 	for e in entities:
-		if e.faction == Entity.Faction.NEUTRAL and e.alive:
+		if e.appearance == &"trader" and e.faction == Entity.Faction.NEUTRAL and e.alive:
 			trader = e
+			break
 	var tr: Dictionary = d.get("trader", {})
 	trader_stock = []
 	for entry in tr.get("stock", []):
@@ -6367,7 +6418,7 @@ func _ai_ally(actor: Entity, quarry: Entity) -> void:
 		# that kites would walk itself off the leash, and the leash is what
 		# keeps your help where you can see it.
 		if dist <= actor.total_range() \
-				and Los.clear(map, actor.x, actor.y, quarry.x, quarry.y):
+				and Los.clear_both(map, actor.x, actor.y, quarry.x, quarry.y):
 			_attack(actor, quarry, true)
 			return
 		_step_toward(actor, Vector2i(quarry.x, quarry.y))
@@ -6411,11 +6462,37 @@ func _ai_ranged(actor: Entity, foe: Entity) -> void:
 			_attack(actor, foe)
 			return
 
-	if dist <= actor.total_range() and Los.clear(map, actor.x, actor.y, foe.x, foe.y):
+	if dist <= actor.total_range() \
+			and Los.clear_both(map, actor.x, actor.y, foe.x, foe.y) \
+			and _fair_from_the_dark(actor, foe):
 		_attack(actor, foe, true)
 		return
 
 	_step_toward(actor, Vector2i(foe.x, foe.y))
+
+## How far past the edge of the player's sight a shooter may stand.
+const DARK_SHOT_GRACE := 2
+
+## May this shooter fire at its target from where it stands?
+##
+## THE TORCH RULE, BOUNDED. Brad, 2026-09-27: the one carrying the light is
+## half-blinded by it, so the dark seeing you first is fair -- as long as the
+## shooter is no more than a cell or two past the edge of what your torch shows
+## you. Measured before the rule: of shots fired from cells too dark to see,
+## 62% stood 1 cell past the last visible cell on the line, 30% stood 2, and 7%
+## stood 3-4. Those last are the ones this refuses: the shooter steps closer
+## first, into the edge of your sight, instead of firing from true blackness.
+##
+## Only when the target is the player -- `is_visible` is the PLAYER's field of
+## view, and nothing else in the game has one.
+func _fair_from_the_dark(shooter: Entity, target: Entity) -> bool:
+	if not target.is_player or map.is_visible(shooter.x, shooter.y):
+		return true
+	var seen := 0
+	for c in Los.path(target.x, target.y, shooter.x, shooter.y):
+		if map.is_visible(c.x, c.y):
+			seen = maxi(seen, maxi(absi(c.x - target.x), absi(c.y - target.y)))
+	return Los.steps(target.x, target.y, shooter.x, shooter.y) - seen <= DARK_SHOT_GRACE
 
 ## How long after a blink before it can blink again.
 ##

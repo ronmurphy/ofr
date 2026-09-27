@@ -592,9 +592,9 @@ func accepts_element(el: StringName) -> bool:
 	# `defense_bonus` guard is the ring lesson again -- the shield stones scale
 	# with tier, so a tier-0 offhand would eat one and do nothing with it.
 	#
-	# And everything that is not a shield stone is still weapons-only: a mail
-	# shirt of frost would be a second system telling a different story from the
-	# first.
+	# Weapon stones stay weapons-only: a mail shirt of frost would be a second
+	# system telling a different story from the first. Body armour takes only
+	# its own stones (`hosts: armour` -- the gem of the road, 2026-09-26).
 	var rule: Dictionary = ELEMENTS.get(el, {})
 	if rule.is_empty():
 		return false

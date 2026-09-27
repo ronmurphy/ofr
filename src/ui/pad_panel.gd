@@ -211,6 +211,43 @@ func handle_key(key: int) -> bool:
 	queue_redraw()
 	return true
 
+## A finished row whose button was taken by a later one. Warm red rather than
+## the finished green, and never colour alone: the row also says "unbound".
+const LOST_TINT := Color(0.90, 0.52, 0.42)
+
+## What row `i` of the walk-through is right now: &"live" (waiting for a
+## press), &"todo" (not reached), &"done" (reached and bound) or &"lost".
+##
+## LOST is the reason this exists. `PadConfig.bind` gives each key one button
+## and each button one key, so pressing a button again further down the list
+## MOVES it -- which is how you correct a mistake, and is kept. But the action
+## it came off is left with no button at all, and that row used to stay green,
+## the "done" colour, beside a "--". Found in the 2026-09-27 hunt: the worst
+## case is pick-up, because the pack, the conversation and the counter all go
+## back on whatever button picks up (`MainScene.PACK_BACK_KEY`), so orphaning
+## it took the way out of all three -- and their footers then offered "G" to
+## someone holding a controller.
+##
+## A method rather than inline in _draw so the suite can ask it directly.
+func row_state(i: int) -> StringName:
+	if i == _at and _listening:
+		return &"live"
+	if i >= _at:
+		return &"todo"
+	var key := int(PadConfig.WALK[i][0])
+	if cfg == null or cfg.button_for_key(key) >= 0:
+		return &"done"
+	# Passed, and nothing does it now. That is only a LOSS if the action needs
+	# a button. Movement does not: DEFAULTS leaves it unbound on purpose because
+	# the stick sends the arrows by itself, so a move row with no button is
+	# working, not broken. Everything the defaults DO bind needs one.
+	#
+	# Keyed on the defaults rather than on "was it bound during this walk"
+	# because the walk can only pass a row by binding it (`_at` advances only
+	# after `cfg.bind`), so today the two agree -- but this one stays right if
+	# a way to skip a row is ever added, and needs no state to be kept in step.
+	return &"lost" if PadConfig.DEFAULTS.values().has(key) else &"done"
+
 func _draw() -> void:
 	var at := (size - PANEL) * 0.5
 	draw_rect(Rect2(at, PANEL), Color(0.07, 0.07, 0.09, 0.97), true)
@@ -247,16 +284,21 @@ func _draw() -> void:
 		var col_x: float = at.x + PAD + float(col) * (col_w + COL_GAP)
 		var row_y: float = top + float(i - (split if col == 1 else 0)) * ROW_H
 
-		var live := i == _at and _listening
+		var state := row_state(i)
+		var live := state == &"live"
 		var tint := Color(0.95, 0.82, 0.45) if live else Color(0.78, 0.76, 0.80)
-		if i < _at:
+		if state == &"done":
 			tint = Color(0.60, 0.72, 0.60)
+		elif state == &"lost":
+			tint = LOST_TINT
 		draw_string(font, Vector2(col_x, row_y), String(row[1]),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
 		var said := "press a button" if live else "--"
 		var has := cfg.button_for_key(int(row[0])) if cfg != null else -1
 		if not live and has >= 0:
 			said = PadConfig.button_name(has)
+		elif state == &"lost":
+			said = "unbound"
 		# Right-aligned within its own column rather than the panel, or the
 		# left column's bindings would sit in the right column's labels.
 		draw_string(font, Vector2(col_x, row_y), said,

@@ -37,6 +37,20 @@ static func clear(map: DungeonMap, x0: int, y0: int, x1: int, y1: int) -> bool:
 			return false
 	return true
 
+## A line that is clear BOTH WAYS. What every shot uses -- the player's, a
+## monster's, an ally's.
+##
+## `clear` is one-way Bresenham, and one-way Bresenham is not symmetric: near a
+## corner the line from A to B can slip past a wall that the line from B to A
+## clips. The player aimed along one direction and monsters along the other, so
+## a monster could shoot you from a cell you could not shoot back into. A
+## playtester found it within three runs (2026-09-26: "they can target you
+## around a corner and you can't do the same"); measured, 1.62% of monster shot
+## lines. Both-ways rather than either-way was the choice because it gives the
+## early slingers slightly FEWER shots (-1.6%) where either-way gave them more.
+static func clear_both(map: DungeonMap, x0: int, y0: int, x1: int, y1: int) -> bool:
+	return clear(map, x0, y0, x1, y1) and clear(map, x1, y1, x0, y0)
+
 ## The cells a projectile crosses, excluding the origin and including the
 ## target. Purely for animation -- the shot itself has already resolved.
 static func path(x0: int, y0: int, x1: int, y1: int) -> Array[Vector2i]:

@@ -36,3 +36,4 @@ Thumbs.db
 CLAUDE.md
 # GameIcons is a collection of icons for games, and the repository is huge. We don't need to track it in our repo.
 GameIcons/*
+patches/*

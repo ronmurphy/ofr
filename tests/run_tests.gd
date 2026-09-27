@@ -124,6 +124,8 @@ func _initialize() -> void:
 	_test_a_pad_can_finish_the_game()
 	_test_a_pad_can_answer_every_prompt()
 	_test_a_pad_is_never_a_letter_in_the_pack()
+	_test_a_moved_button_leaves_its_row_marked()
+	_test_the_conversation_footer_names_what_works()
 	_test_button_pictures()
 	_test_holding_a_direction()
 	_test_armour_takes_time()
@@ -144,6 +146,10 @@ func _initialize() -> void:
 	_test_a_blank_name_changes_nothing()
 	_test_the_road()
 	_test_doors_shut_behind_guards()
+	_test_fair_shots()
+	_test_travel_opens_doors()
+	_test_a_full_pack_still_takes_the_stairs()
+	_test_the_trader_is_relinked_by_identity()
 	_test_main_only_sets_properties_that_exist()
 	_test_threat_ceilings()
 	_test_every_theme_glyph_is_drawable()
@@ -3616,6 +3622,187 @@ func _test_the_trader_deals() -> void:
 ## built for the pad and barely served either: hovering did nothing, so a mouse
 ## player sold blind; the gem chooser could not be clicked; the wheel did not
 ## scroll; and only the arrow keys moved, not the vi-keys or the numpad.
+## FAIR SHOTS (day-7 hunt, 2026-09-27, from the playtest report "monsters can
+## target you around a corner and you can't do the same").
+func _test_fair_shots() -> void:
+	# The exact corner the hunt's probe found: one-way clear, the other blocked.
+	var gs := GameState.new(20260927)
+	gs.new_game()
+	gs.depth = 1
+	gs.build_level()
+	var a := Vector2i(63, 5)
+	var b := Vector2i(59, 2)
+	var there := Los.clear(gs.map, a.x, a.y, b.x, b.y)
+	var back := Los.clear(gs.map, b.x, b.y, a.x, a.y)
+	check("the premise: the one-way line disagrees at this corner (%s / %s)" % [there, back],
+		there != back)
+	check("a shot line agrees both ways there",
+		Los.clear_both(gs.map, a.x, a.y, b.x, b.y) == Los.clear_both(gs.map, b.x, b.y, a.x, a.y))
+
+	# And everywhere: sampled pairs in shooting range on this floor.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var raw_bad := 0
+	var both_bad := 0
+	var both_open := 0
+	for k in 3000:
+		var p := Vector2i(rng.randi_range(1, gs.map.width - 2), rng.randi_range(1, gs.map.height - 2))
+		var q := p + Vector2i(rng.randi_range(-7, 7), rng.randi_range(-7, 7))
+		if not gs.map.is_walkable(p.x, p.y) or not gs.map.in_bounds(q.x, q.y) \
+				or not gs.map.is_walkable(q.x, q.y):
+			continue
+		if Los.clear(gs.map, p.x, p.y, q.x, q.y) != Los.clear(gs.map, q.x, q.y, p.x, p.y):
+			raw_bad += 1
+		var pq := Los.clear_both(gs.map, p.x, p.y, q.x, q.y)
+		if pq != Los.clear_both(gs.map, q.x, q.y, p.x, p.y):
+			both_bad += 1
+		if pq:
+			both_open += 1
+	check("the premise: the one-way line is asymmetric somewhere here (%d)" % raw_bad, raw_bad > 0)
+	check("a shot line never is (%d)" % both_bad, both_bad == 0)
+	check("  and still finds open shots (%d) -- it did not just refuse everything" % both_open,
+		both_open > 100)
+	# All three shooters use it.
+	var src := FileAccess.get_file_as_string("res://src/sim/game_state.gd")
+	check("the player, monsters and allies all aim with the both-ways line",
+		src.count("Los.clear_both(") >= 3
+		and not src.contains("return Los.clear(map, player.x, player.y, cell.x, cell.y)"))
+	check("  and monsters also check the dark-shot bound",
+		src.contains("and _fair_from_the_dark(actor, foe)"))
+
+	# THE DARK-SHOT BOUND: a shooter no more than 2 cells past the sight edge.
+	var ar := GameState.new(4040)
+	ar.new_game()
+	ar.player.x = 20
+	ar.player.y = 20
+	var shooter := Entity.new("kobold slinger", &"slinger", 26, 20)
+	shooter.faction = Entity.Faction.MONSTER
+	var see_up_to := func(n: int) -> void:
+		ar.map.visible_now.fill(0)
+		for x in range(20, 20 + n + 1):
+			ar.map.visible_now[ar.map.idx(x, 20)] = 1
+	see_up_to.call(4)
+	check("a shooter 2 cells past the edge of your sight may fire",
+		ar._fair_from_the_dark(shooter, ar.player))
+	see_up_to.call(3)
+	check("  3 cells past may not -- it must step closer first",
+		not ar._fair_from_the_dark(shooter, ar.player))
+	see_up_to.call(6)
+	check("  one you can see may always fire", ar._fair_from_the_dark(shooter, ar.player))
+	see_up_to.call(0)
+	var ally := Entity.new("bone ally", &"skeleton", 20, 20)
+	ally.faction = Entity.Faction.PLAYER
+	check("  and the bound is only for shots at the player (who has a field of view)",
+		ar._fair_from_the_dark(shooter, ally))
+
+## A full pack must not block the stairs (hunt 2026-09-27): with an item lying on
+## them, the action key -- a pad's only way down -- used to refuse outright.
+func _test_a_full_pack_still_takes_the_stairs() -> void:
+	var setup := func(fill: bool) -> GameState:
+		var g := GameState.new(4040)
+		g.new_game()
+		g.entities = [g.player]
+		g.player.x = g.stairs.x
+		g.player.y = g.stairs.y
+		g.player.inventory.clear()
+		g.player.equipped.clear()
+		if fill:
+			while g.player.inventory.size() < Entity.INVENTORY_MAX:
+				g.give_item(Item.make(&"dagger"))
+		var lying := Item.make(&"buckler")
+		lying.x = g.stairs.x
+		lying.y = g.stairs.y
+		g.ground = [lying]
+		return g
+	var offers_down := func(g: GameState) -> bool:
+		for a in g.actions_here():
+			if String(a[1]) == "go down":
+				return true
+		return false
+
+	var full: GameState = setup.call(true)
+	check("the premise: standing on the stairs, pack full, a buckler underfoot",
+		full.map.get_tile(full.player.x, full.player.y) == Tiles.STAIRS_DOWN
+		and full.player.inventory.size() == Entity.INVENTORY_MAX
+		and not full.items_at(full.player.x, full.player.y).is_empty())
+	check("the context box offers the stairs", offers_down.call(full))
+	var went := full.player_pickup()
+	check("and the key takes them (now depth %d)" % full.depth, went and full.depth == 2)
+
+	# Off the stairs, a full pack says what to do -- for the amulet too.
+	var plain: GameState = setup.call(true)
+	plain.map.set_tile(plain.player.x, plain.player.y, Tiles.FLOOR)
+	var amulet := Item.make(&"amulet")
+	if amulet != null:
+		amulet.x = plain.player.x
+		amulet.y = plain.player.y
+		plain.ground = [amulet]
+	check("the premise: an amulet at your feet, pack full",
+		amulet != null and plain.player.inventory.size() == Entity.INVENTORY_MAX)
+	check("a full pack refuses it", not plain.player_pickup())
+	var said: String = plain.msg_log.entries[-1]["text"]
+	check("  and says to make room for it (\"%s\")" % said,
+		said.findn("make room for the") >= 0 and said.findn(amulet.name if amulet != null else "?") >= 0)
+
+	var room: GameState = setup.call(false)
+	check("with room in the pack, the item still comes first (must succeed)",
+		not offers_down.call(room) and room.player_pickup() and room.depth == 1
+		and room.player.inventory.size() == 1)
+
+## On load, the trader is found by WHO it is. With a second living neutral on
+## the floor after it (mercenaries, wolves), the old relink took the last
+## neutral and pointed `trader` at the wrong creature. (Hunt, 2026-09-27.)
+func _test_the_trader_is_relinked_by_identity() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	check("the premise: floor one has a trader", gs.trader_here())
+	if not gs.trader_here():
+		return
+	var real := gs.trader
+	var other := Entity.new("wolf", &"wolf", real.x + 3, real.y)
+	other.faction = Entity.Faction.NEUTRAL
+	gs.entities.append(other)
+	check("the premise: a second living neutral stands AFTER the trader",
+		gs.entities.find(other) > gs.entities.find(real))
+	var loaded := GameState.new(1)
+	check("the save loads", loaded.apply_dict(gs.to_dict()))
+	check("  and the trader is the trader, not the other neutral (%s)"
+		% (loaded.trader.name if loaded.trader != null else "none"),
+		loaded.trader != null and loaded.trader.appearance == &"trader")
+
+## Travel opens a shut door instead of walking into it. Found in the 2026-09-27
+## hunt: travel stood the player INSIDE a closed, opaque door.
+func _test_travel_opens_doors() -> void:
+	var gs := GameState.new(4040)
+	gs.new_game()
+	var c := Vector2i(30, 20)
+	for y in range(c.y - 2, c.y + 3):
+		for x in range(c.x - 9, c.x + 10):
+			gs.map.set_tile(x, y, Tiles.WALL)
+	for x in range(c.x - 7, c.x + 8):
+		gs.map.set_tile(x, c.y, Tiles.FLOOR)
+	gs.map.set_tile(c.x, c.y, Tiles.DOOR_CLOSED)
+	gs.map.reveal_all()
+	gs.pathfinder.refresh(gs.map)
+	gs.entities = [gs.player]
+	gs.ground = []
+	gs.player.x = c.x - 5
+	gs.player.y = c.y
+	var goal := Vector2i(c.x + 5, c.y)
+	check("the premise: travel plans a route through the shut door",
+		gs.begin_travel(goal))
+	var inside := 0
+	for i in 30:
+		if gs.map.get_tile(gs.player.x, gs.player.y) == Tiles.DOOR_CLOSED:
+			inside += 1
+		if not gs.travelling():
+			break
+		gs.step_travel()
+	check("travel never stands you inside a shut door (%d times)" % inside, inside == 0)
+	check("  it opened the door", gs.map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN)
+	check("  and arrived (%d, %d)" % [gs.player.x, gs.player.y],
+		Vector2i(gs.player.x, gs.player.y) == goal)
+
 ## DOORS SHUT BEHIND THINGS: a guard on its round closes the door it came through.
 ## A door you left open and find shut means something careful passed.
 func _test_doors_shut_behind_guards() -> void:
@@ -9062,6 +9249,86 @@ func _rng_for(s: int) -> RandomNumberGenerator:
 ## Reported from play on a Legion Go S: the inventory opened and nothing could
 ## be chosen. Every route in was a letter key or the mouse, and a controller
 ## sends neither -- Brad had to tap the touchscreen to equip anything.
+## A button pressed twice in the rebinding walk-through MOVES, and the action it
+## left must not look finished. Found in the 2026-09-27 hunt: that row stayed
+## green, the "done" colour, beside a "--". When the orphan was pick-up the pad
+## also lost its way back out of the pack, the conversation and the counter,
+## which all go back on whatever button picks up.
+func _test_a_moved_button_leaves_its_row_marked() -> void:
+	var pad := PadPanel.new()
+	var cfg := PadConfig.new()
+	pad.open(cfg)
+	var pick_up := -1
+	var inventory := -1
+	for i in PadConfig.WALK.size():
+		if int(PadConfig.WALK[i][0]) == KEY_G:
+			pick_up = i
+		elif int(PadConfig.WALK[i][0]) == KEY_I:
+			inventory = i
+	check("the premise: pick-up is asked for before inventory",
+		pick_up >= 0 and inventory > pick_up, "%d, %d" % [pick_up, inventory])
+
+	# A real walk binds every row it passes -- `_at` only advances inside
+	# `bind` -- so bind move-up as the walk would. The defaults leave movement
+	# UNBOUND on purpose (the stick sends the arrows natively), which is why
+	# jumping `_at` forward without this made an untouched row read as lost:
+	# the first version of this test assumed a default that is not there.
+	cfg.bind(JOY_BUTTON_DPAD_UP, KEY_UP)
+	# B for pick-up, then B again for inventory, walking past both.
+	cfg.bind(JOY_BUTTON_B, KEY_G)
+	cfg.bind(JOY_BUTTON_B, KEY_I)
+	pad._at = inventory + 1
+	check("the premise: pick-up is left with no button at all",
+		cfg.button_for_key(KEY_G) == -1)
+	check("the premise: move-up was bound on the way past",
+		cfg.button_for_key(KEY_UP) == JOY_BUTTON_DPAD_UP)
+
+	check("the row a button was taken from reads as lost, not done",
+		pad.row_state(pick_up) == &"lost", String(pad.row_state(pick_up)))
+	check("  and the row that took it reads as done",
+		pad.row_state(inventory) == &"done", String(pad.row_state(inventory)))
+	# The two that keep this honest: a helper calling everything lost would
+	# pass the line above and fail these.
+	check("  while a row nobody touched is still done",
+		pad.row_state(0) == &"done", String(pad.row_state(0)))
+	check("  and a row not reached yet is still to do",
+		pad.row_state(inventory + 1) == &"todo", String(pad.row_state(inventory + 1)))
+
+	# ofr-69's catch: movement is unbound BY DEFAULT (the stick sends the
+	# arrows), so a move row passed with no button is working, not lost. The
+	# first version of row_state painted it red.
+	var fresh := PadPanel.new()
+	var plain := PadConfig.new()
+	fresh.open(plain)
+	fresh._at = inventory + 1
+	check("the premise: move-up has no button by default",
+		plain.button_for_key(KEY_UP) == -1)
+	check("  and a move row passed without one is not called lost",
+		fresh.row_state(0) == &"done", String(fresh.row_state(0)))
+	fresh.free()
+	pad.free()
+
+## The conversation footer must name the button that actually leaves. It used to
+## name the B button whatever B was bound to, while leaving listens for the
+## pick-up key -- so after moving pick-up to X it said "B leave" and B did
+## nothing. Found in the 2026-09-27 hunt.
+func _test_the_conversation_footer_names_what_works() -> void:
+	var talk := TalkPanel.new()
+	var cfg := PadConfig.new()
+	talk.pad_input = true
+	talk.pad_cfg = cfg
+	cfg.bind(JOY_BUTTON_X, MainScene.PACK_BACK_KEY)
+	check("the premise: X is now the button that leaves a conversation",
+		cfg.button_for_key(MainScene.PACK_BACK_KEY) == JOY_BUTTON_X)
+	check("the premise: and B no longer is",
+		cfg.key_for_button(JOY_BUTTON_B) != MainScene.PACK_BACK_KEY)
+	var foot := talk.footer()
+	check("the footer names X as the way to leave",
+		foot.contains(cfg.icon(MainScene.PACK_BACK_KEY, true) + "  leave"), foot)
+	check("  and the wait key as the way on",
+		foot.contains(cfg.icon(KEY_PERIOD, true) + "  go on"), foot)
+	talk.free()
+
 func _test_pack_without_letters() -> void:
 	var gs := _arena(21, 11)
 	var pack := InventoryPanel.new()
