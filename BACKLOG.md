@@ -6,6 +6,9 @@ entries in the old list were wrong in the same direction, all claiming
 something was unbuilt when it had shipped.
 
 **If you add an idea here, say who it came from and what decision it creates.**
+
+**Player feedback lives in `PLAYTESTS.md`** — what testers did, said and asked,
+one dated section per session. Decisions that come out of it land here.
 An idea that implies no decision for the player is the one filter that has
 reliably caught bad suggestions.
 
@@ -291,6 +294,16 @@ firing at *ground*, which collides with the guard that refuses a cell with no
 target. The good part is the economics: arrows are the only strictly closed
 resource in the game, while sling stones are knapped from rubble — so the same
 wall costs a permanent resource with a bow and a renewable one with a sling.
+
+**The Horn of Awakening** (unique, Brad's, designed 2026-09-17, never built).
+The third unique, from floor 6. Used, it is dropped where it lands and sounds
+for 10 turns -- the first noise in the game not centred on the player, loud
+enough to raise graves, so you can pull a floor's attention somewhere you are
+not. Designed to be STOLEN (hunting the thief is the mechanic), which needs two
+gaps closed first: monsters must be able to carry what they cannot wear, and
+drop what they merely carry. Recharges from the world's noise, shown like a
+launcher's ammo (`x64/100`); the gong refills it. Glyph: md-bugle (0xF0DB4,
+present in the icon font). Full notes in the 2026-09-17 session record.
 
 **Fireball scroll.** Asked for by a player. Passes the filter: it implies a
 decision (where to aim, when to spend it).
