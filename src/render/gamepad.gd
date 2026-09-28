@@ -64,12 +64,32 @@ var cfg := PadConfig.new()
 ## list while the polled value sat at +0.00 (Brad, itch, 2026-09-28). The left
 ## stick polls fine, so only the camera reads through this. Where the two
 ## agree -- everywhere else -- it makes no difference.
+##
+## AND WITHIN ONE FRAME, THE VALUE FURTHEST FROM ZERO WINS, not the last. The
+## second itch test (same day) showed why: Firefox also reports a raw axis 4
+## that always reads 0, and Godot writes it into the same slot as the stick's
+## left-right -- so every frame axis 4 said 1.00 and then 0.00, and the last
+## word was always the dead one. Only that collision ever sends one axis twice
+## in a frame, so everywhere else this is the plain last value.
 var _reported := {}
+var _frame := -1
+var _this_frame := {}
 
-func track(event: InputEvent) -> void:
+func track(event: InputEvent, frame: int = -1) -> void:
 	var motion := event as InputEventJoypadMotion
-	if motion != null and motion.device == 0:
-		_reported[int(motion.axis)] = motion.axis_value
+	if motion == null or motion.device != 0:
+		return
+	if frame < 0:
+		frame = Engine.get_process_frames()
+	if frame != _frame:
+		_frame = frame
+		_this_frame.clear()
+	var a := int(motion.axis)
+	var v := motion.axis_value
+	if _this_frame.has(a) and absf(float(_this_frame[a])) > absf(v):
+		v = float(_this_frame[a])
+	_this_frame[a] = v
+	_reported[a] = v
 
 ## An axis as its events last reported it, or as polled if it has sent none.
 func axis(a: int) -> float:

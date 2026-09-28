@@ -890,6 +890,33 @@ func _test_the_camera_reads_reported_axes() -> void:
 	right.axis = JOY_AXIS_TRIGGER_LEFT
 	right.axis_value = 1.0
 	g.track(right)
+	# Firefox writes a dead raw axis into the same slot every frame. Within a
+	# frame the live value must win, whichever order they arrive in.
+	var clash := Gamepad.new()
+	for order in [[0.0, 1.0], [1.0, 0.0]]:
+		for v in order:
+			var ev := InputEventJoypadMotion.new()
+			ev.device = 0
+			ev.axis = JOY_AXIS_TRIGGER_LEFT
+			ev.axis_value = v
+			clash.track(ev, 100 if order[0] == 0.0 else 101)
+		check("  the stick beats Firefox's dead axis in one frame (%s)" % str(order),
+			clash.axis(JOY_AXIS_TRIGGER_LEFT) == 1.0)
+	# ...but a NEW frame is a new reading, or the stick could never come back.
+	var back := InputEventJoypadMotion.new()
+	back.device = 0
+	back.axis = JOY_AXIS_TRIGGER_LEFT
+	back.axis_value = 0.5
+	clash.track(back, 102)
+	check("  and the next frame's reading replaces it", clash.axis(JOY_AXIS_TRIGGER_LEFT) == 0.5)
+	# Firefox's real triggers, on axes 6 and 7, turn the camera either way.
+	check("  a real trigger on axis 7 turns right, whatever the stick says",
+		DioramaView.turn_intent(0.0, 0.0, 0.0, false, 0.0, 1.0) > 0.75
+		and DioramaView.turn_intent(0.0, 0.5, 0.5, true, 0.0, 1.0) > 0.75)
+	check("  and on axis 6 turns left",
+		DioramaView.turn_intent(0.0, 0.0, 0.0, false, 1.0, 0.0) < -0.75)
+	check("  and resting at 0 they change nothing",
+		DioramaView.turn_intent(0.0, 0.0, 0.0, false, 0.0, 0.0) == 0.0)
 	check("  and Firefox's stick pushed right turns the camera from them",
 		DioramaView.turn_intent(g.axis(JOY_AXIS_RIGHT_X), g.axis(JOY_AXIS_TRIGGER_LEFT),
 			0.5, true) > 0.75)

@@ -156,7 +156,15 @@ bones cannot be traded; the counter opens after the trader speaks.
   each axis as its events last reported it (`Gamepad.track` / `axis`). To
   confirm: F8 in Firefox on itch, circle the right stick -- the `ev` column
   should move and the camera line should reach "firefox-mode" and turn. It may
-  need one full circle before it is recognised. With an Xbox Wireless pad (045e-02fd) Firefox says
+  need one full circle before it is recognised.
+  **Second test, same day: still no turn.** The watch showed `ev +0.00..+1.00`
+  on axis 4 with the camera reading 0: Firefox also reports a dead raw axis 4
+  (always 0) that Godot writes into the SAME slot every frame, so the last word
+  each frame was the dead one. Now the value furthest from zero wins within a
+  frame. And Firefox's REAL triggers (axes 6/7, which nothing read) now turn the
+  camera too -- a second route whatever the stick does. If both still fail:
+  Firefox gets `[` `]` and the pad's triggers only, and the stick is noted as a
+  Firefox limitation. With an Xbox Wireless pad (045e-02fd) Firefox says
   "standard" but reports the right stick's left-right as the LT value resting at
   0.5 (and up-down on RT); the real triggers go to axes 6 and 7. Edge (Chromium),
   Steam and native read it correctly. The game now turns the camera on the

@@ -468,7 +468,14 @@ func hovered_cell() -> Vector2i:
 ## triggers), LT is read as the stick, re-centred, and the triggers are ignored.
 ## Measured 2026-09-28; Edge and Steam report the pad correctly.
 static func turn_intent(right_x: float, left_trigger: float, right_trigger: float,
-		centred := false) -> float:
+		centred := false, extra_left := 0.0, extra_right := 0.0) -> float:
+	# Firefox's REAL triggers arrive as axes 6 and 7 (its trigger slots carry
+	# the right stick). Read first and on their own, so a squeeze turns the
+	# camera there whatever the stick is doing. Nothing else uses 6 or 7.
+	if extra_right >= 0.5 and extra_left < 0.1:
+		return extra_right
+	if extra_left >= 0.5 and extra_right < 0.1:
+		return -extra_left
 	if centred:
 		return (left_trigger - 0.5) * 2.0
 	if absf(right_x) >= 0.30:

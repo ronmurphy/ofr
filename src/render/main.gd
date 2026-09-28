@@ -392,7 +392,8 @@ func _process(delta: float) -> void:
 				_stick_on_triggers = _triggers_centred_for >= 1.0
 			else:
 				_triggers_centred_for = 0.0
-		var turn := DioramaView.turn_intent(rx, lt, rt, _stick_on_triggers)
+		var turn := DioramaView.turn_intent(rx, lt, rt, _stick_on_triggers,
+			pad.axis(6), pad.axis(7))
 		if pad_watch.visible:
 			pad_watch.camera_line = "camera: RX %+.2f LT %+.2f RT %+.2f %s -> %+.2f" \
 				% [rx, lt, rt,
