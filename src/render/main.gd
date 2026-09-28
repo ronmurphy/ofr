@@ -347,11 +347,22 @@ func _process(delta: float) -> void:
 	# The right stick has no gameplay binding, so it turns the 3D camera in
 	# deliberate quarter-turns. One turn per push; centre it before turning again.
 	if _map_view == diorama and _world_has_focus():
-		var right_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
-		if absf(right_x) >= 0.75 and not _diorama_stick_down:
-			diorama.rotate_view(1 if right_x > 0.0 else -1)
+		var lt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT)
+		var rt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT)
+		# Firefox's Xbox-pad mix-up, recognised by both "triggers" resting at
+		# 0.5 for a second; once seen, it holds for the session.
+		if not _stick_on_triggers:
+			if DioramaView.looks_like_centred_triggers(lt, rt):
+				_triggers_centred_for += delta
+				_stick_on_triggers = _triggers_centred_for >= 1.0
+			else:
+				_triggers_centred_for = 0.0
+		var turn := DioramaView.turn_intent(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
+			lt, rt, _stick_on_triggers)
+		if absf(turn) >= 0.75 and not _diorama_stick_down:
+			diorama.rotate_view(1 if turn > 0.0 else -1)
 			_diorama_stick_down = true
-		elif absf(right_x) < 0.30:
+		elif absf(turn) < 0.30:
 			_diorama_stick_down = false
 	else:
 		_diorama_stick_down = false
@@ -493,6 +504,10 @@ var _synthetic := false
 ## fixes itself the moment somebody does something.
 var _pad_input := false
 var _diorama_stick_down := false
+## See DioramaView.turn_intent: Firefox reports an Xbox pad's right stick on the
+## trigger values. Set once both have rested at 0.5 for a second.
+var _stick_on_triggers := false
+var _triggers_centred_for := 0.0
 
 func _press(key: int) -> void:
 	_synthetic = true

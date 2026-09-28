@@ -63,7 +63,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `w` | swap between your best launcher and your best blade (costs a turn) |
 | `v` | cycle the view: letters, symbols, or pictures |
 | `q` | toggle between the classic grid and the tilted 3D view |
-| `[` / `]` | turn the 3D camera left or right by 45° (eight views: diamond and straight on, alternating); the right stick also turns it |
+| `[` / `]` | turn the 3D camera left or right by 45° (eight views: diamond and straight on, alternating); the right stick or LT / RT also turn it |
 | `R` | new game |
 
 ## Items

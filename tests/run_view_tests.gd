@@ -48,6 +48,7 @@ func _initialize() -> void:
 	_test_small_life()
 	_test_the_trader_idles()
 	_test_fft_keys_walk_the_grid()
+	_test_the_camera_turns_on_stick_or_triggers()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -828,6 +829,29 @@ func _test_fft_keys_walk_the_grid() -> void:
 	check("from the first view, up walks north (up and to the right on screen)",
 		DioramaView.view_to_grid(Vector2i(0, -1), DioramaView.CAMERA_YAW) == Vector2i(0, -1)
 		and DioramaView.grid_to_view(Vector2i(0, -1), DioramaView.CAMERA_YAW).x > 0.0)
+
+## The pad turns the camera with the right stick, or with the triggers -- which
+## is also how Firefox delivers an Xbox Wireless pad's right stick (2026-09-28).
+func _test_the_camera_turns_on_stick_or_triggers() -> void:
+	check("the right stick turns it", DioramaView.turn_intent(0.9, 0.0, 0.0) > 0.75
+		and DioramaView.turn_intent(-0.9, 0.0, 0.0) < -0.75)
+	check("RT turns right and LT turns left", DioramaView.turn_intent(0.0, 0.0, 0.9) > 0.75
+		and DioramaView.turn_intent(0.0, 0.9, 0.0) < -0.75)
+	check("the stick wins over a resting trigger", DioramaView.turn_intent(-0.9, 0.0, 0.1) < -0.75)
+	check("nothing pressed, nothing turns", absf(DioramaView.turn_intent(0.05, 0.1, 0.1)) < 0.30)
+	# FIREFOX: the stick arrives as LT, resting at 0.5 (measured 2026-09-28).
+	check("both triggers resting at 0.5 is recognised as Firefox's stick",
+		DioramaView.looks_like_centred_triggers(0.5, 0.5))
+	check("  but real triggers at rest are not",
+		not DioramaView.looks_like_centred_triggers(0.0, 0.0)
+		and not DioramaView.looks_like_centred_triggers(0.5, 0.0))
+	check("in that case the stick at rest turns nothing",
+		absf(DioramaView.turn_intent(0.0, 0.5, 0.5, true)) < 0.30)
+	check("  stick right turns right, stick left turns left",
+		DioramaView.turn_intent(0.0, 1.0, 0.5, true) > 0.75
+		and DioramaView.turn_intent(0.0, 0.0, 0.5, true) < -0.75)
+	check("  and the stick's up-down (on RT) turns nothing",
+		absf(DioramaView.turn_intent(0.0, 0.5, 1.0, true)) < 0.30)
 
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:

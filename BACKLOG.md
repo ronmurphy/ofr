@@ -1,22 +1,20 @@
 # BACKLOG.md — what is built, what is not, and what we decided against
 
-Reconciled against the code on **2026-09-22**. Every "not built" line below was
-checked by grepping `src/` rather than trusted from notes — because four
-entries in the old list were wrong in the same direction, all claiming
-something was unbuilt when it had shipped.
+Reconciled against the code on **2026-09-28**, after the breathe pass and the 3D
+view were merged. Every "not built" line below was checked against `src/`
+rather than trusted from notes — because four entries in an old list were wrong
+in the same direction, all claiming something was unbuilt when it had shipped.
 
 **If you add an idea here, say who it came from and what decision it creates.**
+An idea that implies no decision for the player is the one filter that has
+reliably caught bad suggestions.
 
 **Player feedback lives in `PLAYTESTS.md`** — what testers did, said and asked,
 one dated section per session. Decisions that come out of it land here.
-An idea that implies no decision for the player is the one filter that has
-reliably caught bad suggestions.
 
 ---
 
 ## Built — do not re-add
-
-These appear as "designed, NOT built" in older notes. They are all in the code.
 
 | thing | evidence |
 |---|---|
@@ -32,7 +30,8 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Shield gems (bulwark, mirror, boss) | `Item.ELEMENTS` |
 | G as the universal action key | `player_pickup()` |
 | Build stamp | `BuildInfo.BUILD`, `tools/stamp_build.sh` |
-| The trader's shop | `Trade`, `TradePanel`, `GameState.trade_*` |
+| **Week of 2026-09-21** | |
+| The trader's shop: credit, tiers by depth, piles, relics, "yours", tally page | `Trade`, `TradePanel`, `GameState.trade_*`, `TraderTalk.TALLY` |
 | Keyboard hold-to-walk, shared with the stick | `HoldRepeat` |
 | Armour takes turns to put on | `Item.don_turns` |
 | Controller button pictures | `PadGlyphs`, Kenney Xbox Series font |
@@ -41,157 +40,130 @@ These appear as "designed, NOT built" in older notes. They are all in the code.
 | Naming a character on a controller (name list + alphabet) | `NamePanel.pad_act` |
 | A flared torch rekindles a brazier (the race) | `FLARE_KINDLE`, `player_kindle` |
 | One gem hidden in each floor's rubble (floor 2 on) | `geode`, `_hide_the_geode` |
-| The trader explains its tally with prices (1 / 3 / 9) | `TraderTalk.TALLY` |
 | A blank name no longer changes the seeded run | `GameState.choose_name` |
 | The bulwark turns aside at most half a blow (was near-immunity) | `_attack`, `block_amount` |
-| Pad buttons checked against the pack through the DEFAULT bindings | `_test_a_pad_is_never_a_letter_in_the_pack` |
-| Conversations: pad footer, B leaves | `TalkPanel.footer` |
 | The gem of the road: first armour stone, rubble only, +1 def per 4 rooms (max 3) per floor | `gem_travel`, `travel_bonus`, `_note_rooms` |
 | Trader refuses the road stone; road armour sells only when offered twice | `Trade.refusal`, `road_offered` |
 | Guards shut doors behind them (not hunting, doorway clear, silent) | `_shut_behind`, `Entity.shut_behind` |
+| Conversations: pad footer names the real keys, B leaves | `TalkPanel.footer` |
+| **Day-7 hunt, 2026-09-27** | |
+| Shots are fair both ways (symmetric line of fire, player / monster / ally) | `Los.clear_both` |
+| A shooter in the dark must stand within 2 cells of your sight's edge | `_fair_from_the_dark`, `DARK_SHOT_GRACE` |
+| Click-to-travel opens shut doors instead of standing you in them | `_step_travel` |
+| A full pack still takes the stairs / shrine / fungus / rubble | `_use_the_square` |
+| The trader is found by identity after a load | `apply_dict` relink |
+| Every "pack full" message says what to do, the amulet included | `player_pickup`, `trade_buy` |
+| The controller screen shows a binding a later row took, as "unbound" | `PadPanel.row_state` |
+| **Breathe pass + 3D view, merged 2026-09-28** (Gabe, Brad, a cloud Claude; guide in `patches/`) | |
+| The 3D view: `q` toggles; FFT camera, 45° a press, eight views (diamond / straight) | `DioramaView`, `TURN_STEP`, `view_to_grid` |
+| One effects layer both views draw | `fx.gd`, `step_motion.gd`, `creature_marks.gd`, `screen_fx.gd` |
+| Impact: lunge, recoil, magic sparks, shatter, red edge, rings, grey on death | `screen_fx.gd`, patch 2 |
+| Living light: flicker, fungus breath, magic glow on items, memory fade, remembered trader | `living_light.gd`, `map_memory.gd` |
+| Colour by region (hue, never brightness; the climb's purple measured against corrupted monsters) | `region_look.gd` |
+| Small life: footfalls, slower steps on heavy ground, spores, drips, bubbles, dust | `small_life.gd` |
+| 3D extras: silhouettes behind walls, contact shadows, door swing, camera jolt | patch 6 |
+| The trader idles and leans towards you ("full" only) | patch 7 |
+| Click-to-move near a watching monster takes one step, then stops (Gabe) | `begin_travel` |
 
 ---
 
 ## Roadmap — the themes ahead
 
-Written 2026-09-25 to share with the testers. Updates now come in THEMES
-rather than one idea at a time, so each one can set up the next. Only next
-week is scheduled; the rest is order, not dates.
+Updates come in THEMES rather than one idea at a time, so each one can set up
+the next. Only the next few days are scheduled; the rest is order, not dates.
 
-**Just done (this week, being played now).** The trader and its shop. Monsters
-that get past each other in doorways instead of jamming. Naming your character
-on a controller. A flared torch that can relight a brazier, and a race against
-the flare to do it. Creatures no longer get stuck in pits.
+**Done:** the trader and its shop, traffic, naming on a controller, the flare
+race, the gem of the road; the day-7 hunt's six fixes; and, merged 2026-09-28,
+the breathe pass and Gabe's 3D view.
 
-**The breathe pass -- BUILT 2026-09-27** (patches by Brad, Gabe and a cloud
-Claude session, merged with Gabe's 3D view; guide in `patches/`). As built: magic
-GLOWS on magic and gem items rather than tinting the torch (Brad's call); the
-caves' brown is in their dark and floor colour, not a floor tint (floor tints
-fell too close to mud for deuteranopes); no glow halo around flames (it would
-show light where the stealth model has none). **Miasma is still to do.** The
-original plan follows. All of it respects the three motion settings
-(still / simple / full).
-- *Impact:* a flash when something is hit, sparks in the colour of a magic
-  weapon, monsters that shatter into pieces when they die, a red edge when you
-  are hurt, a ring of light when you level up.
-- *Living light:* fungus that slowly breathes light, magic weapons that tint
-  your torchlight, and a map memory that fades the longer ago you saw it —
-  except the landmarks (stairs, doors, braziers, shrines, the trader).
-- *Colour by region:* the entrance faintly green, as if you came in from a
-  forest; the caves earth brown and grey; the fortress stone greys; the climb
-  back out tinged purple with corruption.
-- *Small life:* spores drifting off fungus, drips in the caves, bubbles over
-  mud, dust in your torchlight.
-- *Miasma:* big fungus clusters give off a sickly cloud that hurts anything
-  crossing it. Rabbits are immune.
+**Next: small things, then play.** See "Next up" below: the new-player fixes from
+the 2026-09-26 playtest, David's background music, and the miasma.
 
-**After that: the combat update.** Tactics in the spirit of AD&D 2nd edition.
-- Creatures get a FACING. Attacking with a friend on the far side of your
-  target (flanking) does +1; attacking from behind does +2, and the shield may
-  not count. It works both ways — packs will flank you.
-- Monsters that tire of waiting in a queue look for another way round, which
-  is to say they learn to flank on purpose.
+**Then: a Dwarf Fortress direction — "which systems fit the game, and would be
+fun?"** Brad, 2026-09-28. Both views only DRAW, so this is simulation work.
+Start as a brainstorm, not a build. The seed of it is already here, under "The
+directional one" below. One rule for everything in it: **every interaction
+must leave a trace the player can SEE** — Dwarf Fortress is famously
+unreadable, and our own playtest found mud's slowdown invisible until Brad
+explained it. The shared effects layer means a new interaction announces an
+event once and both views show it.
+
+**The combat update.** Tactics in the spirit of AD&D 2nd edition.
+- Creatures get a FACING (the traffic intent `Entity.want` can supply it).
+  Flanking does +1; attacking from behind does +2, and the shield may not count.
+  It works both ways — packs will flank you.
+- Monsters that tire of waiting in a queue look for another way round, which is
+  to say they learn to flank on purpose.
 - Polearms: javelin (thrown), spear, halberd. They reach two squares and a hit
-  passes through to a second enemy in line. Two-handed, so no shield. Fight over
-  an ally's shoulder, hold a doorway.
+  passes through to a second enemy in line. Two-handed, so no shield.
 
 **A scroll session.** Spells, as scrolls: single-use, or charged for several
-uses. More than combat. Fireball and teleport have been discussed; the rest is
-to design.
+uses. More than combat. Fireball and teleport have been discussed; players have
+asked for lightning bolt and invisibility (PLAYTESTS 2026-09-26).
 
-**3D camera, 2026-09-28:** turns 45 degrees a press -- EIGHT views, alternating
-the Final Fantasy Tactics diamond and a straight-on view for navigating (Brad).
-Untested on the web and the Legion.
-**3D mode functional; visual iteration underway.** Press `q` to swap between
-the classic view and a tilted overhead view; `[` / `]` or the right stick turns
-it in 45-degree steps (eight views), and movement follows the camera. The existing icon-font
-pictures appear as camera-facing labels for creatures, items and features.
-Terrain with an icon-font picture uses that as its primary art; other terrain
-keeps its classic glyph, stamped flat on the floor. Distinct surfaces cover
-cave floor, rubble, water, mud, bones, fungus, stairs, shrines and traps; pits
-have a dark opening and raised rim. Flagstone, masonry and natural rock have
-separate procedural surface detail; pillars and stalagmites have distinct
-shapes and matching floor bases. Light comes from the game's own light map,
-applied once and blended smoothly between cells; braziers, fungus and the
-torch light the 3D view exactly as they light classic, and remembered ground
-keeps its memory colour. Billboards take their size from a 3D-only table
-(`billboard_sizes.gd`), fitted by glyph measurements the font tool writes, so
-the size ladder reads small < adult < heavy and creatures stand on the floor.
-The pause-menu text size zooms the 3D camera. The camera view shows fewer map
-cells than classic. Not the
-"Wizardry-style combat view" declined below: that was a separate screen for
-fights; this is a way of seeing the whole game.
-
-**Smaller ideas waiting their turn:** wolves (a pack that ignores you unless
-provoked); a fungus bag (carry fungus as bait and light); gems from rubble
-(being built now); shooting a wall into existence with a crag gem; monsters
-that shut doors behind them; the coliseum.
+**A new-player theme.** An intro sequence on New Game with a skip button (the
+trader and why you are here; Brad writes it); later a title screen with New game,
+Continue, How to play and Artwork (a parent's suggestion, PLAYTESTS 2026-09-26).
 
 ---
 
 ## Next up
 
-**1. Tune the trader.** Built 2026-09-24; the full economy is in `src/sim/trade.gd`
-and its reasoning in the memory notes. These numbers were NEVER settled and are
-marked PROVISIONAL in the code -- play decides them:
+**1. Small fixes from the 2026-09-26 playtest** (see PLAYTESTS.md):
+- **The `?` hint** in bold and colour on floors 1–2, back to normal after that or
+  once the legend has been opened. Neither teen found the controls alone.
+- **Terrain status:** the sidebar's `footing` line becomes a status line with an
+  icon ("wading · slowed", "sinking · slowed"); it becomes the home for status
+  effects (the miasma is next). Say it in the HERE box too — the Legion player
+  learned the game from that box.
+- **A clickable "menu" button in the sidebar, and a second menu key** browsers do
+  not reserve. In browser fullscreen, Esc leaves fullscreen first; a 10-year-old
+  gave up over it. Also set the itch embed smaller (for example 1280×720) — the
+  game scales, the 1600-wide frame does not fit a laptop at 125–150%.
 
-- **What consumables cost to buy:** 3 points each for a healing potion, a scroll
-  of light and a scroll of blinking. A short sword buys a potion.
-- **How many consumables are stocked:** two potions and one of each scroll.
-- **How many relics a trader shows:** up to three twice-dead heroes, each as the
-  most valuable piece of their kit.
+**2. David's background music** (arrived via Gabe, in `~/Documents/ofr-oai`).
+Generated in code, no audio files, a motif per band and a bent reprise on the
+climb; measured at 1.5% of a core. `main`'s `synth.gd` and `sound_deck.gd` were
+identical to his starting point on 2026-09-27 — check again before applying.
+Before merging: `.gdignore` its 2.4 MB of preview WAVs, a separate music toggle
+(`m` mutes everything today), tests, a listen in the web build, and credit
+David by first name.
 
-Settled with Brad, 2026-09-24:
+**3. The miasma.** Designed in full below; the breathe patches left it to us.
 
-- **Which equipment is stocked** goes by tier and by how deep the player has
-  BEEN: floors 1-3 sell tier 1; 4-6 tiers 1 and 2; 7 and deeper tiers 2 and 3,
-  no tier 1. Floor 6 is the last chance to buy a dagger. Not mirrored on the
-  climb -- every climb trader sells tiers 2 and 3. (The first version used a
-  `min_depth` window and put a mace on the floor-1 shelf.)
-- **Forged items are worth their forging** (`upgrade_level`). The first version
-  read `boosts`, which equipment never uses, and sold every +N at base price.
-- **Words on the counter:** "credit" and "gems", not "slate" and "stones" --
-  stones are sling ammunition.
-- **The trader's piles.** The shelf sorts the way a monster that collects would
-  sort a hoard, by what a thing is for: everything, things that cut, things you
-  wear, things to hide behind, bottles and scrolls, what the dead left. Picture
-  buttons with counts; tab / shift+tab, LB / RB, click or wheel. A hero's item
-  carries a skull. What the player sold is mint on the shelf and the trader says
-  "You gave me this." Brad asked for creativity here, not a copy of the pack.
+**4. Tune the trader.** These numbers were never settled and are marked
+PROVISIONAL in `src/sim/trade.gd` — play decides them:
+- consumables cost 3 each (a healing potion, a scroll of light, a scroll of
+  blinking); two potions and one of each scroll are stocked;
+- up to three relics show, each a twice-dead hero's most valuable piece.
+Decided while building, worth a second look: credit rather than swaps (lost when
+you leave the floor); trading costs no turns; uniques, the amulet, arrows and
+bones cannot be traded; the counter opens after the trader speaks.
 
-Decided while building, worth a second look:
+**5. The 3D view, after play on the web and the Legion:**
+- the web build's shaders have not been seen in a browser (press `q` on itch);
+- the stick in the diamond views: keys follow the grid lines, so pushing the
+  stick along a corridor as it LOOKS walks a grid diagonal — if thumbs fight it,
+  it is one line in `DioramaView.view_to_grid()`;
+- the per-turn 3D rebuild is ~50 ms; rebuilding only changed cells is the real fix;
+- the view tests are light on premise checks — a good day-7 job;
+- ~~the right stick does not turn the camera on itch~~ FIXED 2026-09-28: a
+  Firefox-on-Linux bug. With an Xbox Wireless pad (045e-02fd) Firefox says
+  "standard" but reports the right stick's left-right as the LT value resting at
+  0.5 (and up-down on RT); the real triggers go to axes 6 and 7. Edge (Chromium),
+  Steam and native read it correctly. The game now turns the camera on the
+  triggers too, and recognises Firefox's pattern (both "triggers" resting at 0.5
+  for a second). Diagnosed with `~/Documents/ofr-hunt/tools/pad-check.html`;
+- **range is hard to judge in the diamond view** (Brad: "I'm used to counting
+  squares") — highlight every cell in reach while aiming.
 
-- **Credit, not swaps.** Selling puts points on your credit and the item on
-  the shelf at the same price; buying spends points. The credit stays with that
-  trader while you are on the floor and is lost when you leave.
-- **Trading costs no turns**, like talking to the trader always has.
-- **Uniques and the amulet cannot be traded.** Neither can arrows or bones.
-- **The counter opens after the trader speaks**, including if the story is skipped.
-
-**2. ~~Keyboard auto-repeat.~~ DONE 2026-09-24.** The stick is the only input in the game that
-repeats; the d-pad physically cannot, and the keyboard is silenced by the
-`echo` filter in `main.gd`. Brad wants desktop to feel like the handheld. Agreed
-numbers: `STICK_AGAIN` 0.12 → ~0.25 (8 steps/sec felt like too many), keep
-`STICK_FIRST` 0.35, and **add the attack-stop the stick lacks** — travel already
-has the rule and the comment.
-
-**Saturday 2026-09-26 (small fixes, then play):** the travel armour gem (+1 hp
-per 10 newly uncovered walkable cells); monsters that shut doors behind them
-(Brad wants it -- see "Doors that close behind things"); the conversation
-footer, which names keyboard keys on a pad.
-
-**3. On-screen pad log.** The diagnostic writes to a file, which a handheld
-cannot reach — proved by having to photograph the screen. On a device with no
-keyboard and no file manager the only place a diagnostic can go is on screen.
+**6. On-screen pad log.** The diagnostic writes to a file, which a handheld
+cannot reach. On a device with no keyboard and no file manager the only place a
+diagnostic can go is on screen.
 
 ---
 
 ## Known gaps
-
-**~~A controller cannot name a character.~~ FIXED 2026-09-25.** Both of Brad's
-asks were built: the dungeon's own names to pick from (never the rare three --
-they are found, not chosen), and an alphabet walked by the d-pad or stick. A
-chooses, B erases, Y flips the case, Start begins. Typing is unchanged.
 
 **InputMap, and when it would be worth migrating.** Suggested by a reviewer, and
 the design document names it as the strongest criticism of the input layer. It
@@ -199,15 +171,21 @@ is the correct long-term architecture: engine-level actions bound to keys and
 buttons together would give keyboard rebinding for free and make the
 "modifiers are unreachable from a pad" class impossible.
 
-Deferred on recurring cost. The current translation layer caused one real bug,
-which is fixed and guarded. Note that migrating would NOT remove the stale-config
-problem — a saved InputMap override shadows new defaults exactly the way
-`gamepad.cfg` did. That bug is about persistence, not about the input layer.
+Deferred on recurring cost. The current translation layer caused real bugs,
+which are fixed and guarded. Note that migrating would NOT remove the
+stale-config problem — a saved InputMap override shadows new defaults exactly the
+way `gamepad.cfg` did. That bug is about persistence, not about the input layer.
 
 **The trigger to revisit:** if keyboard rebinding is ever genuinely wanted —
 accessibility, left-handed players, or non-QWERTY layouts where `hjkl` is
-miserable. Building that on top of the current system means a second translation
-layer, and at that point the seven-file rewrite pays for itself.
+miserable.
+
+**The morgue as JSON.** Brad's idea, 2026-09-24. The one-line text morgue has
+cost several parsing bugs (the "(element)" suffix that ate weapons, a clause
+appended twice, a missing field), and it carries the game's most praised
+feature — risen dead and relics (PLAYTESTS 2026-09-26). Convert once into a new
+file, never touching the player's `morgue.txt`; store gear as item data rather
+than display names. It would also let a bought relic keep its hero's name.
 
 ---
 
@@ -217,13 +195,12 @@ layer, and at that point the seven-file rewrite pays for itself.
 off visible bad air. One tile crossed = 3 damage over 9 steps; three tiles = 1
 per step. Cured by eating fungus **or** rabbit meat once clear of it — the
 fungus poisons you and the fungus cures you.
-- Render as a **background wash**, not a glyph: `AsciiTheme.TABLE` carries `bg`
-  and all three view modes read it, so letters, symbols and pictures inherit it
-  with no per-mode work and no shader dependency.
+- Render as a **background wash**, not a glyph, in both views; billowing only on
+  "full". The fungus keeps its glow — the glow invites, the cloud warns.
 - A cell state like `brazier_charge`, not a tile type.
-- Affects everything, rabbits immune. Add to `Tiles.is_avoided` so monsters
-  route around it and kiting becomes a tactic rather than an AI failure.
-- Would be the game's first player status effect.
+- Affects everything, rabbits immune. Monsters route around it, so kiting
+  becomes a tactic rather than an AI failure.
+- The game's first player status effect — show it in the new status line.
 
 **The coliseum / free-for-all.** Escalating waves, +2 enemies each. All
 tombstones present from wave 1, scattered — tombstone COUNT is the real
@@ -233,33 +210,20 @@ waves and nothing else does. Show elapsed, not turns. Monsters from a director
 in code, bypassing the threat ceiling.
 
 **Wolves.** A pack (4+), the game's first genuinely neutral creature — they
-ignore you unless provoked. `Faction.NEUTRAL` exists and is now used by the
-trader, so the enum is real; wolves would be what makes it matter in combat.
+ignore you unless provoked. `Faction.NEUTRAL` is used by the trader, which is
+found by identity since 2026-09-27, so other neutrals are now safe to add.
 
-**Armour gems.** ~~Travel~~ BUILT 2026-09-26 as the gem of the road -- but as
-DEFENSE per room explored (Castlevania's walk armour), not healing per cell:
-measured, +1 hp per 10 cells was 125-150 hp a floor. It is kept OUT of the loot
-table (`only_from: rubble`), so armour gems in found magic are still at zero --
-the next armour stone is the first of the three the loot table wants. Travel
-(heal by exploring) was the original buildable one. **Mule is probably dropped** — its
-blocker is the 24-letter inventory pool, i.e. UI work, and the fungus bag covers
-similar ground more interestingly. **Dodge stays parked**: it fights
+**Armour gems for the loot table.** The gem of the road is deliberately kept
+OUT of the loot table (`only_from: rubble`), so armour gems in found magic are
+still at zero; Brad wants three per slot, like weapons and shields. The hosting
+plumbing (`hosts: armour`, binding at the embers) is built. **Mule is probably
+dropped** — its blocker is the 24-letter inventory pool, and the fungus bag
+covers similar ground. **Dodge stays parked**: it fights
 `DAMAGE_FLOOR_FRACTION`, which exists so nothing ever whiffs.
 
-**Doors that close behind things.** BUILT 2026-09-26 for door-OPENERS (the
-patrollers) while not hunting; silent, like monsters opening doors. It ADDS a
-tell (open-now-shut = something careful passed) rather than erasing the old
-one (shut-now-open = something came through). Original note follows.
- Cheapest big win on the "creatures acting on
-the map" axis: every door the player has seen was closed until they opened it,
-so a closed door reads as unexplored. Something that shuts one behind itself
-turns the player's own map-reading against them.
-- **It conflicts with a tell that already exists** (noted 2026-09-25). Creatures
-  open doors and bears smash them, but nothing ever SHUTS one --
-  `_through_the_door` says so on purpose: an open door you left shut is how you
-  know something came through. Door-closers would blur that signal to add a new
-  one. A design call for Brad, not a build; not to be confused with last week's
-  door work (squeezing, shouldering, `c` to close), which is done.
+**Hidden traps.** From the playtest ("if I can spot a trap I'll never step on
+it"). You MAY spot a trap within 3 cells (a chance, likelier in torchlight — one
+more cost to dousing); a trap-finding unique for the offhand adds +50%.
 
 ---
 
@@ -269,7 +233,8 @@ turns the player's own map-reading against them.
 not promise outcomes, they make outcomes possible. `_can_see` shipped, which was
 the foundation. What still waits on it: predation, hunting parties,
 alarm-raising, packs travelling together, handing items over, blood trails,
-fungus spreading.
+fungus spreading. This is the seed of the Dwarf Fortress direction on the
+roadmap.
 
 Measured: a killer rabbit cannot beat a healthy bear. What **is** reachable is a
 rabbit finishing a bear the player wounded — a scavenger's victory. That is the
@@ -279,54 +244,34 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
-**The fungus bag** (unique). Store fungus rather than eating it on the spot.
-Brad's original idea was **rabbit bait and portable light**, and that is the
-version worth building — the healing combiner (meat gains +1 heal per stored
-fungus, once) was dropped because healing is already abundant and measured flat
-at ~75 hp a floor while max HP triples.
+**Mercenaries.** A parent at the playtest: the dead-party system takes many runs
+to pay off, so why not hire help? Brad's version: the trader offers RISEN
+MONSTERS (not heroes) of the kinds on its own floor. Must not undercut bone
+allies — weaker, or lasting one floor. A design conversation.
 
-Expanded 2026-09-22: **a dropped fungus distracts scavengers.** They notice it
-and stop for a few turns, cycling the existing `..?` / `.?.` / `?..` animation,
-then move on. That makes it a stealth tool, which is the right register — the
-ascent is a sneak game.
-- Placing a tile is easy and already done: the crag gem calls `map.set_tile()`
-  and records the cell so `_let_the_stone_settle` can revert it. A fungus would
-  be the same call **without** the timer.
-- Note fungus is TERRAIN (`Tiles.FUNGUS`), not an item, and `is_luminous` is a
-  property of the tile — so making it carryable is new plumbing.
-- No "pick up or eat?" prompt needed: if the bag makes G store, eating stays in
-  the inventory where every other consumable already lives.
-- Watch the caves. Fungus is the deliberate replacement for potions down there,
-  so hoarding softens exactly the pressure that band is built on.
+**Kobold slingers' first floor.** Brad's option: they fire every other round on
+the first floor they appear, as a teaching floor. Decide after measuring early
+deaths — the dark-shot fix of 2026-09-27 may have been most of the pain.
 
-**Gems from somewhere other than chests.** ~~Rubble~~ BUILT 2026-09-25 as one
-hidden gem pile per floor, found by knapping -- odds = the share of the floor's
-rubble you work. Measured first: rubble runs 0-114 piles a floor, so a flat
-per-pile chance was rejected. Brad's, 2026-09-22: sack ultra-rares,
-or a 1-in-100 chance while knapping rubble. The gem pool is 8 now and `roll_gem`
-picks uniformly, so every new stone dilutes the others — this fixes that while
-giving non-combat actions a payoff.
+**The fungus bag** (unique). Store fungus rather than eating it on the spot, as
+**rabbit bait and portable light**. A dropped fungus distracts scavengers for a
+few turns — a stealth tool, the right register for the ascent. Fungus is
+TERRAIN (`Tiles.FUNGUS`), so making it carryable is new plumbing. Watch the
+caves: fungus is the deliberate replacement for potions down there.
 
 **Shooting a wall into existence.** A crag gem on a missile weapon, fired at an
-empty tile. Half exists already: `accepts_element` allows crag on any weapon, so
-a crag bow raises spires around whatever an arrow hits. The new capability is
-firing at *ground*, which collides with the guard that refuses a cell with no
-target. The good part is the economics: arrows are the only strictly closed
-resource in the game, while sling stones are knapped from rubble — so the same
-wall costs a permanent resource with a bow and a renewable one with a sling.
+empty tile. The new capability is firing at *ground*, which collides with the
+guard that refuses a cell with no target. Arrows are a closed resource and sling
+stones are knapped, so the same wall costs a permanent resource with a bow and a
+renewable one with a sling.
 
 **The Horn of Awakening** (unique, Brad's, designed 2026-09-17, never built).
 The third unique, from floor 6. Used, it is dropped where it lands and sounds
-for 10 turns -- the first noise in the game not centred on the player, loud
-enough to raise graves, so you can pull a floor's attention somewhere you are
-not. Designed to be STOLEN (hunting the thief is the mechanic), which needs two
-gaps closed first: monsters must be able to carry what they cannot wear, and
-drop what they merely carry. Recharges from the world's noise, shown like a
-launcher's ammo (`x64/100`); the gong refills it. Glyph: md-bugle (0xF0DB4,
-present in the icon font). Full notes in the 2026-09-17 session record.
-
-**Fireball scroll.** Asked for by a player. Passes the filter: it implies a
-decision (where to aim, when to spend it).
+for 10 turns — the first noise not centred on the player, loud enough to raise
+graves. Designed to be STOLEN (hunting the thief is the mechanic), which needs
+monsters to carry what they cannot wear and drop what they merely carry.
+Recharges from the world's noise, shown like a launcher's ammo; the gong refills
+it. Glyph: md-bugle (0xF0DB4).
 
 **Rename `Entity.charges` → `dash`.** It is a bull-rush flag colliding with
 brazier charges in every reader's head.
@@ -338,12 +283,11 @@ brazier charges in every reader's head.
 - **Money as a currency.** Needs prices for everything, then needs protecting
   from farming. Trade sidesteps both.
 - **Custom weapon skins.** Brad's own verdict. Reskinned same-tier weapons are
-  cosmetic only, and it overlaps the Kenney art sets already planned as a theme
-  system through the `RenderTheme` seam. If it ever matters, it belongs there.
+  cosmetic only; if it ever matters, it belongs in the `RenderTheme` seam.
 - **The wizard's tower.** Declined 2026-09-16.
 - **One-way teleporter.** Declined 2026-09-16.
 - **Stats and chargen.** Deferred indefinitely — stats without varied content
-  are just numbers. What Brad wants near-term is only "name your character".
+  are just numbers.
 - **More animals to look at.** Requested by a player who said they did not like
   the fighting. No decision attached; it is a different game.
 - **New Game Plus.** Not declined, deliberately deferred: you have to beat the
@@ -351,11 +295,12 @@ brazier charges in every reader's head.
   one multiplier together, or a doubled ceiling just buys twelve rats.
 - **An item that lets you fly.** Asked for by David; declined 2026-09-25.
   Flying over everything would stop about three quarters of all combat — the
-  game is built on positioning, doors, corridors and terrain, and flight
-  deletes all four.
+  game is built on positioning, doors, corridors and terrain.
+- **A glow halo around flames.** Declined in the breathe pass: this is a stealth
+  game, and a glow would show light where the game has none.
 - **Wizardry-style 3D combat view.** The original vision, dropped early:
-  encounter frequency kills modal view-switching. The renderer seam keeps it
-  addable.
+  encounter frequency kills modal view-switching. The 3D view built instead is a
+  way of seeing the whole game, not a separate screen for fights.
 
 ---
 

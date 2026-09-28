@@ -42,7 +42,7 @@ const CAMERA_DISTANCE := 25.0
 const AXES: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 const DIAGONALS: Array[Vector2i] = [Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
 const TURN_TIME := 0.18
-const DIORAMA_HINT := "3D view     [ / ] or right stick: turn     click: move     Q / d-pad up: classic"
+const DIORAMA_HINT := "3D view     [ / ], LT / RT or right stick: turn     click: move     Q / d-pad up: classic"
 const SURFACE_SHADER: Shader = preload("res://src/render/shaders/diorama_surface.gdshader")
 const ASCII_GROUND_TILES := [
 	Tiles.FLOOR, Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
@@ -450,6 +450,39 @@ func forget_metrics() -> void:
 
 func hovered_cell() -> Vector2i:
 	return _hover
+
+## Which way the pad wants the camera to turn: -1..1, left to right.
+##
+## The right stick first; failing that, the TRIGGERS -- LT turns left, RT turns
+## right. The triggers were free, and turning on them suits FFT's camera, but
+## the reason they are here is Firefox: with an Xbox Wireless Controller
+## (045e-02fd) it labels the pad "standard" and then reports the RIGHT STICK as
+## the two trigger values, with the stick's own axes silent. Godot trusts the
+## label, so a stick-only camera never turned on itch. Measured by Brad with a
+## browser pad-check page, 2026-09-28; through Steam the stick works as it is.
+##
+## `centred` is Firefox's other half. It reports that stick's left-right as the
+## LT VALUE, resting at 0.5 (0 = full left, 1 = full right), and up-down on RT
+## the same way -- the real triggers go to axes Godot does not read. So once
+## main.gd has seen both "triggers" sit at 0.5 (see looks_like_centred_
+## triggers), LT is read as the stick, re-centred, and the triggers are ignored.
+## Measured 2026-09-28; Edge and Steam report the pad correctly.
+static func turn_intent(right_x: float, left_trigger: float, right_trigger: float,
+		centred := false) -> float:
+	if centred:
+		return (left_trigger - 0.5) * 2.0
+	if absf(right_x) >= 0.30:
+		return right_x
+	if right_trigger >= 0.30 and right_trigger >= left_trigger:
+		return right_trigger
+	if left_trigger >= 0.30:
+		return -left_trigger
+	return 0.0
+
+## Both triggers resting at the halfway point: no player half-squeezes both and
+## holds them still, so this is Firefox's mislabelled stick, not two triggers.
+static func looks_like_centred_triggers(left_trigger: float, right_trigger: float) -> bool:
+	return absf(left_trigger - 0.5) < 0.05 and absf(right_trigger - 0.5) < 0.05
 
 func rotate_view(direction: int) -> void:
 	var turn := signi(direction)
