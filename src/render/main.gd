@@ -345,7 +345,7 @@ func _process(delta: float) -> void:
 		_step(MOVES[again])
 
 	# The right stick has no gameplay binding, so it turns the 3D camera in
-	# deliberate quarter-turns. One turn per push; centre it before turning again.
+	# deliberate 45-degree turns. One turn per push; centre it before turning again.
 	if _map_view == diorama and _world_has_focus():
 		var lt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT)
 		var rt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT)

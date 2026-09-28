@@ -852,6 +852,12 @@ func _test_the_camera_turns_on_stick_or_triggers() -> void:
 		and DioramaView.turn_intent(0.0, 0.0, 0.5, true) < -0.75)
 	check("  and the stick's up-down (on RT) turns nothing",
 		absf(DioramaView.turn_intent(0.0, 0.5, 1.0, true)) < 0.30)
+	# And in the second before it is recognised, that stick turns nothing: one
+	# "trigger" moving while the other rests at 0.5 is not a trigger press.
+	var early := true
+	for lt_rt in [[1.0, 0.5], [0.0, 0.5], [0.5, 1.0], [0.5, 0.0], [0.5, 0.5]]:
+		early = early and absf(DioramaView.turn_intent(0.0, lt_rt[0], lt_rt[1])) < 0.75
+	check("  and before it is recognised, the stick turns nothing either way", early)
 
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:

@@ -13,9 +13,9 @@ in 45-degree steps: eight views, alternating the diamond and the grid seen
 straight on, for when the straight view is easier to navigate. Movement, aiming and looking stay on the grid, and every
 key walks a grid line: in a diamond view that line shows 45 degrees clockwise
 on screen (up goes up-and-right) and the diagonal keys walk the grid's
-diagonals; in a straight view every key walks exactly where it points. That
-holds through every turn, so a key always goes the same way on screen, and a one-wide corridor is
-walked with the plain arrows. Whatever a wall hides of a creature or an item
+diagonals; in a straight view every key walks exactly where it points. Either
+way the arrows walk grid lines, so a one-wide corridor is walked with the plain
+arrows in every view. Whatever a wall hides of a creature or an item
 is drawn as a dark silhouette. The classic renderer remains available at any
 time.
 

@@ -332,9 +332,10 @@ diamonds. The 3D view uses the same picture glyphs as camera-facing labels,
 keeps the game's palette and map visibility, and turns in 45° steps with `[` /
 `]` or the right stick -- eight views, alternating the diamond and a straight-on
 view that is easier to navigate. The camera turns around the player. Movement, aiming
-and looking stay on the same map cells, and every key turns 45° clockwise on
-screen: the arrows walk the grid lines (up goes up-and-right), and the
-diagonal keys walk the grid's diagonals. This holds in every view. Whatever a
+and looking stay on the same map cells. In a diamond view every key turns 45°
+clockwise on screen: the arrows walk the grid lines (up goes up-and-right), and
+the diagonal keys walk the grid's diagonals. In a straight-on view every key
+walks exactly where it points. Whatever a
 wall hides of a creature or an item is drawn as a dark silhouette.
 Procedural flagstone and masonry surfaces,
 terrain-specific floor glyphs when no icon-font picture exists, icon billboards

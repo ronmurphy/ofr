@@ -473,9 +473,13 @@ static func turn_intent(right_x: float, left_trigger: float, right_trigger: floa
 		return (left_trigger - 0.5) * 2.0
 	if absf(right_x) >= 0.30:
 		return right_x
-	if right_trigger >= 0.30 and right_trigger >= left_trigger:
+	# A trigger counts only while the other one is at rest (0). Until main.gd
+	# has recognised Firefox's mix-up, its stick moves one "trigger" while the
+	# other sits at 0.5 -- read as a trigger press, pushing the stick right
+	# turned the camera LEFT, and pushing it down turned it right.
+	if right_trigger >= 0.30 and left_trigger < 0.10:
 		return right_trigger
-	if left_trigger >= 0.30:
+	if left_trigger >= 0.30 and right_trigger < 0.10:
 		return -left_trigger
 	return 0.0
 
