@@ -62,6 +62,8 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
 | `w` | swap between your best launcher and your best blade (costs a turn) |
 | `v` | cycle the view: letters, symbols, or pictures |
+| `q` | toggle between the classic grid and the tilted 3D view |
+| `[` / `]` | turn the 3D camera left or right by 90°; the right stick also turns it |
 | `R` | new game |
 
 ## Items
@@ -316,13 +318,33 @@ the rest of the game.
 
 ## View modes
 
-`v` cycles how the dungeon is drawn. Three modes:
+`v` cycles the classic grid's three drawing modes:
 
 | | |
 |---|---|
 | **letters** | `+ ' ~ , * Ω` and `! ? ) } [ "` -- the original |
 | **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` -- no new font needed |
 | **pictures** | icons, from an 18KB font subset |
+
+`q` switches between that classic grid and a tilted 3D view, in the style of
+Final Fantasy Tactics: the camera looks along a diagonal, so floor squares are
+diamonds. The 3D view uses the same picture glyphs as camera-facing labels,
+keeps the game's palette and map visibility, and turns in 90° steps with `[` /
+`]` or the right stick. The camera turns around the player. Movement, aiming
+and looking stay on the same map cells, and every key turns 45° clockwise on
+screen: the arrows walk the grid lines (up goes up-and-right), and the
+diagonal keys walk the grid's diagonals. This holds in every view. Whatever a
+wall hides of a creature or an item is drawn as a dark silhouette.
+Procedural flagstone and masonry surfaces,
+terrain-specific floor glyphs when no icon-font picture exists, icon billboards
+for mapped terrain, a modeled pit opening and distinct stone forms with
+matching floor bases add depth while retaining the game's glyph art. The 3D
+view is lit once, by the same light map as classic, blended smoothly between
+cells, so remembered ground keeps its memory colour. Billboards are sized in
+cells by `src/render/billboard_sizes.gd`, a 3D-only table, and stand on the
+floor; the pause-menu text size zooms the 3D camera instead. Left-click travel
+and right-click targeting also work in the rotated view. On a controller, `q`
+is bound to d-pad up by default.
 
 In **symbols**, terrain and items change and creatures never do -- the font has
 no animals in it at all, so there was nothing to change them to.

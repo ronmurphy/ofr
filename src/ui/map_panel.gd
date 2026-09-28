@@ -116,6 +116,14 @@ func _draw() -> void:
 			draw_rect(Rect2(at + Vector2(x * cell, y * cell)
 				- Vector2(r - cell, r - cell) * 0.5, Vector2(r, r)), mark, true)
 
+	# The trader, where you saw them. They never move, so a trader you have
+	# walked past is still standing exactly there -- see MapMemory.
+	var trader := MapMemory.remembered_trader(state)
+	if trader.x >= 0:
+		var tr: float = maxf(cell, 4.0)
+		draw_rect(Rect2(at + Vector2(trader.x * cell, trader.y * cell)
+			- Vector2(tr - cell, tr - cell) * 0.5, Vector2(tr, tr)), MARK_TRADER, true)
+
 	if state.player != null:
 		var pr: float = maxf(cell * 1.4, 6.0)
 		draw_rect(Rect2(at + Vector2(state.player.x * cell, state.player.y * cell)
@@ -154,12 +162,17 @@ func _terrain_colour(t: int) -> Color:
 ## These clear 25 on all fifteen pairs under normal vision and all three
 ## dichromacies, worst 28.5. They are checked by the suite, so a future
 ## landmark cannot quietly collide with an existing one.
+##
+## The trader's blue came in later and was picked the same way, with
+## tools/check_palette.py: its nearest neighbour under any of the four is 36.3
+## (the shrine, tritanopia), so the worst pair on the strip is still 28.5.
 const MARK_STAIRS  := Color("fff36b")
 const MARK_SHRINE  := Color("b98cd6")
 const MARK_BRAZIER := Color("e86a10")
 const MARK_SPENT   := Color("7a5c3d")
 const MARK_CHEST   := Color("3fd0a0")
 const MARK_PLAYER  := Color("ffffff")
+const MARK_TRADER  := Color("5a78ff")
 
 ## Named, in the order the strip prints them. One table so the key at the
 ## bottom and the marks on the floor cannot drift apart, and so the suite can
@@ -167,6 +180,7 @@ const MARK_PLAYER  := Color("ffffff")
 const MARKS := [
 	["you", MARK_PLAYER], ["stairs", MARK_STAIRS], ["shrine", MARK_SHRINE],
 	["brazier", MARK_BRAZIER], ["spent", MARK_SPENT], ["chest", MARK_CHEST],
+	["trader", MARK_TRADER],
 ]
 
 ## A brazier that has burned out is drawn DIM rather than left off: knowing

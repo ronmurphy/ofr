@@ -49,8 +49,6 @@ var block_anim: bool = false
 ## numbers read as palette cycling, which is the technique the block look
 ## actually comes from.
 @export var anim_steps: int = 4
-var _cell_tex: ImageTexture
-var _cell_img: Image
 
 var state: GameState
 ## Read fresh on every draw rather than held, so cycling the view mode reaches
@@ -89,30 +87,37 @@ var _hover := Vector2i(-1, -1)
 var _preview: Array[Vector2i] = []
 var _glyph_dx := 0.0
 var _glyph_baseline := 0.0
-## Torch flicker lives here, in the renderer, NOT in the simulation. The sim
-## must stay deterministic and turn-driven; flicker is a per-frame visual.
-var _flicker_t := 0.0
-var _flicker_jitter := 0.0
-var _flicker_accum := 0.0
-## Which flickering light owns each cell, as a phase offset. -1 means no
-## flickering source reaches it, so it holds perfectly still.
+## Torch flicker lives in the renderer, NOT in the simulation. The sim must
+## stay deterministic and turn-driven; flicker is a per-frame visual.
 ##
-## The flicker used to be one number multiplying every lit cell on screen, so a
-## brazier on the far side of the map guttered in perfect time with your torch.
-## That reads as the whole screen breathing rather than as flames burning, and
-## it is why several independent rhythms look so much more alive than one.
-##
-## Rebuilt per refresh rather than per frame: the sources only move when a turn
-## passes. The light map itself lives in src/sim/ and accumulates every source
-## into one colour per cell, so by the time the renderer sees it, whose light it
-## was is gone -- this recovers that without the simulation having to care.
-var _phase := PackedFloat32Array()
-var _phase_w := 0
+## Which flickering light owns each cell, as a phase offset -- and now which
+## fungus, too. The flicker used to be one number multiplying every lit cell on
+## screen, so a brazier on the far side of the map guttered in perfect time with
+## your torch. That reads as the whole screen breathing rather than as flames
+## burning, and it is why several independent rhythms look so much more alive
+## than one. See LivingLight, shared with the 3D view (main.gd hands both views
+## the same one), as is MapMemory: how long ago each cell was last seen.
+var light := LivingLight.new()
+var memory := MapMemory.new()
+## Spores, drips, bubbles and dust, also shared -- see SmallLife.
+var life := SmallLife.new()
+## This floor's colour by region, fetched once a draw -- see RegionLook.
+var _region: RegionLook
 
-## Transient visual effects. Deliberately generic: a floating damage number and
-## an overhead "!" or "zzZ" are the same thing -- a marker that appears above a
-## cell and fades -- so the awareness pass gets those almost for free.
-var _effects: Array = []
+## The effects in flight and the step glides, shared with the 3D view: see
+## Fx and StepMotion, where the rules and their reasons now live. main.gd hands
+## both views the same two objects.
+var fx := Fx.new()
+var motion := StepMotion.new()
+## The names the capture tool and the test suite still reach in by, kept
+## working: they forward to the shared objects rather than copying them.
+var _effects: Array:
+	get: return fx.list
+var hold_effects: bool:
+	get: return fx.hold
+	set(value): fx.hold = value
+var _motion: Dictionary:
+	get: return motion._motion
 ## Guards against an animation outliving the level it belongs to. Descending
 ## mid-flight would otherwise draw the old level's arrow on the new one.
 var _last_map: DungeonMap = null
@@ -122,44 +127,9 @@ var _origin := Vector2i.ZERO
 ## glides instead of jumping a whole cell mid-stride.
 var _camera_visual := Vector2.ZERO
 
-## Visual positions, which lag the logical ones. Keyed by entity.
-##
-## The simulation resolves a turn instantly and always will; this only changes
-## where things are DRAWN while it settles. Nothing under src/sim/ knows.
-var _motion: Dictionary = {}
-## Short on purpose. The rule that decides whether this feels good is that an
-## animation must never delay input -- see settle_motion().
-const STEP_TIME := 0.10
-
-## Roughly DCSS's pace. A quarter-second per cell would add a second and a half
-## to every archer's turn, hundreds of times a run.
-const SHOT_PER_CELL := 0.028
-const FLASH_LIFE := 0.30
-const POPUP_LIFE := 0.85
-## How long a noise ring dwells on each cell it crosses.
-##
-## Per CELL, not per ring, so every wavefront travels at the same speed and a
-## bigger noise takes longer to arrive rather than moving faster. With a fixed
-## lifetime a floor-wide shrine and a footstep on bones crossed their very
-## different distances in the same fraction of a second, which read as the loud
-## one being quicker rather than larger.
-const RING_PER_CELL := 0.045
-## How long a knockback chevron stays up. Deliberately the longest effect in
-## the game -- longer than a popup -- because it is the only one explaining
-## something the player did not do themselves. Brad asked for "a second or
-## two"; this is short of that because effects here overlap the next turn, and
-## it is the number to raise if the shove still reads as the screen jumping.
-const SHOVE_LIFE := 0.80
-
-## Capture-only: stops effects ageing so a screenshot tool can park one at a
-## chosen point in its life and photograph it.
-##
-## The same idea as `anim_time` for the shaders, and it exists for the same
-## reason: _shot waits four frames per image, which is easily longer than an
-## effect lives, so every attempt to photograph the knockback chevron caught
-## the frame after it had already been culled. Three rounds of hunting a
-## rendering bug that was not there.
-var hold_effects := false
+const STEP_TIME := StepMotion.STEP_TIME
+## sound_deck.gd keeps its own copy of this, timed to land with the picture.
+const SHOT_PER_CELL := Fx.SHOT_PER_CELL
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -256,145 +226,29 @@ func _baseline(ch: String, size: int) -> float:
 		+ font.get_ascent(size)
 
 func _process(delta: float) -> void:
-	for e in _motion:
-		if float(_motion[e]["t"]) < STEP_TIME:
-			_motion[e]["t"] = minf(STEP_TIME, float(_motion[e]["t"]) + delta)
+	motion.tick(delta)
 	var target := Vector2(_origin)
 	if _camera_visual.distance_squared_to(target) > 0.0004:
 		_camera_visual = _camera_visual.lerp(target, clampf(delta / STEP_TIME, 0.0, 1.0))
 	else:
 		_camera_visual = target
 
-	var animating := not _effects.is_empty() or _motion_running()
-	if animating and not hold_effects:
-		for e in _effects:
-			e["t"] += delta
-		_effects = _effects.filter(func(e): return not _expired(e))
+	var animating := fx.running() or _motion_running()
+	fx.tick(delta)
 
-	# Flicker refreshes at ~15Hz rather than every frame: cheaper, and a
-	# choppier flame reads more like a real torch than a smooth sine does.
+	# Flicker refreshes at ~15Hz rather than every frame -- see LivingLight.
 	# Effects, when running, redraw at full rate.
-	_flicker_accum += delta
-	var flicker_due := _flicker_accum >= 1.0 / 15.0
-	if flicker_due:
-		_flicker_accum = 0.0
-		# The time and the jitter are shared; the PHASE is not, which is what
-		# stops every flame on the floor moving as one.
-		_flicker_t = Time.get_ticks_msec() / 1000.0
-		_flicker_jitter = randf_range(-0.02, 0.02)
+	var flicker_due := light.tick(delta)
 
 	if animating or flicker_due:
 		queue_redraw()
 
-## Turns simulation events into animations. The outcome is already decided by
-## the time this runs -- these only show the player what happened.
+## Turns simulation events into animations -- see Fx.add_events, shared with
+## the 3D view. The outcome is already decided by the time this runs.
 func play_events(evts: Array) -> void:
-	for e in evts:
-		# EVERY event carries "to", including the ones with no animation --
-		# this is read before the kind is looked at, so an event without one
-		# does not fall through harmlessly, it freezes the game. A talk event
-		# shipped without it for one build and walking into the trader hung.
-		var to: Vector2i = e["to"]
-
-		if e["kind"] == &"levelup":
-			_effects.append({"type": &"popup", "cell": to, "t": 0.0,
-				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": font_size})
-			continue
-
-		# Noise, drawn as the wavefront it already was.
-		#
-		# The comment below used to say the rest of the queue "has no picture to
-		# draw by definition". Noise was the exception hiding in that sentence:
-		# the simulation has always known exactly how far a sound carried, and
-		# the player could only ever infer it. Showing it turns a hidden rule
-		# into something you can plan around -- whether to take the shot when
-		# there are two more of them in the next room.
-		if e["kind"] == &"noise":
-			# Motion, so it answers to the accessibility setting. The message
-			# log still reports the same thing in words for anyone playing on
-			# "still", so nothing is only available to people who can take the
-			# movement.
-			if Effects.any():
-				var reach := int(e["radius"])
-				_effects.append({"type": &"ring", "cell": to, "t": 0.0,
-					"radius": reach,
-					"life": maxf(0.12, float(reach) * RING_PER_CELL)})
-			continue
-
-		if e["kind"] == &"recall":
-			# Drawn as a flight from the pile to the player, which is the same
-			# path a shot takes in reverse -- so the picture says "these are
-			# your arrows coming back" without a word.
-			if Effects.any():
-				var line := Los.path(e["from"].x, e["from"].y, to.x, to.y)
-				if not line.is_empty():
-					_effects.append({"type": &"shot", "path": line, "t": 0.0})
-			continue
-
-		if e["kind"] == &"shove":
-			# You just moved two cells without pressing anything. Without a
-			# mark where you landed that reads as the screen glitching rather
-			# than as something having happened to you.
-			#
-			# A chevron rather than a ring, which is what this was first: a
-			# ring says something happened HERE, and the whole point of a
-			# shove is that it happened in a DIRECTION.
-			if Effects.any():
-				var was: Vector2i = e["from"]
-				_effects.append({"type": &"shove", "from": was, "to": to,
-					"dir": Vector2i(signi(to.x - was.x), signi(to.y - was.y)),
-					"t": 0.0, "life": SHOVE_LIFE})
-			continue
-
-		if e["kind"] == &"notice":
-			# The Metal Gear beat: a big "!" over the head of whatever just
-			# clocked you.
-			_effects.append({"type": &"popup", "cell": to, "t": 0.0, "text": "!",
-				"colour": Palette.ALERT, "size": font_size + 3})
-			continue
-
-		# Everything else on the queue is for the ears. The same list feeds
-		# SoundDeck, and most of what is on it -- noise carrying through
-		# stone, a change of footing, crossing the health line -- has no
-		# picture to draw by definition.
-		if e["kind"] != &"melee" and e["kind"] != &"ranged":
-			continue
-
-		var hostile: bool = e["on_player"]
-		var delay := 0.0
-
-		if e["kind"] == &"ranged":
-			var line := Los.path(e["from"].x, e["from"].y, to.x, to.y)
-			if not line.is_empty():
-				_effects.append({"type": &"shot", "path": line, "t": 0.0})
-				delay = line.size() * SHOT_PER_CELL
-
-		# Negative time is a delay: the impact lands when the shot arrives.
-		_effects.append({"type": &"flash", "cell": to, "t": -delay,
-			"colour": Palette.HP_BAD if hostile else Palette.HIT_FLASH})
-		_effects.append({"type": &"popup", "cell": to, "t": -delay,
-			"text": str(e["amount"]),
-			"colour": Palette.HP_BAD if hostile else Palette.UI_TEXT})
-
-	if not _effects.is_empty():
+	fx.play(evts, font_size, state, motion)
+	if fx.running():
 		queue_redraw()
-
-## ADD EVERY NEW EFFECT TYPE HERE. The fallthrough is "expired", so an effect
-## this function has not been taught about is created correctly, culled on the
-## very first frame, and never draws once -- with nothing wrong in the effect
-## itself and nothing logged. The knockback chevron was invisible for exactly
-## this reason and took a screenshot to find.
-##
-## The fallthrough stays `true` on purpose: the other way round, a typo would
-## pin an effect on screen forever.
-func _expired(e: Dictionary) -> bool:
-	match e["type"]:
-		&"ring":  return e["t"] >= float(e.get("life", 0.42))
-		&"shot":  return e["t"] >= e["path"].size() * SHOT_PER_CELL
-		&"flash": return e["t"] >= FLASH_LIFE
-		&"popup": return e["t"] >= POPUP_LIFE
-		&"shove": return e["t"] >= float(e.get("life", SHOVE_LIFE))
-	return true
 
 ## Size of the visible window, in cells.
 func viewport_cells() -> Vector2i:
@@ -487,53 +341,37 @@ func hovered_cell() -> Vector2i:
 
 # ------------------------------------------------------------------ motion ---
 
-## Everything still in flight completes at once.
-##
-## This is the rule the whole feature rests on: holding a direction key must
-## never be slower than the simulation. Fast play then looks essentially
-## instant, and only considered play looks animated.
+## Everything still in flight completes at once -- see StepMotion.settle.
 func settle_motion() -> void:
-	for e in _motion:
-		_motion[e]["from"] = _motion[e]["to"]
-		_motion[e]["t"] = STEP_TIME
+	motion.settle()
 
-## Starts a tween for anything that has moved since we last looked.
+## Starts a glide for anything that has moved since we last looked.
 func sync_motion() -> void:
 	if state == null:
 		return
-	_rebuild_phases()
-	var seen := {}
-	for e in state.entities:
-		if not e.alive:
-			continue
-		seen[e] = true
-		var now := Vector2(e.x, e.y)
-		if not _motion.has(e):
-			_motion[e] = {"from": now, "to": now, "t": STEP_TIME}
-			continue
-		var m: Dictionary = _motion[e]
-		if m["to"] != now:
-			m["from"] = _visual_cell(e)
-			m["to"] = now
-			m["t"] = 0.0
-	for e in _motion.keys():
-		if not seen.has(e):
-			_motion.erase(e)
+	light.rebuild(state)
+	memory.update(state)
+	life.rebuild(state)
+	# Whoever just stepped into water, mud or rubble throws some of it up.
+	fx.footfalls(motion.sync(state.entities, state.map), state)
 
+func set_aim_state(cursor: Vector2i, line: Array[Vector2i], valid: bool) -> void:
+	aim_cursor = cursor
+	aim_line = line
+	aim_valid = valid
+	queue_redraw()
+
+## Where a creature is drawn: its glide, and for the trader on "full", their
+## idling -- SmallLife.idle_offset, shared with the 3D view.
 func _visual_cell(e: Entity) -> Vector2:
-	if not _motion.has(e):
-		return Vector2(e.x, e.y)
-	var m: Dictionary = _motion[e]
-	var k := clampf(float(m["t"]) / STEP_TIME, 0.0, 1.0)
-	# Eased out, so a step lands rather than drifting to a halt.
-	k = 1.0 - pow(1.0 - k, 2.0)
-	return (m["from"] as Vector2).lerp(m["to"], k)
+	var at := motion.visual_cell(e)
+	if e == state.trader:
+		at += life.idle_offset(e, motion.visual_cell(state.player),
+			anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0)
+	return at
 
 func _motion_running() -> bool:
-	for e in _motion:
-		if float(_motion[e]["t"]) < STEP_TIME:
-			return true
-	return _camera_visual.distance_squared_to(Vector2(_origin)) > 0.0004
+	return motion.running() or _camera_visual.distance_squared_to(Vector2(_origin)) > 0.0004
 
 ## Recomputed whenever the world changes, not only when the mouse moves.
 ##
@@ -550,16 +388,19 @@ func _draw() -> void:
 	var map := state.map
 	if map != _last_map:
 		_last_map = map
-		_effects.clear()
+		fx.watch_map(map)
 		_preview.clear()
 		# A new level should not inherit the old one's scroll position.
 		centre_on_player()
 	_update_camera()
+	memory.update(state)
+	_region = RegionLook.for_depth(state.effective_depth())
 
 	if block_anim:
 		_upload_cells()
 
-	draw_rect(Rect2(Vector2.ZERO, size), Palette.BG, true)
+	# The dark around the map is the region's dark.
+	draw_rect(Rect2(Vector2.ZERO, size), _region.backdrop, true)
 
 	# Only the visible window is drawn. On a large map that is most of the
 	# cost of a redraw.
@@ -590,10 +431,28 @@ func _draw() -> void:
 			# palette was built to give. `item.gd:565` already guards the name
 			# suffix the same way; this is that guard, in the place it was
 			# missed.
+			#
+			# Both kinds get the blue glow UNDER them, though -- see
+			# LivingLight.item_glow. It marks magic lying there without taking
+			# the gem's own colour away.
+			var glow := LivingLight.item_glow(it)
+			if glow.a > 0.0:
+				draw_rect(Rect2(_screen(Vector2i(it.x, it.y)), Vector2(cell_size, cell_size)),
+					glow, true)
 			if it.shows_enchanted():
 				_draw_glyph_tinted(it.appearance, Vector2(it.x, it.y), Palette.MAGIC)
 			else:
 				_draw_glyph(it.appearance, Vector2(it.x, it.y))
+
+	# The trader, remembered where you saw them -- see MapMemory. Out of sight
+	# only: in sight, the trader below is the real one.
+	var trader := memory.trader_cell
+	if trader.x >= 0 and not map.is_visible(trader.x, trader.y) \
+			and _memory_strength() > 0.0:
+		_draw_glyph_tinted(&"trader", Vector2(trader), MapMemory.trader_colour(), false)
+
+	# Small life, under the creatures, which stand in front of it.
+	_draw_small_life()
 
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
@@ -679,42 +538,26 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		# Neither can a dying brazier's, for the same reason: it depends on the
 		# turn, not on the tile.
 		#
-		# This is the twenty-turn forging window, drawn instead of counted.
-		# Brad's rule for it was no number on screen -- the player works out
-		# what the fade means by watching one go out -- so the gauge has to BE
-		# the thing rather than label it. Only while the cell is actually in
-		# sight: how hot a brazier still is across the level is not something
-		# memory could honestly know.
+		# This is the twenty-turn forging window, drawn instead of counted --
+		# see LivingLight.embers, which the 3D view draws too. Only while the
+		# cell is actually in sight: how hot a brazier still is across the
+		# level is not something memory could honestly know.
 		elif tile == Tiles.BRAZIER_SPENT and visible_here:
 			var heat := state.ember_heat(x, y)
 			if heat > 0.0:
-				# Coals breathe, and stop breathing as they cool -- the pulse
-				# is scaled by the same heat that drives the colour, so the
-				# tile visibly goes still before it goes grey. Phase from the
-				# cell, so two braziers in a room never pulse together.
-				# Held at rest when the player has asked for no motion. The
-				# COLOUR ramp stays either way -- that is information about how
-				# long the embers have left, not decoration, and turning
-				# effects off must not cost you information.
-				var beat := 1.0
-				if Effects.any():
-					beat += 0.10 * heat * sin(
-						Time.get_ticks_msec() / 340.0 + _hash01(x, y) * TAU)
-				# Hue alone was not enough. Walking EMBERS -> BRAZIER_DEAD
-				# moves luminance only 0.386 -> 0.283, so the middle third of
-				# the window was a mush of near-identical browns and the gauge
-				# could not be read. The glow adds the brightness the hue shift
-				# does not carry, and it is tied to the same heat, so the tile
-				# dims as well as greys.
-				fg = (fg.lerp(Palette.EMBERS, heat) * (1.0 + EMBER_GLOW * heat)
-					* beat).clamp()
+				fg = LivingLight.embers(fg, heat, x, y)
 				bg = bg.lerp(Palette.EMBERS_BG, heat)
-				fg.a = 1.0
 
 	var tint := _material_tint(map.material_at(x, y), 1.0)
 
 	if visible_here:
 		var lit: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
+		# Stone takes the region's colour, brightness kept. The floor keeps
+		# its own, because everything that matters lies on it -- see
+		# RegionLook for what was measured.
+		if RegionLook.is_stone(tile):
+			fg = _region.shift(fg)
+			bg = _region.shift(bg)
 		fg = (fg * tint * lit).clamp()
 		bg = (bg * tint * lit).clamp()
 	elif tile == Tiles.STAIRS_DOWN or tile == Tiles.STAIRS_UP:
@@ -727,11 +570,8 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		# caves hide memory entirely -- the way out is the only thing you are
 		# allowed to keep remembering, which is both survivable and the right
 		# image.
-		# Still, but not dim: frozen at the top of its breath rather than the
-		# middle, so the stairs stay as findable as they are meant to be.
-		var pulse := 1.0
-		if Effects.any():
-			pulse = 0.78 + 0.22 * sin(Time.get_ticks_msec() / 620.0)
+		# Still, but not dim, with motion off -- see LivingLight.stairs_pulse.
+		var pulse := LivingLight.stairs_pulse()
 		fg = Color(Palette.STAIRS_KNOWN.r * pulse, Palette.STAIRS_KNOWN.g * pulse,
 			Palette.STAIRS_KNOWN.b * pulse, 1.0)
 		bg = _remembered(bg)
@@ -754,7 +594,11 @@ func _draw_cell(map: DungeonMap, x: int, y: int) -> void:
 		# multiplier -- you cannot map a place that will not stay in your head,
 		# so the climb through them is walked blind rather than read off a map
 		# you built on the way down.
-		var recall := _memory_strength()
+		#
+		# And it fades with time: ground you have not seen for a hundred turns
+		# starts to go, down to half by five hundred, never below. Landmarks
+		# are kept -- see MapMemory.
+		var recall := _memory_strength() * memory.fade(x, y, state.turns)
 		if recall <= 0.0:
 			return
 		if recall < 1.0:
@@ -885,50 +729,18 @@ func _is_face_wall(map: DungeonMap, x: int, y: int) -> bool:
 ## whose condition you can see -- realism loses to readability here exactly as
 ## it does for the glyph's own brightness floor.
 func _draw_wound(e: Entity) -> void:
-	var w := e.wound()
-	if w == Entity.Wound.WHOLE:
+	var wash := CreatureMarks.wound(e)
+	if wash.a <= 0.0:
 		return
-	var tone := Palette.CRITICAL if w == Entity.Wound.CRITICAL else Palette.BLOODIED
-	var alpha := Palette.CRITICAL_WASH if w == Entity.Wound.CRITICAL \
-		else Palette.BLOODIED_WASH
 	var at := _screen_f(_visual_cell(e))
-	draw_rect(Rect2(at, Vector2(cell_size, cell_size)), Color(tone, alpha), true)
+	draw_rect(Rect2(at, Vector2(cell_size, cell_size)), wash, true)
 
 func _draw_awareness(e: Entity) -> void:
-	var text := ""
-	var colour := Palette.SLEEP
-	# Unaware AND actually asleep. A patrolling guard has not noticed you
-	# either, but it is walking -- drawing "z" over something mid-stride would
-	# be the marker telling a plain lie, and the marker is how a player decides
-	# whether to sneak past.
-	if e.alertness == Entity.Alert.ASLEEP \
-			and e.activity == Entity.Activity.SLEEPING:
-		# Cycles z / zZ / zzZ so it reads as breathing rather than a label.
-		var phase := int(Time.get_ticks_msec() / 420.0) % 3 if Effects.any() else 1
-		text = ["z", "zZ", "zzZ"][phase]
-	elif e.alertness == Entity.Alert.SUSPICIOUS:
-		text = "?"
-		colour = Palette.ALERT
-	elif e.activity == Entity.Activity.PATROLLING:
-		# BUSY, AND NOT WITH YOU.
-		#
-		# Drawing nothing would be truthful but ambiguous -- an unmarked
-		# creature is one you have to work out for yourself, and the markers
-		# exist precisely so you do not have to. "z" was the first attempt and
-		# read as sleepwalking; this says "occupied" without claiming the thing
-		# is unaware, which is the honest state of a guard walking a beat.
-		var tick := int(Time.get_ticks_msec() / 380.0) % 3 if Effects.any() else 2
-		text = [".", "..", "..."][tick]
-		colour = Palette.SLEEP
-	elif e.fleeing:
-		# A creature running away looked exactly like one hunting you, which
-		# is the difference between spending three turns chasing and letting
-		# it go. Every other state had a mark; this one was simply missed.
-		text = "<<"
-		colour = Palette.FLEEING
-	else:
+	var mark := CreatureMarks.awareness(e)
+	if mark.is_empty():
 		return
-
+	var text: String = mark["text"]
+	var colour: Color = mark["colour"]
 	var size_px := font_size - 5
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
 	var pos := _screen_f(_visual_cell(e)) + Vector2((cell_size - w) * 0.5, 1.0)
@@ -940,7 +752,7 @@ func _centre(cell: Vector2i) -> Vector2:
 	return _screen(cell) + Vector2(cell_size, cell_size) * 0.5
 
 func _draw_effects() -> void:
-	for e in _effects:
+	for e in fx.list:
 		var t: float = e["t"]
 		if t < 0.0:
 			continue
@@ -950,113 +762,85 @@ func _draw_effects() -> void:
 			&"popup": _draw_popup(e, t)
 			&"ring":  _draw_ring(e, t)
 			&"shove": _draw_shove(e, t)
+			&"sparks": _draw_burst(e, t)
+			&"shatter": _draw_shatter(e, t)
 
-## A sound, crossing the floor.
-##
-## Chebyshev distance, not Euclidean, because that is the metric _make_noise
-## itself uses to decide who heard it -- so the ring is not an impression of
-## the noise footprint, it is exactly the footprint. A square wavefront looks
-## odd for about a second and then reads as correct, because it IS what the
-## rule does.
-##
-## Drawn only on cells you can see. A banshee wailing somewhere dark should
-## arrive as an arc sweeping in from the edge of your vision, not as a marker
-## over its head -- the log line for it is deliberately vague and the picture
-## must not be less so.
+## A sound, crossing the floor -- which cells, and how strongly, is
+## Fx.ring_cells; this only paints them.
 func _draw_ring(e: Dictionary, t: float) -> void:
-	var progress := clampf(t / float(e.get("life", 0.42)), 0.0, 1.0)
-	var reach: int = e["radius"]
-	var at: Vector2i = e["cell"]
-	var edge := progress * float(reach)
-	# Louder carries further AND hits harder, so the two scale together.
-	var loud := clampf(float(reach) / 10.0, 0.25, 1.0)
-	# Fades as it goes, like the sound it is standing in for.
-	var alpha := (1.0 - progress) * 0.5 * loud
-	if alpha <= 0.005:
-		return
-
-	var map := state.map
 	var cell := Vector2(cell_size, cell_size)
-	for dy in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
-			var d := float(maxi(absi(dx), absi(dy)))
-			# One cell thick, so the wavefront is a line and not a filled disc.
-			if absf(d - edge) > 0.5:
-				continue
-			var c := Vector2i(at.x + dx, at.y + dy)
-			if not map.in_bounds(c.x, c.y) or not map.is_visible(c.x, c.y):
-				continue
-			draw_rect(Rect2(_screen(c), cell), Color(Palette.NOISE, alpha), true)
+	# A noise ring's colour unless it carries its own: the light of a level,
+	# or a shrine answering a prayer.
+	var colour: Color = e.get("colour", Palette.NOISE)
+	for hit in Fx.ring_cells(e, t, state.map):
+		draw_rect(Rect2(_screen(hit[0]), cell), Color(colour, hit[1]), true)
 
-## The blow that moved you, drawn as a chevron pointing the way you went.
-##
-## Brad's idea, and better than the impact ring it replaces for one reason: a
-## ring says something happened HERE, and the whole point of knockback is that
-## it happened in a DIRECTION. The player did not press anything, so the effect
-## has to answer "why am I over there" rather than just "something occurred".
-##
-## Three blocks, on the grid, snapped to whole cells. A chevron drawn at
-## fractional positions would slide smoothly between cells and be the one
-## moving thing in the game that is not made of blocks.
+## The blow that moved you, as a chevron of whole cells -- see Fx.shove_cells.
+## Snapped to the grid on purpose: a chevron sliding smoothly between cells
+## would be the one moving thing in the game that is not made of blocks.
 func _draw_shove(e: Dictionary, t: float) -> void:
-	var life: float = e.get("life", SHOVE_LIFE)
-	var k := clampf(t / life, 0.0, 1.0)
-	var from: Vector2i = e["from"]
-	var to: Vector2i = e["to"]
-	var dir: Vector2i = e["dir"]
-	if dir == Vector2i.ZERO:
-		return
-
-	# Travels over the first half, then holds and fades: the shove is a shove,
-	# not a fade-in. Snapped per cell so it steps rather than glides.
-	var span := maxi(absi(to.x - from.x), absi(to.y - from.y))
-	# Clamped to `span` so the point ARRIVES at the player and stops there.
-	# Unclamped it ran one cell past, which left the chevron sitting beyond you
-	# pointing at empty floor -- the force overtaking the thing it moved.
-	var step := int(round(clampf(k / 0.5, 0.0, 1.0) * float(span)))
-	var tip := from + dir * mini(step + 1, maxi(span, 1))
-	var alpha := 1.0 if k < 0.5 else 1.0 - (k - 0.5) / 0.5
-	alpha *= 0.75
-	if alpha <= 0.005:
-		return
-
-	# The arrowhead: the point, and two wings one cell back to either side.
-	var perp := Vector2i(-dir.y, dir.x)
-	var marks := [tip, tip - dir + perp, tip - dir - perp]
-	var map := state.map
 	var cell := Vector2(cell_size, cell_size)
-	for m: Vector2i in marks:
-		if not map.in_bounds(m.x, m.y) or not map.is_visible(m.x, m.y):
-			continue
-		draw_rect(Rect2(_screen(m), cell), Color(Palette.SHOVE, alpha), true)
+	for hit in Fx.shove_cells(e, t, state.map):
+		draw_rect(Rect2(_screen(hit[0]), cell), Color(Palette.SHOVE, hit[1]), true)
 
+## Cell by cell, never between: see Fx.shot_cell, which also hides the shot
+## over ground you cannot see.
 func _draw_shot(e: Dictionary, t: float) -> void:
-	var line: Array = e["path"]
-	var i := clampi(int(t / SHOT_PER_CELL), 0, line.size() - 1)
-	var cell: Vector2i = line[i]
-	# Never animate through unseen ground -- a visible arrow from an invisible
-	# archer would give away a position the player has not earned.
-	if not state.map.is_visible(cell.x, cell.y):
+	var cell := Fx.shot_cell(e, t, state.map)
+	if cell.x < 0:
 		return
 	draw_circle(_centre(cell), maxf(1.5, cell_size * 0.15), Palette.SHOT)
 
+## Sparks and shards -- see Fx.burst_points -- laid on the grid: each piece
+## snapped to a quarter of a cell, so a burst reads as blocks breaking rather
+## than as smooth particles in a game made of blocks.
+func _draw_burst(e: Dictionary, t: float) -> void:
+	var q := cell_size * 0.25
+	var colour: Color = e["colour"]
+	for piece in Fx.burst_points(e, t, state.map):
+		var at := _centre(e["cell"]) + (piece[0] as Vector2) * cell_size \
+			- Vector2(0.0, (float(piece[1]) - 0.45) * cell_size)
+		at = (at / q).floor() * q
+		draw_rect(Rect2(at, Vector2(q, q)), Color(colour, float(piece[2])), true)
+
+## Spores, bubbles, drips and dust -- which, where and when is SmallLife; this
+## only paints them. Blocks an eighth of a cell across, on an eighth-cell grid,
+## so they stay part of the block look rather than floating over it; height
+## above the floor is drawn as distance up the screen.
+func _draw_small_life() -> void:
+	var e8 := cell_size * 0.125
+	var t := anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0
+	for m in life.motes(t):
+		var at := _screen_f(m[0]) - Vector2(0.0, float(m[1]) * 0.6 * cell_size)
+		var side := maxf(e8, snappedf(float(m[3]) * cell_size, e8))
+		var corner := ((at - Vector2(side, side) * 0.5) / e8).floor() * e8
+		draw_rect(Rect2(corner, Vector2(side, side)), m[2], true)
+
+## A creature breaking apart: its picture fades as its shards fly.
+func _draw_shatter(e: Dictionary, t: float) -> void:
+	var at: Vector2i = e["cell"]
+	var ghost := Fx.shatter_ghost(e, t)
+	if ghost > 0.0 and state.map.is_visible(at.x, at.y):
+		var app := render_theme.appearance(e["appearance"])
+		var m := _metrics(app["ch"])
+		draw_char(font, _screen(at) + Vector2(m.x, _baseline(app["ch"], int(m.y))),
+			app["ch"], int(m.y), Color(e["colour"], ghost))
+	_draw_burst(e, t)
+
 func _draw_flash(e: Dictionary, t: float) -> void:
-	var cell: Vector2i = e["cell"]
-	if not state.map.is_visible(cell.x, cell.y):
+	var a := Fx.flash_alpha(e, t, state.map)
+	if a <= 0.0:
 		return
-	var origin := _screen(cell)
-	var a := (1.0 - t / FLASH_LIFE) * 0.5
-	draw_rect(Rect2(origin, Vector2(cell_size, cell_size)), Color(e["colour"], a), true)
+	draw_rect(Rect2(_screen(e["cell"]), Vector2(cell_size, cell_size)),
+		Color(e["colour"], a), true)
 
 func _draw_popup(e: Dictionary, t: float) -> void:
-	# Same rule as the projectile: never draw an effect over ground the player
-	# cannot see, or an animation gives away a position they have not earned.
 	var at: Vector2i = e["cell"]
 	if not state.map.is_visible(at.x, at.y):
 		return
-	var k := t / POPUP_LIFE
-	var pos := _centre(at) + Vector2(0, -cell_size * (0.35 + k * 1.1))
-	var a := 1.0 if k < 0.55 else 1.0 - (k - 0.55) / 0.45
+	var shape := Fx.popup_state(e, t, state.map)
+	var pos := _centre(at) + Vector2(0, -cell_size * float(shape[0]))
+	var a: float = shape[1]
 	var text: String = e["text"]
 	var size_px: int = e.get("size", font_size - 3)
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
@@ -1072,129 +856,32 @@ func _material_tint(m: int, strength: float) -> Color:
 	var t: Color = Palette.MATERIAL_TINT[m]
 	return Color.WHITE.lerp(t, strength)
 
-## Shifts hue by `tint` while holding the original brightness.
+## Shifts hue by `tint` while holding the original brightness -- the same
+## shift the regions use, so it lives with them in RegionLook.
 func _tint_keeping_luma(c: Color, tint: Color) -> Color:
-	var before := c.get_luminance()
-	if before <= 0.001:
-		return c
-	var out := c * tint
-	var after := out.get_luminance()
-	if after <= 0.001:
-		return c
-	return (out * (before / after)).clamp()
-
-## Assigns every cell the phase of the nearest flickering light that reaches it.
-func _rebuild_phases() -> void:
-	var m := state.map
-	if _phase.size() != m.width * m.height:
-		_phase.resize(m.width * m.height)
-		_phase_w = m.width
-	_phase.fill(-1.0)
-
-	var lights: Array = []
-	if state.player.light != null and state.player.light.flickers:
-		lights.append(state.player.light)
-	for src in state.static_lights:
-		if src.flickers:
-			lights.append(src)
-	if lights.is_empty():
-		return
-
-	for y in m.height:
-		for x in m.width:
-			var best := 1 << 30
-			var phase := -1.0
-			for src in lights:
-				var dx: int = x - src.x
-				var dy: int = y - src.y
-				var d := dx * dx + dy * dy
-				if d > src.radius * src.radius or d >= best:
-					continue
-				best = d
-				# Position, so two braziers in one room never gutter together.
-				phase = float((src.x * 7 + src.y * 13) % 64) * 0.0982
-			_phase[y * _phase_w + x] = phase
-
-## The raw phase for a cell, or -1 where no flickering light reaches. Shared by
-## the CPU path and the shader upload so the two can never disagree about which
-## cells are under a flame.
-func _phase_at(x: int, y: int) -> float:
-	if _phase.is_empty():
-		return -1.0
-	var i := y * _phase_w + x
-	if i < 0 or i >= _phase.size():
-		return -1.0
-	return _phase[i]
+	return RegionLook.keep_luma(c, tint)
 
 ## The flicker a particular cell is under, which is its light's, not the
-## screen's. Cells no flame reaches are perfectly steady.
+## screen's -- see LivingLight.pulse. Cells no flame reaches are perfectly
+## steady; cells only fungus lights breathe slowly.
 func _flicker_at(x: int, y: int) -> float:
 	# Only the middle setting runs this. On "full" the shader owns firelight --
 	# leaving both would animate every brazier twice -- and on "still" nothing
 	# animates at all, which is the entire point of that setting existing.
 	if not Effects.timers():
 		return 1.0
-	if _phase.is_empty():
-		return 1.0
-	var i := y * _phase_w + x
-	if i < 0 or i >= _phase.size():
-		return 1.0
-	var p := _phase[i]
-	if p < 0.0:
-		return 1.0
-	return 1.0 + sin(_flicker_t * 11.0 + p) * 0.035 \
-		+ sin(_flicker_t * 23.7 + p * 2.0) * 0.022 + _flicker_jitter
+	return light.pulse(x, y)
 
-## Cheap deterministic noise in [0,1) from a cell coordinate.
-## Extra brightness at the hot end of the ember ramp, on top of the colour.
-## Held well under the lit brazier's own brightness -- a spent brazier that
-## looks as alive as a burning one tells the player the opposite of the truth.
-const EMBER_GLOW := 0.18
-
-## Hand the shader what each cell is, one texel per cell.
-##
-## Rebuilt per redraw rather than diffed: 96x54 is five thousand texels, which
-## is nothing beside the several hundred draw calls the same frame makes -- and
-## it means the texture can never disagree with the map.
+## Hand the shader what each cell is, one texel per cell: LivingLight's two
+## textures, which it rebuilds only when a turn or the floor has changed.
 func _upload_cells() -> void:
 	var map := state.map
-	if _cell_img == null or _cell_img.get_width() != map.width \
-			or _cell_img.get_height() != map.height:
-		_cell_img = Image.create(map.width, map.height, false, Image.FORMAT_RGBA8)
-		_cell_tex = ImageTexture.create_from_image(_cell_img)
-	for y in map.height:
-		for x in map.width:
-			# Alpha is VISIBILITY, not opacity. Remembered ground must not
-			# animate: a pool of water you are only remembering should be as
-			# still as the memory of it.
-			var seen := 1.0 if map.is_visible(x, y) else 0.0
-			# Blue carries the FIRELIGHT PHASE, and carrying it is what makes
-			# the shader equal to the timers it replaced.
-			#
-			# The CPU flicker was never about brazier tiles: _rebuild_phases
-			# gives every cell the phase of the nearest flickering light that
-			# reaches it, your torch included, so the whole lit area breathes.
-			# A shader that only knew tile ids could animate the brazier and
-			# nothing else -- which on screen read as the torch flicker simply
-			# disappearing when you switched to "full".
-			#
-			# Zero means no flame reaches here. Everything else is the phase
-			# scaled into the remaining 254 values, so a genuine phase of 0 is
-			# never mistaken for "unlit".
-			var ph := _phase_at(x, y)
-			var blue := 0.0
-			if ph >= 0.0:
-				blue = (floor(ph / TAU * 253.0) + 1.0) / 255.0
-			_cell_img.set_pixel(x, y, Color(
-				float(map.get_tile(x, y)) / 255.0,
-				_hash01(x, y),
-				blue,
-				seen))
-	_cell_tex.update(_cell_img)
+	light.upload(state, memory)
 	var m := material as ShaderMaterial
 	if m == null:
 		return
-	m.set_shader_parameter("cell_data", _cell_tex)
+	m.set_shader_parameter("cell_data", light.cells)
+	m.set_shader_parameter("cell_extra", light.extra)
 	# No origin is sent any more. The shader reads its own local position out of
 	# the vertex stage, which is the space this control draws in -- see the
 	# comment above `varying local_px`. Passing global_position was the bug:
@@ -1247,6 +934,7 @@ func _memory_strength() -> float:
 ## Remembered cave ground, as a fraction of ordinary remembered ground.
 const CAVE_MEMORY := 0.45
 
+## Cheap deterministic noise in [0,1) from a cell coordinate.
 func _hash01(x: int, y: int) -> float:
 	var h := (x * 73856093) ^ (y * 19349663)
 	return float(absi(h) % 1024) / 1024.0
@@ -1261,18 +949,21 @@ func _draw_glyph(id: StringName, cell: Vector2) -> void:
 ## The same draw, with an optional colour that replaces the theme's own.
 ##
 ## Alpha zero means "use the theme", so the ordinary path is unchanged and
-## there is one drawing routine rather than two that can drift apart.
-func _draw_glyph_tinted(id: StringName, cell: Vector2, tint: Color) -> void:
+## there is one drawing routine rather than two that can drift apart. `lit`
+## false draws the colour exactly as given: a remembered picture, which the
+## light in that room now has nothing to do with.
+func _draw_glyph_tinted(id: StringName, cell: Vector2, tint: Color, lit := true) -> void:
 	var app := render_theme.appearance(id)
 	var fg: Color = tint if tint.a > 0.0 else app["fg"]
-	# Lighting is sampled at the logical cell, not the fractional one -- a
-	# glyph mid-stride should not flicker between two rooms' light levels.
-	var x := int(round(cell.x))
-	var y := int(round(cell.y))
-	var lit: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
-	# Floor of 0.45 so something standing in gloom is still legible. Realism
-	# loses to readability every time in a game you play by reading.
-	fg = (fg * lit.lerp(Color.WHITE, 0.45)).clamp()
+	if lit:
+		# Lighting is sampled at the logical cell, not the fractional one -- a
+		# glyph mid-stride should not flicker between two rooms' light levels.
+		var x := int(round(cell.x))
+		var y := int(round(cell.y))
+		var light_here: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
+		# Floor of 0.45 so something standing in gloom is still legible.
+		# Realism loses to readability every time in a game you play by reading.
+		fg = (fg * light_here.lerp(Color.WHITE, 0.45)).clamp()
 	var origin := _screen_f(cell)
 	var am := _metrics(app["ch"])
 	draw_char(font, origin + Vector2(am.x, _baseline(app["ch"], int(am.y))), app["ch"], int(am.y), fg)

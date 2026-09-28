@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://src/ui/map_panel.gd" id="13_map"]
 [ext_resource type="Script" path="res://src/ui/here_panel.gd" id="14_here"]
 [ext_resource type="Script" path="res://src/ui/trade_panel.gd" id="15_trade"]
+[ext_resource type="Script" path="res://src/render/diorama_view.gd" id="16_diorama"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -31,6 +32,16 @@ offset_right = 1312.0
 offset_bottom = 736.0
 mouse_filter = 0
 script = ExtResource("2_grid")
+
+[node name="Diorama" type="Control" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 1312.0
+offset_bottom = 736.0
+mouse_filter = 0
+script = ExtResource("16_diorama")
 
 [node name="Sidebar" type="Control" parent="."]
 layout_mode = 0

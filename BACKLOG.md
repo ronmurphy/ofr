@@ -93,14 +93,25 @@ respects the three motion settings (still / simple / full).
 uses. More than combat. Fireball and teleport have been discussed; the rest is
 to design.
 
-**Someday: a 3D mode.** A key swaps between the classic view and a 3D one:
-tilted overhead like Diablo, turning in 90-degree steps like Final Fantasy
-Tactics, with the same colours and letters — walls stand up as blocks,
-creatures as upright letters, and the torch throws real shadows. It never shows
-more than classic would, and the turn can snap instantly for anyone who gets
-motion sick. Not the "Wizardry-style combat view" declined below: that was a
-separate screen for fights; this is a way of seeing the whole game. It starts
-as a small experiment.
+**3D mode functional; visual iteration underway.** Press `q` to swap between
+the classic view and a tilted overhead view; `[` / `]` or the right stick turns
+it in 90-degree steps, and movement follows the camera. The existing icon-font
+pictures appear as camera-facing labels for creatures, items and features.
+Terrain with an icon-font picture uses that as its primary art; other terrain
+keeps its classic glyph, stamped flat on the floor. Distinct surfaces cover
+cave floor, rubble, water, mud, bones, fungus, stairs, shrines and traps; pits
+have a dark opening and raised rim. Flagstone, masonry and natural rock have
+separate procedural surface detail; pillars and stalagmites have distinct
+shapes and matching floor bases. Light comes from the game's own light map,
+applied once and blended smoothly between cells; braziers, fungus and the
+torch light the 3D view exactly as they light classic, and remembered ground
+keeps its memory colour. Billboards take their size from a 3D-only table
+(`billboard_sizes.gd`), fitted by glyph measurements the font tool writes, so
+the size ladder reads small < adult < heavy and creatures stand on the floor.
+The pause-menu text size zooms the 3D camera. The camera view shows fewer map
+cells than classic. Not the
+"Wizardry-style combat view" declined below: that was a separate screen for
+fights; this is a way of seeing the whole game.
 
 **Smaller ideas waiting their turn:** wolves (a pack that ignores you unless
 provoked); a fungus bag (carry fungus as bait and light); gems from rubble

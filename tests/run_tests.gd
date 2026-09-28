@@ -155,6 +155,7 @@ func _initialize() -> void:
 	_test_every_theme_glyph_is_drawable()
 	_test_symbol_theme()
 	_test_icon_theme()
+	_test_billboard_sizes()
 	_test_no_decoration_plugs_a_way()
 	_test_corners_stop_everyone_equally()
 	_test_nothing_rests_on_a_hazard()
@@ -6193,6 +6194,46 @@ func _test_every_theme_glyph_is_drawable() -> void:
 					missing.append("%s/%s U+%04X %s" % [pair[0], id, cp, ch])
 	check("every glyph in every mode is in the font the map draws with",
 		missing.is_empty(), str(missing))
+
+## The 3D view sizes its billboards from ink measured out of the font, so the
+## measurements have to cover every picture it can stand up -- a missing one
+## falls back to a letter's shape and the creature comes out the wrong size
+## with nothing reported. Rebuilding the font rewrites the table; this catches
+## an icon added to the theme without that step.
+##
+## And the reason the table exists: the font draws the child figure 39% taller
+## than the adult one, so sizing by em put the kobold above the orc. The 3D
+## ladder must read small < adult < heavy, as GlyphTheme promises for classic.
+func _test_billboard_sizes() -> void:
+	var unmeasured: Array = []
+	for id in GlyphTheme.OVERRIDES:
+		if not GlyphMetrics.GLYPHS.has(int(GlyphTheme.OVERRIDES[id])):
+			unmeasured.append(id)
+	check("every picture the 3D view can stand up has measured ink",
+		unmeasured.is_empty(), "run tools/build_icon_font.py --metrics: %s" % str(unmeasured))
+
+	# A typo here would size nothing and fall silently to the default.
+	var unknown: Array = []
+	for id in BillboardSizes.BOX:
+		if not AsciiTheme.TABLE.has(id):
+			unknown.append(id)
+	check("every 3D size names a real appearance", unknown.is_empty(), str(unknown))
+
+	var theme := GlyphTheme.new()
+	var tall := {}
+	for id in [&"kobold", &"orc", &"ogre"]:
+		var ch: String = theme.appearance(id)["ch"]
+		tall[id] = DioramaView._ink_size(ch,
+			BillboardSizes.box(id, BillboardSizes.CREATURE)).y
+	check("in 3D a kobold stands shorter than an orc, an orc than an ogre (%.2f / %.2f / %.2f)"
+		% [tall[&"kobold"], tall[&"orc"], tall[&"ogre"]],
+		tall[&"kobold"] < tall[&"orc"] and tall[&"orc"] < tall[&"ogre"])
+	# The fit keeps a picture's shape inside its box, and fills it one way.
+	var box := BillboardSizes.box(&"dragon", BillboardSizes.CREATURE)
+	var dragon := DioramaView._ink_size(theme.appearance(&"dragon")["ch"], box)
+	check("a picture fits its box and fills it one way (dragon %.2f x %.2f)" % [dragon.x, dragon.y],
+		dragon.x <= box.x + 0.001 and dragon.y <= box.y + 0.001
+		and (is_equal_approx(dragon.x, box.x) or is_equal_approx(dragon.y, box.y)))
 
 ## Mirrors what drawing does: the face itself, then one level of fallback.
 func _renderable(font: Font, cp: int) -> bool:

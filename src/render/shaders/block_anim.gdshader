@@ -17,13 +17,20 @@ shader_type canvas_item;
 // and the clock -- no per-cell CPU maths, and room for effects that would be
 // far too expensive to write by hand.
 
-// One texel per map cell. NEAREST, always: every block stays hard-edged.
+// The maths of moving light, shared with the 3D view's surface shader.
+#include "res://src/render/shaders/breathe.gdshaderinc"
+
+// One texel per map cell, from LivingLight. NEAREST, always: every block stays
+// hard-edged.
 //   r = tile id / 255      what this cell is
 //   g = per-cell hash      so neighbours never animate in lockstep
 //   b = firelight phase    0 = no flame reaches here; otherwise the phase of
 //                          the nearest flickering light, torch included
 //   a = 1 if visible       animation only runs on what you can actually see
 uniform sampler2D cell_data : filter_nearest, repeat_disable;
+//   r = fungus breath phase, 0 where no fungus is the light
+//   g, b, a: not read here (g is memory, which the CPU draws)
+uniform sampler2D cell_extra : hint_default_black, filter_nearest, repeat_disable;
 uniform vec2 camera_cell;
 uniform float cell_size;
 uniform vec2 map_size;
@@ -48,22 +55,10 @@ uniform float strength = 1.0;
 // is the technique this look actually comes from.
 uniform int steps = 4;
 
+// See quantise_to in breathe.gdshaderinc.
 float quantise(float v) {
-	if (steps <= 0) {
-		return v;
-	}
-	// ROUND, not floor. Flooring only ever rounds down, so quantising an
-	// effect quietly halves it -- water measured 17/255 before this function
-	// and 7.5/255 after, and it was reported from play as "I still can't see
-	// any water effects". Rounding keeps the average where the designer put it
-	// and only changes when the value moves, which is the point.
-	return floor(v * float(steps) + 0.5) / float(steps);
+	return quantise_to(v, steps);
 }
-
-// Tile ids, matching src/sim/tiles.gd. Compared as scaled bytes.
-const float ID_BRAZIER = 6.0;
-const float ID_WATER   = 9.0;
-const float ID_FUNGUS  = 18.0;
 
 // Where this fragment is INSIDE THE GRID CONTROL, in the same pixels
 // `cell_size` is measured in.
@@ -112,54 +107,14 @@ void fragment() {
 		// harder. Water and fungus ADD, because they are dark and want a fixed
 		// absolute change -- light catching a ripple, not the pool getting
 		// proportionally brighter.
-		float mul = 1.0;
+		// Firelight follows the LIGHT, not the tile, and fungus light breathes
+		// where no flame reaches -- see flame() and breath().
+		float mul = flame(d.b, t) * breath(texture(cell_extra, uv).r, t);
 		vec3 add = vec3(0.0);
 
-		// Firelight follows the LIGHT, not the tile.
-		//
-		// This lights the whole area a flame reaches rather than the cell the
-		// flame sits in, which is what the CPU version always did and what the
-		// first draft of this shader missed. Keyed on the brazier tile alone,
-		// the torch flicker vanished completely on "full" -- a torch is not a
-		// tile, and neither is the floor it lights. Reported from play as
-		// "I don't see the torch flicker under full".
-		if (d.b > 0.0) {
-			float fire = (d.b * 255.0 - 1.0) / 253.0 * 6.2831853;
-			mul += sin(t * 11.0 + fire) * 0.06 + sin(t * 23.7 + fire * 2.0) * 0.04;
-		}
-
-		// Water: three waves, not one.
-		//
-		// The first version rolled a single sine diagonally across the pool,
-		// which is a conveyor belt rather than a surface -- every cell doing
-		// the same thing a fixed moment later. Summing waves at different
-		// angles, speeds and wavelengths makes them interfere, and the
-		// interference is what reads as water. It is the cheapest honest
-		// approximation of a real surface and it costs three sines.
+		// Water: three waves, whole cells at a time -- see water_wave().
 		if (id == ID_WATER) {
-			float cx = floor(cell.x);
-			float cy = floor(cell.y);
-			float w = sin(t * 1.70 + cx * 0.90 + cy * 0.40)
-				+ sin(t * 1.10 - cx * 0.35 + cy * 1.05) * 0.8
-				+ sin(t * 2.60 + (cx + cy) * 0.22) * 0.5;
-			w /= 2.3;
-
-			// Crests, not a uniform shimmer. Raising the positive half to a
-			// power leaves most of the pool alone and lights the few cells
-			// where the waves happen to agree -- which is how light on water
-			// actually behaves, in bright moving specks rather than an even
-			// pulse over everything.
-			// A gentler power than the 2.5 this started with. That exponent
-			// pushed almost every value under the first quantisation step, so
-			// the pool sat dark and nothing appeared to happen.
-			float crest = quantise(pow(max(w, 0.0), 1.3));
-			// Cool, so it reads as light ON water rather than water glowing.
-			// Sized so a full crest is about 30/255 -- four visible steps
-			// rather than four indistinguishable ones.
-			add += vec3(0.045, 0.100, 0.135) * crest;
-			// A little darkening in the troughs, which gives the surface depth
-			// without brightening the pool overall.
-			add += vec3(0.010, 0.018, 0.024) * -quantise(-min(w, 0.0));
+			add += water_light(water_wave(floor(cell), t), steps);
 		}
 		// Embers rising off a brazier.
 		//
@@ -196,8 +151,7 @@ void fragment() {
 
 		// Slower and weaker than fire. It glows, it does not burn.
 		else if (id == ID_FUNGUS) {
-			float g = sin(t * 2.4 + phase);
-			add += vec3(0.020, 0.048, 0.032) * sign(g) * quantise(abs(g));
+			add += fungus_glow(phase, t, steps);
 		}
 
 		COLOR.rgb *= mix(1.0, 1.0 + (mul - 1.0) * strength, seen);

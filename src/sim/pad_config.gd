@@ -64,15 +64,13 @@ const WALK := [
 	[KEY_C, "close a door"],
 	[KEY_A, "ally heel / loose"],
 	[KEY_QUESTION, "the legend"],
-	## BOUND NOW, to d-pad up. This used to say the map could never have a
-	## button because every one was spoken for, and that stopped being true
-	## when `g` became the action key: a tile knows whether its stairs go up
-	## or down, so the dedicated ascend and pray buttons became redundant and
-	## d-pad up was the first thing freed. Brad's call on what to spend it on.
+	## BOUND NOW, to d-pad up. The same map view key used by the keyboard opens
+	## the 3D renderer; the overview remains reachable through the legend. D-pad
+	## up was freed when contextual interaction replaced separate stair buttons.
 	##
 	## `<` is still in this list and still works on a keyboard -- it is simply
 	## no longer worth a button, which is different from being removed.
-	[KEY_O, "the map"],
+	[KEY_Q, "3D / classic view"],
 	[KEY_ESCAPE, "menu"],
 
 	## THE D-PAD'S NEW JOB, and the reason it has one.
@@ -217,7 +215,7 @@ const DEFAULTS := {
 	## player who wants the d-pad back can have it; they are simply not bound
 	## here any more.
 	JOY_BUTTON_DPAD_DOWN: KEY_GREATER,
-	JOY_BUTTON_DPAD_UP: KEY_O,
+	JOY_BUTTON_DPAD_UP: KEY_Q,
 	JOY_BUTTON_DPAD_LEFT: KEY_T,
 	JOY_BUTTON_DPAD_RIGHT: KEY_P,
 	JOY_BUTTON_A: KEY_PERIOD,
@@ -227,10 +225,8 @@ const DEFAULTS := {
 	JOY_BUTTON_LEFT_SHOULDER: KEY_F,
 	JOY_BUTTON_RIGHT_SHOULDER: KEY_W,
 	JOY_BUTTON_START: KEY_ESCAPE,
-	## The legend. A candidate to give up if the map should have a button by
-	## default: both are reference screens you read between fights, and the
-	## map is the one you want repeatedly on a floor while the legend is
-	## mostly read once. Brad's call, not made yet.
+	## The legend. The floor overview remains one page away from here, while
+	## d-pad up switches between classic and 3D map renderers directly.
 	JOY_BUTTON_BACK: KEY_QUESTION,
 	JOY_BUTTON_LEFT_STICK: KEY_C,
 	JOY_BUTTON_RIGHT_STICK: KEY_A,

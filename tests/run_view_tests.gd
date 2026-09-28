@@ -1,0 +1,1085 @@
+extends SceneTree
+
+## The shared view layer: effects, step glides, creature marks, moving light,
+## fading memory, colour by region and small life, which the classic grid and
+## the 3D view both draw from -- and the 3D view's own camera and extras.
+##
+##     godot --headless --script res://tests/run_view_tests.gd
+##
+## A file of its own rather than more of run_tests.gd, so this work and the
+## simulation's suite can move independently; it follows the same conventions
+## (scratch files, the settings tripwire, one line per check).
+
+var _passed := 0
+var _failed := 0
+
+func _initialize() -> void:
+	# Same protections as run_tests.gd: scratch paths first -- the save, the
+	# morgue, the bestiary, the settings and the pad bindings all move -- and a
+	# tripwire on the real settings.cfg besides, in case anything writes it by
+	# its own path.
+	GameState.use_scratch_files("view_tests")
+	var settings_before := ""
+	var had_settings := FileAccess.file_exists("user://settings.cfg")
+	if had_settings:
+		settings_before = FileAccess.get_file_as_string("user://settings.cfg")
+	print("")
+	_test_hits_become_effects()
+	_test_effects_answer_to_the_motion_setting()
+	_test_every_effect_ends()
+	_test_nothing_is_drawn_where_you_cannot_see()
+	_test_steps_glide_and_settle()
+	_test_creature_marks()
+	_test_magic_weapons_spark()
+	_test_a_kill_shatters()
+	_test_blows_rock_within_the_tile()
+	_test_hurt_reddens_the_edge()
+	_test_still_keeps_only_information()
+	_test_every_impact_ends()
+	_test_light_knows_whose_it_is()
+	_test_light_moves_only_when_asked()
+	_test_shaders_read_what_light_writes()
+	_test_memory_fades_but_keeps_landmarks()
+	_test_the_trader_is_remembered()
+	_test_magic_glows_and_embers_keep_their_rules()
+	_test_regions_colour_the_stone_not_the_floor()
+	_test_heavy_ground_slows_the_step()
+	_test_footfalls_throw_up_the_ground()
+	_test_small_life()
+	_test_the_trader_idles()
+	_test_fft_keys_walk_the_grid()
+	await _test_both_views_share_one_moment()
+	var settings_after := ""
+	if FileAccess.file_exists("user://settings.cfg"):
+		settings_after = FileAccess.get_file_as_string("user://settings.cfg")
+	check("the player's settings.cfg is untouched",
+		settings_after == settings_before or not had_settings)
+	print("\n%d passed, %d failed" % [_passed, _failed])
+	quit(1 if _failed > 0 else 0)
+
+func check(name: String, condition: bool, detail: String = "") -> void:
+	if condition:
+		_passed += 1
+		print("  ok    %s" % name)
+	else:
+		_failed += 1
+		print("  FAIL  %s   %s" % [name, detail])
+
+## Effects mode is a static; set it for a moment WITHOUT Effects.set_mode(),
+## which would write the player's settings file.
+func _with_mode(mode: int, body: Callable) -> void:
+	var was := Effects._mode
+	Effects._mode = mode
+	body.call()
+	Effects._mode = was
+
+func _open_map(w: int, h: int) -> DungeonMap:
+	var map := DungeonMap.new(w, h)
+	for y in range(1, h - 1):
+		for x in range(1, w - 1):
+			map.set_tile(x, y, Tiles.FLOOR)
+	map.set_all_visible()
+	return map
+
+func _types(fx: Fx) -> Array:
+	var out: Array = []
+	for e in fx.list:
+		out.append(e["type"])
+	return out
+
+func _test_hits_become_effects() -> void:
+	var fx := Fx.new()
+	fx.add_events([{"kind": &"melee", "from": Vector2i(2, 2), "to": Vector2i(3, 2),
+		"amount": 5, "on_player": false}], 16)
+	check("a melee hit becomes a flash and a number",
+		_types(fx) == [&"flash", &"popup"] and fx.list[1]["text"] == "5", str(_types(fx)))
+
+	fx.clear()
+	fx.add_events([{"kind": &"ranged", "from": Vector2i(1, 1), "to": Vector2i(6, 1),
+		"amount": 2, "on_player": true}], 16)
+	var shot: Dictionary = fx.list[0]
+	var wait := float(shot["path"].size()) * Fx.SHOT_PER_CELL
+	check("a ranged hit lands when its shot arrives, not before",
+		shot["type"] == &"shot" and is_equal_approx(-float(fx.list[1]["t"]), wait))
+
+	fx.clear()
+	fx.add_events([{"kind": &"levelup", "to": Vector2i(4, 4)}], 16)
+	check("levelling up says so over your head", fx.list.size() == 1
+		and fx.list[0]["text"] == "LEVEL UP")
+
+func _test_effects_answer_to_the_motion_setting() -> void:
+	var noise := [{"kind": &"noise", "to": Vector2i(5, 5), "radius": 4}]
+	var still := Fx.new()
+	_with_mode(Effects.Mode.NONE, func(): still.add_events(noise, 16))
+	var full := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): full.add_events(noise, 16))
+	check("a noise ring moves, so 'still' does not draw one",
+		still.list.is_empty() and _types(full) == [&"ring"])
+
+func _test_every_effect_ends() -> void:
+	# Fx.expired's fallthrough is "expired", so an effect it was never taught
+	# about dies on its first frame. Every kind the events can make must end,
+	# and must not end at birth.
+	var fx := Fx.new()
+	var evts := [
+		{"kind": &"melee", "from": Vector2i(2, 2), "to": Vector2i(3, 2), "amount": 1, "on_player": true},
+		{"kind": &"ranged", "from": Vector2i(1, 1), "to": Vector2i(6, 1), "amount": 1, "on_player": false},
+		{"kind": &"noise", "to": Vector2i(5, 5), "radius": 3},
+		{"kind": &"recall", "from": Vector2i(1, 5), "to": Vector2i(6, 5)},
+		{"kind": &"shove", "from": Vector2i(2, 6), "to": Vector2i(4, 6)},
+		{"kind": &"notice", "to": Vector2i(3, 3)},
+		{"kind": &"levelup", "to": Vector2i(3, 3)},
+	]
+	_with_mode(Effects.Mode.SHADERS, func(): fx.add_events(evts, 16))
+	var bad: Array = []
+	for e in fx.list:
+		var born: Dictionary = e.duplicate()
+		born["t"] = 0.0
+		var old: Dictionary = e.duplicate()
+		old["t"] = 1000.0
+		if Fx.expired(born) or not Fx.expired(old):
+			bad.append(e["type"])
+	check("every effect lives, then ends (%d kinds made)" % fx.list.size(),
+		bad.is_empty() and fx.list.size() >= 8, str(bad))
+
+func _test_nothing_is_drawn_where_you_cannot_see() -> void:
+	var map := _open_map(12, 12)
+	var hidden := Vector2i(8, 6)
+	map.visible_now[map.idx(hidden.x, hidden.y)] = 0
+	# Radius 3 over 0.6s: at 0.4s the wavefront is two cells out -- exactly
+	# where the hidden cell is -- and still visible.
+	var ring := {"type": &"ring", "cell": Vector2i(6, 6), "t": 0.0, "radius": 3, "life": 0.6}
+	var cells: Array = []
+	for hit in Fx.ring_cells(ring, 0.4, map):
+		cells.append(hit[0])
+	check("a noise ring skips the cell you cannot see",
+		not cells.is_empty() and not cells.has(hidden), str(cells))
+	var flash := {"type": &"flash", "cell": hidden, "t": 0.0, "colour": Color.RED}
+	var popup := {"type": &"popup", "cell": hidden, "t": 0.0, "text": "3", "colour": Color.RED}
+	check("no flash and no number over unseen ground",
+		Fx.flash_alpha(flash, 0.0, map) == 0.0 and float(Fx.popup_state(popup, 0.0, map)[1]) == 0.0)
+	var shot := {"type": &"shot", "path": [Vector2i(6, 6), Vector2i(7, 6), hidden], "t": 0.0}
+	check("a shot vanishes while it crosses unseen ground",
+		Fx.shot_cell(shot, 0.0, map) == Vector2i(6, 6)
+		and Fx.shot_cell(shot, 2.5 * Fx.SHOT_PER_CELL, map) == Vector2i(-1, -1))
+
+func _test_steps_glide_and_settle() -> void:
+	var gs := GameState.new(1)
+	gs.new_game()
+	var motion := StepMotion.new()
+	motion.sync(gs.entities)
+	var p := gs.player
+	var from := Vector2(p.x, p.y)
+	p.x += 1
+	motion.sync(gs.entities)
+	motion.tick(StepMotion.STEP_TIME * 0.5)
+	var mid := motion.visual_cell(p)
+	check("a step is drawn part way while it glides",
+		motion.running() and mid.x > from.x and mid.x < from.x + 1.0, str(mid))
+	motion.settle()
+	check("settling lands it at once, so input never waits on a picture",
+		not motion.running() and motion.visual_cell(p) == Vector2(p.x, p.y))
+
+func _test_creature_marks() -> void:
+	var m := Entity.new("orc", &"orc", 1, 1)
+	m.max_hp = 20
+	m.hp = 20
+	m.alertness = Entity.Alert.SUSPICIOUS
+	check("a suspicious creature shows a ?", CreatureMarks.awareness(m).get("text") == "?")
+	m.alertness = Entity.Alert.AWAKE
+	m.fleeing = true
+	check("a fleeing one shows <<", CreatureMarks.awareness(m).get("text") == "<<")
+	check("a whole one has no wash", CreatureMarks.wound(m).a == 0.0)
+	m.hp = 2
+	check("a badly hurt one has the critical wash",
+		CreatureMarks.wound(m).is_equal_approx(Color(Palette.CRITICAL, Palette.CRITICAL_WASH)))
+
+## A game with the player at a known spot and a monster beside it.
+func _arena() -> Array:
+	var gs := GameState.new(1)
+	gs.new_game()
+	var p := Vector2i(gs.player.x, gs.player.y)
+	var spot := p
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if gs.map.is_walkable(p.x + d.x, p.y + d.y):
+			spot = p + d
+			break
+	var orc: Entity = null
+	for row in GameState.BESTIARY:
+		if row["name"] == "orc":
+			orc = GameState.monster_from(row, spot.x, spot.y)
+			gs.entities.append(orc)
+	return [gs, orc]
+
+func _swing(gs: GameState, orc: Entity, fx: Fx, motion: StepMotion, amount := 3) -> void:
+	fx.play([{"kind": &"melee", "from": Vector2i(gs.player.x, gs.player.y),
+		"to": Vector2i(orc.x, orc.y), "amount": amount, "on_player": false}], 16, gs, motion)
+
+func _test_magic_weapons_spark() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	var blade := Item.make(&"dagger")
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+	var plain := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): _swing(gs, orc, plain, StepMotion.new()))
+	blade.element = &"fire"
+	var magic := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): _swing(gs, orc, magic, StepMotion.new()))
+	var sparks: Array = magic.list.filter(func(e): return e["type"] == &"sparks")
+	check("a magic weapon throws sparks in the magic colour; a plain one does not",
+		not _types(plain).has(&"sparks") and sparks.size() == 1
+		and sparks[0]["colour"] == Palette.MAGIC)
+
+func _test_a_kill_shatters() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	orc.alive = false
+	var fx := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): fx.play([{"kind": &"kill",
+		"to": Vector2i(orc.x, orc.y)}], 16, gs, StepMotion.new()))
+	var shatter: Array = fx.list.filter(func(e): return e["type"] == &"shatter")
+	check("a kill shatters what died, in its own picture",
+		shatter.size() == 1 and shatter[0]["appearance"] == &"orc")
+
+func _test_blows_rock_within_the_tile() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	orc.max_hp = 20
+	var motion := StepMotion.new()
+	var fx := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): _swing(gs, orc, fx, motion, 2))
+	motion.tick(StepMotion.LUNGE_TIME * 0.5)
+	var lunge := motion.nudge_offset(gs.player).length()
+	check("a swing lunges toward the target, and not a whole step (%.2f)" % lunge,
+		lunge > 0.1 and lunge <= 0.34)
+	var light := StepMotion.new()
+	var heavy := StepMotion.new()
+	_with_mode(Effects.Mode.SHADERS, func():
+		_swing(gs, orc, Fx.new(), light, 1)
+		_swing(gs, orc, Fx.new(), heavy, 9))
+	for m in [light, heavy]:
+		m.tick(StepMotion.LUNGE_TIME * 0.4 + StepMotion.RECOIL_TIME * 0.5)
+	var small := light.nudge_offset(orc).length()
+	var big := heavy.nudge_offset(orc).length()
+	check("a harder blow rocks the target further, still inside its tile (%.2f < %.2f)"
+		% [small, big], small < big and big <= 0.25)
+	motion.settle()
+	check("settling cancels a lunge at once", motion.nudge_offset(gs.player) == Vector2.ZERO)
+
+func _test_hurt_reddens_the_edge() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	gs.player.max_hp = 20
+	var levels: Array = []
+	for amount in [1, 8]:
+		var fx := Fx.new()
+		fx.play([{"kind": &"melee", "from": Vector2i(orc.x, orc.y),
+			"to": Vector2i(gs.player.x, gs.player.y), "amount": amount,
+			"on_player": true}], 16, gs, null)
+		levels.append(Fx.hurt_now(fx.list))
+	check("being hurt reddens the edge, and a harder hit more (%.2f < %.2f)"
+		% [levels[0], levels[1]], levels[0] > 0.0 and levels[0] < levels[1])
+
+## On "still" nothing moves -- but what is information stays: the number, the
+## flash and the red edge still say you were hit.
+func _test_still_keeps_only_information() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	var blade := Item.make(&"dagger")
+	blade.element = &"fire"
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+	var fx := Fx.new()
+	var motion := StepMotion.new()
+	_with_mode(Effects.Mode.NONE, func():
+		_swing(gs, orc, fx, motion)
+		fx.play([{"kind": &"melee", "from": Vector2i(orc.x, orc.y),
+			"to": Vector2i(gs.player.x, gs.player.y), "amount": 2,
+			"on_player": true}, {"kind": &"levelup",
+			"to": Vector2i(gs.player.x, gs.player.y)}], 16, gs, motion))
+	var kinds := _types(fx)
+	check("on 'still': no lunge, no sparks, no ring of light -- but the number, "
+		+ "the flash and the red edge remain",
+		not motion.running() and not kinds.has(&"sparks") and not kinds.has(&"ring")
+		and kinds.has(&"popup") and kinds.has(&"flash") and kinds.has(&"hurt"), str(kinds))
+
+func _test_every_impact_ends() -> void:
+	var arena := _arena()
+	var gs: GameState = arena[0]
+	var orc: Entity = arena[1]
+	var here := Vector2i(gs.player.x, gs.player.y)
+	orc.alive = false
+	var fx := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): fx.play([
+		{"kind": &"kill", "to": Vector2i(orc.x, orc.y)},
+		{"kind": &"levelup", "to": here},
+		{"kind": &"pray", "to": here},
+		{"kind": &"forge", "to": here},
+		{"kind": &"trap", "to": here},
+		{"kind": &"blink", "from": here, "to": Vector2i(orc.x, orc.y)},
+		{"kind": &"lowhp", "to": here},
+	], 16, gs, StepMotion.new()))
+	var bad: Array = []
+	for e in fx.list:
+		var born: Dictionary = e.duplicate()
+		born["t"] = 0.0
+		var old: Dictionary = e.duplicate()
+		old["t"] = 1000.0
+		if Fx.expired(born) or not Fx.expired(old):
+			bad.append(e["type"])
+	var kinds := _types(fx)
+	check("every impact lives, then ends (%s)" % str(kinds),
+		bad.is_empty() and kinds.has(&"shatter") and kinds.has(&"sparks")
+		and kinds.has(&"hurt") and kinds.has(&"ring"), str(bad))
+
+## The whole point of the layer: the real scene hands both views one list and
+## one set of glides, and the 3D view draws what the list holds.
+## A floor with a torch at the west end, a brazier in the middle, fungus at the
+## east end out of reach of both, and a second fungus inside the brazier's
+## light: [state, light].
+func _lit_room() -> Array:
+	var gs := GameState.new(1)
+	gs.new_game()
+	gs.map = _open_map(32, 11)
+	gs.player.x = 3
+	gs.player.y = 5
+	gs.player.light.x = 3
+	gs.player.light.y = 5
+	gs.player.light.radius = 6
+	gs.static_lights = [
+		LightSource.new(14, 5, 5, Color(0.9, 0.5, 0.2), Color(0.3, 0.2, 0.3), 0.85, true),
+		LightSource.new(26, 5, 3, Color(0.3, 0.8, 0.6), Color(0.1, 0.3, 0.2), 0.45, false),
+		LightSource.new(16, 5, 3, Color(0.3, 0.8, 0.6), Color(0.1, 0.3, 0.2), 0.45, false),
+	]
+	var light := LivingLight.new()
+	light.rebuild(gs)
+	return [gs, light]
+
+func _test_light_knows_whose_it_is() -> void:
+	var made := _lit_room()
+	var gs: GameState = made[0]
+	var light: LivingLight = made[1]
+	check("the torch is a flame (so the rest of this means something)",
+		gs.player.light.flickers)
+	check("ground under the torch has a flame's phase", light.fire_phase(4, 5) >= 0.0)
+	check("and so does ground under the brazier", light.fire_phase(14, 7) >= 0.0)
+	check("the torch and the brazier do not share a rhythm",
+		not is_equal_approx(light.fire_phase(4, 5), light.fire_phase(14, 7)))
+	check("fungus light out of the fire's reach breathes, and does not flicker",
+		light.breath_phase(26, 6) >= 0.0 and light.fire_phase(26, 6) < 0.0)
+	check("fungus light inside the fire's reach does not breathe -- the flame has it",
+		light.breath_phase(16, 5) < 0.0 and light.fire_phase(16, 5) >= 0.0)
+	check("ground nothing reaches has neither",
+		light.fire_phase(21, 1) < 0.0 and light.breath_phase(21, 1) < 0.0)
+
+func _test_light_moves_only_when_asked() -> void:
+	var light: LivingLight = _lit_room()[1]
+	var lo := 9.0
+	var hi := -9.0
+	var dark_moved := false
+	for i in 40:
+		light._t = float(i) * 0.37
+		var p := light.pulse(26, 6)
+		lo = minf(lo, p)
+		hi = maxf(hi, p)
+		dark_moved = dark_moved or light.pulse(21, 1) != 1.0
+	check("fungus light breathes, within its depth (%.2f..%.2f)" % [lo, hi],
+		hi - lo > LivingLight.BREATH_DEPTH
+		and lo >= 1.0 - LivingLight.BREATH_DEPTH - 0.001
+		and hi <= 1.0 + LivingLight.BREATH_DEPTH + 0.001)
+	check("ground nothing reaches never moves", not dark_moved)
+	# Classic animates on the CPU on "simple" only: the shader has "full",
+	# and "still" is still.
+	var grid := GlyphGrid.new()
+	grid.light = light
+	light._t = 1.0
+	var by_mode := {}
+	for mode in [Effects.Mode.NONE, Effects.Mode.TIMERS, Effects.Mode.SHADERS]:
+		_with_mode(mode, func(): by_mode[mode] = grid._flicker_at(26, 6))
+	check("classic breathes on the CPU on simple, and only there",
+		by_mode[Effects.Mode.NONE] == 1.0 and by_mode[Effects.Mode.SHADERS] == 1.0
+		and by_mode[Effects.Mode.TIMERS] == light.pulse(26, 6)
+		and by_mode[Effects.Mode.TIMERS] != 1.0, str(by_mode))
+	grid.free()
+
+func _test_shaders_read_what_light_writes() -> void:
+	var made := _lit_room()
+	var gs: GameState = made[0]
+	var light: LivingLight = made[1]
+	var memory := MapMemory.new()
+	light.upload(gs, memory)
+	# The images LivingLight hands the textures: a headless run keeps no pixels
+	# in a texture to read back.
+	var cells := light._cells_img
+	var extra := light._extra_img
+	var fire_back := (cells.get_pixel(4, 5).b * 255.0 - 1.0) / 253.0 * TAU
+	check("the firelight phase survives the trip to the shader",
+		absf(fire_back - light.fire_phase(4, 5)) <= TAU / 253.0 + 0.001,
+		"%f vs %f" % [fire_back, light.fire_phase(4, 5)])
+	check("no flame reads as zero, and a phase of zero does not",
+		cells.get_pixel(21, 1).b == 0.0 and LivingLight.phase_code(0.0) > 0)
+	# The bytes are written directly; they must be exactly what the Color path
+	# the classic shader was tuned against wrote.
+	var same := true
+	var reference := Image.create(gs.map.width, gs.map.height, false, Image.FORMAT_RGBA8)
+	for y in gs.map.height:
+		for x in gs.map.width:
+			var ph := light.fire_phase(x, y)
+			reference.set_pixel(x, y, Color(float(gs.map.get_tile(x, y)) / 255.0,
+				LivingLight.hash01(x, y),
+				(floor(ph / TAU * 253.0) + 1.0) / 255.0 if ph >= 0.0 else 0.0,
+				1.0 if gs.map.is_visible(x, y) else 0.0))
+	check("the fast upload writes exactly the bytes the Color path did",
+		reference.get_data() == cells.get_data())
+	check("the breath phase goes in the second texture",
+		extra.get_pixel(26, 6).r > 0.0 and extra.get_pixel(4, 5).r == 0.0)
+	check("tile, hash and sight are where the classic shader always read them",
+		is_equal_approx(cells.get_pixel(4, 5).r * 255.0, float(Tiles.FLOOR))
+		and absf(cells.get_pixel(4, 5).g - LivingLight.hash01(4, 5)) <= 1.0 / 255.0
+		and cells.get_pixel(4, 5).a == 1.0)
+	# A new turn is a fresh upload: the tile changes, and so does the texture.
+	gs.map.set_tile(8, 8, Tiles.WATER)
+	gs.turns += 1
+	light.upload(gs, memory)
+	check("a new turn reaches the shader",
+		is_equal_approx(light._cells_img.get_pixel(8, 8).r * 255.0, float(Tiles.WATER)))
+	# The two halves of the maths must agree on the numbers they share.
+	var inc := FileAccess.get_file_as_string("res://src/render/shaders/breathe.gdshaderinc")
+	var want := {"BREATH_DEPTH": LivingLight.BREATH_DEPTH, "BREATH_RATE": LivingLight.BREATH_RATE}
+	var agree := true
+	for name: String in want:
+		var found := RegEx.create_from_string("const float %s = ([0-9.]+);" % name).search(inc)
+		agree = agree and found != null \
+			and is_equal_approx(float(found.get_string(1)), float(want[name]))
+	check("the shader include and LivingLight agree on how fungus breathes", agree)
+
+func _test_memory_fades_but_keeps_landmarks() -> void:
+	check("memory holds, then fades to half, never below",
+		MapMemory.fade_for_age(0) == 1.0 and MapMemory.fade_for_age(MapMemory.FADE_AFTER) == 1.0
+		and MapMemory.fade_for_age(MapMemory.FADE_FULL) == MapMemory.FADE_FLOOR
+		and MapMemory.fade_for_age(100000) == MapMemory.FADE_FLOOR
+		and MapMemory.FADE_FLOOR == 0.5)
+	var steady := true
+	for age in range(0, 1000, 10):
+		steady = steady and MapMemory.fade_for_age(age + 10) <= MapMemory.fade_for_age(age)
+	check("and never brightens again as it ages", steady)
+	var gs := GameState.new(1)
+	gs.new_game()
+	gs.map = _open_map(12, 8)
+	var marks := {Vector2i(2, 2): Tiles.DOOR_CLOSED, Vector2i(3, 2): Tiles.STAIRS_DOWN,
+		Vector2i(4, 2): Tiles.BRAZIER, Vector2i(5, 2): Tiles.SHRINE,
+		Vector2i(6, 2): Tiles.BRAZIER_DEAD, Vector2i(7, 2): Tiles.STAIRS_UP}
+	for at: Vector2i in marks:
+		gs.map.set_tile(at.x, at.y, marks[at])
+	gs.trader = null
+	var memory := MapMemory.new()
+	gs.turns = 0
+	memory.update(gs)
+	gs.map.remember_visible()
+	gs.map.clear_visible()
+	gs.turns = 600
+	memory.update(gs)
+	check("ground unseen for 600 turns is at half",
+		memory.fade(8, 5, gs.turns) == 0.5, str(memory.fade(8, 5, gs.turns)))
+	var kept := true
+	for at: Vector2i in marks:
+		kept = kept and memory.fade(at.x, at.y, gs.turns) == 1.0
+	check("doors, stairs, braziers and shrines never fade", kept)
+	var fades := memory.fades(gs.turns)
+	var same := true
+	for y in gs.map.height:
+		for x in gs.map.width:
+			same = same and fades[y * gs.map.width + x] == memory.fade(x, y, gs.turns)
+	check("the whole-floor fades agree with the one-cell fade", same)
+	# Sight changes with a turn, as in play.
+	gs.turns = 610
+	gs.map.set_all_visible()
+	memory.update(gs)
+	gs.map.clear_visible()
+	gs.turns = 650
+	memory.update(gs)
+	check("seeing it again brings it back", memory.fade(8, 5, gs.turns) == 1.0)
+	gs.map = _open_map(12, 8)
+	gs.turns = 5000
+	memory.update(gs)
+	gs.map.reveal_all()
+	gs.map.clear_visible()
+	gs.turns = 5001
+	memory.update(gs)
+	check("a new floor starts remembered afresh", memory.fade(8, 5, gs.turns) == 1.0)
+
+func _test_the_trader_is_remembered() -> void:
+	var gs := GameState.new(1)
+	gs.new_game()
+	gs.map = _open_map(12, 8)
+	gs.map.clear_visible()
+	gs.trader = Entity.new("trader", &"trader", 7, 5)
+	check("a trader on ground you never saw is not remembered",
+		MapMemory.remembered_trader(gs) == Vector2i(-1, -1))
+	gs.map.reveal_all()
+	check("once you have seen their ground, you know where they stand",
+		MapMemory.remembered_trader(gs) == Vector2i(7, 5))
+	var memory := MapMemory.new()
+	memory.update(gs)
+	gs.turns = 900
+	memory.update(gs)
+	check("and they are a landmark: their cell never fades",
+		memory.trader_cell == Vector2i(7, 5) and memory.fade(7, 5, gs.turns) == 1.0
+		and memory.fade(8, 5, gs.turns) < 1.0)
+	gs.trader.alive = false
+	var dead := MapMemory.remembered_trader(gs)
+	gs.trader = null
+	check("no trader, or none left, is nothing to remember",
+		dead == Vector2i(-1, -1) and MapMemory.remembered_trader(gs) == Vector2i(-1, -1))
+	var on_map := false
+	for row in MapPanel.MARKS:
+		on_map = on_map or (row[0] == "trader" and row[1] == MapPanel.MARK_TRADER)
+	check("the overview map has a mark for the trader", on_map)
+
+func _test_magic_glows_and_embers_keep_their_rules() -> void:
+	var enchanted := Item.make(&"dagger")
+	enchanted.element = &"frost"
+	var plain := Item.make(&"dagger")
+	var gem: Item = null
+	for id in Item.CATALOGUE:
+		if Item.CATALOGUE[id].get("kind", -1) == Item.Kind.GEM:
+			gem = Item.make(id)
+			break
+	var glows := {}
+	_with_mode(Effects.Mode.NONE, func():
+		glows["magic"] = LivingLight.item_glow(enchanted)
+		glows["gem"] = LivingLight.item_glow(gem)
+		glows["plain"] = LivingLight.item_glow(plain))
+	check("magic and gems glow blue; a plain blade does not",
+		glows["magic"].a > 0.0 and glows["gem"].a > 0.0 and glows["plain"].a == 0.0
+		and Color(glows["magic"], 1.0) == Palette.MAGIC and Color(glows["gem"], 1.0) == Palette.MAGIC)
+	check("with motion off the glow is steady, not gone",
+		is_equal_approx(glows["magic"].a, LivingLight.ITEM_GLOW))
+	check("a gem keeps its own colour: the glow goes under it, not on it",
+		not gem.shows_enchanted())
+	# Lambdas capture locals by value, so results come back in a dictionary.
+	var got := {"lo": 9.0}
+	_with_mode(Effects.Mode.SHADERS, func():
+		got["lo"] = LivingLight.item_glow(enchanted).a)
+	check("and breathes, never fading out, with motion on",
+		got["lo"] >= LivingLight.ITEM_GLOW * 0.75 - 0.001
+		and got["lo"] <= LivingLight.ITEM_GLOW + 0.001)
+	var cold := Color(0.4, 0.3, 0.3)
+	_with_mode(Effects.Mode.NONE, func():
+		got["hot"] = LivingLight.embers(cold, 1.0, 3, 3)
+		got["stairs"] = LivingLight.stairs_pulse())
+	var want := (cold.lerp(Palette.EMBERS, 1.0) * (1.0 + LivingLight.EMBER_GLOW)).clamp()
+	check("a hot brazier's gauge is its colour and glow, held still with motion off",
+		(got["hot"] as Color).is_equal_approx(Color(want, 1.0)))
+	check("remembered stairs are frozen at the top of their breath with motion off",
+		got["stairs"] == 1.0)
+
+## A floor with a strip of each kind of ground: [state, where each is].
+func _ground_room() -> Array:
+	var gs := GameState.new(1)
+	gs.new_game()
+	gs.map = _open_map(40, 16)
+	var at := {"water": Vector2i(5, 4), "mud": Vector2i(6, 4), "rubble": Vector2i(7, 4),
+		"floor": Vector2i(8, 4), "fungus": Vector2i(12, 8), "mud2": Vector2i(14, 8)}
+	gs.map.set_tile(5, 4, Tiles.WATER)
+	gs.map.set_tile(6, 4, Tiles.MUD)
+	gs.map.set_tile(7, 4, Tiles.RUBBLE)
+	gs.map.set_tile(12, 8, Tiles.FUNGUS)
+	gs.map.set_tile(14, 8, Tiles.MUD)
+	gs.player.x = 13
+	gs.player.y = 9
+	gs.player.light.radius = 6
+	gs.light_map = LightMap.new(40, 16)
+	# Lit everywhere, so what is being tested is small life and not the light.
+	var lit := PackedColorArray()
+	lit.resize(40 * 16)
+	lit.fill(Color(0.8, 0.7, 0.5))
+	gs.light_map.values = lit
+	return [gs, at]
+
+func _test_heavy_ground_slows_the_step() -> void:
+	var map := _open_map(12, 8)
+	map.set_tile(5, 4, Tiles.MUD)
+	map.set_tile(6, 4, Tiles.WATER)
+	var e := Entity.new("walker", &"rat", 4, 4)
+	var motion := StepMotion.new()
+	var got := {}
+	_with_mode(Effects.Mode.TIMERS, func():
+		motion.sync([e], map)
+		got["none"] = motion.sync([e], map)
+		e.x = 5
+		got["moved"] = motion.sync([e], map)
+		got["mud"] = float(motion._motion[e]["life"])
+		motion.tick(StepMotion.STEP_TIME * 1.2)
+		got["still going"] = motion.running()
+		motion.tick(StepMotion.STEP_TIME)
+		got["landed"] = not motion.running() and motion.visual_cell(e) == Vector2(5, 4)
+		e.x = 6
+		motion.sync([e], map)
+		got["water"] = float(motion._motion[e]["life"])
+		motion.settle()
+		got["settled"] = not motion.running()
+		e.x = 7
+		motion.sync([e], map)
+		got["floor"] = float(motion._motion[e]["life"]))
+	check("sync says who moved, and only who moved",
+		got["none"].is_empty() and got["moved"] == [e])
+	check("a step into mud glides twice as long, into water 1.4 times, as the sim charges",
+		is_equal_approx(got["mud"], StepMotion.STEP_TIME * Tiles.move_cost(Tiles.MUD))
+		and is_equal_approx(got["water"], StepMotion.STEP_TIME * Tiles.move_cost(Tiles.WATER))
+		and is_equal_approx(got["floor"], StepMotion.STEP_TIME), str(got))
+	check("so it is still wading after a stride's time, and lands after its own",
+		got["still going"] and got["landed"])
+	check("and the next key still settles it at once", got["settled"])
+	e.x = 4
+	motion.settle()
+	motion.sync([e], map)
+	e.x = 5
+	_with_mode(Effects.Mode.NONE, func(): motion.sync([e], map))
+	check("with motion off, mud is an ordinary stride",
+		is_equal_approx(float(motion._motion[e]["life"]), StepMotion.STEP_TIME))
+
+func _test_footfalls_throw_up_the_ground() -> void:
+	var made := _ground_room()
+	var gs: GameState = made[0]
+	var at: Dictionary = made[1]
+	var walkers := []
+	for k in ["water", "mud", "rubble", "floor"]:
+		walkers.append(Entity.new(k, &"rat", at[k].x, at[k].y))
+	var fx := Fx.new()
+	_with_mode(Effects.Mode.TIMERS, func(): fx.footfalls(walkers, gs))
+	var by_cell := {}
+	for e in fx.list:
+		by_cell[e["cell"]] = e
+	check("water splashes, mud squelches, rubble puffs dust -- and floor does nothing",
+		fx.list.size() == 3 and by_cell.has(at["water"]) and by_cell.has(at["mud"])
+		and by_cell.has(at["rubble"]) and not by_cell.has(at["floor"]), str(_types(fx)))
+	var water: Dictionary = by_cell.get(at["water"], {})
+	check("in the ground's own paler colour",
+		water.get("colour", Color()) == Fx.FOOTFALL[Tiles.WATER]["colour"])
+	var low := true
+	for piece in Fx.burst_points(water, 0.02, gs.map):
+		low = low and float(piece[1]) < 0.15
+	check("from the feet, not the middle of the cell", low and not water.is_empty())
+	check("landing as the step lands", float(water.get("t", 0.0)) < 0.0)
+	water["t"] = float(water["life"])
+	check("and every footfall ends", Fx.expired(water))
+	var quiet := Fx.new()
+	_with_mode(Effects.Mode.NONE, func(): quiet.footfalls(walkers, gs))
+	gs.map.clear_visible()
+	var unseen := Fx.new()
+	_with_mode(Effects.Mode.TIMERS, func(): unseen.footfalls(walkers, gs))
+	check("nothing on still, and nothing where you cannot see",
+		quiet.list.is_empty() and unseen.list.is_empty())
+
+func _test_small_life() -> void:
+	var made := _ground_room()
+	var gs: GameState = made[0]
+	var at: Dictionary = made[1]
+	gs.depth = 1
+	var life := SmallLife.new()
+	life.rebuild(gs)
+	var got := {}
+	_with_mode(Effects.Mode.SHADERS, func():
+		var spores := 0
+		var bubbles := 0
+		for i in 60:
+			for m in life.motes(float(i) * 0.13):
+				var cell := Vector2i(floori(m[0].x), floori(m[0].y))
+				if (cell - at["fungus"]).length() <= 1.0 and float(m[1]) > 0.1:
+					spores += 1
+				if cell == at["mud"] or cell == at["mud2"]:
+					bubbles += 1
+		got["spores"] = spores
+		got["bubbles"] = bubbles
+		got["same"] = str(life.motes(4.2)) == str(life.motes(4.2)))
+	check("on full, fungus drifts spores and mud bubbles (%d, %d)"
+		% [got["spores"], got["bubbles"]], got["spores"] > 0 and got["bubbles"] > 0)
+	check("and the same moment is the same motes, in either view", got["same"])
+	_with_mode(Effects.Mode.TIMERS, func(): got["simple"] = life.motes(1.0).size())
+	_with_mode(Effects.Mode.NONE, func(): got["still"] = life.motes(1.0).size())
+	check("small life is only on full: none on simple or still",
+		got["simple"] == 0 and got["still"] == 0)
+	var lit_ok := true
+	for c in life._dust:
+		var d := c - Vector2i(gs.player.x, gs.player.y)
+		lit_ok = lit_ok and d.length_squared() <= gs.player.light.radius * gs.player.light.radius
+	check("dust hangs only in your light", lit_ok and not life._dust.is_empty())
+	check("and nothing drips outside the caves", life._drips.is_empty())
+	var caves := _ground_room()[0] as GameState
+	caves.depth = 5
+	for y in range(1, 15):
+		for x in range(1, 39):
+			if caves.map.get_tile(x, y) == Tiles.FLOOR:
+				caves.map.set_tile(x, y, Tiles.CAVE_FLOOR)
+	var cave_life := SmallLife.new()
+	cave_life.rebuild(caves)
+	check("but in them, a few cells drip", not cave_life._drips.is_empty()
+		and cave_life._drips.size() <= SmallLife.MAX_DRIPS)
+	# Hide all but the fungus: nothing may be drawn over what you cannot see.
+	gs.map.clear_visible()
+	life.rebuild(gs)
+	var shown := {}
+	_with_mode(Effects.Mode.SHADERS, func(): shown["n"] = life.motes(2.0).size())
+	check("nothing is drawn where you cannot see", shown["n"] == 0)
+
+## The trader idling (SmallLife.idle_offset): shifting about on "full" only,
+## the same at the same moment, leaning towards you when you are near, and
+## never out of their cell.
+func _test_the_trader_idles() -> void:
+	var gs: GameState = _ground_room()[0]
+	var trader := Entity.new("trader", &"trader", 20, 8)
+	gs.trader = trader
+	var life := SmallLife.new()
+	life.rebuild(gs)
+	# A step to the east of them, and well out of their notice.
+	var near := Vector2(21, 8)
+	var far := Vector2(35, 8)
+	var got := {}
+	for mode in [Effects.Mode.NONE, Effects.Mode.TIMERS, Effects.Mode.SHADERS]:
+		_with_mode(mode, func(): got[mode] = life.idle_offset(trader, near, 1.7))
+	check("the trader idles on full only",
+		got[Effects.Mode.NONE] == Vector2.ZERO and got[Effects.Mode.TIMERS] == Vector2.ZERO
+		and got[Effects.Mode.SHADERS] != Vector2.ZERO, str(got))
+	var other := Entity.new("rat", &"rat", 10, 8)
+	_with_mode(Effects.Mode.SHADERS, func():
+		got["other"] = life.idle_offset(other, near, 1.7)
+		got["same"] = life.idle_offset(trader, near, 2.9) == life.idle_offset(trader, near, 2.9)
+		got["moves"] = life.idle_offset(trader, far, 0.0) != life.idle_offset(trader, far, 1.0)
+		# The lean is what being near adds, at the same moment.
+		got["east"] = life.idle_offset(trader, near, 3.3) - life.idle_offset(trader, far, 3.3)
+		got["north"] = life.idle_offset(trader, Vector2(20, 5), 3.3) \
+			- life.idle_offset(trader, far, 3.3)
+		var most := 0.0
+		for i in 200:
+			most = maxf(most, life.idle_offset(trader, near, float(i) * 0.37).length())
+		got["most"] = most)
+	check("nobody else does", got["other"] == Vector2.ZERO)
+	check("the same moment is the same pose, in either view, and it shifts about",
+		got["same"] and got["moves"])
+	var east: Vector2 = got["east"]
+	var north: Vector2 = got["north"]
+	check("they lean towards you when you are near: east of them, and north",
+		east.x > 0.1 and absf(east.y) < 0.001 and north.y < -0.05 and absf(north.x) < 0.001,
+		"%s %s" % [east, north])
+	check("and never leave their cell: at most %.2f of one" % got["most"],
+		got["most"] <= 0.27)
+
+## FFT's rule, at all four views: each arrow walks a grid line, the one that
+## shows 45 degrees clockwise of it; diagonal keys walk grid diagonals; and a
+## turn of the camera turns the mapping with it, so a key keeps its direction
+## on screen.
+func _test_fft_keys_walk_the_grid() -> void:
+	var arrows := [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	var corners := [Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	var axes_ok := true
+	var clockwise_ok := true
+	var diagonals_ok := true
+	var turns_ok := true
+	for view in 4:
+		var yaw := DioramaView.CAMERA_YAW + float(view) * PI * 0.5
+		var seen := {}
+		for k in arrows:
+			var step := DioramaView.view_to_grid(k, yaw)
+			seen[step] = true
+			axes_ok = axes_ok and step in DioramaView.AXES \
+				and DioramaView.view_to_grid(-k, yaw) == -step
+			# 45 degrees clockwise on screen: y is down, so clockwise is +.
+			var turn := Vector2(k).angle_to(DioramaView.grid_to_view(step, yaw))
+			clockwise_ok = clockwise_ok and absf(turn - PI / 4.0) < 0.01
+			# One quarter-turn of the camera: the same key, the next grid step.
+			var next := DioramaView.view_to_grid(k, yaw + PI * 0.5)
+			turns_ok = turns_ok and absf(Vector2(k).angle_to(
+				DioramaView.grid_to_view(next, yaw + PI * 0.5)) - PI / 4.0) < 0.01
+		axes_ok = axes_ok and seen.size() == 4
+		var corner_seen := {}
+		for k in corners:
+			var step := DioramaView.view_to_grid(k, yaw)
+			corner_seen[step] = true
+			diagonals_ok = diagonals_ok and step in DioramaView.DIAGONALS
+		diagonals_ok = diagonals_ok and corner_seen.size() == 4
+	check("each arrow walks a different grid line, and opposite arrows opposite ways",
+		axes_ok)
+	check("each shows 45 degrees clockwise of its arrow, in all four views", clockwise_ok)
+	check("and keeps that direction on screen through a turn", turns_ok)
+	check("diagonal keys walk the grid's diagonals", diagonals_ok)
+	check("from the first view, up walks north (up and to the right on screen)",
+		DioramaView.view_to_grid(Vector2i(0, -1), DioramaView.CAMERA_YAW) == Vector2i(0, -1)
+		and DioramaView.grid_to_view(Vector2i(0, -1), DioramaView.CAMERA_YAW).x > 0.0)
+
+## The 3D view's own extras, on the scene the shared-moment test built.
+func _test_3d_extras(scene: Control) -> void:
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	gs.map.set_all_visible()
+	d._rebuild_world()
+	var shaped: bool = not d._creatures.is_empty()
+	for e in d._creatures:
+		var nodes: Dictionary = d._creatures[e]
+		var front: Label3D = nodes["label"]
+		var back: Label3D = nodes.get("shape")
+		shaped = shaped and back != null and back.no_depth_test and not front.no_depth_test \
+			and back.render_priority < front.render_priority and back.text == front.text
+	check("every creature is depth-tested, with a silhouette behind it for what walls hide",
+		shaped)
+	var pitch := deg_to_rad(DioramaView.CAMERA_PITCH_DEG)
+	var reach := 1.4 * sin(pitch) - cos(pitch) * DioramaView.lean_pull(1.4)
+	check("an ordinary creature stands where it is; the tallest are brought forward to clear the wall behind",
+		DioramaView.lean_pull(0.8) == 0.0 and DioramaView.lean_pull(1.4) > 0.0 and reach <= 0.4501)
+	var dot_labels := 0
+	var dots := 0
+	for node in d._scene_root.get_children():
+		if node is Label3D and node.text == "·":
+			dot_labels += 1
+		elif node is MultiMeshInstance3D and node.name == "FloorDots":
+			dots = node.multimesh.instance_count
+	check("floor dots are one batch, not a label each (%d dots)" % dots,
+		dot_labels == 0 and dots > 0)
+	d._draw_fx()
+	var shadows := 0
+	for node in d._fx_root.get_children():
+		if node is MultiMeshInstance3D and node.material_override == d._shadow_material:
+			shadows = node.multimesh.instance_count
+	check("a contact shadow under every creature in sight", shadows >= d._creatures.size()
+		and shadows > 0)
+	# A door that opens swings on "simple", and snaps on "still". Any open
+	# floor will do for it: this scene is a real new game, on a new seed every
+	# run, so nothing can be assumed about what is around the player -- asking
+	# for floor two cells away failed on the run whose player had none.
+	var p := Vector2i(gs.player.x, gs.player.y)
+	var door := Vector2i(-1, -1)
+	var was := -1
+	for y in gs.map.height:
+		for x in gs.map.width:
+			var tile := gs.map.get_tile(x, y)
+			if door.x < 0 and Vector2i(x, y) != p \
+					and (tile == Tiles.FLOOR or tile == Tiles.CAVE_FLOOR):
+				door = Vector2i(x, y)
+				was = tile
+	var swung := {}
+	if door.x >= 0:
+		gs.map.set_tile(door.x, door.y, Tiles.DOOR_CLOSED)
+		for mode in [Effects.Mode.TIMERS, Effects.Mode.NONE]:
+			_with_mode(mode, func():
+				d._rebuild_world()
+				gs.map.set_tile(door.x, door.y, Tiles.DOOR_OPEN)
+				d._rebuild_world()
+				swung[mode] = d._swings.has(door)
+				d.settle_motion()
+				gs.map.set_tile(door.x, door.y, Tiles.DOOR_CLOSED))
+		gs.map.set_tile(door.x, door.y, was)
+	check("a door swings open on simple, snaps on still, and the next key lands it (at %s)"
+		% door, door.x >= 0 and swung.get(Effects.Mode.TIMERS, false)
+		and not swung.get(Effects.Mode.NONE, true) and d._swings.is_empty(), str(swung))
+	var hurt := [{"type": &"hurt", "t": 0.05, "strength": 0.45, "life": Fx.HURT_LIFE}]
+	var jolt := {}
+	for mode in [Effects.Mode.NONE, Effects.Mode.TIMERS, Effects.Mode.SHADERS]:
+		_with_mode(mode, func(): jolt[mode] = DioramaView.camera_nudge(hurt, 1.3).length())
+	check("the camera jolts when you are hurt on full only, and only a little",
+		jolt[Effects.Mode.NONE] == 0.0 and jolt[Effects.Mode.TIMERS] == 0.0
+		and jolt[Effects.Mode.SHADERS] > 0.0 and jolt[Effects.Mode.SHADERS] < 0.1, str(jolt))
+	var turned := {}
+	_with_mode(Effects.Mode.NONE, func():
+		d.rotate_view(1)
+		turned["snapped"] = is_equal_approx(d._rotation, d._rotation_target)
+		d.rotate_view(-1))
+	check("turning the camera snaps at once on still", turned["snapped"])
+
+func _test_regions_colour_the_stone_not_the_floor() -> void:
+	var names := []
+	for eff in range(1, 20):
+		names.append(String(RegionLook.for_depth(eff).label))
+	check("each band has its look, the climb its corrupted one",
+		names.slice(0, 3) == ["entrance", "entrance", "entrance"]
+		and names.slice(3, 6) == ["caves", "caves", "caves"]
+		and names.slice(6, 10) == ["fortress", "fortress", "fortress", "fortress"]
+		and names[10] == "corrupted fortress" and names[14] == "corrupted caves"
+		and names[18] == "corrupted entrance", str(names))
+	var stones := [Palette.STONE_LIGHT, Palette.STONE_DARK, Palette.PILLAR,
+		Palette.ROCK_LIGHT, Palette.ROCK_DARK]
+	var bright_kept := true
+	var apart := 99.0
+	var dark := true
+	for eff in range(1, 20):
+		var look := RegionLook.for_depth(eff)
+		for c: Color in stones:
+			bright_kept = bright_kept \
+				and absf(look.shift(c).get_luminance() - c.get_luminance()) < 0.003
+		# The one thing stone must stay apart from is the door set into it.
+		for c: Color in [Palette.STONE_LIGHT, Palette.PILLAR, Palette.ROCK_LIGHT]:
+			apart = minf(apart, _delta_e(look.shift(c), Palette.DOOR))
+		dark = dark and look.backdrop.get_luminance() < 0.06
+	check("a region moves hue only: stone keeps its brightness", bright_kept)
+	check("walls in every region stay readable against a door (%.1f)" % apart,
+		apart >= 25.0)
+	check("and the dark around the map stays dark", dark)
+	var kept := true
+	for t in [Tiles.FLOOR, Tiles.CAVE_FLOOR, Tiles.RUBBLE, Tiles.WATER, Tiles.MUD,
+			Tiles.FUNGUS, Tiles.BONES, Tiles.TRAP, Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN,
+			Tiles.STAIRS_DOWN, Tiles.STAIRS_UP, Tiles.SHRINE, Tiles.BRAZIER]:
+		kept = kept and not RegionLook.is_stone(t)
+	check("the floor, and everything on it, keeps its own colours", kept
+		and RegionLook.is_stone(Tiles.WALL) and RegionLook.is_stone(Tiles.ROCK))
+	var wall := Palette.STONE_LIGHT
+	check("the forest fades as you go down from the entrance",
+		_delta_e(RegionLook.for_depth(1).shift(wall), wall)
+			> _delta_e(RegionLook.for_depth(3).shift(wall), wall))
+	check("the climb is not the descent: the same places, changed",
+		RegionLook.for_depth(12).shift(wall) != RegionLook.for_depth(8).shift(wall)
+		and RegionLook.for_depth(12).backdrop != RegionLook.for_depth(8).backdrop)
+
+## CIE76 deltaE under normal vision, as run_tests.gd measures the overview's
+## marks. The three dichromacies are measured with tools/check_palette.py.
+func _delta_e(a: Color, b: Color) -> float:
+	var la := _lab(a)
+	var lb := _lab(b)
+	return la.distance_to(lb)
+
+func _lab(c: Color) -> Vector3:
+	var r := _lin(c.r)
+	var g := _lin(c.g)
+	var b := _lin(c.b)
+	var x := (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+	var y := 0.2126 * r + 0.7152 * g + 0.0722 * b
+	var z := (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+	return Vector3(116.0 * _f(y) - 16.0, 500.0 * (_f(x) - _f(y)),
+		200.0 * (_f(y) - _f(z)))
+
+func _lin(u: float) -> float:
+	return u / 12.92 if u <= 0.04045 else pow((u + 0.055) / 1.055, 2.4)
+
+func _f(u: float) -> float:
+	return pow(u, 1.0 / 3.0) if u > 0.008856 else 7.787 * u + 16.0 / 116.0
+
+func _test_both_views_share_one_moment() -> void:
+	var scene: Control = load("res://scenes/main.tscn").instantiate()
+	root.add_child(scene)
+	for _i in 3:
+		await process_frame
+	check("both views hold the same effects list and the same glides",
+		scene.diorama.fx == scene.grid.fx and scene.diorama.motion == scene.grid.motion)
+	scene._select_map_view(true)
+	for _i in 2:
+		await process_frame
+	var p := Vector2i(scene.state.player.x, scene.state.player.y)
+	scene.diorama.fx.hold = true
+	scene.diorama.play_events([{"kind": &"melee", "from": p, "to": p,
+		"amount": 37, "on_player": true}])
+	for e in scene.diorama.fx.list:
+		e["t"] = 0.1
+	scene.diorama._update_dynamic()
+	var drawn := false
+	for node in scene.diorama._fx_root.get_children():
+		if node is Label3D and node.text == "37":
+			drawn = true
+	check("the 3D view draws the damage number the list holds", drawn)
+	# The red edge: one overlay over the map, hidden until something shows.
+	scene.diorama.fx.list.clear()
+	for _i in 2:
+		await process_frame
+	var hidden_when_idle: bool = not scene.screen_fx.visible
+	scene.diorama.play_events([{"kind": &"melee", "from": p, "to": p,
+		"amount": 5, "on_player": true}])
+	for e in scene.diorama.fx.list:
+		e["t"] = 0.1
+	for _i in 2:
+		await process_frame
+	check("the whole-map overlay hides when idle and shows a hurt, for either view",
+		hidden_when_idle and scene.screen_fx.visible
+		and scene.screen_fx.get_index() == scene.diorama.get_index() + 1)
+	scene.diorama.fx.hold = false
+	scene.diorama.fx.list.clear()
+
+	# Moving light and fading memory are shared the same way, and the 3D
+	# surfaces are handed both of LivingLight's textures.
+	check("both views hold the same light and the same memory",
+		scene.diorama.light == scene.grid.light
+		and scene.diorama.memory == scene.grid.memory)
+	var gs: GameState = scene.state
+	var trader := gs.trader
+	var has_trader := trader != null and trader.alive
+	if has_trader:
+		# Seen once, out of sight now: remembered in both views.
+		gs.map.reveal_all()
+		gs.map.clear_visible()
+	scene.diorama._rebuild_world()
+	var fed: bool = not scene.diorama._surface_materials.is_empty()
+	for m: ShaderMaterial in scene.diorama._surface_materials:
+		fed = fed and m.get_shader_parameter("cell_data") == scene.diorama.light.cells \
+			and m.get_shader_parameter("cell_extra") == scene.diorama.light.extra
+	check("every 3D surface reads LivingLight's two textures", fed)
+	var pictured := false
+	for node in scene.diorama._scene_root.get_children():
+		if node is Label3D and node.modulate.is_equal_approx(MapMemory.trader_colour()):
+			pictured = true
+	check("the 3D view draws the trader from memory, out of sight (floor has one: %s)"
+		% has_trader, pictured or not has_trader)
+	# Colour by region, in the 3D view: the dark is the region's, walls in
+	# view take its colour, the floor and memory do not.
+	var look := RegionLook.for_depth(gs.effective_depth())
+	var d = scene.diorama
+	check("the 3D backdrop is the region's dark",
+		d._environment.background_color == look.backdrop)
+	var p2 := Vector2i(gs.player.x, gs.player.y)
+	check("in 3D the region colours walls in view, and not the floor or memory",
+		d._surface_color(Tiles.WALL, p2.x, p2.y, true)
+			!= d._surface_color(Tiles.WALL, p2.x, p2.y, false)
+		and d._surface_color(Tiles.FLOOR, p2.x, p2.y, true)
+			== d._surface_color(Tiles.FLOOR, p2.x, p2.y, false),
+		"floor %d: %s" % [gs.effective_depth(), look.label])
+	# Small life is shared too, and the 3D view draws it on "full".
+	check("both views hold the same small life", d.life == scene.grid.life)
+	var near_player := Vector2i(gs.player.x, gs.player.y)
+	for dd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if gs.map.is_walkable(near_player.x + dd.x, near_player.y + dd.y):
+			near_player += dd
+			break
+	gs.map.set_tile(near_player.x, near_player.y, Tiles.FUNGUS)
+	gs.map.set_all_visible()
+	d.life.rebuild(gs)
+	# A dictionary, because a lambda captures a local bool by value.
+	var drew := {"life": false}
+	_with_mode(Effects.Mode.SHADERS, func():
+		for t in [0.3, 1.1, 2.2, 3.4]:
+			d.anim_time = t
+			d._draw_fx()
+			for node in d._fx_root.get_children():
+				if node is MultiMeshInstance3D and node.multimesh.mesh == d._mote_mesh \
+						and node.multimesh.instance_count > 0:
+					drew["life"] = true)
+	d.anim_time = -1.0
+	check("and the 3D view draws spores off fungus on full", drew["life"])
+	# The trader idles the same in both views: off their spot by
+	# SmallLife.idle_offset on "full", exactly on it on "simple". A trader of
+	# the test's own, beside you, whatever this floor has.
+	var had_trader := gs.trader
+	var keeper := Entity.new("trader", &"trader", gs.player.x + 2, gs.player.y)
+	gs.trader = keeper
+	var poses := {}
+	for mode in [Effects.Mode.TIMERS, Effects.Mode.SHADERS]:
+		_with_mode(mode, func():
+			scene.grid.anim_time = 2.5
+			d.anim_time = 2.5
+			poses[mode] = [scene.grid._visual_cell(keeper), d._drawn_cell(keeper)])
+	scene.grid.anim_time = -1.0
+	d.anim_time = -1.0
+	gs.trader = had_trader
+	var spot := Vector2(keeper.x, keeper.y)
+	check("both views pose the trader alike: idling on full, still on simple",
+		poses[Effects.Mode.SHADERS][0] == poses[Effects.Mode.SHADERS][1]
+		and poses[Effects.Mode.SHADERS][0] != spot
+		and poses[Effects.Mode.TIMERS][0] == spot and poses[Effects.Mode.TIMERS][1] == spot,
+		str(poses))
+	var levels := {}
+	for mode in [Effects.Mode.NONE, Effects.Mode.TIMERS, Effects.Mode.SHADERS]:
+		_with_mode(mode, func(): levels[mode] = scene.diorama._motion_level())
+	check("the 3D light is still, simple or full with the setting",
+		levels == {Effects.Mode.NONE: 0, Effects.Mode.TIMERS: 1, Effects.Mode.SHADERS: 2},
+		str(levels))
+	await _test_3d_extras(scene)
+	scene.queue_free()
+	await process_frame
