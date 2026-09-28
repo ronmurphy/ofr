@@ -63,7 +63,7 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `w` | swap between your best launcher and your best blade (costs a turn) |
 | `v` | cycle the view: letters, symbols, or pictures |
 | `q` | toggle between the classic grid and the tilted 3D view |
-| `[` / `]` | turn the 3D camera left or right by 90°; the right stick also turns it |
+| `[` / `]` | turn the 3D camera left or right by 45° (eight views: diamond and straight on, alternating); the right stick also turns it |
 | `R` | new game |
 
 ## Items
@@ -329,8 +329,9 @@ the rest of the game.
 `q` switches between that classic grid and a tilted 3D view, in the style of
 Final Fantasy Tactics: the camera looks along a diagonal, so floor squares are
 diamonds. The 3D view uses the same picture glyphs as camera-facing labels,
-keeps the game's palette and map visibility, and turns in 90° steps with `[` /
-`]` or the right stick. The camera turns around the player. Movement, aiming
+keeps the game's palette and map visibility, and turns in 45° steps with `[` /
+`]` or the right stick -- eight views, alternating the diamond and a straight-on
+view that is easier to navigate. The camera turns around the player. Movement, aiming
 and looking stay on the same map cells, and every key turns 45° clockwise on
 screen: the arrows walk the grid lines (up goes up-and-right), and the
 diagonal keys walk the grid's diagonals. This holds in every view. Whatever a

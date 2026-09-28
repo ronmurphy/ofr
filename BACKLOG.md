@@ -63,8 +63,14 @@ that get past each other in doorways instead of jamming. Naming your character
 on a controller. A flared torch that can relight a brazier, and a race against
 the flare to do it. Creatures no longer get stuck in pits.
 
-**Next week: the breathe pass.** The dungeon should feel alive. All of it
-respects the three motion settings (still / simple / full).
+**The breathe pass -- BUILT 2026-09-27** (patches by Brad, Gabe and a cloud
+Claude session, merged with Gabe's 3D view; guide in `patches/`). As built: magic
+GLOWS on magic and gem items rather than tinting the torch (Brad's call); the
+caves' brown is in their dark and floor colour, not a floor tint (floor tints
+fell too close to mud for deuteranopes); no glow halo around flames (it would
+show light where the stealth model has none). **Miasma is still to do.** The
+original plan follows. All of it respects the three motion settings
+(still / simple / full).
 - *Impact:* a flash when something is hit, sparks in the colour of a magic
   weapon, monsters that shatter into pieces when they die, a red edge when you
   are hurt, a ring of light when you level up.
@@ -93,9 +99,12 @@ respects the three motion settings (still / simple / full).
 uses. More than combat. Fireball and teleport have been discussed; the rest is
 to design.
 
+**3D camera, 2026-09-28:** turns 45 degrees a press -- EIGHT views, alternating
+the Final Fantasy Tactics diamond and a straight-on view for navigating (Brad).
+Untested on the web and the Legion.
 **3D mode functional; visual iteration underway.** Press `q` to swap between
 the classic view and a tilted overhead view; `[` / `]` or the right stick turns
-it in 90-degree steps, and movement follows the camera. The existing icon-font
+it in 45-degree steps (eight views), and movement follows the camera. The existing icon-font
 pictures appear as camera-facing labels for creatures, items and features.
 Terrain with an icon-font picture uses that as its primary art; other terrain
 keeps its classic glyph, stamped flat on the floor. Distinct surfaces cover

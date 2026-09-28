@@ -158,6 +158,14 @@ func _test_nothing_is_drawn_where_you_cannot_see() -> void:
 	var popup := {"type": &"popup", "cell": hidden, "t": 0.0, "text": "3", "colour": Color.RED}
 	check("no flash and no number over unseen ground",
 		Fx.flash_alpha(flash, 0.0, map) == 0.0 and float(Fx.popup_state(popup, 0.0, map)[1]) == 0.0)
+	# And both DO show on ground you can see -- or the check above passes for a
+	# flash that never shows anywhere. (Hardened when merged, 2026-09-28.)
+	var seen := Vector2i(6, 6)
+	var flash_seen := {"type": &"flash", "cell": seen, "t": 0.0, "colour": Color.RED}
+	var popup_seen := {"type": &"popup", "cell": seen, "t": 0.0, "text": "3", "colour": Color.RED}
+	check("  while both show on ground you can see",
+		Fx.flash_alpha(flash_seen, 0.0, map) > 0.0
+		and float(Fx.popup_state(popup_seen, 0.0, map)[1]) > 0.0)
 	var shot := {"type": &"shot", "path": [Vector2i(6, 6), Vector2i(7, 6), hidden], "t": 0.0}
 	check("a shot vanishes while it crosses unseen ground",
 		Fx.shot_cell(shot, 0.0, map) == Vector2i(6, 6)
@@ -769,32 +777,39 @@ func _test_the_trader_idles() -> void:
 	check("and never leave their cell: at most %.2f of one" % got["most"],
 		got["most"] <= 0.27)
 
-## FFT's rule, at all four views: each arrow walks a grid line, the one that
-## shows 45 degrees clockwise of it; diagonal keys walk grid diagonals; and a
-## turn of the camera turns the mapping with it, so a key keeps its direction
-## on screen.
+## The camera's EIGHT views (45 degrees a press, Brad 2026-09-27): diamonds and
+## straight-on views alternating. In a diamond view each arrow walks the grid
+## line 45 degrees clockwise of it on screen (FFT's rule); in a straight view it
+## walks exactly where it points. Either way opposite arrows go opposite ways,
+## the four arrows cover the four grid lines, and diagonal keys walk diagonals.
 func _test_fft_keys_walk_the_grid() -> void:
 	var arrows := [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 	var corners := [Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
 	var axes_ok := true
-	var clockwise_ok := true
+	var diamond_ok := true
+	var straight_ok := true
 	var diagonals_ok := true
-	var turns_ok := true
-	for view in 4:
-		var yaw := DioramaView.CAMERA_YAW + float(view) * PI * 0.5
+	var diamonds := 0
+	var straights := 0
+	for view in DioramaView.VIEWS:
+		var yaw := DioramaView.CAMERA_YAW + float(view) * DioramaView.TURN_STEP
+		var is_diamond := view % 2 == 0
+		if is_diamond:
+			diamonds += 1
+		else:
+			straights += 1
 		var seen := {}
 		for k in arrows:
 			var step := DioramaView.view_to_grid(k, yaw)
 			seen[step] = true
 			axes_ok = axes_ok and step in DioramaView.AXES \
 				and DioramaView.view_to_grid(-k, yaw) == -step
-			# 45 degrees clockwise on screen: y is down, so clockwise is +.
+			# How far the step turns from the key, on screen (y down: + is clockwise).
 			var turn := Vector2(k).angle_to(DioramaView.grid_to_view(step, yaw))
-			clockwise_ok = clockwise_ok and absf(turn - PI / 4.0) < 0.01
-			# One quarter-turn of the camera: the same key, the next grid step.
-			var next := DioramaView.view_to_grid(k, yaw + PI * 0.5)
-			turns_ok = turns_ok and absf(Vector2(k).angle_to(
-				DioramaView.grid_to_view(next, yaw + PI * 0.5)) - PI / 4.0) < 0.01
+			if is_diamond:
+				diamond_ok = diamond_ok and absf(turn - PI / 4.0) < 0.01
+			else:
+				straight_ok = straight_ok and absf(turn) < 0.01
 		axes_ok = axes_ok and seen.size() == 4
 		var corner_seen := {}
 		for k in corners:
@@ -802,11 +817,14 @@ func _test_fft_keys_walk_the_grid() -> void:
 			corner_seen[step] = true
 			diagonals_ok = diagonals_ok and step in DioramaView.DIAGONALS
 		diagonals_ok = diagonals_ok and corner_seen.size() == 4
+	check("the premise: eight views, four diamonds and four straight (%d, %d)"
+		% [diamonds, straights], DioramaView.VIEWS == 8 and diamonds == 4 and straights == 4)
+	check("a turn is 45 degrees", is_equal_approx(DioramaView.TURN_STEP, PI / 4.0))
 	check("each arrow walks a different grid line, and opposite arrows opposite ways",
 		axes_ok)
-	check("each shows 45 degrees clockwise of its arrow, in all four views", clockwise_ok)
-	check("and keeps that direction on screen through a turn", turns_ok)
-	check("diagonal keys walk the grid's diagonals", diagonals_ok)
+	check("in a diamond view each shows 45 degrees clockwise of its arrow (FFT)", diamond_ok)
+	check("in a straight view each walks exactly where it points", straight_ok)
+	check("diagonal keys walk the grid's diagonals, in every view", diagonals_ok)
 	check("from the first view, up walks north (up and to the right on screen)",
 		DioramaView.view_to_grid(Vector2i(0, -1), DioramaView.CAMERA_YAW) == Vector2i(0, -1)
 		and DioramaView.grid_to_view(Vector2i(0, -1), DioramaView.CAMERA_YAW).x > 0.0)

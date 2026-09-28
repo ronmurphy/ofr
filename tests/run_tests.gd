@@ -17,15 +17,11 @@ func _initialize() -> void:
 	# those paths were constants it did that to the player's own files, and it
 	# deleted a suspended run that was actually being played.
 	GameState.use_scratch_files("tests")
-	# settings.cfg is the one player-owned file use_scratch_files does NOT
-	# redirect, and four separate modules write it: RenderTheme, Effects,
-	# TraderTalk and SoundDeck. Snapshot it here and compare at the end, so a
-	# test that leaves the player's own settings altered fails loudly instead
-	# of being discovered months later as "it always resets".
-	#
-	# A guard rather than a redirect because a redirect means a static path
-	# variable in all four, which is its own change. This catches every one of
-	# them from a single place in the meantime.
+	# settings.cfg IS redirected now (SETTINGS_PATH, in use_scratch_files), and
+	# four modules write it: RenderTheme, Effects, TraderTalk and SoundDeck.
+	# This snapshot stays as a second line of defence: it compares the REAL
+	# file at the end, so anything that writes it by a path of its own fails
+	# loudly instead of being discovered months later as "it always resets".
 	var settings_before := ""
 	var had_settings := FileAccess.file_exists("user://settings.cfg")
 	if had_settings:
@@ -3333,6 +3329,7 @@ func _test_main_only_sets_properties_that_exist() -> void:
 		"MapPanel": func() -> Object: return MapPanel.new(),
 		"HerePanel": func() -> Object: return HerePanel.new(),
 		"TradePanel": func() -> Object: return TradePanel.new(),
+		"DioramaView": func() -> Object: return DioramaView.new(),
 		"SoundDeck": func() -> Object: return SoundDeck.new(),
 	}
 	var unknown := PackedStringArray()
@@ -7659,11 +7656,18 @@ func _test_a_rat_may_creep_past() -> void:
 		gs.update_vision()
 		check("the sleeper is in sight (rat=%s)" % as_rat,
 			not gs.visible_monsters().is_empty())
+		var was := Vector2i(gs.player.x, gs.player.y)
 		var walked := gs.begin_travel(Vector2i(8, 4))
 		if as_rat:
 			check("a rat walks past a sleeping monster", walked)
 		else:
-			check("on two feet you stop for it", not walked)
+			# ONE STEP PER CLICK while something watches (Gabe's rule, kept by
+			# Brad 2026-09-27: a click is an explicit command, and a mouse player
+			# near a monster needs the same careful single step a key gives).
+			# The click moves you one cell, then the queued route is dropped.
+			var moved := maxi(absi(gs.player.x - was.x), absi(gs.player.y - was.y))
+			check("on two feet a click takes one step (%d), then you stop for it" % moved,
+				walked and moved == 1 and not gs.travelling())
 
 	# Awake stops BOTH, because an awake thing can act and a rat has no hands.
 	for as_rat in [false, true]:
@@ -7681,8 +7685,11 @@ func _test_a_rat_may_creep_past() -> void:
 		gs2.update_vision()
 		check("the hunter is in sight (rat=%s)" % as_rat,
 			not gs2.visible_monsters().is_empty())
-		check("an awake monster stops travel (rat=%s)" % as_rat,
-			not gs2.begin_travel(Vector2i(8, 4)))
+		var was2 := Vector2i(gs2.player.x, gs2.player.y)
+		var went := gs2.begin_travel(Vector2i(8, 4))
+		var moved2 := maxi(absi(gs2.player.x - was2.x), absi(gs2.player.y - was2.y))
+		check("an awake monster holds travel to one step per click (rat=%s, moved %d)"
+			% [as_rat, moved2], went and moved2 == 1 and not gs2.travelling())
 
 ## The band's hoard: one room, far from the door, guarded, holding the chest.
 ##

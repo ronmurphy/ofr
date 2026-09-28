@@ -135,7 +135,7 @@ const CONFIRM: Array[int] = [KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER]
 ## follow the bindings: rebind the torch and d-pad-left's forge goes with it.
 const PACK_FORGE_KEY := KEY_X       ## Y
 const PACK_BACK_KEY := KEY_G        ## B
-const PACK_USE_KEY := KEY_O         ## d-pad up
+const PACK_USE_KEY := KEY_Q         ## d-pad up (the 3D view switch outside the pack)
 const PACK_DROP_KEY := KEY_GREATER  ## d-pad down
 const PACK_FORGE_ALT := KEY_T       ## d-pad left
 const PACK_THROW_KEY := KEY_P       ## d-pad right
@@ -152,7 +152,9 @@ static func pad_pack_action(key: int, throw_mode: bool, bind_mode: bool) -> Stri
 			return &"close"
 		PACK_FORGE_KEY, PACK_FORGE_ALT:
 			return &"forge"
-		PACK_USE_KEY:
+		# O too: a pad layout saved before d-pad up became the view switch
+		# still sends it -- the map's own view toggle allows for the same.
+		PACK_USE_KEY, KEY_O:
 			return &"use"
 		PACK_DROP_KEY:
 			return &"drop"

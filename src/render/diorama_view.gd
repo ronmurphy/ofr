@@ -22,12 +22,19 @@ const WALL_HEIGHT := 1.35
 ## every billboard keeps its size in cells, so proportions never change.
 const CAMERA_SIZE := 26.0
 const BASE_TEXT_SIZE := 18.0
-## FINAL FANTASY TACTICS' VIEW. The camera is turned 45 degrees from the grid,
-## so every floor square is a diamond, and looks down at a shallow 32 degrees.
-## It turns in four quarter-turns and stays on those diagonals (CAMERA_YAW plus
-## any number of quarter-turns). Low walls hide more at this angle -- which is
-## what the silhouettes are for (see _add_silhouette).
+## FINAL FANTASY TACTICS' VIEW. The camera starts turned 45 degrees from the
+## grid, so every floor square is a diamond, and looks down at a shallow 32
+## degrees. Low walls hide more at this angle -- which is what the silhouettes
+## are for (see _add_silhouette).
+##
+## It turns 45 degrees a press, so EIGHT views alternate between the diamond
+## and the grid seen straight on. Brad, 2026-09-27: the diamond is the look,
+## but "sometimes you need the not-angled view for navigation". The key mapping
+## (view_to_grid) already works at any angle: in a straight view each arrow
+## walks exactly where it points, in a diamond view it keeps FFT's rule.
 const CAMERA_YAW := PI / 4.0
+const TURN_STEP := PI / 4.0
+const VIEWS := 8
 const CAMERA_PITCH_DEG := 32.0
 const CAMERA_DISTANCE := 25.0
 ## Grid steps a key can map to: the four along the grid lines, and the four
@@ -107,7 +114,9 @@ var _focus_ready := false
 var _rotation := CAMERA_YAW
 var _rotation_target := CAMERA_YAW
 var _rotation_t := TURN_TIME
-var _quarter_turns := 0
+## Which of the eight views, 0..7. Even views are diamonds, odd views are
+## straight on (see TURN_STEP).
+var _view := 0
 
 ## The effects in flight and the step glides. main.gd hands this view the same
 ## two objects the classic grid holds -- see Fx and StepMotion.
@@ -444,8 +453,8 @@ func hovered_cell() -> Vector2i:
 
 func rotate_view(direction: int) -> void:
 	var turn := signi(direction)
-	_quarter_turns = posmod(_quarter_turns + turn, 4)
-	_rotation_target += float(turn) * PI * 0.5
+	_view = posmod(_view + turn, VIEWS)
+	_rotation_target += float(turn) * TURN_STEP
 	_rotation_t = 0.0 if Effects.any() else TURN_TIME
 	if not Effects.any():
 		_rotation = _rotation_target

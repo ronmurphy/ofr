@@ -98,7 +98,7 @@ key. So `Y` really is the `x` key, and that's correct rather than a mismatch.
 directions the keyboard has, with press-once-then-repeat so a held stick
 doesn't fire sixty moves a second. The d-pad's four buttons handle contextual
 actions rather than movement; the stick covers all eight movement directions.
-In the 3D view, the right stick turns the camera left or right in 90° steps.
+In the 3D view, the right stick turns the camera left or right in 45° steps (eight views).
 The left stick moves relative to the camera and stays on the grid: every
 direction turns 45° clockwise on screen, so pushing up walks the grid line that
 runs up and to the right, in every view.

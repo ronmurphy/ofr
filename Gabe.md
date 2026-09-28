@@ -9,11 +9,12 @@ create a second simulation or a separate map.
 
 The camera looks down at the dungeon from a shallow angle along a diagonal, as
 Final Fantasy Tactics does -- every floor square shows as a diamond -- and turns
-in 90-degree steps. Movement, aiming and looking stay on the grid, and every
-key turns 45 degrees clockwise on screen: the arrows walk the grid lines, which
-show as diagonals (up goes up-and-right), and the diagonal keys walk the grid's
-diagonals, which show straight across or up and down. That holds in every
-view, so a key always goes the same way on screen, and a one-wide corridor is
+in 45-degree steps: eight views, alternating the diamond and the grid seen
+straight on, for when the straight view is easier to navigate. Movement, aiming and looking stay on the grid, and every
+key walks a grid line: in a diamond view that line shows 45 degrees clockwise
+on screen (up goes up-and-right) and the diagonal keys walk the grid's
+diagonals; in a straight view every key walks exactly where it points. That
+holds through every turn, so a key always goes the same way on screen, and a one-wide corridor is
 walked with the plain arrows. Whatever a wall hides of a creature or an item
 is drawn as a dark silhouette. The classic renderer remains available at any
 time.
@@ -50,7 +51,7 @@ camera rather than resizing billboards.
 ## Controls
 
 - `Q` switches between classic and Diorama views. The preference is saved.
-- `[` and `]` turn the Diorama camera left or right in 90-degree steps.
+- `[` and `]` turn the Diorama camera left or right in 45-degree steps (eight views).
 - The controller's right stick turns the camera; d-pad up switches views by
   default.
 - Left-click sets a walking destination. Travel uses the game's pathfinder and
