@@ -50,6 +50,7 @@ func _initialize() -> void:
 	_test_fft_keys_walk_the_grid()
 	_test_the_camera_turns_on_stick_or_triggers()
 	_test_the_pad_watch()
+	_test_the_camera_reads_reported_axes()
 	await _test_the_title_screen()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
@@ -861,6 +862,38 @@ func _test_the_camera_turns_on_stick_or_triggers() -> void:
 		early = early and absf(DioramaView.turn_intent(0.0, lt_rt[0], lt_rt[1])) < 0.75
 	check("  and before it is recognised, the stick turns nothing either way", early)
 
+## The camera reads what the pad REPORTED, because in Firefox polling never
+## sees the right stick (Brad's pad watch, 2026-09-28).
+func _test_the_camera_reads_reported_axes() -> void:
+	print("-- the camera reads the pad's reported axes")
+	var g := Gamepad.new()
+	check("  with no events, an axis reads as polled (0 in a headless run)",
+		g.axis(JOY_AXIS_TRIGGER_RIGHT) == Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT))
+	for v in [0.5, 1.0]:
+		var e := InputEventJoypadMotion.new()
+		e.device = 0
+		e.axis = JOY_AXIS_TRIGGER_RIGHT
+		e.axis_value = v
+		g.track(e)
+	check("  an event's value is what the camera reads",
+		g.axis(JOY_AXIS_TRIGGER_RIGHT) == 1.0)
+	var other := InputEventJoypadMotion.new()
+	other.device = 1
+	other.axis = JOY_AXIS_TRIGGER_LEFT
+	other.axis_value = 1.0
+	g.track(other)
+	check("  a second pad's events do not steer the camera",
+		g.axis(JOY_AXIS_TRIGGER_LEFT) == Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT))
+	# End to end: Firefox's stick, recognised, turns the camera from events.
+	var right := InputEventJoypadMotion.new()
+	right.device = 0
+	right.axis = JOY_AXIS_TRIGGER_LEFT
+	right.axis_value = 1.0
+	g.track(right)
+	check("  and Firefox's stick pushed right turns the camera from them",
+		DioramaView.turn_intent(g.axis(JOY_AXIS_RIGHT_X), g.axis(JOY_AXIS_TRIGGER_LEFT),
+			0.5, true) > 0.75)
+
 ## The on-screen controller diagnostic (F8). Its whole job is to say WHICH axis
 ## moved, so the check that matters is that a push marks its own axis and only
 ## that one -- and that Firefox's resting 0.5 is not itself a movement.
@@ -882,6 +915,14 @@ func _test_the_pad_watch() -> void:
 		and not w.moved(3))
 	w.reset()
 	check("  opening it again starts a fresh measurement", not w.moved(4))
+	# Firefox: events report the stick while polling stays at zero. A push seen
+	# only in events must still count.
+	w.sample(rest)
+	w.sample_event(5, 0.5)
+	w.sample_event(5, 1.0)
+	check("  a push seen only in the events counts as moved",
+		w.moved(5) and not w.moved(4))
+	w.reset()
 	check("  it names Firefox from a user agent",
 		PadWatch.browser_from("Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0") == "Firefox/131.0")
 	check("  and Edge as Edge, though it also claims to be Chrome",

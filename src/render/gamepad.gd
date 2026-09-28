@@ -56,6 +56,25 @@ func _say(line: String) -> void:
 ## PadConfig for the defaults and the rebinding walk-through.
 var cfg := PadConfig.new()
 
+## The last value each axis REPORTED, from events, for pad 0.
+##
+## Exists because in Firefox, Godot's web build sends the right stick as
+## joypad EVENTS on the trigger axes but never stores them where
+## Input.get_joy_axis() reads: the pad watch showed axis 5 at +1.00 in its event
+## list while the polled value sat at +0.00 (Brad, itch, 2026-09-28). The left
+## stick polls fine, so only the camera reads through this. Where the two
+## agree -- everywhere else -- it makes no difference.
+var _reported := {}
+
+func track(event: InputEvent) -> void:
+	var motion := event as InputEventJoypadMotion
+	if motion != null and motion.device == 0:
+		_reported[int(motion.axis)] = motion.axis_value
+
+## An axis as its events last reported it, or as polled if it has sent none.
+func axis(a: int) -> float:
+	return float(_reported.get(a, Input.get_joy_axis(0, a)))
+
 ## Where the stick has to reach before it counts as a direction at all.
 ##
 ## Generous, because a turn-based game would rather miss a lazy nudge than take

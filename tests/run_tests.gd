@@ -90,6 +90,7 @@ func _initialize() -> void:
 	_test_throwing()
 	_test_launchers_are_poor_clubs()
 	_test_suspend_round_trip()
+	_test_an_ending_clears_the_slot()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1492,6 +1493,32 @@ func _suspended_state() -> GameState:
 	gs.player.hp = 17
 	gs.update_vision()
 	return gs
+
+## A run that has ENDED cannot be resumed. Brad's itch exploit, 2026-09-28:
+## save, climb out, refresh, load the save, climb out again -- one escape in
+## the morgue twice. The same hole reloaded a death on the web, where every
+## tab switch writes the slot. Both real endings are driven, not simulated.
+func _test_an_ending_clears_the_slot() -> void:
+	var gs := GameState.new(4242)
+	gs.new_game()
+	check("a live run saves its slot",
+		gs.save_suspend() and GameState.has_suspend())
+	gs.depth = 1
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.STAIRS_UP)
+	gs.player_ascend()
+	check("climbing out wins (the premise)", gs.won and gs.game_over)
+	check("and the win clears the slot, so it cannot be replayed",
+		not GameState.has_suspend())
+
+	var dies := GameState.new(4343)
+	dies.new_game()
+	dies.save_suspend()
+	check("a second live run has a slot (the premise)", GameState.has_suspend())
+	dies.player.hp = 1
+	dies._fall_into_pit()
+	check("a fall at 1 hp kills (the premise)", dies.game_over and not dies.won)
+	check("and the death clears the slot, so a reload is not a second life",
+		not GameState.has_suspend())
 
 func _test_suspend_round_trip() -> void:
 	var gs := _suspended_state()

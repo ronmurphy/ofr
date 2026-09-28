@@ -380,8 +380,10 @@ func _process(delta: float) -> void:
 	# The right stick has no gameplay binding, so it turns the 3D camera in
 	# deliberate 45-degree turns. One turn per push; centre it before turning again.
 	if _map_view == diorama and _world_has_focus():
-		var lt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT)
-		var rt := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT)
+		# From the pad's reported events, not polled: see Gamepad.track.
+		var lt := pad.axis(JOY_AXIS_TRIGGER_LEFT)
+		var rt := pad.axis(JOY_AXIS_TRIGGER_RIGHT)
+		var rx := pad.axis(JOY_AXIS_RIGHT_X)
 		# Firefox's Xbox-pad mix-up, recognised by both "triggers" resting at
 		# 0.5 for a second; once seen, it holds for the session.
 		if not _stick_on_triggers:
@@ -390,11 +392,10 @@ func _process(delta: float) -> void:
 				_stick_on_triggers = _triggers_centred_for >= 1.0
 			else:
 				_triggers_centred_for = 0.0
-		var turn := DioramaView.turn_intent(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
-			lt, rt, _stick_on_triggers)
+		var turn := DioramaView.turn_intent(rx, lt, rt, _stick_on_triggers)
 		if pad_watch.visible:
 			pad_watch.camera_line = "camera: RX %+.2f LT %+.2f RT %+.2f %s -> %+.2f" \
-				% [Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), lt, rt,
+				% [rx, lt, rt,
 				"firefox-mode" if _stick_on_triggers else "normal", turn]
 		if absf(turn) >= 0.75 and not _diorama_stick_down:
 			diorama.rotate_view(1 if turn > 0.0 else -1)
@@ -502,6 +503,11 @@ func _maybe_talk(evts: Array) -> void:
 			talk.open(who, TraderTalk.intro())
 		_refresh()
 		return
+
+## Every event, before any panel or the GUI can take it: the pad's axes are
+## recorded here for the camera. See Gamepad.track.
+func _input(event: InputEvent) -> void:
+	pad.track(event)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:

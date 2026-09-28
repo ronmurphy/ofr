@@ -5705,6 +5705,13 @@ func write_death_dump() -> void:
 	f.close()
 
 func write_morgue() -> void:
+	# Every ending comes through here, so this is where the run's suspend slot
+	# goes. It used to survive the ending: the web build writes the slot on
+	# every tab switch, so after a death, reloading the page brought you back
+	# alive from before the fatal fight -- and after a win, back to the top of
+	# the stairs. Brad's itch morgue holds his one escape TWICE, 22 hours
+	# apart, same turn count: the win, replayed from a slot written before it.
+	clear_suspend()
 	var f := FileAccess.open(MORGUE_PATH, FileAccess.READ_WRITE)
 	if f == null:
 		f = FileAccess.open(MORGUE_PATH, FileAccess.WRITE)

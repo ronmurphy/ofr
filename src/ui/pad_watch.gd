@@ -20,7 +20,9 @@ const AXES := 10         # JOY_AXIS_MAX
 const BUTTONS := 21      # JOY_BUTTON_SDL_MAX
 ## How far an axis has to have travelled before its row is marked as moved.
 ## A resting stick jitters by a few hundredths; a push covers most of the range.
-const MOVED := 0.5
+## Under 0.5 because Firefox's right stick rests at 0.5 on a 0..1 value, so one
+## push in one direction travels exactly 0.5.
+const MOVED := 0.4
 const AXIS_NAMES := ["left X", "left Y", "right X", "right Y", "LT", "RT"]
 const EVENTS_KEPT := 6
 
@@ -33,13 +35,17 @@ var camera_line := ""
 var _mins := PackedFloat32Array()
 var _maxs := PackedFloat32Array()
 var _now := PackedFloat32Array()
+## The same ranges from EVENTS rather than polling. In Firefox they disagree --
+## the reason this column exists.
+var _ev_mins := PackedFloat32Array()
+var _ev_maxs := PackedFloat32Array()
 var _ever: Dictionary = {}           # button index -> true once pressed
 var _events: Array[String] = []
 var _browser := ""
 
 const PAD := 12.0
 const LINE := 20.0
-const WIDTH := 640.0
+const WIDTH := 780.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -57,12 +63,13 @@ func toggle() -> void:
 ## Forget every range and event. Opening the overlay starts a fresh measurement,
 ## so an old push cannot be mistaken for a new one.
 func reset() -> void:
-	_mins.resize(AXES)
-	_maxs.resize(AXES)
-	_now.resize(AXES)
+	for arr in [_mins, _maxs, _now, _ev_mins, _ev_maxs]:
+		arr.resize(AXES)
 	for i in AXES:
 		_mins[i] = INF
 		_maxs[i] = -INF
+		_ev_mins[i] = INF
+		_ev_maxs[i] = -INF
 		_now[i] = 0.0
 	_ever.clear()
 	_events.clear()
@@ -74,8 +81,16 @@ func sample(values: PackedFloat32Array) -> void:
 		_mins[i] = minf(_mins[i], values[i])
 		_maxs[i] = maxf(_maxs[i], values[i])
 
+## One reported value. Separate from _input so the tests can feed it.
+func sample_event(axis: int, value: float) -> void:
+	if axis >= 0 and axis < AXES:
+		_ev_mins[axis] = minf(_ev_mins[axis], value)
+		_ev_maxs[axis] = maxf(_ev_maxs[axis], value)
+
+## Moved by either measure: polled, or as its events reported.
 func moved(axis: int) -> bool:
-	return _maxs[axis] - _mins[axis] > MOVED
+	return _maxs[axis] - _mins[axis] > MOVED \
+		or _ev_maxs[axis] - _ev_mins[axis] > MOVED
 
 ## "Firefox/131.0" out of a whole user-agent string. Edge claims to be Chrome
 ## as well, so it is looked for first.
@@ -96,6 +111,8 @@ func _input(event: InputEvent) -> void:
 		_note("device %d  button %d" % [button.device, button.button_index])
 		return
 	var motion := event as InputEventJoypadMotion
+	if motion != null and motion.device == 0:
+		sample_event(int(motion.axis), motion.axis_value)
 	# The decisive part of a push only. Axes report continuously, and a list of
 	# every intermediate value would scroll away the one that mattered.
 	if motion != null and absf(motion.axis_value) > 0.85:
@@ -128,7 +145,8 @@ func _draw() -> void:
 	var dim := Color(0.55, 0.55, 0.58)
 	var on := Color(0.56, 0.84, 0.71)
 	var text := Color(0.85, 0.83, 0.78)
-	_text("PAD WATCH  --  what Godot sees.  F8 hides.", PAD, y, gold)
+	_text("PAD WATCH  --  what Godot sees (polled, then ev = from events).  F8 hides.",
+		PAD, y, gold)
 	y += LINE
 	_text("%s %s  %s" % [OS.get_name(), Engine.get_version_info().get("string", "?"),
 		_browser], PAD, y, dim)
@@ -154,8 +172,9 @@ func _draw() -> void:
 		var v := clampf(_now[i], -1.0, 1.0)
 		var fill_from := bx + bw / 2 + minf(v, 0.0) * bw / 2
 		draw_rect(Rect2(fill_from, y - 10, absf(v) * bw / 2, 8), Color(0.23, 0.45, 1.0))
-		var seen := "" if _mins[i] == INF else "%+.2f .. %+.2f" % [_mins[i], _maxs[i]]
-		_text("%+.2f  %s%s" % [_now[i], seen, "  moved" if hot else ""],
+		var seen := "" if _mins[i] == INF else "%+.2f..%+.2f" % [_mins[i], _maxs[i]]
+		var ev := "--" if _ev_mins[i] == INF else "%+.2f..%+.2f" % [_ev_mins[i], _ev_maxs[i]]
+		_text("%+.2f  %s  ev %s%s" % [_now[i], seen, ev, "  moved" if hot else ""],
 			bx + bw + 10, y, on if hot else text)
 		y += LINE
 	y += 4

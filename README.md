@@ -41,7 +41,10 @@ stood, which of them had noticed you, the turn count. Not the top of the floor:
 a checkpoint would reintroduce the very scumming this design removes, since you
 could die and replay a floor already knowing what is in it.
 
-Abandoning a run forfeits the slot, and dying clears it.
+Abandoning a run forfeits the slot, and any ending -- death or escape --
+clears it. It used not to: on the web, where every tab switch writes the slot,
+reloading after a death brought you back alive, and Brad escaped once, reloaded
+his save, and escaped again -- the same win in the morgue twice.
 
 Every finished run appends a line to `user://morgue.txt`:
 

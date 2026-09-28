@@ -148,12 +148,15 @@ bones cannot be traded; the counter opens after the trader speaks.
   it is one line in `DioramaView.view_to_grid()`;
 - the per-turn 3D rebuild is ~50 ms; rebuilding only changed cells is the real fix;
 - the view tests are light on premise checks — a good day-7 job;
-- **the right stick does not turn the camera on itch in Firefox -- STILL OPEN.**
-  The fix below was written from what the BROWSER reports and did not work on
-  itch: Godot's web layer remaps the axes again. Next: press **F8** in Firefox
-  on itch, push the right stick, and screenshot the pad watch -- it shows the
-  axes as Godot sees them and what the camera made of them. It is a
-  Firefox-on-Linux bug. With an Xbox Wireless pad (045e-02fd) Firefox says
+- **the right stick in Firefox on itch -- FIX WAITING ON A TEST (2026-09-28).**
+  The pad watch (F8) found it: Godot's web build sends the right stick as
+  EVENTS on the trigger axes (axis 5 at +1.00 in its event list) but never
+  stores them where `Input.get_joy_axis()` polls -- the polled value sat at
+  +0.00 through a full circle. The left stick polls fine. The camera now reads
+  each axis as its events last reported it (`Gamepad.track` / `axis`). To
+  confirm: F8 in Firefox on itch, circle the right stick -- the `ev` column
+  should move and the camera line should reach "firefox-mode" and turn. It may
+  need one full circle before it is recognised. With an Xbox Wireless pad (045e-02fd) Firefox says
   "standard" but reports the right stick's left-right as the LT value resting at
   0.5 (and up-down on RT); the real triggers go to axes 6 and 7. Edge (Chromium),
   Steam and native read it correctly. The game now turns the camera on the
