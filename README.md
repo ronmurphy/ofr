@@ -50,6 +50,13 @@ Every finished run appends a line to `user://morgue.txt`:
 
     2026-09-03 22:14:07  level 8  killed by a wyvern on depth 7, with the Amulet, after 4812 turns
 
+And every ending also appends a full record to `user://legends.json`: the hero
+exactly as the save writes them (level, stats, every worn and carried item),
+the stats page's numbers, name, turns and seed, under an id that stops the same
+ending being recorded twice. The text morgue is imported into it once, the
+first time it is needed. This is what the Legends Run will rebuild its heroes
+from; the pause menu's export hands it over alongside the morgue.
+
 Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 
 ## Running
@@ -287,6 +294,17 @@ sample-and-hold, exponential decay, and that is the whole toolkit. It is
 enough, because the ear needs far less than people assume to tell a snapping
 mechanism from a breaking bone.
 
+### The music
+
+David's background music follows the same rule of no files: a short phrase per
+band -- upper halls, caves, fortress, the deep -- generated in `synth.gd` and
+streamed by `sound_deck.gd`, fading across when the band changes. On the climb
+each theme comes back with two notes bent sharp and a semitone undertone: the
+same place, shifted while you were below. It is quiet on purpose and carries no
+information, which is why it has its own switch: **Shift+M** (or *music* in the
+title's settings) turns the music off and leaves the effects; `m` still silences
+everything. It plays under the title too, until a title theme exists.
+
 ### The rule
 
 **Sound only where it carries information the eye can miss.**
@@ -351,7 +369,8 @@ the rest of the game.
 Final Fantasy Tactics: the camera looks along a diagonal, so floor squares are
 diamonds. The 3D view uses the same picture glyphs as camera-facing labels,
 keeps the game's palette and map visibility, and turns in 45° steps with `[` /
-`]` or the right stick -- eight views, alternating the diamond and a straight-on
+`]` or the right stick (in Firefox, use `[` / `]`: its pad support is broken
+for this) -- eight views, alternating the diamond and a straight-on
 view that is easier to navigate. The camera turns around the player. Movement, aiming
 and looking stay on the same map cells. In a diamond view every key turns 45°
 clockwise on screen: the arrows walk the grid lines (up goes up-and-right), and
@@ -1482,6 +1501,12 @@ because a box-drawing character only fills ~0.6 of a square cell and a run of
 see for yourself.
 
 ## Credits
+
+Made by Brad, with:
+
+- **Gabe** -- the 3D view.
+- **David** -- the background music: a generated theme for each band, bent out
+  of tune on the climb.
 
 JetBrains Mono, SIL Open Font License 1.1 -- see
 `assets/fonts/JetBrainsMono-OFL.txt`.

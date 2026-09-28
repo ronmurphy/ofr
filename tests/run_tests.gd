@@ -33,6 +33,11 @@ func _initialize() -> void:
 	var had_pad := FileAccess.file_exists("user://gamepad.cfg")
 	if had_pad:
 		pad_before = FileAccess.get_file_as_string("user://gamepad.cfg")
+	# And the legends, which every ending in this suite appends to.
+	var legends_before := ""
+	var had_legends := FileAccess.file_exists("user://legends.json")
+	if had_legends:
+		legends_before = FileAccess.get_file_as_string("user://legends.json")
 	print("")
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
@@ -91,6 +96,7 @@ func _initialize() -> void:
 	_test_launchers_are_poor_clubs()
 	_test_suspend_round_trip()
 	_test_an_ending_clears_the_slot()
+	_test_legends_log()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -265,6 +271,12 @@ func _initialize() -> void:
 	check("gamepad.cfg is in the same state it started in",
 		had_pad == has_pad and pad_after == pad_before,
 		"before=%s after=%s" % [pad_before, pad_after])
+	check("the legends are redirected (%s)" % LegendsLog.PATH,
+		LegendsLog.PATH.contains("scratch_"))
+	var has_legends := FileAccess.file_exists("user://legends.json")
+	check("legends.json is in the same state it started in",
+		had_legends == has_legends and (not has_legends
+			or FileAccess.get_file_as_string("user://legends.json") == legends_before))
 
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
@@ -1493,6 +1505,88 @@ func _suspended_state() -> GameState:
 	gs.player.hp = 17
 	gs.update_vision()
 	return gs
+
+## Every ending leaves a full record in legends.json -- the hero exactly, the
+## stats, an id -- and the old text morgue is imported once, duplicates merged.
+func _test_legends_log() -> void:
+	var saved_morgue := GameState.MORGUE_PATH
+	GameState.MORGUE_PATH = "user://scratch_legends_test_morgue.txt"
+	for p in [GameState.MORGUE_PATH, LegendsLog.PATH]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+
+	# Brad's real itch morgue, plus one death from before names existed.
+	var f := FileAccess.open(GameState.MORGUE_PATH, FileAccess.WRITE)
+	f.store_line("2026-09-07 01:29:17  level 19  escaped the dungeon with the Amulet of the Deep, with the Amulet, after 10720 turns")
+	f.store_line("2026-09-07 23:50:39  level 19  escaped the dungeon with the Amulet of the Deep, with the Amulet, after 10720 turns")
+	f.store_line("2026-09-03 23:09:49  level 1  killed by a kobold on depth 1, empty-handed, after 228 turns")
+	f.close()
+	var imported := LegendsLog.import_text(GameState.MORGUE_PATH)
+	check("the text morgue imports: one escape, one death",
+		imported.size() == 2, "%d records" % imported.size())
+	check("and Brad's escape written twice becomes one",
+		imported.filter(func(r): return r["fate"] == "escaped").size() == 1)
+	var old := LegendsLog.hero_from(imported[0])
+	check("an imported escape rebuilds as a level-19 hero",
+		old.level == 19 and old.max_hp == GameState.hp_at_level(19))
+
+	# A real death, with no legends file yet: the morgue is imported first and
+	# the run added once -- not twice via its own new text line.
+	check("no legends file yet (the premise)", not FileAccess.file_exists(LegendsLog.PATH))
+	var gs := GameState.new(5151)
+	gs.new_game()
+	gs.player.hp = 1
+	gs._fall_into_pit()
+	check("the fall killed (the premise)", gs.game_over and not gs.won)
+	var all := LegendsLog.runs()
+	check("the first ending imports the old morgue and adds itself once",
+		all.size() == 3, "%d records" % all.size())
+	var last: Dictionary = all[-1]
+	check("the new record is the whole run",
+		last["fate"] == "died" and last["source"] == "run"
+		and last["hero"] is Dictionary and last["stats"] is Dictionary
+		and last["turns"] == gs.turns and last["name"] == gs.player_name)
+	var back := LegendsLog.hero_from(last)
+	check("and its hero rebuilds exactly",
+		back.level == gs.player.level and back.max_hp == gs.player.max_hp
+		and back.inventory.size() == gs.player.inventory.size()
+		and back.equipped.size() == gs.player.equipped.size())
+
+	# The same ending cannot be recorded twice.
+	LegendsLog.record(gs)
+	check("recording the same ending again adds nothing", LegendsLog.runs().size() == 3)
+
+	# A win is an escape, and the unlock sees it.
+	var wins := GameState.new(5252)
+	wins.new_game()
+	wins.depth = 1
+	wins.map.set_tile(wins.player.x, wins.player.y, Tiles.STAIRS_UP)
+	wins.player_ascend()
+	check("a win is recorded as an escape",
+		LegendsLog.escapes().size() == 2 and LegendsLog.runs().size() == 4)
+
+	# The import is once only: a later morgue line is not pulled in again.
+	f = FileAccess.open(GameState.MORGUE_PATH, FileAccess.READ_WRITE)
+	f.seek_end()
+	f.store_line("2026-09-04 20:00:00  level 2  killed by a rat on depth 1, empty-handed, after 300 turns")
+	f.close()
+	check("the text morgue is imported only once", LegendsLog.runs().size() == 4)
+
+	# A file it cannot read is never written over.
+	var g := FileAccess.open(LegendsLog.PATH, FileAccess.WRITE)
+	g.store_string("{ this is not json")
+	g.close()
+	var dies := GameState.new(5353)
+	dies.new_game()
+	dies.player.hp = 1
+	dies._fall_into_pit()
+	check("an unreadable legends file is left alone, not replaced",
+		FileAccess.get_file_as_string(LegendsLog.PATH) == "{ this is not json")
+
+	for p in [GameState.MORGUE_PATH, LegendsLog.PATH]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+	GameState.MORGUE_PATH = saved_morgue
 
 ## A run that has ENDED cannot be resumed. Brad's itch exploit, 2026-09-28:
 ## save, climb out, refresh, load the save, climb out again -- one escape in

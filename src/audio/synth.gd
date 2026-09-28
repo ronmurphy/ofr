@@ -1,7 +1,9 @@
 class_name Synth
 extends RefCounted
 
-## Every sound in this game is computed at startup. There are no audio files.
+## There are no audio files. Short effects are rendered into a small PCM bank
+## at startup; the background bed is synthesized a sample at a time while it
+## plays.
 ##
 ## Three reasons, in order of how much they mattered:
 ##
@@ -32,6 +34,109 @@ const CEILING := 0.95
 ## a fixed window, a 60ms click and a 1.3s fall get compared on completely
 ## different terms and the short one always loses.
 const LOUDNESS_WINDOW := 0.25
+
+## The background bed is streamed rather than baked into WAV files. 11.025kHz
+## suits these low, deliberately grainy tones and keeps the GDScript generator
+## light enough to refill in small chunks.
+const MUSIC_RATE := 11025
+const MUSIC_LOOP_SECONDS := 16.0
+
+## One small phrase per band. The same phrase returns on the climb with a few
+## notes bent upward and a close, semitone undertone -- the way back through a
+## familiar place that has shifted while you were below.
+const MUSIC_PROFILES := {
+	Bands.UPPER: {
+		"root": 110.0, "scale": [0, 3, 7, 10, 12],
+		"motif": [0, 2, 3, 2, 1, 0, 2, 4], "wave": &"triangle",
+		"bass_gain": 0.095, "lead_gain": 0.075, "air_gain": 0.018,
+		"air_ratio": 3.0, "harmonic_gain": 0.16,
+	},
+	Bands.CAVES: {
+		"root": 82.41, "scale": [0, 1, 5, 7, 8],
+		"motif": [0, 1, 2, 1, 3, 2, 1, 0], "wave": &"sine",
+		"bass_gain": 0.105, "lead_gain": 0.060, "air_gain": 0.030,
+		"air_ratio": 1.4142, "harmonic_gain": 0.08,
+	},
+	Bands.FORTRESS: {
+		"root": 98.0, "scale": [0, 3, 5, 7, 10],
+		"motif": [0, 2, 1, 2, 3, 2, 1, 4, 0, 2, 1, 2, 3, 2, 4, 1],
+		"wave": &"pulse", "bass_gain": 0.085, "lead_gain": 0.050,
+		"air_gain": 0.018, "air_ratio": 2.01, "harmonic_gain": 0.10,
+	},
+	Bands.DEEP: {
+		"root": 55.0, "scale": [0, 1, 6, 7],
+		"motif": [0, 1, 2, 1], "wave": &"sine",
+		"bass_gain": 0.125, "lead_gain": 0.048, "air_gain": 0.033,
+		"air_ratio": 1.4142, "harmonic_gain": 0.12,
+	},
+}
+
+## Builds the few per-theme values that are constant during playback. Keeping
+## exponentiation out of the sample loop matters more than it sounds in GDScript.
+static func music_profile(effective_depth: int) -> Dictionary:
+	var band := Bands.of(effective_depth)
+	var profile: Dictionary = MUSIC_PROFILES[band].duplicate(true)
+	var corrupted := Bands.is_corrupted(effective_depth)
+	var root_hz := float(profile["root"])
+	var scale: Array = profile["scale"]
+	var motif: Array = profile["motif"]
+	var lead_cycles := PackedInt32Array()
+	for i in motif.size():
+		var semitone := int(scale[int(motif[i])])
+		# Two notes in each returning phrase lean a little too bright, like a
+		# memory of the original tune that cannot quite settle back into place.
+		if corrupted and (i == 3 or i == motif.size() - 1):
+			semitone += 1
+		var hz := root_hz * 2.0 * pow(2.0, float(semitone) / 12.0)
+		lead_cycles.append(int(round(hz * MUSIC_LOOP_SECONDS)))
+	profile["band"] = band
+	profile["corrupted"] = corrupted
+	profile["lead_cycles"] = lead_cycles
+	profile["bass_cycles"] = int(round(root_hz * 0.5 * MUSIC_LOOP_SECONDS))
+	profile["air_cycles"] = int(round(root_hz * float(profile["air_ratio"])
+		* MUSIC_LOOP_SECONDS))
+	profile["discord_cycles"] = int(round(root_hz * pow(2.0, 1.0 / 12.0)
+		* MUSIC_LOOP_SECONDS))
+	profile["step_seconds"] = MUSIC_LOOP_SECONDS / float(motif.size())
+	profile["discord_gain"] = 0.022 if corrupted else 0.0
+	return profile
+
+## One mono sample of the looping bed. Every oscillator completes an integer
+## number of cycles in the 16-second phrase, so the drones meet themselves at
+## the loop point. Note envelopes fade nearly to zero before their next pitch.
+static func music_sample(profile: Dictionary, seconds: float) -> float:
+	var t := fposmod(seconds, MUSIC_LOOP_SECONDS)
+	var loop_phase := t / MUSIC_LOOP_SECONDS
+	var bass_cycles := int(profile["bass_cycles"])
+	var air_cycles := int(profile["air_cycles"])
+	var sample := sin(TAU * float(bass_cycles) * loop_phase) \
+		* float(profile["bass_gain"])
+	sample += sin(TAU * float(air_cycles) * loop_phase) \
+		* float(profile["air_gain"])
+
+	var lead_cycles: PackedInt32Array = profile["lead_cycles"]
+	var step_seconds := float(profile["step_seconds"])
+	var note_index := mini(lead_cycles.size() - 1, int(t / step_seconds))
+	var local := fposmod(t, step_seconds)
+	var phase := fposmod(float(lead_cycles[note_index]) * loop_phase, 1.0)
+	var lead_wave := 0.0
+	match profile["wave"]:
+		&"triangle":
+			lead_wave = 1.0 - absf(phase * 4.0 - 2.0)
+		&"pulse":
+			var fundamental := sin(phase * TAU)
+			lead_wave = fundamental * 0.78 + (0.22 if phase < 0.5 else -0.22)
+		_:
+			lead_wave = sin(phase * TAU)
+	lead_wave += sin(phase * TAU * 2.0) * float(profile["harmonic_gain"])
+	var envelope := minf(1.0, local / 0.075) * exp(-4.0 * local / step_seconds)
+	sample += lead_wave * envelope * float(profile["lead_gain"])
+
+	var discord_gain := float(profile["discord_gain"])
+	if discord_gain > 0.0:
+		sample += sin(TAU * float(profile["discord_cycles"]) * loop_phase) \
+			* discord_gain
+	return clampf(sample, -0.5, 0.5)
 
 # ------------------------------------------------------------------ voices ---
 #

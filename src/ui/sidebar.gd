@@ -87,6 +87,7 @@ const KEYS := [
 	["f (no bow)", "throw", KEY_F, ""],
 	["p", "pray at a shrine", KEY_P, ""],
 	["m  - +", "sound", 0, ""],
+	["shift m", "music", 0, ""],
 	["v", "letters / symbols / pictures", KEY_V, ""],
 	["q", "classic / 3D view", KEY_Q, ""],
 	["[ / ] / right stick", "turn 3D camera", 0, ""],
@@ -94,7 +95,7 @@ const KEYS := [
 	# effects like these stop some people playing games at all.
 	["e", "still / simple / full", KEY_E, ""],
 	["o", "the map", KEY_O, ""],
-	["esc", "menu", KEY_ESCAPE, ""],
+	["esc or `", "menu", KEY_ESCAPE, ""],
 	["click", "travel", 0, "--"],
 ]
 
@@ -127,9 +128,21 @@ static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
 ## so the help line can name a BUTTON on a handheld.
 var pad_cfg: PadConfig = null
 var pad_input := false
+## Set by main.gd: "press ? for help" is bold and gold on floors 1-2 until the
+## legend has been opened once. See LegendPanel.seen_ever.
+var help_loud := false
+
+## A clickable menu button and a clickable help line, from the 2026-09-26
+## playtest: in browser fullscreen Esc leaves fullscreen instead of opening
+## the menu, and a 10-year-old gave up over it. The mouse needs a way in.
+signal menu_clicked()
+signal help_clicked()
+var _hover_button := ""
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The panel takes clicks now, for its two buttons; everything else on it
+	# is still just drawn. See _gui_input.
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	if font == null:
 		font = ui_font()
 	if icon_font == null:
@@ -287,11 +300,24 @@ func _draw() -> void:
 	y += LINE
 	# Footing, because the energy cost of mud was working perfectly and was
 	# entirely invisible: one keypress still looked like one turn.
+	#
+	# On slow ground the row becomes a STATUS -- the ground's own picture and
+	# what it is doing to you, "wading · slowed x1.4", in warning amber, across
+	# the whole row (no label: the picture says what it is about). Firm ground
+	# keeps the quiet labelled row. Status effects join this line later; the
+	# miasma is the next one.
 	var ground := state.map.get_tile(state.player.x, state.player.y)
 	var pace := Tiles.move_cost(ground)
-	var ground_name := String(Tiles.appearance_id(ground)).replace("_", " ")
-	if pace > 1.0:
-		_stat_row(y, "footing", "%s  x%.1f" % [ground_name, pace], true)
+	var word := Tiles.footing_word(ground)
+	if pace > 1.0 and word != "":
+		var glyph := String(RenderTheme.active().appearance(
+			Tiles.appearance_id(ground)).get("ch", "~"))
+		var gs := GlyphTheme.draw_size(glyph, font_size)
+		var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
+		draw_string(_face_for(glyph), Vector2(PAD, y + (font_size - gs) * 0.35), glyph,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, gs, Palette.BRAZIER)
+		draw_string(font, Vector2(PAD + gw + 6.0, y), _fit(status_words(word, pace), gw + 6.0),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.BRAZIER)
 	else:
 		_stat_row(y, "footing", "firm", false)
 	y += LINE
@@ -422,8 +448,94 @@ func _draw() -> void:
 	var how := PadConfig.key_name(KEY_QUESTION)
 	if pad_cfg != null:
 		how = pad_cfg.icon(KEY_QUESTION, pad_input)
-	PadGlyphs.draw(self, Vector2(PAD, y), "press %s for help" % how, font,
-		font_size, Palette.UI_DIM)
+	# Loud until the legend has been found once: bold and gold on floors 1-2.
+	var help_colour: Color = Palette.STAIRS if help_loud else Palette.UI_DIM
+	if _hover_button == "help":
+		help_colour = Color.WHITE
+	PadGlyphs.draw(self, Vector2(PAD, y), help_text(),
+		font_bold if help_loud else font, font_size, help_colour)
+
+	# The menu button, on the same line, right-aligned (Brad: one line, to
+	# save space). Its label names what THIS player would press: "` menu" on a
+	# keyboard (` is the key beside Esc, which no browser reserves), the pad's
+	# own menu button pictured on a controller. No mouse symbol: the button
+	# being clickable is the mouse's answer.
+	var r := menu_button_rect()
+	var on := _hover_button == "menu"
+	draw_rect(r, Color(Palette.CURSOR, 0.16) if on else Palette.UI_PANEL_BG, true)
+	draw_rect(r, Palette.UI_TEXT if on else Palette.UI_FRAME, false, 1.0)
+	var label := menu_label()
+	var lw := PadGlyphs.width(label, font, font_size)
+	PadGlyphs.draw(self, Vector2(r.position.x + (r.size.x - lw) * 0.5, y), label,
+		font, font_size, Color.WHITE if on else Palette.UI_TEXT)
+
+## The rule for a loud help hint, in one place main.gd and the tests share.
+static func help_is_loud(gs: GameState) -> bool:
+	return gs != null and not gs.ascending and gs.depth <= 2 \
+		and not LegendPanel.seen_ever()
+
+## "wading · slowed x1.4". Separate so the tests can read what the row says.
+static func status_words(word: String, pace: float) -> String:
+	return "%s · slowed x%.1f" % [word, pace]
+
+## "press ? for help", or without "press" when that will not fit beside the
+## menu button -- a pad's button picture is wider than a "?", and on a
+## controller the full line ran into the button.
+func help_text() -> String:
+	var how := PadConfig.key_name(KEY_QUESTION)
+	if pad_cfg != null:
+		how = pad_cfg.icon(KEY_QUESTION, pad_input)
+	var full := "press %s for help" % how
+	var face: Font = font_bold if help_loud else font
+	if face == null or PadGlyphs.width(full, face, font_size) <= help_line_rect().size.x:
+		return full
+	return "%s for help" % how
+
+func menu_label() -> String:
+	if pad_input and pad_cfg != null:
+		return "%s menu" % pad_cfg.icon(KEY_ESCAPE, true)
+	return "` menu"
+
+## Right-aligned on the help line, sized to its label.
+func menu_button_rect() -> Rect2:
+	var w := (PadGlyphs.width(menu_label(), font, font_size)
+		if font != null else 60.0) + 14.0
+	var baseline := size.y - PAD - LINE
+	var h := LINE + 2.0
+	return Rect2(size.x - PAD - w, baseline - h + 6.0, w, h)
+
+## The rest of the line, left of the button.
+func help_line_rect() -> Rect2:
+	var button := menu_button_rect()
+	var baseline := size.y - PAD - LINE
+	return Rect2(PAD, baseline - LINE + 4.0, button.position.x - PAD - 4.0, LINE + 2.0)
+
+func _gui_input(event: InputEvent) -> void:
+	var motion := event as InputEventMouseMotion
+	if motion != null:
+		var over := ""
+		if menu_button_rect().has_point(motion.position):
+			over = "menu"
+		elif help_line_rect().has_point(motion.position):
+			over = "help"
+		if over != _hover_button:
+			_hover_button = over
+			queue_redraw()
+		return
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed or click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if menu_button_rect().has_point(click.position):
+		accept_event()
+		menu_clicked.emit()
+	elif help_line_rect().has_point(click.position):
+		accept_event()
+		help_clicked.emit()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_MOUSE_EXIT and _hover_button != "":
+		_hover_button = ""
+		queue_redraw()
 
 func _line(f: Font, y: float, text: String, color: Color) -> void:
 	draw_string(f, Vector2(PAD, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)

@@ -52,6 +52,8 @@ func _initialize() -> void:
 	_test_the_pad_watch()
 	_test_the_camera_reads_reported_axes()
 	await _test_the_title_screen()
+	_test_the_playtest_fixes()
+	await _test_davids_music()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1080,6 +1082,161 @@ func _test_the_title_screen() -> void:
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
 
+## David's generated background music (merged 2026-09-28): a theme per band,
+## bent on the climb, in range, seamless at the loop -- and its own switch,
+## separate from muting everything, which survives a restart.
+func _test_davids_music() -> void:
+	print("-- David's music")
+	var bands := {}
+	var descent_clean := true
+	var climb_bent := true
+	for d in range(1, GameState.MAX_DEPTH * 2):
+		var p := Synth.music_profile(d)
+		bands[int(p["band"])] = true
+		if d <= GameState.MAX_DEPTH:
+			descent_clean = descent_clean and not bool(p["corrupted"])
+		else:
+			climb_bent = climb_bent and bool(p["corrupted"])
+	check("  every band has a theme, floor 1 to the top of the climb",
+		bands.size() == 4, "%d bands" % bands.size())
+	check("  the descent plays them straight", descent_clean)
+	check("  and the climb plays them bent", climb_bent)
+	check("  a floor on the climb is not the same tune as on the way down",
+		Synth.music_profile(2)["lead_cycles"] != Synth.music_profile(GameState.MAX_DEPTH * 2 - 2)["lead_cycles"]
+		and Synth.music_profile(2)["band"] == Synth.music_profile(GameState.MAX_DEPTH * 2 - 2)["band"])
+
+	var in_range := true
+	var seam := 0.0
+	for d in [1, 4, 7, 10, 16]:
+		var p := Synth.music_profile(d)
+		for i in 400:
+			var v := Synth.music_sample(p, i * Synth.MUSIC_LOOP_SECONDS / 400.0)
+			in_range = in_range and is_finite(v) and absf(v) <= 1.0
+		seam = maxf(seam, absf(Synth.music_sample(p, Synth.MUSIC_LOOP_SECONDS
+			- 1.0 / Synth.MUSIC_RATE) - Synth.music_sample(p, 0.0)))
+	check("  every sample is a number between -1 and 1", in_range)
+	check("  and the loop meets itself without a click", seam < 0.05, "jump %.3f" % seam)
+
+	# The switch: music off leaves the rest of the sound alone, and holds.
+	var deck := SoundDeck.new()
+	root.add_child(deck)
+	await process_frame
+	var was_on := deck.music_on
+	var was_muted := deck.muted
+	if not deck.music_on:
+		deck.toggle_music()
+	check("  music can be on (the premise)", deck.music_on)
+	deck.toggle_music()
+	deck.sync_music(1)
+	check("  switching the music off stops it", not deck.music_on
+		and not deck._music_player.playing)
+	check("  and does not mute the effects", deck.muted == was_muted)
+	var again := SoundDeck.new()
+	root.add_child(again)
+	await process_frame
+	check("  and is remembered after a restart", not again.music_on)
+	if again.music_on != was_on:
+		again.toggle_music()
+	for d in [again, deck]:
+		d.stop_all()
+		d.queue_free()
+	await process_frame
+
+## The three fixes from the 2026-09-26 playtest (teens and parents).
+func _test_the_playtest_fixes() -> void:
+	print("-- the playtest fixes: slow ground said, help found, a menu reachable")
+	# Every slow ground has a word, and firm ground none -- across every tile,
+	# so a new slow tile cannot arrive unexplained.
+	var agree := true
+	var slow := 0
+	for t in range(Tiles.CHEST + 1):
+		var is_slow := Tiles.move_cost(t) > 1.0
+		if is_slow:
+			slow += 1
+		agree = agree and (is_slow == (Tiles.footing_word(t) != ""))
+	check("  every slow ground, and only slow ground, has a status word",
+		agree and slow >= 4, "%d slow tiles" % slow)
+	check("  the status reads as the playtest asked",
+		Sidebar.status_words("wading", 1.4) == "wading · slowed x1.4")
+
+	var gs := GameState.new(77)
+	gs.new_game()
+	var here := HerePanel.new()
+	here.state = gs
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FLOOR)
+	check("  on firm ground the HERE box says nothing extra", here.status_line() == "")
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.MUD)
+	check("  in mud it says so, with the cost",
+		here.status_line() == "sinking -- every step costs 2.0 turns", here.status_line())
+	here.free()
+
+	# The help hint: loud on floors 1-2 until the legend is opened once, and
+	# the opening is remembered in settings (scratch here).
+	var cfg := ConfigFile.new()
+	cfg.load(GameState.SETTINGS_PATH)
+	if cfg.has_section_key("help", "legend_seen"):
+		cfg.erase_section_key("help", "legend_seen")
+		cfg.save(GameState.SETTINGS_PATH)
+	LegendPanel.forget_seen()
+	check("  a new player on floor 1 gets the loud hint", Sidebar.help_is_loud(gs))
+	gs.depth = 3
+	check("  not on floor 3", not Sidebar.help_is_loud(gs))
+	gs.depth = 1
+	var legend := LegendPanel.new()
+	legend.open()
+	check("  and not once the legend has been opened", not Sidebar.help_is_loud(gs))
+	LegendPanel.forget_seen()
+	check("  which is remembered in settings, across runs", LegendPanel.seen_ever())
+	legend.free()
+
+	# The sidebar's buttons: the menu, the help line, and nothing elsewhere.
+	var side := Sidebar.new()
+	side.size = Vector2(256, 720)
+	side.font = Sidebar.ui_font()
+	side.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	var got := {"v": ""}
+	side.menu_clicked.connect(func() -> void: got["v"] = "menu")
+	side.help_clicked.connect(func() -> void: got["v"] = "help")
+	for case in [["menu", side.menu_button_rect().get_center()],
+			["help", side.help_line_rect().get_center()],
+			["", Vector2(128, 200)]]:
+		got["v"] = ""
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		click.position = case[1]
+		side._gui_input(click)
+		check("  a click on the sidebar at %s opens %s" % [case[1],
+			case[0] if case[0] != "" else "nothing"], got["v"] == case[0], got["v"])
+	check("  the menu button and the help line do not overlap",
+		not side.menu_button_rect().intersects(side.help_line_rect()))
+	# One line now (Brad): the loud, bold help text must fit left of the button.
+	var help_w := side.font_bold.get_string_size("press ? for help",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, side.font_size).x
+	check("  the bold help text fits beside the button",
+		help_w <= side.help_line_rect().size.x,
+		"%.0f px into %.0f" % [help_w, side.help_line_rect().size.x])
+	check("  the button names the keyboard's key", side.menu_label() == "` menu")
+	side.pad_cfg = PadConfig.new()
+	side.pad_input = true
+	var pad_label := side.menu_label()
+	check("  and on a controller, the pad's own menu button",
+		pad_label.ends_with(" menu") and not pad_label.begins_with("`")
+		and pad_label != " menu", pad_label)
+	# Measured as DRAWN, loud and bold: the first version checked only that
+	# the two areas did not overlap, and on a pad the text ran into the button.
+	for loud in [true, false]:
+		side.help_loud = loud
+		var face: Font = side.font_bold if loud else side.font
+		var drawn := PadGlyphs.width(side.help_text(), face, side.font_size)
+		check("  on a pad the help text fits beside the button (%s)" % ("loud" if loud else "quiet"),
+			drawn <= side.help_line_rect().size.x,
+			"%.0f px into %.0f: %s" % [drawn, side.help_line_rect().size.x, side.help_text()])
+	side.pad_input = false
+	check("  and both sit on the bottom line",
+		absf(side.menu_button_rect().get_center().y - side.help_line_rect().get_center().y) < 6.0)
+	side.free()
+
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:
 	var d = scene.diorama
@@ -1231,6 +1388,16 @@ func _test_both_views_share_one_moment() -> void:
 		await process_frame
 	check("a harness run skips the title and is playing at once",
 		scene.title != null and not scene.title.visible and scene.state != null)
+	# ` is a second Esc: it opens the menu, and closes it again.
+	if scene.name_entry.visible:
+		scene.name_entry.visible = false
+	var tick := InputEventKey.new()
+	tick.keycode = KEY_QUOTELEFT
+	tick.pressed = true
+	scene._unhandled_key_input(tick)
+	check("` opens the menu, as Esc does", scene.menu.visible)
+	scene._unhandled_key_input(tick)
+	check("and closes it again", not scene.menu.visible)
 	check("both views hold the same effects list and the same glides",
 		scene.diorama.fx == scene.grid.fx and scene.diorama.motion == scene.grid.motion)
 	scene._select_map_view(true)

@@ -1,16 +1,18 @@
 class_name SoundDeck
 extends Node
 
-## Reads the same event queue the renderer animates from, and plays tones.
+## Plays turn-event effects and a generated background bed. Effects read the
+## same event queue the renderer animates from; the bed follows dungeon bands.
 ##
-## The rule this file exists to enforce: SOUND ONLY WHERE IT CARRIES
-## INFORMATION THE EYE CAN MISS. There is no footstep, no swing, no door, no
+## Effects only play where they carry INFORMATION THE EYE CAN MISS. There is no
+## footstep, no swing, no door, no
 ## staircase, no pickup -- all of those are already fully visible the instant
 ## they happen, and a turn-based game where every keypress chirps is a game
 ## people play muted within ten minutes.
 ##
-## What is left is the short list of things the game currently only tells you
-## in the message log, which is precisely where players stop looking:
+## What is left in the effect catalogue is the short list of things the game
+## currently only tells you in the message log, which is where players stop
+## looking:
 ##
 ##   the noise you make          invisible by design; the whole point of bones
 ##   something noticing you      pairs with the "!"
@@ -19,9 +21,13 @@ extends Node
 ##   a change of footing         the mud slowdown was completely unreadable
 ##   a shrine, a forging         rare, and confirmable no other way
 ##
-## Adding to that list is easy and should be resisted.
+## The ambient bed is a quiet exception: it carries no gameplay information,
+## and changes only when the dungeon changes bands.
 
 const POOL := 10
+const MUSIC_FADE_SECONDS := 1.8
+const MUSIC_OFFSET_DB := -9.0
+const SILENT_DB := -80.0
 
 
 ## Matches GlyphGrid.SHOT_PER_CELL. An arrow's impact is drawn when the
@@ -32,10 +38,23 @@ const SHOT_PER_CELL := 0.028
 
 var muted := false
 var volume := 0.65
+## The music on its own switch, separate from `muted` (which silences
+## everything): the effects carry information and the music does not, so a
+## player can want one without the other. Saved with the other audio settings.
+var music_on := true
 
 var _bank := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
+var _music_player: AudioStreamPlayer
+var _music_generator: AudioStreamGenerator
+var _music_playback: AudioStreamGeneratorPlayback
+var _music_profile: Dictionary = {}
+var _music_from_profile: Dictionary = {}
+var _music_key := ""
+var _music_depth := 1
+var _music_time := 0.0
+var _music_fade_elapsed := MUSIC_FADE_SECONDS
 ## Sounds waiting on a projectile: {id, gain, at}.
 var _pending: Array = []
 var _ready_ok := false
@@ -47,10 +66,21 @@ func _ready() -> void:
 		p.bus = &"Master"
 		add_child(p)
 		_players.append(p)
+	_music_generator = AudioStreamGenerator.new()
+	_music_generator.mix_rate = Synth.MUSIC_RATE
+	_music_generator.buffer_length = 0.25
+	_music_player = AudioStreamPlayer.new()
+	_music_player.name = "DungeonAmbience"
+	_music_player.bus = &"Master"
+	_music_player.stream = _music_generator
+	_music_player.volume_db = SILENT_DB
+	add_child(_music_player)
 	_load_settings()
+	_apply_music_volume()
 	_ready_ok = true
 
 func _process(delta: float) -> void:
+	_fill_music()
 	if _pending.is_empty():
 		return
 	var still: Array = []
@@ -61,6 +91,58 @@ func _process(delta: float) -> void:
 		else:
 			still.append(q)
 	_pending = still
+
+## Selects the generated ambience from the same folded depth used by the
+## dungeon. A theme only changes at band boundaries, and the return trip gets
+## its altered version through Bands.is_corrupted().
+func sync_music(effective_depth: int) -> void:
+	_music_depth = effective_depth
+	if muted or not music_on or _music_player == null:
+		return
+	if not _music_player.playing:
+		_music_player.play()
+		_music_playback = null
+	var profile := Synth.music_profile(effective_depth)
+	var key := "%d:%d" % [int(profile["band"]), int(profile["corrupted"])]
+	if key == _music_key:
+		return
+	_music_from_profile = _music_profile
+	_music_profile = profile
+	_music_key = key
+	_music_fade_elapsed = 0.0
+
+func _fill_music() -> void:
+	if _music_player == null or not _music_player.playing:
+		return
+	if _music_playback == null:
+		_music_playback = _music_player.get_stream_playback() as AudioStreamGeneratorPlayback
+	if _music_playback == null:
+		return
+	var sample_step := 1.0 / float(Synth.MUSIC_RATE)
+	for _frame in _music_playback.get_frames_available():
+		var sample := 0.0
+		if not muted and music_on and not _music_profile.is_empty():
+			var current := Synth.music_sample(_music_profile, _music_time)
+			if _music_fade_elapsed < MUSIC_FADE_SECONDS:
+				var previous := 0.0
+				if not _music_from_profile.is_empty():
+					previous = Synth.music_sample(_music_from_profile, _music_time)
+				var blend := clampf(_music_fade_elapsed / MUSIC_FADE_SECONDS, 0.0, 1.0)
+				sample = previous * cos(blend * PI * 0.5) \
+					+ current * sin(blend * PI * 0.5)
+				_music_fade_elapsed += sample_step
+				if _music_fade_elapsed >= MUSIC_FADE_SECONDS:
+					_music_from_profile.clear()
+			else:
+				sample = current
+		_music_playback.push_frame(Vector2(sample, sample))
+		_music_time = fposmod(_music_time + sample_step, Synth.MUSIC_LOOP_SECONDS)
+
+func _apply_music_volume() -> void:
+	if _music_player == null:
+		return
+	_music_player.volume_db = SILENT_DB if muted or not music_on else \
+		linear_to_db(maxf(0.0008, volume)) + MUSIC_OFFSET_DB
 
 # ------------------------------------------------------------------ events ---
 
@@ -173,6 +255,13 @@ func stop_all() -> void:
 	_pending.clear()
 	for p in _players:
 		p.stop()
+	if _music_player != null:
+		_music_player.stop()
+	_music_playback = null
+	_music_profile.clear()
+	_music_from_profile.clear()
+	_music_key = ""
+	_music_fade_elapsed = MUSIC_FADE_SECONDS
 
 # ---------------------------------------------------------------- settings ---
 
@@ -180,13 +269,34 @@ func toggle_mute() -> String:
 	muted = not muted
 	if muted:
 		stop_all()
+	else:
+		sync_music(_music_depth)
+	_apply_music_volume()
 	_save_settings()
 	return "Sound off." if muted else "Sound on."
+
+## Music alone, on or off. Shift+M in play, and a row on the title's settings.
+func toggle_music() -> String:
+	music_on = not music_on
+	if not music_on:
+		if _music_player != null:
+			_music_player.stop()
+		_music_playback = null
+		_music_profile.clear()
+		_music_from_profile.clear()
+	_music_key = ""
+	sync_music(_music_depth)
+	_apply_music_volume()
+	_save_settings()
+	return "Music on." if music_on else "Music off."
 
 func nudge_volume(step: float) -> String:
 	volume = clampf(volume + step, 0.0, 1.0)
 	if volume > 0.0 and muted:
 		muted = false
+		_music_key = ""
+		sync_music(_music_depth)
+	_apply_music_volume()
 	_save_settings()
 	# Play the change so the number is not the only feedback.
 	play(&"hit")
@@ -198,6 +308,7 @@ func _load_settings() -> void:
 		return
 	volume = clampf(float(cfg.get_value("audio", "volume", volume)), 0.0, 1.0)
 	muted = bool(cfg.get_value("audio", "muted", muted))
+	music_on = bool(cfg.get_value("audio", "music", music_on))
 
 ## Settings outlive a run on purpose. Someone who turns the sound off wants it
 ## off tomorrow too, and the suspend slot is destroyed on load -- so it is the
@@ -207,4 +318,5 @@ func _save_settings() -> void:
 	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("audio", "volume", volume)
 	cfg.set_value("audio", "muted", muted)
+	cfg.set_value("audio", "music", music_on)
 	cfg.save(GameState.SETTINGS_PATH)

@@ -102,7 +102,34 @@ func _ready() -> void:
 
 func open() -> void:
 	visible = true
+	LegendPanel.note_seen()
 	queue_redraw()
+
+## Whether this player has ever opened the legend. Until they have, the
+## sidebar's "press ? for help" is bold and gold on floors 1-2: neither teen at
+## the 2026-09-26 playtest found the controls alone. Kept in settings.cfg so a
+## returning player is not shouted at every new run.
+static var _seen := -1
+
+static func seen_ever() -> bool:
+	if _seen < 0:
+		var cfg := ConfigFile.new()
+		cfg.load(GameState.SETTINGS_PATH)
+		_seen = 1 if bool(cfg.get_value("help", "legend_seen", false)) else 0
+	return _seen == 1
+
+static func note_seen() -> void:
+	if seen_ever():
+		return
+	_seen = 1
+	var cfg := ConfigFile.new()
+	cfg.load(GameState.SETTINGS_PATH)
+	cfg.set_value("help", "legend_seen", true)
+	cfg.save(GameState.SETTINGS_PATH)
+
+## For tests: forget the cached answer, so the next ask reads the file.
+static func forget_seen() -> void:
+	_seen = -1
 
 func close() -> void:
 	visible = false

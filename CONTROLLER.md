@@ -98,7 +98,13 @@ key. So `Y` really is the `x` key, and that's correct rather than a mismatch.
 directions the keyboard has, with press-once-then-repeat so a held stick
 doesn't fire sixty moves a second. The d-pad's four buttons handle contextual
 actions rather than movement; the stick covers all eight movement directions.
-In the 3D view, the right stick -- or LT / RT -- turns the camera left or right in 45° steps (eight views). In Firefox an Xbox Wireless pad's right stick arrives as the trigger values, so the triggers are what make it work there.
+In the 3D view, the right stick -- or LT / RT -- turns the camera left or right in 45° steps (eight views).
+
+**Firefox:** its gamepad support mangles an Xbox Wireless pad's right stick and
+triggers. The stick turns the camera only some of the time, and the triggers
+not at all. In Firefox, turn the camera with `[` and `]`, or play on keyboard
+and mouse; in Edge or Chrome, through Steam, or in the desktop build, the pad
+works fully. Diagnosed with the pad watch (F8) -- see BACKLOG.
 The left stick moves relative to the camera and stays on the grid: in a diamond
 view every direction turns 45° clockwise on screen, so pushing up walks the grid
 line that runs up and to the right; in a straight-on view it walks exactly where

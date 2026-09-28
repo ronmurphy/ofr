@@ -126,6 +126,21 @@ static func move_cost(t: int) -> float:
 		BONES:  return 1.2
 	return 1.0
 
+## What standing on slow ground is CALLED, for the sidebar's status line and the
+## HERE box. Empty for firm ground.
+##
+## From the 2026-09-26 playtest: "I can't tell that the water and mud and
+## gravel do anything." The cost was shown only as a multiplier beside the
+## word "footing"; the Legion teen's idea was a status that says what is
+## happening to you -- "wading · slowed".
+static func footing_word(t: int) -> String:
+	match t:
+		MUD:    return "sinking"
+		WATER:  return "wading"
+		RUBBLE: return "scrambling"
+		BONES:  return "crunching"
+	return ""
+
 ## Ground a route should never be planned through, even though a determined
 ## player may still step there.
 static func is_avoided(t: int) -> bool:

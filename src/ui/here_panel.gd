@@ -58,6 +58,16 @@ func press_name(key: int) -> String:
 		return PadConfig.key_name(key)
 	return pad_cfg.icon(key, pad_input)
 
+## "wading -- every step costs 1.4 turns", or empty on firm ground.
+func status_line() -> String:
+	if state == null or state.game_over:
+		return ""
+	var ground := state.map.get_tile(state.player.x, state.player.y)
+	var word := Tiles.footing_word(ground)
+	if word == "":
+		return ""
+	return "%s -- every step costs %.1f turns" % [word, Tiles.move_cost(ground)]
+
 ## The rows to draw: what applies now, and always a way to the full list.
 func rows() -> Array:
 	var out := []
@@ -93,6 +103,15 @@ func _draw() -> void:
 	var y := PAD + font.get_ascent(font_size)
 	draw_string(font_bold, Vector2(PAD, y), "HERE",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
+	# Slow ground, said where the player looks for what to do next -- the box
+	# a fresh Legion player learned the game from. In the header line, which
+	# has room to spare: the box fits four rows and a row here would push "?
+	# every key" off the bottom.
+	var status := status_line()
+	if status != "":
+		draw_string(font, Vector2(PAD + KEY_COL, y), status,
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2.0 - KEY_COL,
+			font_size - 2, Palette.BRAZIER)
 	y += LINE
 
 	for row in rows():

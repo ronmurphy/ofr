@@ -1,3 +1,7 @@
+People (first names only):
+    Gabe — the 3D view
+    David — the background music
+
 JetBrainsMono-Regular.ttf, JetBrainsMono-Bold.ttf
     JetBrains Mono — SIL Open Font License 1.1 — see JetBrainsMono-OFL.txt
 

@@ -122,7 +122,12 @@ suggestion, PLAYTESTS 2026-09-26) would be two more rows on it.
   gave up over it. Also set the itch embed smaller (for example 1280×720) — the
   game scales, the 1600-wide frame does not fit a laptop at 125–150%.
 
-**2. David's background music** (arrived via Gabe, in `~/Documents/ofr-oai`).
+**2. David's background music -- MERGED 2026-09-28**, waiting on a listen in
+the web build. His `synth.gd` and `sound_deck.gd` came over whole (ours were
+unchanged since his base), plus his one hook in `_refresh`; added a separate
+music switch (Shift+M, the title's settings), tests, and credit. His preview
+WAVs stayed in his folder. Brad may ask David for a title-screen loop.
+Original note: (arrived via Gabe, in `~/Documents/ofr-oai`).
 Generated in code, no audio files, a motif per band and a bent reprise on the
 climb; measured at 1.5% of a core. `main`'s `synth.gd` and `sound_deck.gd` were
 identical to his starting point on 2026-09-27 — check again before applying.
@@ -162,9 +167,13 @@ bones cannot be traded; the counter opens after the trader speaks.
   (always 0) that Godot writes into the SAME slot every frame, so the last word
   each frame was the dead one. Now the value furthest from zero wins within a
   frame. And Firefox's REAL triggers (axes 6/7, which nothing read) now turn the
-  camera too -- a second route whatever the stick does. If both still fail:
-  Firefox gets `[` `]` and the pad's triggers only, and the stick is noted as a
-  Firefox limitation. With an Xbox Wireless pad (045e-02fd) Firefox says
+  camera too -- a second route whatever the stick does.
+  **Third test: CLOSED as "close enough" (Brad, 2026-09-28).** The stick now
+  turns the camera in Firefox, intermittently (probably the live value and
+  the dead zero landing in different frames); the real triggers still do not.
+  Firefox players are advised to turn the 3D camera with `[` `]`, or play on
+  keyboard and mouse; Edge/Chrome, Steam and native have full pad support. Do
+  not reopen without a new idea -- three evenings went into this one browser. With an Xbox Wireless pad (045e-02fd) Firefox says
   "standard" but reports the right stick's left-right as the LT value resting at
   0.5 (and up-down on RT); the real triggers go to axes 6 and 7. Edge (Chromium),
   Steam and native read it correctly. The game now turns the camera on the
@@ -204,6 +213,21 @@ Waiting on play. Open:
 
 ## Known gaps
 
+**One leaked object at every quit since the music (harmless).** Godot reports
+an `AudioStreamGeneratorPlayback` leaked at exit whenever the generated music
+is playing when the program ends -- with the real audio driver, the dummy one,
+headless or windowed, and even after stopping the player in `_exit_tree`.
+Engine-side; the process is ending anyway. The quick suite now prints this one
+warning after its tally; it is not a failure.
+
+**Test litter in the player's save folder (day-7 job).** Three tests switch to
+their own scratch tag inside a loop -- `use_scratch_files("bearfit%d")`
+(run_tests.gd ~703), `"pity%d_%d"` (~7900) and a `reach` one -- and never call
+`clear_scratch_files()`, so every suite run leaves `scratch_bearfit39_*`,
+`scratch_pity59_4_*` and `scratch_reach29_5_*` files behind (now one more each,
+legends.json). Harmless, but it is litter in a player-owned folder. Clear and
+restore the suite's own tag after each loop.
+
 **InputMap, and when it would be worth migrating.** Suggested by a reviewer, and
 the design document names it as the strongest criticism of the input layer. It
 is the correct long-term architecture: engine-level actions bound to keys and
@@ -227,8 +251,11 @@ file, never touching the player's `morgue.txt`; store gear as item data rather
 than display names. It would also let a bought relic keep its hero's name.
 **Priority rose 2026-09-28:** the retired party (Legends) rebuilds heroes from
 escape records, and the text line holds no pack and rebuilds gear from display
-names. Do this before Legends; the pause menu's morgue export should then hand
-over the JSON file too.
+names. **The record half is BUILT (2026-09-28): `user://legends.json`**
+(`LegendsLog`) -- every ending, the whole hero, stats, an id; the text morgue
+imported once with duplicates merged; exported from the pause menu. Still
+open: the GRAVES still read `morgue.txt`, so relics keeping their hero's name
+waits on moving graves over to it.
 
 ---
 

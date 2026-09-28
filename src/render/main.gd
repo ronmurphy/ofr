@@ -270,7 +270,7 @@ func _ready() -> void:
 	# asking again would be asking someone mid-run who they are.
 	if use_title:
 		title.open(FileAccess.file_exists(GameState.SUSPEND_PATH),
-			Morgue.escapes(GameState.MORGUE_PATH) > 0)
+			not LegendsLog.escapes().is_empty())
 	elif asking:
 		name_entry.open()
 		_refresh()
@@ -299,6 +299,8 @@ func _ready() -> void:
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
 	menu.morgue_requested.connect(_export_morgue)
+	sidebar.menu_clicked.connect(_on_sidebar_menu)
+	sidebar.help_clicked.connect(_on_sidebar_help)
 	menu.text_size_requested.connect(_cycle_text_size)
 	name_entry.chosen.connect(_on_name_chosen)
 	inventory.close_requested.connect(_close_inventory)
@@ -416,6 +418,7 @@ func _process(delta: float) -> void:
 	# allowed to short-circuit the frame.
 	sidebar.pad_input = _pad_input
 	sidebar.naming = name_entry.visible
+	sidebar.help_loud = Sidebar.help_is_loud(state)
 	legend.pad_input = _pad_input
 	trade.pad_input = _pad_input
 	talk.pad_input = _pad_input
@@ -609,6 +612,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if key == KEY_F8:
 			pad_watch.toggle()
 			return
+
+	# ` is a second Esc everywhere: the key beside it, which no browser
+	# reserves. In browser fullscreen Esc only leaves fullscreen, so a player
+	# there had no way to the menu -- or out of anything else Esc closes.
+	if key == KEY_QUOTELEFT:
+		key = KEY_ESCAPE
 
 	# The title takes every key while it is up. B backs out of settings.
 	if title.visible:
@@ -858,6 +867,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		diorama.rotate_view(-1 if key == KEY_BRACKETLEFT else 1)
 		return
 
+	# Shift+M is the music alone; m is everything, as it always was.
+	if key == KEY_M and key_event.shift_pressed:
+		state.msg_log.add(sound.toggle_music(), Color(0.70, 0.74, 0.80))
+		_refresh()
+		return
 	if key == KEY_M:
 		state.msg_log.add(sound.toggle_mute(), Color(0.70, 0.74, 0.80))
 		_refresh()
@@ -1032,6 +1046,18 @@ func _close_menu() -> void:
 	menu.close()
 	_refresh()
 
+## The sidebar's menu button and help line, for mouse players -- see Sidebar.
+## Only while the map has focus, so a click cannot open one panel over another.
+func _on_sidebar_menu() -> void:
+	if _world_has_focus():
+		menu.open()
+		_refresh()
+
+func _on_sidebar_help() -> void:
+	if _world_has_focus():
+		legend.open()
+		_refresh()
+
 ## A choice on the title screen. The settings rows act at once and the title
 ## redraws their values; the rest leave the title.
 func _on_title_chosen(id: StringName) -> void:
@@ -1065,6 +1091,8 @@ func _on_title_chosen(id: StringName) -> void:
 			_map_view.apply_effects_mode()
 		&"sound":
 			sound.toggle_mute()
+		&"music":
+			sound.toggle_music()
 		&"text":
 			_cycle_text_size()
 		&"pad":
@@ -1088,6 +1116,7 @@ func _setting_value(id: StringName) -> String:
 		&"3d": return "3D" if RenderTheme.diorama_enabled() else "classic"
 		&"effects": return String(Effects.MODE_NAMES[Effects.mode()])
 		&"sound": return "off" if sound.muted else "on"
+		&"music": return "on" if sound.music_on else "off"
 		&"text": return "%d px" % RenderTheme.cell_size()
 	return ""
 
@@ -1097,6 +1126,10 @@ func _setting_value(id: StringName) -> String:
 func _export_morgue() -> void:
 	_close_menu()
 	var said := Platform.hand_over(GameState.MORGUE_PATH, "ofr-morgue.txt")
+	# The full records too, where they exist. On desktop the folder is already
+	# open; in a browser this is a second download.
+	if Platform.is_web() and FileAccess.file_exists(LegendsLog.PATH):
+		Platform.hand_over(LegendsLog.PATH, "ofr-legends.json")
 	var calm := Color(0.80, 0.85, 0.95)
 	if said == "":
 		state.msg_log.add("The morgue is empty -- no run has ended here yet.", calm)
@@ -1390,6 +1423,9 @@ func _refresh() -> void:
 	# the guard on the very next redraw after a deliberate save and made the
 	# browser nag about a run it had just been told was safe.
 	if state != null:
+		# David's background music follows the band you are in. Cheap every
+		# refresh: it only changes theme when the band does.
+		sound.sync_music(state.effective_depth())
 		Platform.guard_against_leaving(
 			not state.game_over and state.turns != _saved_at_turn)
 		# The run just ended. Show what it came to, once.

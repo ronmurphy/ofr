@@ -95,6 +95,9 @@ static func use_scratch_files(tag: String) -> void:
 	# And the controller bindings. The suite closes the controller screen, and
 	# closing it saves -- see PadConfig.PATH for what that did to the real file.
 	PadConfig.PATH = "user://scratch_%s_gamepad.cfg" % tag
+	# And the legends, which every ending appends to. Redirected from the
+	# file's first commit, as CLAUDE.md asks of every player-owned file.
+	LegendsLog.PATH = "user://scratch_%s_legends.json" % tag
 
 ## True in a test or a tool: anything that called use_scratch_files. The title
 ## screen is skipped then -- the harnesses load the real scene and expect to be
@@ -105,7 +108,7 @@ static func using_scratch() -> bool:
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
 	BestiaryLog.clear_scratch()
-	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, PadConfig.PATH]:
+	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, PadConfig.PATH, LegendsLog.PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 const SAVE_VERSION := 1
@@ -5712,6 +5715,9 @@ func write_morgue() -> void:
 	# the stairs. Brad's itch morgue holds his one escape TWICE, 22 hours
 	# apart, same turn count: the win, replayed from a slot written before it.
 	clear_suspend()
+	# The full record, BEFORE the text line: the very first record imports the
+	# text morgue, and must not find this run already in it. See LegendsLog.
+	LegendsLog.record(self)
 	var f := FileAccess.open(MORGUE_PATH, FileAccess.READ_WRITE)
 	if f == null:
 		f = FileAccess.open(MORGUE_PATH, FileAccess.WRITE)
