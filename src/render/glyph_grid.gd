@@ -83,6 +83,9 @@ var look_cursor := Vector2i(-1, -1)
 var aim_cursor := Vector2i(-1, -1)
 var aim_line: Array[Vector2i] = []
 var aim_valid := false
+## Every cell the current shot or throw could reach, tinted faintly while
+## aiming. Set by main.gd; empty when not aiming. See GameState.reach_cells.
+var reach_cells: Array[Vector2i] = []
 var _hover := Vector2i(-1, -1)
 var _preview: Array[Vector2i] = []
 var _glyph_dx := 0.0
@@ -989,6 +992,10 @@ func _draw_aim() -> void:
 	if not state.map.in_bounds(aim_cursor.x, aim_cursor.y):
 		return
 	var tint := Palette.AIM_OK if aim_valid else Palette.AIM_BLOCKED
+	# Every cell in reach, faint, under the line and the reticle.
+	var box := Vector2(cell_size, cell_size)
+	for cell in reach_cells:
+		draw_rect(Rect2(_screen(cell), box), Color(Palette.AIM_OK, 0.14), true)
 	var r := cell_size * 0.13
 	for cell in aim_line:
 		if cell == aim_cursor:

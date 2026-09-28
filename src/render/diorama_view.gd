@@ -90,6 +90,9 @@ var look_cursor := Vector2i(-1, -1)
 var aim_cursor := Vector2i(-1, -1)
 var aim_line: Array[Vector2i] = []
 var aim_valid := false
+## Every cell the current shot or throw could reach, tinted faintly while
+## aiming. Set by main.gd; empty when not aiming. See GameState.reach_cells.
+var reach_cells: Array[Vector2i] = []
 
 var _icon_theme := GlyphTheme.new()
 var _icon_font: Font
@@ -1572,6 +1575,10 @@ func _add_preview_and_cursor() -> void:
 		for cell in _preview:
 			_add_highlight(cell, Palette.PATH_HINT, 0.20)
 	if state.map.in_bounds(aim_cursor.x, aim_cursor.y):
+		# Reach first and faint, so the line and the reticle sit on top of it.
+		for cell in reach_cells:
+			if cell != aim_cursor and not (cell in aim_line):
+				_add_highlight(cell, Palette.AIM_OK, 0.16)
 		var aim_color := Palette.AIM_OK if aim_valid else Palette.AIM_BLOCKED
 		for cell in aim_line:
 			if cell != aim_cursor:

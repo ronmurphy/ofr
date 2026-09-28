@@ -3037,6 +3037,23 @@ func can_reach(cell: Vector2i, reach: int) -> bool:
 		return false
 	return Los.clear_both(map, player.x, player.y, cell.x, cell.y)
 
+## Every cell a shot or a throw of this reach could land on: the answer to
+## "how far can I shoot" drawn on the floor while aiming. Asked of can_reach
+## cell by cell, so the picture can never disagree with the shot -- Brad, on
+## the diamond view: "I'm used to counting squares".
+func reach_cells(reach: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if reach <= 1:
+		return out
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			if dx == 0 and dy == 0:
+				continue
+			var cell := Vector2i(player.x + dx, player.y + dy)
+			if map.in_bounds(cell.x, cell.y) and can_reach(cell, reach):
+				out.append(cell)
+	return out
+
 func can_fire_at(cell: Vector2i) -> bool:
 	return can_reach(cell, player.total_range())
 

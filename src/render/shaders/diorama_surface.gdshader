@@ -172,7 +172,8 @@ void fragment() {
 		pattern = 0.76 + broad * 0.12 + hatch * 0.10;
 	} else if (surface_style == 13 && world_normal.y > 0.78) {
 		// The shrine's coloured stone radiates from a circular carved seal.
-		float radius = length(UV - vec2(0.5));
+		// Centred from the world position, for the pit's reason below.
+		float radius = length(fract(world_position.xz) - vec2(0.5));
 		float ring = 1.0 - smoothstep(0.025, 0.07, abs(radius - 0.30));
 		pattern = 0.72 + broad * 0.12 + ring * 0.22;
 	} else {
@@ -184,9 +185,19 @@ void fragment() {
 
 	vec3 surface;
 	if (surface_style == 10 && world_normal.y > 0.78) {
-		float radius = length(UV - vec2(0.5));
+		// The cell's own middle, from WHERE this is, not from UV: the floor is
+		// a BoxMesh, whose six faces share one UV square -- the top face is a
+		// patch of it that never contains (0.5, 0.5). Measured from UV, the
+		// hole was never drawn, and a pit in the 3D view looked like floor
+		// (Brad: "I keep falling in them and I never notice them").
+		float radius = length(fract(world_position.xz) - vec2(0.5));
 		float hole = 1.0 - smoothstep(0.30, 0.36, radius);
-		float rim = 1.0 - smoothstep(0.36, 0.40, abs(radius - 0.38));
+		// The lip: a thin ring just outside the hole. Its edges are distances
+		// FROM the ring, so they are small. They were 0.36-0.40 -- as wide as
+		// the whole tile -- which lit the "rim" at half strength everywhere,
+		// the centre included, and painted the black hole back to a muddy
+		// brown barely darker than the floor.
+		float rim = 1.0 - smoothstep(0.012, 0.03, abs(radius - 0.38));
 		surface = mix(base * (0.78 + broad * 0.12), vec3(0.006, 0.007, 0.010), hole);
 		surface = mix(surface, base * 1.12, rim * 0.72);
 	} else {

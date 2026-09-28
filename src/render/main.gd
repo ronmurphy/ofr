@@ -1254,6 +1254,10 @@ func _begin_aim(reach: int = -1) -> void:
 		_refresh()
 		return
 	_end_look()
+	# Both views, so switching mid-aim keeps it.
+	var in_reach := state.reach_cells(r)
+	grid.reach_cells = in_reach
+	diorama.reach_cells = in_reach
 	_aim_targets = state.firing_targets(r)
 	_aiming = true
 	_aim_index = 0
@@ -1272,6 +1276,9 @@ func _end_aim() -> void:
 	_aiming = false
 	_aim_targets = []
 	_throw_index = -1
+	var none: Array[Vector2i] = []
+	grid.reach_cells = none
+	diorama.reach_cells = none
 	var no_aim_line: Array[Vector2i] = []
 	_map_view.set_aim_state(Vector2i(-1, -1), no_aim_line, false)
 	sidebar.aiming = false

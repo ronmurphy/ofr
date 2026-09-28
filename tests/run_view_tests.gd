@@ -54,6 +54,7 @@ func _initialize() -> void:
 	await _test_the_title_screen()
 	_test_the_playtest_fixes()
 	await _test_davids_music()
+	_test_reach_is_drawn()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1082,6 +1083,35 @@ func _test_the_title_screen() -> void:
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
 
+## While aiming, every cell a shot could land on is tinted -- asked of
+## can_reach, so the picture cannot disagree with the shot.
+func _test_reach_is_drawn() -> void:
+	print("-- aiming shows the reach")
+	var gs := GameState.new(31337)
+	gs.new_game()
+	var cells := gs.reach_cells(4)
+	check("  a reach of 4 marks some cells (the premise)", cells.size() > 0,
+		"%d cells" % cells.size())
+	var agree := true
+	var within := true
+	for c in cells:
+		agree = agree and gs.can_reach(c, 4)
+		within = within and Los.steps(gs.player.x, gs.player.y, c.x, c.y) <= 4
+	check("  every marked cell is one a shot can reach", agree and within)
+	# And the converse over the whole square around the player: nothing
+	# reachable is left unmarked.
+	var missing := 0
+	for dy in range(-4, 5):
+		for dx in range(-4, 5):
+			var c := Vector2i(gs.player.x + dx, gs.player.y + dy)
+			if (dx != 0 or dy != 0) and gs.map.in_bounds(c.x, c.y) \
+					and gs.can_reach(c, 4) and not (c in cells):
+				missing += 1
+	check("  and no reachable cell is left unmarked", missing == 0, "%d missing" % missing)
+	check("  the player's own cell is not marked",
+		not (Vector2i(gs.player.x, gs.player.y) in cells))
+	check("  a melee reach marks nothing", gs.reach_cells(1).is_empty())
+
 ## David's generated background music (merged 2026-09-28): a theme per band,
 ## bent on the climb, in range, seamless at the loop -- and its own switch,
 ## separate from muting everything, which survives a restart.
@@ -1398,6 +1428,14 @@ func _test_both_views_share_one_moment() -> void:
 	check("` opens the menu, as Esc does", scene.menu.visible)
 	scene._unhandled_key_input(tick)
 	check("and closes it again", not scene.menu.visible)
+	# Aiming hands the reach to BOTH views, and ending it clears both.
+	scene._begin_aim(4)
+	check("aiming gives both views the same reach",
+		scene._aiming and not scene.grid.reach_cells.is_empty()
+		and scene.grid.reach_cells == scene.diorama.reach_cells)
+	scene._end_aim()
+	check("and ending the aim clears it from both",
+		scene.grid.reach_cells.is_empty() and scene.diorama.reach_cells.is_empty())
 	check("both views hold the same effects list and the same glides",
 		scene.diorama.fx == scene.grid.fx and scene.diorama.motion == scene.grid.motion)
 	scene._select_map_view(true)

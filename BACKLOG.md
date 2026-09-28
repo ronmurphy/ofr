@@ -96,6 +96,12 @@ event once and both views show it.
   to say they learn to flank on purpose.
 - Polearms: javelin (thrown), spear, halberd. They reach two squares and a hit
   passes through to a second enemy in line. Two-handed, so no shield.
+  **Brad, 2026-09-28: "ranged" means three things, not one.** Today it means
+  a missile in flight (bows, slings). A polearm is MELEE at two squares; a
+  thrown spear is a missile again. The code will need the three kept apart --
+  reach-2 melee must not go through the shooting path (no ammo, no arrows in
+  flight, adjacent-and-next rules) -- and the new reach tint (below, item 5)
+  is what shows a spear's two squares.
 
 **A scroll session.** Spells, as scrolls: single-use, or charged for several
 uses. More than combat. Fireball and teleport have been discussed; players have
@@ -179,8 +185,16 @@ bones cannot be traded; the counter opens after the trader speaks.
   Steam and native read it correctly. The game now turns the camera on the
   triggers too, and recognises Firefox's pattern (both "triggers" resting at 0.5
   for a second). Diagnosed with `~/Documents/ofr-hunt/tools/pad-check.html`;
-- **range is hard to judge in the diamond view** (Brad: "I'm used to counting
-  squares") — highlight every cell in reach while aiming.
+- ~~range is hard to judge in the diamond view~~ BUILT 2026-09-28: while
+  aiming, every cell a shot or throw can reach is tinted, in both views
+  (`GameState.reach_cells`, asked of `can_reach` so it cannot disagree).
+  Strength of the tint wants judging in play.
+- **PITS WERE INVISIBLE IN 3D -- FIXED 2026-09-28.** Brad kept falling in. Two
+  bugs in the shader's pit: the hole was centred from UV, but the floor is a
+  BoxMesh whose top face never covers (0.5, 0.5), so it was never drawn; and
+  the lip's edges were as wide as the tile, repainting the hole brown. Now a
+  black hole with a stone lip (`tools/probes/screenshot_pit.gd`). The
+  shrine's carved ring had the UV bug too.
 
 **6. On-screen pad log.** BUILT 2026-09-28 as the **pad watch** (F8, from
 anywhere): Godot's ten axes with the range each has moved, buttons 0-20, the
