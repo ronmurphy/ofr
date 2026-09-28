@@ -561,6 +561,12 @@ var rng := RandomNumberGenerator.new()
 ## Seeded from the run and the depth, so a save enchants the same way every
 ## time while touching nothing else on the floor.
 var enchant_rng := RandomNumberGenerator.new()
+## The slingers' reload dice. Its own stream, because how many times it is
+## rolled depends on how the fights go -- CLAUDE.md: anything whose number of
+## draws varies with content gets its own rng, or it shifts everything after.
+var reload_rng := RandomNumberGenerator.new()
+## One line per floor the first time a slinger is seen reloading.
+var _reload_said := false
 
 ## And one for the trader's room, for the same reason again: it is drawn after
 ## the floor is already populated, so taking it from the main stream would make
@@ -930,7 +936,7 @@ const BESTIARY := [
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2,
+	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2, "reload": true,
 	 "threat": 6, "caves": 0.5, "patrol": true, "scavenge": true},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
 	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6},
@@ -1150,6 +1156,8 @@ func build_level() -> void:
 	# Salted differently from the grave rng, or the two side streams would
 	# march in lockstep and a floor's graves would predict its magic.
 	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
+	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
+	_reload_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
@@ -1180,6 +1188,7 @@ func build_level() -> void:
 
 	entities = [player]
 	ground = []
+	bodies = []
 	static_lights = []
 	_travel.clear()
 
@@ -1299,7 +1308,35 @@ func build_level() -> void:
 		entities.append(ally)
 
 	pathfinder = Pathfinder.new(map)
+	_teach_the_slingers()
 	update_vision()
+
+## On the first floor a reloading kind appears -- on the way down -- it
+## reloads for exactly one turn after every shot: a teaching floor. Whatever
+## spawned it (rooms, vaults), it is settled here, once the floor is populated.
+func _teach_the_slingers() -> void:
+	if ascending:
+		return
+	for e in entities:
+		if e.reload_style == Entity.Reload.RANDOM and depth == first_floor_of(e.appearance):
+			e.reload_style = Entity.Reload.STEADY
+
+## The shallowest floor a kind of creature can appear on, from the bestiary.
+static func first_floor_of(app: StringName) -> int:
+	for entry in BESTIARY:
+		if entry["app"] == app:
+			return int(entry.get("min_depth", 1))
+	return 1
+
+## How many turns a shot costs a reloader before it may shoot again.
+func _reload_after_shot(actor: Entity) -> int:
+	match actor.reload_style:
+		Entity.Reload.STEADY:
+			return 1
+		Entity.Reload.RANDOM:
+			var r := reload_rng.randf()
+			return 0 if r < 0.5 else (1 if r < 0.85 else 2)
+	return 0
 
 ## Decoration can now put a pillar or a brazier on a room's exact centre, so
 ## neither the player nor the stairs can simply be dropped there any more.
@@ -2410,6 +2447,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	if m.ai == &"forager":
 		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
+	m.reload_style = Entity.Reload.RANDOM if entry.get("reload", false) else Entity.Reload.NONE
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
@@ -3333,6 +3371,31 @@ func player_move(dx: int, dy: int) -> bool:
 	_end_player_turn(cost)
 	return true
 
+## THE BODIES OF THE DEAD, lying where they fell. The first strand of the Dwarf
+## Fortress plan (BACKLOG): later strands seed fungus on them and raise them.
+## Each is {x, y, app, turn, corrupted, e} -- `e` the whole creature as the
+## save writes it, taken before its loot dropped, so what grows from a body or
+## rises out of it later is the thing that died, wearing what it wore.
+##
+## They rot over BODY_ROT turns and are gone. One floor only, like everything
+## off-screen here: a new floor starts with none.
+var bodies: Array = []
+const BODY_ROT := 120
+
+func _lay_body(victim: Entity) -> void:
+	bodies.append({"x": victim.x, "y": victim.y, "app": String(victim.appearance),
+		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict()})
+
+## Drops the bodies that have rotted away. Every player turn.
+func _rot_bodies() -> void:
+	if bodies.is_empty():
+		return
+	var still: Array = []
+	for b in bodies:
+		if turns - int(b["turn"]) < BODY_ROT:
+			still.append(b)
+	bodies = still
+
 ## The last few things you killed, newest last, pruned as they cool.
 ##
 ## Stored as dictionaries rather than Entities so it serialises with the run
@@ -3395,6 +3458,13 @@ func _raise_the_recent_dead() -> bool:
 	entities.append(risen)
 	Scheduler.spend(risen, Scheduler.ACTION_COST)
 	recent_dead.erase(pick)
+	# The body got up: it is no longer lying there.
+	var from: Dictionary = pick["e"]
+	for b in bodies:
+		if int(b["turn"]) == int(pick["turn"]) and int(b["x"]) == int(from.get("x", -1)) \
+				and int(b["y"]) == int(from.get("y", -1)):
+			bodies.erase(b)
+			break
 	events.append({"kind": &"notice", "to": spot})
 	msg_log.add("You turn the earth. The %s rises, and it is yours."
 		% String(pick["e"].get("name", "dead")), Color(0.70, 0.90, 0.78))
@@ -5239,6 +5309,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
 	_tick_returning()
+	_rot_bodies()
 	# The cost was already being computed and thrown away. Difficult ground has
 	# always charged the world for the time it takes; this is the first thing
 	# that charges the record too.
@@ -5401,6 +5472,9 @@ func to_dict() -> Dictionary:
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
 		"recent_dead": recent_dead,
+		"bodies": bodies,
+		"reload_rng": [str(reload_rng.seed), str(reload_rng.state)],
+		"reload_said": _reload_said,
 		"gem_found": gem_found,
 		"rooms_found": rooms_found.keys(),
 		"player_name": player_name,
@@ -5497,6 +5571,12 @@ func apply_dict(d: Dictionary) -> bool:
 			shrine_at[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(saved_shrines[key])
 	grave_risen = d.get("grave_risen", false)
 	recent_dead = d.get("recent_dead", [])
+	bodies = d.get("bodies", [])
+	var rrng: Array = d.get("reload_rng", [])
+	if rrng.size() == 2:
+		reload_rng.seed = str(rrng[0]).to_int()
+		reload_rng.state = str(rrng[1]).to_int()
+	_reload_said = bool(d.get("reload_said", false))
 	# Derived from the map rather than saved, so a resumed run does not depend
 	# on a route written by an older version of this code.
 	_lay_the_beat()
@@ -6487,6 +6567,10 @@ func _ai_erratic(actor: Entity, foe: Entity) -> void:
 ## close to melee for free.
 func _ai_ranged(actor: Entity, foe: Entity) -> void:
 	var dist := Los.steps(actor.x, actor.y, foe.x, foe.y)
+	# Reloading ticks down whatever else it does -- it can still back away.
+	var reloading := actor.reload_left > 0
+	if reloading:
+		actor.reload_left -= 1
 
 	if actor.blink_cool > 0:
 		actor.blink_cool -= 1
@@ -6507,7 +6591,17 @@ func _ai_ranged(actor: Entity, foe: Entity) -> void:
 	if dist <= actor.total_range() \
 			and Los.clear_both(map, actor.x, actor.y, foe.x, foe.y) \
 			and _fair_from_the_dark(actor, foe):
+		if reloading:
+			# It holds its ground with a clear shot, fetching a stone. Said
+			# once per floor, where you can see it, so the pause is not a
+			# mystery -- the rule that every change must leave a trace.
+			if not _reload_said and map.is_visible(actor.x, actor.y):
+				_reload_said = true
+				msg_log.add("The %s fumbles for another stone." % actor.name,
+					Color(0.80, 0.78, 0.70))
+			return
 		_attack(actor, foe, true)
+		actor.reload_left = _reload_after_shot(actor)
 		return
 
 	_step_toward(actor, Vector2i(foe.x, foe.y))
@@ -7359,6 +7453,7 @@ func _settle_death(victim: Entity, killer: Entity) -> void:
 		# because a suspend in the five turns after a big kill must not
 		# quietly cost you the dig.
 		_remember_the_dead(victim)
+		_lay_body(victim)
 		_rattle_the_ranks(victim)
 		_drop_loot(victim)
 		if victim.risen:

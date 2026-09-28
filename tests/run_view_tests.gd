@@ -55,6 +55,7 @@ func _initialize() -> void:
 	_test_the_playtest_fixes()
 	await _test_davids_music()
 	_test_reach_is_drawn()
+	_test_bodies_look_the_same_in_both_views()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1083,6 +1084,18 @@ func _test_the_title_screen() -> void:
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
 
+## One rot for both views (BodyLook), and the 3D view lays a body only where
+## one is there to see.
+func _test_bodies_look_the_same_in_both_views() -> void:
+	print("-- bodies")
+	var fg := Color(0.8, 0.6, 0.4)
+	var fresh := BodyLook.colour(fg, 0)
+	var old := BodyLook.colour(fg, GameState.BODY_ROT - 1)
+	check("  a fresh body is clearer than a rotten one",
+		fresh.a > old.a and fresh.get_luminance() > old.get_luminance())
+	check("  and still shows until the end", old.a > 0.0 and BodyLook.showing(GameState.BODY_ROT - 1))
+	check("  and not after", not BodyLook.showing(GameState.BODY_ROT))
+
 ## While aiming, every cell a shot could land on is tinted -- asked of
 ## can_reach, so the picture cannot disagree with the shot.
 func _test_reach_is_drawn() -> void:
@@ -1428,6 +1441,16 @@ func _test_both_views_share_one_moment() -> void:
 	check("` opens the menu, as Esc does", scene.menu.visible)
 	scene._unhandled_key_input(tick)
 	check("and closes it again", not scene.menu.visible)
+	# A body where the player can see it is laid in 3D; a rotted one is not.
+	var st: GameState = scene.state
+	st.bodies = [{"x": st.player.x, "y": st.player.y, "app": "rat",
+		"turn": st.turns, "corrupted": false, "e": {}}]
+	scene.diorama._rebuild_world()
+	check("a body in sight lies in the 3D view", scene.diorama._body_labels.size() == 1)
+	st.bodies[0]["turn"] = st.turns - GameState.BODY_ROT
+	scene.diorama._rebuild_world()
+	check("and a rotted one does not", scene.diorama._body_labels.is_empty())
+	st.bodies = []
 	# Aiming hands the reach to BOTH views, and ending it clears both.
 	scene._begin_aim(4)
 	check("aiming gives both views the same reach",

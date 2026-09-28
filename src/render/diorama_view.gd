@@ -354,6 +354,10 @@ func _process(delta: float) -> void:
 		var t := _rotation_t / TURN_TIME
 		_rotation = lerp_angle(_rotation, _rotation_target, 1.0 - pow(1.0 - t, 2.0))
 		_camera_rig.rotation.y = _rotation
+	# Bodies turn with the camera, so they read the same way up in every view.
+	for label in _body_labels:
+		if is_instance_valid(label):
+			label.rotation.y = _rotation
 	if _dirty and not _rebuild_queued:
 		_rebuild_queued = true
 		call_deferred("_rebuild_world")
@@ -740,6 +744,7 @@ func _rebuild_world() -> void:
 	light.upload(state, memory)
 	_add_multimeshes(batches)
 	_add_dots()
+	_add_bodies()
 	_add_items_and_entities()
 	_add_preview_and_cursor()
 	_update_dynamic()
@@ -1073,6 +1078,39 @@ func _add_ascii_ground_mark(tile: int, x: int, y: int, visible: bool,
 	_scene_root.add_child(label)
 
 ## Every floor dot of the rebuild, in one MultiMesh -- see _add_ascii_ground_mark.
+## The dead, each its own picture lying flat on its floor cell -- on its side,
+## and turned with the camera so it always reads the same way up. Coloured by
+## BodyLook, as the classic view colours it. Only where you can see.
+var _body_labels: Array[Label3D] = []
+
+func _add_bodies() -> void:
+	_body_labels.clear()
+	for b in state.bodies:
+		var x: int = int(b["x"])
+		var y: int = int(b["y"])
+		var age: int = state.turns - int(b["turn"])
+		if not BodyLook.showing(age) or not state.map.is_visible(x, y):
+			continue
+		var app: Dictionary = _icon_theme.appearance(StringName(b["app"]))
+		var fg: Color = Palette.CORRUPTED if bool(b.get("corrupted", false)) \
+			else app.get("fg", Palette.UI_TEXT)
+		var label := Label3D.new()
+		label.text = String(app.get("ch", "?"))
+		label.font = _icon_font
+		label.font_size = 64
+		label.pixel_size = 0.70 / 64.0
+		label.modulate = BodyLook.colour(fg, age)
+		label.shaded = false
+		label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.position = Vector3(x + 0.5, 0.03, y + 0.5)
+		# Flat on the floor (x), on its side (z), and facing the camera (y).
+		label.rotation = Vector3(-PI * 0.5, _rotation, PI * 0.5)
+		label.no_depth_test = false
+		_scene_root.add_child(label)
+		_body_labels.append(label)
+
 func _add_dots() -> void:
 	if _dots.is_empty():
 		return

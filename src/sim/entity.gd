@@ -307,6 +307,18 @@ var heavy := false
 ## instant the player could see it, which handed the initiative to whatever was
 ## in the room.
 var alertness: int = Alert.ASLEEP
+
+## RELOADING, for the kobold slinger -- the single most common killer in the
+## morgue (8 of Brad's 22 deaths, all on floors 1-2; Gabe and David complained
+## of it too). After a shot it spends turns fetching another stone:
+##   STEADY on the first floor slingers appear -- always one turn, so it fires
+##          every other turn: a teaching floor;
+##   RANDOM everywhere else -- 0, 1 or 2 turns (GameState._reload_after_shot).
+## Appended enum; saved as an int.
+enum Reload { NONE, STEADY, RANDOM }
+var reload_style: int = Reload.NONE
+## Turns still to spend before the next shot.
+var reload_left := 0
 var notice_range: int = 8
 var last_seen := Vector2i(-1, -1)
 var lost_turns: int = 0
@@ -424,6 +436,7 @@ func to_dict() -> Dictionary:
 		"lost_turns": lost_turns, "calm_turns": calm_turns,
 		"notice_block": notice_block, "alive": alive,
 		"stance": stance,
+		"reload_style": reload_style, "reload_left": reload_left,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -472,6 +485,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.calm_turns = int(d.get("calm_turns", 0))
 	e.notice_block = int(d.get("notice_block", 0))
 	e.stance = int(d.get("stance", Stance.LOOSE))
+	e.reload_style = int(d.get("reload_style", Reload.NONE))
+	e.reload_left = int(d.get("reload_left", 0))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))

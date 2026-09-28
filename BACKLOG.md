@@ -88,6 +88,58 @@ unreadable, and our own playtest found mud's slowdown invisible until Brad
 explained it. The shared effects layer means a new interaction announces an
 event once and both views show it.
 
+**The Dwarf Fortress plan (Brad and Claude, 2026-09-28).** One web, built a
+strand at a time with play between:
+
+    kill -> body -> scavenger spreads spores -> purple (miasma) / red (rises)
+         -> fire burns both -> light -> monsters see more
+    fleeing + chased -> pit -> next floor, wounded and vengeful
+    the traveller turns all of it into gossip
+
+1. **Bodies stay and rot. BUILT 2026-09-28**, waiting on play. The creature's
+   own picture on its side (classic) or lying flat and turning with the
+   camera (3D), darkening and fading over BODY_ROT = 120 turns, then gone.
+   `GameState.bodies` keeps the whole creature for the later strands; one
+   `BodyLook` colours it for both views; the shovel takes the body it raises.
+2. **The fungus family.** Brad's additions (2026-09-28): **fire is the answer
+   to the bad fungi** -- a flame weapon or fire gem burns a purple or red one
+   away; the caves (4-6) trade a LITTLE green for seeded purple and red;
+   monsters do NOT avoid red (walking over it tags them, and a tagged monster
+   that dies rises); most avoid purple, but bats (they fly) and rats do not
+   care -- rats may SEEK red and purple on purpose, the plague carriers; blood
+   trails lead scavengers to bodies. One shared code path for both views.
+   GREEN (as now: edible, light) grows only on its own.
+   Bodies NEVER grow green -- Brad: eating a fungus that grew from a kill is
+   not fun to think about -- they grow PURPLE (poison) or RED (blood), which a
+   rat, bat or rabbit passing the body seeds; a few turns later the body is
+   gone and the fungus stands there. New tiles APPENDED to Tiles (ints are
+   saved). Rabbits eat fungus: purple sickens them, red may raise them.
+   Brad's depth table: 1-2 green; 3 green and purple; 4-5 more purple than
+   green; 6 red and purple, green rare; 7-9 more red than purple; 10 all
+   three; the climb mirrors it. **OPEN: the caves (4-6) rely on green fungus
+   as their deliberate potion replacement (CLAUDE.md) -- keep green steady
+   there, or accept a harder cave on purpose.**
+3. **The miasma, redesigned around purple:** ONE purple fungus is a source
+   (no 2x2 group needed).
+4. **Red fungus raises the dead.** It is a timer: after some turns the body it
+   grew from rises -- less HP, hits harder, hunts the player (Brad: a zombie
+   piloted by a fungus, The Last of Us). Burn it before it hatches (strand 6).
+5. **Pits as escape.** A fleeing monster lit by the player's torch several
+   turns running is being chased; then a pit is an escape, not a no-go. It
+   lands on the next floor wounded by the fall, awake, hunting, with a
+   revenge bonus for the floor and more XP. Carried down on a "fell from
+   above" list like following allies; saved with the run. Messages: "The
+   kobold leaps into the pit!"; the trader: "Something fell in from above."
+   Also cures fleeing monsters dying in room corners.
+6. **Fire.** Flame weapons and the flare ignite fungus (a flare of light, the
+   food lost), bones and wooden doors; the answer to red fungus.
+Further strands from the same brainstorm, all welcome (Brad: "all of your
+ideas are really good"): blood trails that scavengers follow; watchable
+hunting; frost freezing water to ice; rubble cracked by force (gems); alarm-
+raising kobolds; sleepers drawn to lit braziers; monsters wielding what they
+find; trader gossip; a nemesis from the morgue. Every one must leave a trace
+the player can SEE.
+
 **The combat update.** Tactics in the spirit of AD&D 2nd edition.
 - Creatures get a FACING (the traffic intent `Entity.want` can supply it).
   Flanking does +1; attacking from behind does +2, and the shield may not count.
@@ -195,6 +247,16 @@ bones cannot be traded; the counter opens after the trader speaks.
   the lip's edges were as wide as the tile, repainting the hole brown. Now a
   black hole with a stone lip (`tools/probes/screenshot_pit.gd`). The
   shrine's carved ring had the UV bug too.
+
+**5b. The camera that follows you (Gabe's request, 2026-09-28).** A settings
+option, "camera: fixed / follows you", off by default. In follow mode the
+controls become Wizardry's, in our overhead 3D: up = step forward, down = step
+back, left/right = turn 45 degrees in place (free, no game turn), diagonals =
+step forward-left/right; the camera swings to stay behind the player, so
+forward is always up. Snaps instead of swinging when effects are off. **Click-
+travel and auto-travel do NOT swing at each corner -- the camera turns once, at
+the end** (Brad: swinging every turn was nauseating in another game). The
+player gains a FACING, which the combat update's flanking needs anyway.
 
 **6. On-screen pad log.** BUILT 2026-09-28 as the **pad watch** (F8, from
 anywhere): Godot's ten axes with the range each has moved, buttons 0-20, the
@@ -370,9 +432,13 @@ to pay off, so why not hire help? Brad's version: the trader offers RISEN
 MONSTERS (not heroes) of the kinds on its own floor. Must not undercut bone
 allies — weaker, or lasting one floor. A design conversation.
 
-**Kobold slingers' first floor.** Brad's option: they fire every other round on
-the first floor they appear, as a teaching floor. Decide after measuring early
-deaths — the dark-shot fix of 2026-09-27 may have been most of the pain.
+**Kobold slingers' first floor. BUILT 2026-09-28**, waiting on play. Slingers
+were 8 of Brad's 22 deaths, all on floors 1-2, and Gabe and David complained
+of them too. On their first floor (2, going down) they fire every other turn;
+everywhere else they reload 0, 1 or 2 turns at random after a shot (half fire
+straight away). Their own rng stream (`reload_rng`). The first reload seen on a
+floor says "The kobold slinger fumbles for another stone." Other shooters are
+unchanged.
 
 **The fungus bag** (unique). Store fungus rather than eating it on the spot, as
 **rabbit bait and portable light**. A dropped fungus distracts scavengers for a

@@ -424,6 +424,9 @@ func _draw() -> void:
 		for x in range(x0, x1):
 			_draw_cell(map, x, y)
 
+	# Bodies under everything that stands: the dead lie on the floor.
+	_draw_bodies()
+
 	# Ground items sit under actors, so a monster standing on loot still reads
 	# as the thing you need to deal with first.
 	for it in state.ground:
@@ -951,6 +954,28 @@ func _hash01(x: int, y: int) -> float:
 func _remembered(c: Color) -> Color:
 	var m := c.lerp(Palette.MEMORY, Palette.MEMORY_MIX)
 	return Color(m.r * Palette.MEMORY_DIM, m.g * Palette.MEMORY_DIM, m.b * Palette.MEMORY_DIM, 1.0)
+
+## The dead, each its own glyph turned on its side, lit like anything else on
+## the floor and rotting through BodyLook. Only where you can see: a body is
+## not a landmark, and memory does not keep it.
+func _draw_bodies() -> void:
+	for b in state.bodies:
+		var x: int = int(b["x"])
+		var y: int = int(b["y"])
+		var age: int = state.turns - int(b["turn"])
+		if not BodyLook.showing(age) or not state.map.is_visible(x, y):
+			continue
+		var app := render_theme.appearance(StringName(b["app"]))
+		var ch: String = app["ch"]
+		var fg: Color = Palette.CORRUPTED if bool(b.get("corrupted", false)) else app["fg"]
+		var col := BodyLook.colour(fg, age)
+		var light_here: Color = state.light_map.get_light(x, y) * _flicker_at(x, y)
+		col = Color((col * light_here.lerp(Color.WHITE, 0.45)).clamp(), col.a)
+		var am := _metrics(ch)
+		var half := Vector2(cell_size, cell_size) * 0.5
+		draw_set_transform(_screen_f(Vector2(x, y)) + half, PI * 0.5)
+		draw_char(font, -half + Vector2(am.x, _baseline(ch, int(am.y))), ch, int(am.y), col)
+		draw_set_transform(Vector2.ZERO, 0.0)
 
 func _draw_glyph(id: StringName, cell: Vector2) -> void:
 	_draw_glyph_tinted(id, cell, Color(0, 0, 0, 0))

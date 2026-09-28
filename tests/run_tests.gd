@@ -97,6 +97,8 @@ func _initialize() -> void:
 	_test_suspend_round_trip()
 	_test_an_ending_clears_the_slot()
 	_test_legends_log()
+	_test_bodies_lie_and_rot()
+	_test_slingers_reload()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1505,6 +1507,153 @@ func _suspended_state() -> GameState:
 	gs.player.hp = 17
 	gs.update_vision()
 	return gs
+
+## Slingers reload: every other turn on their first floor, 0-2 turns elsewhere.
+## Brad's call (2026-09-28): 8 of his 22 deaths were slingers on floors 1-2.
+func _test_slingers_reload() -> void:
+	var sling: Dictionary = {}
+	var other_shooter: Dictionary = {}
+	for entry in GameState.BESTIARY:
+		if entry["app"] == &"slinger":
+			sling = entry
+		elif entry.get("ai", &"") == &"ranged" and not entry.get("reload", false) \
+				and other_shooter.is_empty():
+			other_shooter = entry
+	check("a slinger reloads; a kobold does not",
+		GameState.monster_from(sling, 0, 0).reload_style == Entity.Reload.RANDOM
+		and GameState.monster_from(GameState.BESTIARY[1], 0, 0).reload_style == Entity.Reload.NONE)
+
+	var gs := GameState.new(7171)
+	gs.new_game()
+	# An open strip east of the player, so the slinger always has its shot.
+	for dy in range(-1, 2):
+		for dx in range(-1, 8):
+			gs.map.set_tile(gs.player.x + dx, gs.player.y + dy, Tiles.FLOOR)
+	gs.player.max_hp = 9999
+	gs.player.hp = 9999
+	var shooter := func(entry: Dictionary, style: int) -> Entity:
+		var m := GameState.monster_from(entry, gs.player.x + 4, gs.player.y)
+		m.reload_style = style
+		m.alertness = Entity.Alert.AWAKE
+		gs.entities = [gs.player, m]
+		gs.update_vision()
+		return m
+	var fires := func(m: Entity, turns: int) -> Array:
+		var out := []
+		for i in turns:
+			gs.events.clear()
+			gs._ai_ranged(m, gs.player)
+			var shot := 0
+			for e in gs.events:
+				if e["kind"] == &"ranged" and e["from"] == Vector2i(m.x, m.y):
+					shot = 1
+			out.append(shot)
+		return out
+
+	var steady: Entity = shooter.call(sling, Entity.Reload.STEADY)
+	var pattern: Array = fires.call(steady, 8)
+	check("on its first floor a slinger fires every other turn",
+		pattern == [1, 0, 1, 0, 1, 0, 1, 0], str(pattern))
+
+	var loose: Entity = shooter.call(sling, Entity.Reload.RANDOM)
+	var long: Array = fires.call(loose, 300)
+	var gaps := {}
+	var last := -1
+	for i in long.size():
+		if long[i] == 1:
+			if last >= 0:
+				gaps[i - last - 1] = true
+			last = i
+	var rate := float(long.count(1)) / float(long.size())
+	check("elsewhere it waits 0, 1 or 2 turns -- each of them, and never more",
+		gaps.keys().size() == 3 and gaps.has(0) and gaps.has(1) and gaps.has(2),
+		str(gaps.keys()))
+	check("so it fires a little over half the time", rate > 0.5 and rate < 0.75,
+		"%.2f" % rate)
+
+	if not other_shooter.is_empty():
+		var caster: Entity = shooter.call(other_shooter, Entity.Reload.NONE)
+		caster.standoff = 1
+		check("a shooter that does not reload never pauses (%s)" % other_shooter["name"],
+			not (0 in fires.call(caster, 6)))
+
+	# The teaching floor is the slinger's first floor, on the way down only.
+	var teach := GameState.monster_from(sling, 0, 0)
+	gs.entities = [gs.player, teach]
+	gs.ascending = false
+	gs.depth = GameState.first_floor_of(&"slinger")
+	gs._teach_the_slingers()
+	check("on floor %d going down, it is steady" % gs.depth,
+		teach.reload_style == Entity.Reload.STEADY)
+	teach.reload_style = Entity.Reload.RANDOM
+	gs.depth += 1
+	gs._teach_the_slingers()
+	check("one floor deeper it is not", teach.reload_style == Entity.Reload.RANDOM)
+	gs.depth = GameState.first_floor_of(&"slinger")
+	gs.ascending = true
+	gs._teach_the_slingers()
+	check("nor on the climb", teach.reload_style == Entity.Reload.RANDOM)
+
+	teach.reload_style = Entity.Reload.STEADY
+	teach.reload_left = 1
+	var back := Entity.from_dict(teach.to_dict())
+	check("a reload survives a save", back.reload_style == Entity.Reload.STEADY
+		and back.reload_left == 1)
+
+## The dead lie where they fell and rot away (Dwarf Fortress plan, strand 1).
+func _test_bodies_lie_and_rot() -> void:
+	var gs := GameState.new(6161)
+	gs.new_game()
+	var victim: Entity = null
+	for e in gs.entities:
+		if not e.is_player and e.alive and e.hostile_to(gs.player):
+			victim = e
+			break
+	check("a floor has a monster to kill (the premise)", victim != null)
+	if victim == null:
+		return
+	check("no bodies before anything dies", gs.bodies.is_empty())
+	var at := Vector2i(victim.x, victim.y)
+	victim.hp = 0
+	victim.alive = false
+	gs._settle_death(victim, gs.player)
+	check("a kill leaves one body", gs.bodies.size() == 1)
+	var b: Dictionary = gs.bodies[0]
+	check("where it fell, as what it was, whole",
+		Vector2i(int(b["x"]), int(b["y"])) == at and b["app"] == String(victim.appearance)
+		and b["e"] is Dictionary and b["e"].get("name", "") == victim.name)
+
+	var back := GameState.new(1)
+	back.apply_dict(JSON.parse_string(JSON.stringify(gs.to_dict())))
+	check("bodies survive a save", back.bodies.size() == 1
+		and int(back.bodies[0]["x"]) == at.x and int(back.bodies[0]["turn"]) == gs.turns)
+
+	gs.turns += GameState.BODY_ROT - 1
+	gs._rot_bodies()
+	check("a body lasts until it has rotted", gs.bodies.size() == 1)
+	gs.turns += 1
+	gs._rot_bodies()
+	check("and then it is gone", gs.bodies.is_empty())
+
+	# The shovel takes the body it raises.
+	var dig := GameState.new(6262)
+	dig.new_game()
+	var fresh: Entity = null
+	for e in dig.entities:
+		if not e.is_player and e.alive and e.hostile_to(dig.player):
+			fresh = e
+			break
+	fresh.hp = 0
+	fresh.alive = false
+	dig._settle_death(fresh, dig.player)
+	check("a fresh kill lies there to dig (the premise)", dig.bodies.size() == 1)
+	var raised := dig._raise_the_recent_dead()
+	check("raising it takes the body off the floor", raised and dig.bodies.is_empty())
+
+	dig._settle_death(fresh, dig.player)
+	dig.depth += 1
+	dig.build_level()
+	check("a new floor starts with no bodies", dig.bodies.is_empty())
 
 ## Every ending leaves a full record in legends.json -- the hero exactly, the
 ## stats, an id -- and the old text morgue is imported once, duplicates merged.
