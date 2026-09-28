@@ -96,6 +96,12 @@ static func use_scratch_files(tag: String) -> void:
 	# closing it saves -- see PadConfig.PATH for what that did to the real file.
 	PadConfig.PATH = "user://scratch_%s_gamepad.cfg" % tag
 
+## True in a test or a tool: anything that called use_scratch_files. The title
+## screen is skipped then -- the harnesses load the real scene and expect to be
+## playing.
+static func using_scratch() -> bool:
+	return SUSPEND_PATH.contains("scratch_")
+
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
 	BestiaryLog.clear_scratch()

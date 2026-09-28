@@ -6,6 +6,24 @@ palette, its cell geometry and its mouse.
 
 Godot 4.7. Windows and Linux.
 
+## The title screen
+
+The game opens on a title: a real generated floor behind everything, drawn the
+way the map remembers a floor it has seen, with its monsters standing in it; in
+front of that, the retirement home in the 3D view's own style -- three heroes
+round a hearth and the traveller by the door -- with the camera turning slowly
+round it (still, when effects are off). Down the side: **continue** (only when
+a run is suspended), **new game**, **Legends Run** (only once the morgue holds
+an escape; the home is not open yet), **settings** (view, effects, sound, text
+size, controller) and **exit** (not in a browser, which cannot quit).
+
+New game over a suspended run asks for a second press: it abandons that run,
+and the slot is the only copy.
+
+Both floors the title builds are for looking at. They are never saved or
+played, and they are built with the bestiary held, so a floor-6 backdrop does
+not mark its monsters as met. The test harnesses skip the title.
+
 ## Suspending a run
 
 `esc` opens the menu. **Save and quit writes a single slot, and resuming
@@ -18,7 +36,7 @@ So the save is always available from anywhere, because there is nothing to
 ration. Gating it behind an in-world shrine would only punish people whose
 lives interrupt them, not people who play badly.
 
-Resuming restores the **exact state** -- your position, the monsters where they
+Continue on the title screen resumes. Resuming restores the **exact state** -- your position, the monsters where they
 stood, which of them had noticed you, the turn count. Not the top of the floor:
 a checkpoint would reintroduce the very scumming this design removes, since you
 could die and replay a floor already knowing what is in it.
@@ -452,7 +470,7 @@ as the dashed walls: one measurement cannot stand in for all of them.
 
 One codebase, one scene, one simulation. There is no fork and no `#ifdef` --
 `src/platform.gd` is the only file that knows it might be in a browser, and it
-knows about exactly three things.
+knows about exactly four things.
 
     tools/build_web.sh          # exports and zips for itch.io
 
@@ -476,6 +494,11 @@ Point 3 changes a design decision, so be clear about what it does *not* change:
 still one slot, still destroyed the moment it is loaded, still no way to roll
 back a bad fight. All it does is stop a browser being able to take a run away
 in a way the desktop build never could.
+
+**4. The morgue lives in the browser too**, in the page's own storage, where
+nobody can open it and clearing the site's data erases it. So the pause menu's
+*download the morgue* hands it over as `ofr-morgue.txt`. On desktop the same
+row reads *open the morgue folder*.
 
 That hooks `visibilitychange`, not `beforeunload`. Writes to `user://` land in
 IndexedDB and flush asynchronously; beforeunload gives that no time to finish,

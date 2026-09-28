@@ -5697,6 +5697,7 @@ func _test_every_menu_row_is_reachable() -> void:
 	panel.text_size_requested.connect(func() -> void: fired["v"] = "text")
 	panel.save_and_quit_requested.connect(func() -> void: fired["v"] = "save")
 	panel.new_run_requested.connect(func() -> void: fired["v"] = "new")
+	panel.morgue_requested.connect(func() -> void: fired["v"] = "morgue")
 
 	# Both layouts get driven, not just the desktop one. MenuPanel.new() never
 	# runs _ready(), so OPTIONS keeps its declared value and the web list would

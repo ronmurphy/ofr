@@ -49,6 +49,8 @@ func _initialize() -> void:
 	_test_the_trader_idles()
 	_test_fft_keys_walk_the_grid()
 	_test_the_camera_turns_on_stick_or_triggers()
+	_test_the_pad_watch()
+	await _test_the_title_screen()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -859,6 +861,157 @@ func _test_the_camera_turns_on_stick_or_triggers() -> void:
 		early = early and absf(DioramaView.turn_intent(0.0, lt_rt[0], lt_rt[1])) < 0.75
 	check("  and before it is recognised, the stick turns nothing either way", early)
 
+## The on-screen controller diagnostic (F8). Its whole job is to say WHICH axis
+## moved, so the check that matters is that a push marks its own axis and only
+## that one -- and that Firefox's resting 0.5 is not itself a movement.
+func _test_the_pad_watch() -> void:
+	print("-- the pad watch marks the axis that moved, and only that one")
+	var w := PadWatch.new()
+	w.reset()
+	var rest := PackedFloat32Array([0, 0, 0, 0, 0.5, 0.5, 0, 0, 0, 0])
+	w.sample(rest)
+	check("  a pad at rest has moved nothing, even with the triggers at 0.5",
+		not w.moved(4) and not w.moved(5) and not w.moved(2))
+	var pushed := rest.duplicate()
+	pushed[4] = 1.0
+	w.sample(pushed)
+	pushed[4] = 0.0
+	w.sample(pushed)
+	check("  the pushed axis is marked moved", w.moved(4))
+	check("  and its neighbours are not", not w.moved(5) and not w.moved(2)
+		and not w.moved(3))
+	w.reset()
+	check("  opening it again starts a fresh measurement", not w.moved(4))
+	check("  it names Firefox from a user agent",
+		PadWatch.browser_from("Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0") == "Firefox/131.0")
+	check("  and Edge as Edge, though it also claims to be Chrome",
+		PadWatch.browser_from("Mozilla/5.0 AppleWebKit/537.36 Chrome/129.0 Safari/537.36 Edg/129.0.0") == "Edg/129.0.0")
+	w.free()
+
+## The title screen: its rows, the guard on New game, and the two floors it
+## builds to look at -- neither of which may touch anything the player owns.
+func _test_the_title_screen() -> void:
+	print("-- the title screen")
+	var t := TitleScreen.new()
+	t.can_continue = false
+	var ids := func() -> Array: return t.rows().map(func(r): return r[0])
+	check("  with no saved run there is no continue, and new game comes first",
+		not (&"continue" in ids.call()) and ids.call()[0] == &"new")
+	check("  the Legends Run is hidden until unlocked", not (&"legends" in ids.call()))
+	t.legends_open = true
+	check("  and shown once it is", &"legends" in ids.call())
+	check("  exit is offered where the build can quit",
+		(&"exit" in ids.call()) == Platform.can_quit())
+
+	# New game with a saved run: the first press only arms it.
+	var fired := {"v": &""}
+	t.chosen.connect(func(id: StringName) -> void: fired["v"] = id)
+	t.can_continue = true
+	check("  a saved run puts continue at the top", ids.call()[0] == &"continue")
+	t.activate(1)
+	check("  one press of new game over a saved run does not start one",
+		fired["v"] == &"" and t._new_armed)
+	t.activate(1)
+	check("  the second press does", fired["v"] == &"new")
+	fired["v"] = &""
+	t._new_armed = false
+	t.can_continue = false
+	t.activate(0)
+	check("  with no saved run, one press is enough", fired["v"] == &"new")
+
+	# Settings is a page of the same list, and back returns.
+	t.activate(ids.call().find(&"settings"))
+	check("  settings opens its own page", t.page == &"settings"
+		and &"3d" in ids.call() and &"back" in ids.call())
+	t.handle_key(KEY_ESCAPE)
+	check("  and escape comes back", t.page == &"main")
+	# Every up/down set moves the highlight, not only the arrows.
+	var moved_by_all := true
+	for pair in [[KEY_DOWN, KEY_UP], [KEY_J, KEY_K], [KEY_S, KEY_W], [KEY_KP_2, KEY_KP_8]]:
+		t._hover = 0
+		t.handle_key(pair[0])
+		var down_ok: bool = t._hover == 1
+		t.handle_key(pair[1])
+		moved_by_all = moved_by_all and down_ok and t._hover == 0
+	check("  arrows, vi, WASD and the numpad all move the highlight", moved_by_all)
+	t.free()
+
+	# The mouse reaches the buttons: nothing drawn over them may take it. The
+	# backdrop's own _ready claims the mouse, which put it over the rows.
+	var shown := TitleScreen.new()
+	root.add_child(shown)
+	shown.size = Vector2(1600, 900)
+	shown.open(false, false, 7)
+	# A frame, as the game gets one: _ready -- where the mouse is claimed --
+	# is deferred in a harness until the tree runs.
+	await process_frame
+	var takers := []
+	for child in shown.get_children():
+		if child is Control and child.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			takers.append("%s:%s" % [child.get_script().get_global_name() if child.get_script() else child.get_class(), child.mouse_filter])
+	check("  an opened title has buttons to click", shown.rows().size() > 0
+		and shown.mouse_filter == Control.MOUSE_FILTER_STOP)
+	check("  and nothing over them takes the mouse", takers.is_empty(), str(takers))
+	shown.queue_free()
+
+	# The backdrop floor: monsters in sight, no hero, and the bestiary untouched.
+	var known_before := BestiaryLog.count()
+	var gs := TitleScreen.backdrop_state(7)
+	var lit := 0
+	for e in gs.entities:
+		if gs.map.is_visible(e.x, e.y):
+			lit += 1
+	check("  the backdrop shows its monsters where they stand", lit > 0,
+		"%d lit" % lit)
+	check("  and no hero stands in it", not (gs.player in gs.entities))
+	check("  building it noted nothing in the bestiary",
+		BestiaryLog.count() == known_before and not BestiaryLog.paused)
+	# That check passes vacuously if no monster happened to be in view while
+	# the floor was built, so the hold is also asserted directly -- and must
+	# not be a wall: a sighting after it still counts. A throwaway file, or the
+	# test beast is "already known" on every run after the first.
+	var scratch_bestiary := "user://scratch_view_tests_title_bestiary.txt"
+	BestiaryLog.use_path(scratch_bestiary)
+	BestiaryLog.paused = true
+	check("  while held, the bestiary refuses a new sighting",
+		not BestiaryLog.note(&"title_test_beast"))
+	BestiaryLog.paused = false
+	check("  and once released it notes the same one",
+		BestiaryLog.note(&"title_test_beast"))
+	DirAccess.remove_absolute(scratch_bestiary)
+	BestiaryLog.use_path("user://scratch_view_tests_bestiary.txt")
+
+	# The hall: three heroes, the traveller, nothing hostile, nothing outside.
+	var hall := TitleHall.hall_state()
+	var heroes := 0
+	var travellers := 0
+	var hostile := 0
+	for e in hall.entities:
+		if e.faction == Entity.Faction.PLAYER:
+			heroes += 1
+		elif e.appearance == &"trader" and e.faction == Entity.Faction.NEUTRAL:
+			travellers += 1
+		else:
+			hostile += 1
+	check("  the hall holds three heroes and the traveller, and no monster",
+		heroes == 3 and travellers == 1 and hostile == 0,
+		"%d heroes, %d travellers, %d others" % [heroes, travellers, hostile])
+	check("  the hall is seen and the void round it is not",
+		hall.map.is_visible(hall.player.x, hall.player.y)
+		and not hall.map.is_explored(0, 0))
+
+	# The Legends unlock reads escapes, which the grave parser cannot see.
+	var path := "user://scratch_view_tests_title_morgue.txt"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_line("2026-09-01 20:00:00  level 3  killed by a kobold on depth 2, empty-handed, after 400 turns")
+	f.store_line("2026-09-02 20:00:00  level 9  escaped the dungeon with the Amulet of the Deep, with the Amulet, after 9000 turns; known as Solo")
+	f.close()
+	check("  one escape in the morgue is counted", Morgue.escapes(path) == 1)
+	check("  (and the grave parser still reads only the death)",
+		Morgue.records(path).size() == 1)
+	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
+	DirAccess.remove_absolute(path)
+
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:
 	var d = scene.diorama
@@ -1008,6 +1161,8 @@ func _test_both_views_share_one_moment() -> void:
 	root.add_child(scene)
 	for _i in 3:
 		await process_frame
+	check("a harness run skips the title and is playing at once",
+		scene.title != null and not scene.title.visible and scene.state != null)
 	check("both views hold the same effects list and the same glides",
 		scene.diorama.fx == scene.grid.fx and scene.diorama.motion == scene.grid.motion)
 	scene._select_map_view(true)

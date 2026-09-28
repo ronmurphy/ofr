@@ -131,8 +131,14 @@ const STEP_TIME := StepMotion.STEP_TIME
 ## sound_deck.gd keeps its own copy of this, timed to land with the picture.
 const SHOT_PER_CELL := Fx.SHOT_PER_CELL
 
+## False for a grid that is only scenery -- the title screen's backdrop. Read
+## in _ready, because _ready is where the mouse is claimed, and setting
+## mouse_filter from outside was undone whenever _ready ran after it.
+var takes_mouse := true
+
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_STOP if takes_mouse \
+		else Control.MOUSE_FILTER_IGNORE
 	if font == null:
 		font = map_font()
 	_measure_font()

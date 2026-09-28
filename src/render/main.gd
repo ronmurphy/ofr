@@ -28,6 +28,8 @@ var state: GameState
 ## Whole-map effects -- the red edge, a floor fading in, grey on death -- one
 ## node over whichever view is showing. See ScreenFx.
 var screen_fx: ScreenFx
+var pad_watch: PadWatch
+var title: TitleScreen
 ## The concrete view currently receiving map state, mouse input and effects.
 ## Both renderers implement the small surface consumed by this controller.
 var _map_view: Variant
@@ -198,6 +200,11 @@ func _ready() -> void:
 	move_child(screen_fx, diorama.get_index() + 1)
 	screen_fx.position = grid.position
 	screen_fx.size = grid.size
+	# Over everything, including the modals: it has to be readable while the
+	# controller screen or the menu is open. See PadWatch; F8 shows it.
+	pad_watch = PadWatch.new()
+	add_child(pad_watch)
+	pad_watch.position = Vector2(12, 12)
 	# `godot --pad-log` (or the exported binary with the same flag) prints every
 	# joypad event instead of acting on it. There is no other way to learn what
 	# a particular handheld calls its buttons.
@@ -225,15 +232,34 @@ func _ready() -> void:
 	# who cannot pass command-line flags through Steam can still produce one.
 	if "--pad-log" in OS.get_cmdline_args():
 		pad.start_log()
+	# The title screen, over everything but the pad watch. Skipped in the test
+	# harnesses, which load this scene and expect to be playing.
+	title = TitleScreen.new()
+	title.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(title)
+	move_child(pad_watch, -1)
+	title.chosen.connect(_on_title_chosen)
+	title.value_of = _setting_value
+	var use_title := not GameState.using_scratch()
 	# A suspended run resumes straight into itself. Loading destroys the file,
 	# so there is nothing left to fall back to if this run goes badly.
-	var fresh := GameState.load_suspend()
+	# Behind the title nothing is decided yet: Continue loads it, New game
+	# replaces it, and until then a placeholder floor stands in -- built with
+	# the bestiary held, since nobody has played it.
+	var fresh: GameState = null
+	if use_title:
+		BestiaryLog.paused = true
+		fresh = GameState.new()
+		fresh.new_game()
+		BestiaryLog.paused = false
+	else:
+		fresh = GameState.load_suspend()
 	var asking := false
 	if fresh == null:
 		fresh = GameState.new()
 		fresh.new_game()
 		asking = true
-	else:
+	elif not use_title:
 		fresh.msg_log.add("You take up where you left off.", Color(0.80, 0.85, 0.95))
 		# The consequence, not just the fact. Someone who assumes the slot
 		# still exists will only find out when they need it.
@@ -242,7 +268,10 @@ func _ready() -> void:
 	_bind_state(fresh)
 	# Only for a genuinely new run. A resumed save already has a name, and
 	# asking again would be asking someone mid-run who they are.
-	if asking:
+	if use_title:
+		title.open(FileAccess.file_exists(GameState.SUSPEND_PATH),
+			Morgue.escapes(GameState.MORGUE_PATH) > 0)
+	elif asking:
 		name_entry.open()
 		_refresh()
 	grid.cell_clicked.connect(_on_cell_clicked)
@@ -263,11 +292,13 @@ func _ready() -> void:
 	legend.map_requested.connect(_open_overview)
 	overview.legend_requested.connect(_open_legend)
 	pad_setup.closed.connect(_refresh)
+	pad_setup.closed.connect(_back_to_title_if_waiting)
 	talk.finished.connect(_on_talk_finished)
 	trade.closed.connect(_refresh)
 	pad_setup.log_requested.connect(pad.start_log)
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
+	menu.morgue_requested.connect(_export_morgue)
 	menu.text_size_requested.connect(_cycle_text_size)
 	name_entry.chosen.connect(_on_name_chosen)
 	inventory.close_requested.connect(_close_inventory)
@@ -293,7 +324,9 @@ func _ready() -> void:
 ## Still one slot, still destroyed on load. All this does is stop a browser
 ## being able to take a run away in a way the desktop build never could.
 func _on_page_hidden() -> void:
-	if state == null or state.game_over:
+	# Behind the title is a placeholder, and saving it would write a floor
+	# nobody played over the run the player is about to continue.
+	if state == null or state.game_over or title.visible:
 		return
 	state.save_suspend()
 	_saved_at_turn = state.turns
@@ -359,6 +392,10 @@ func _process(delta: float) -> void:
 				_triggers_centred_for = 0.0
 		var turn := DioramaView.turn_intent(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 			lt, rt, _stick_on_triggers)
+		if pad_watch.visible:
+			pad_watch.camera_line = "camera: RX %+.2f LT %+.2f RT %+.2f %s -> %+.2f" \
+				% [Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), lt, rt,
+				"firefox-mode" if _stick_on_triggers else "normal", turn]
 		if absf(turn) >= 0.75 and not _diorama_stick_down:
 			diorama.rotate_view(1 if turn > 0.0 else -1)
 			_diorama_stick_down = true
@@ -366,6 +403,7 @@ func _process(delta: float) -> void:
 			_diorama_stick_down = false
 	else:
 		_diorama_stick_down = false
+		pad_watch.camera_line = ""
 
 	# WHICH DEVICE IS IN THEIR HANDS, updated BEFORE the modal return below.
 	#
@@ -382,7 +420,7 @@ func _process(delta: float) -> void:
 	name_entry.pad_input = _pad_input
 	inventory.pad_input = _pad_input
 
-	if menu.visible or legend.visible:
+	if menu.visible or legend.visible or title.visible:
 		return
 	if _look:
 		sidebar.hovered = _look_at
@@ -531,7 +569,7 @@ func _on_talk_finished() -> void:
 
 ## Is the MAP what the player is looking at -- no panel, no cursor?
 func _world_has_focus() -> bool:
-	return not (inventory.visible or menu.visible or legend.visible
+	return not (title.visible or inventory.visible or menu.visible or legend.visible
 		or summary.visible or name_entry.visible or pad_setup.visible
 		or talk.visible or overview.visible or trade.visible or _aiming or _look)
 
@@ -559,6 +597,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# A real keypress, not one the pad layer fabricated. See `_synthetic`.
 	if not _synthetic:
 		_pad_input = false
+		# The controller diagnostic, from anywhere and ahead of every panel:
+		# the screen someone is stuck on is the one they need it over.
+		if key == KEY_F8:
+			pad_watch.toggle()
+			return
+
+	# The title takes every key while it is up. B backs out of settings.
+	if title.visible:
+		if _synthetic and key == PACK_BACK_KEY:
+			key = KEY_ESCAPE
+		title.handle_key(key)
+		return
 
 	# Asked before the run begins, so it takes keys ahead of every other panel.
 	# It needs the EVENT rather than the keycode: a keycode cannot tell "a" from
@@ -973,6 +1023,81 @@ func _on_name_chosen(chosen_name: String) -> void:
 
 func _close_menu() -> void:
 	menu.close()
+	_refresh()
+
+## A choice on the title screen. The settings rows act at once and the title
+## redraws their values; the rest leave the title.
+func _on_title_chosen(id: StringName) -> void:
+	match id:
+		&"continue":
+			var loaded := GameState.load_suspend()
+			title.close()
+			if loaded == null:
+				# The file was there a moment ago and did not load. Say so
+				# rather than silently starting someone a new character.
+				_start_new_run()
+				state.msg_log.add("That saved run could not be read -- this is a new one.",
+					Color(0.95, 0.62, 0.35))
+				return
+			loaded.msg_log.add("You take up where you left off.", Color(0.80, 0.85, 0.95))
+			loaded.msg_log.add("That suspend is gone -- save again before you stop.",
+				Color(0.95, 0.80, 0.45))
+			_bind_state(loaded)
+		&"new":
+			title.close()
+			_start_new_run()
+		&"legends":
+			title.note = "The home is not open yet -- the Legends Run is still being built."
+		&"exit":
+			get_tree().quit()
+		&"3d":
+			RenderTheme.toggle_diorama()
+			_select_map_view(RenderTheme.diorama_enabled())
+		&"effects":
+			Effects.cycle()
+			_map_view.apply_effects_mode()
+		&"sound":
+			sound.toggle_mute()
+		&"text":
+			_cycle_text_size()
+		&"pad":
+			title.visible = false
+			_title_waiting = true
+			_open_pad_setup()
+	title.queue_redraw()
+
+## Set while the controller screen was opened from the title, so closing it
+## goes back there rather than into the placeholder floor behind it.
+var _title_waiting := false
+
+func _back_to_title_if_waiting() -> void:
+	if _title_waiting:
+		_title_waiting = false
+		title.visible = true
+
+## What a settings row on the title currently reads.
+func _setting_value(id: StringName) -> String:
+	match id:
+		&"3d": return "3D" if RenderTheme.diorama_enabled() else "classic"
+		&"effects": return String(Effects.MODE_NAMES[Effects.mode()])
+		&"sound": return "off" if sound.muted else "on"
+		&"text": return "%d px" % RenderTheme.cell_size()
+	return ""
+
+## Every run that has ended on this machine or in this browser, handed over as
+## a file. On itch it is the ONLY copy: a browser's user:// is the page's own
+## storage, and clearing the site's data would erase every death and escape.
+func _export_morgue() -> void:
+	_close_menu()
+	var said := Platform.hand_over(GameState.MORGUE_PATH, "ofr-morgue.txt")
+	var calm := Color(0.80, 0.85, 0.95)
+	if said == "":
+		state.msg_log.add("The morgue is empty -- no run has ended here yet.", calm)
+	else:
+		# Two lines: the log is 964px wide, and a folder path does not fit
+		# after a sentence.
+		state.msg_log.add("The morgue: every run that has ended here.", calm)
+		state.msg_log.add(said, calm)
 	_refresh()
 
 func _save_and_quit() -> void:

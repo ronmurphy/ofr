@@ -102,8 +102,9 @@ uses. More than combat. Fireball and teleport have been discussed; players have
 asked for lightning bolt and invisibility (PLAYTESTS 2026-09-26).
 
 **A new-player theme.** An intro sequence on New Game with a skip button (the
-trader and why you are here; Brad writes it); later a title screen with New game,
-Continue, How to play and Artwork (a parent's suggestion, PLAYTESTS 2026-09-26).
+trader and why you are here; Brad writes it). The title screen itself is
+BUILT (2026-09-28, see Next up 8); How to play and Artwork (a parent's
+suggestion, PLAYTESTS 2026-09-26) would be two more rows on it.
 
 ---
 
@@ -147,7 +148,11 @@ bones cannot be traded; the counter opens after the trader speaks.
   it is one line in `DioramaView.view_to_grid()`;
 - the per-turn 3D rebuild is ~50 ms; rebuilding only changed cells is the real fix;
 - the view tests are light on premise checks — a good day-7 job;
-- ~~the right stick does not turn the camera on itch~~ FIXED 2026-09-28: a
+- **the right stick does not turn the camera on itch in Firefox -- STILL OPEN.**
+  The fix below was written from what the BROWSER reports and did not work on
+  itch: Godot's web layer remaps the axes again. Next: press **F8** in Firefox
+  on itch, push the right stick, and screenshot the pad watch -- it shows the
+  axes as Godot sees them and what the camera made of them. It is a
   Firefox-on-Linux bug. With an Xbox Wireless pad (045e-02fd) Firefox says
   "standard" but reports the right stick's left-right as the LT value resting at
   0.5 (and up-down on RT); the real triggers go to axes 6 and 7. Edge (Chromium),
@@ -157,9 +162,32 @@ bones cannot be traded; the counter opens after the trader speaks.
 - **range is hard to judge in the diamond view** (Brad: "I'm used to counting
   squares") — highlight every cell in reach while aiming.
 
-**6. On-screen pad log.** The diagnostic writes to a file, which a handheld
-cannot reach. On a device with no keyboard and no file manager the only place a
-diagnostic can go is on screen.
+**6. On-screen pad log.** BUILT 2026-09-28 as the **pad watch** (F8, from
+anywhere): Godot's ten axes with the range each has moved, buttons 0-20, the
+pad's name and GUID, the browser, the last raw events, and what the 3D camera
+read. Still missing: a way to open it on a handheld with no keyboard -- the
+controller screen takes raw buttons for rebinding, so no pad button is free
+there.
+
+**7. The morgue export.** BUILT 2026-09-28: a pause-menu row. On itch it
+downloads `ofr-morgue.txt` -- the only copy there is, since clearing the site's
+data erases the browser's user://. On desktop it opens the folder. Brad's one
+escape is in his itch browser; this is how it gets out for the retirees.
+
+**8. The title screen.** BUILT 2026-09-28, Brad's design: a remembered,
+monster-lit floor behind; the retirement home as a hand-built hall in the 3D
+view (three heroes, the traveller, the camera circling, still when effects are
+off); continue / new game / Legends Run / settings / exit down the side.
+Waiting on play. Open:
+- **the Legends Run row is a placeholder**: it appears once the morgue holds an
+  escape, and says the home is not open yet;
+- **the cottage** (`src/render/title_home.gd`, a stone house on a turf island)
+  is kept unused -- Brad has an idea for it;
+- sound under the title was not listened to: the placeholder floor behind it
+  may play its ambience;
+- the escape count reads the text morgue by phrase, because the grave parser's
+  pattern cannot match an escape line (no "on depth") -- another reason for
+  the JSON morgue.
 
 ---
 
@@ -186,10 +214,38 @@ appended twice, a missing field), and it carries the game's most praised
 feature — risen dead and relics (PLAYTESTS 2026-09-26). Convert once into a new
 file, never touching the player's `morgue.txt`; store gear as item data rather
 than display names. It would also let a bought relic keep its hero's name.
+**Priority rose 2026-09-28:** the retired party (Legends) rebuilds heroes from
+escape records, and the text line holds no pack and rebuilds gear from display
+names. Do this before Legends; the pause menu's morgue export should then hand
+over the JSON file too.
 
 ---
 
 ## Designed in full, not built
+
+**The Legends intro -- the game's first cutscene.** Brad's idea, 2026-09-28,
+from the cottage built as a first try at the title screen. Build after the
+title screen has been played.
+1. **Legends Run pressed:** the menu slides away; the cottage
+   (`src/render/title_home.gd`, a stone house on a turf island) replaces the
+   hall.
+2. **Swing to the door:** the orbit speeds up and brings the camera round to
+   the front in a second or two -- not a wait for a 48-second pass -- then
+   eases.
+3. **Push in:** the camera narrows on the lit doorway until the door fills the
+   screen, and flares through its warm light rather than cutting to black.
+4. **Inside:** the hall (`src/render/title_hall.gd`, the real 3D view) opens
+   with the camera just inside its own door, then eases back and up to the
+   normal view, and the chosen leader turns and speaks -- through the
+   existing TalkPanel, the box players already know from the traveller.
+   Expanded later into the Legends story.
+
+Rules: **skippable** by any key or button, straight to the inside; **effects
+off cuts straight in** with no camera moves (the 3D view makes one of Brad's
+friends unwell). The cottage and the hall should agree: three graves on the
+same side, the door on the same wall, windows where the hall has them, the
+chimney over the hearth. Until Legends exists, this can replace the Legends
+Run placeholder, ending with the leader saying the home is not open yet.
 
 **Miasma.** Brad's, and his Nausicaä reference. A fungus cluster (2x2+) gives
 off visible bad air. One tile crossed = 3 damage over 9 steps; three tiles = 1
@@ -243,6 +299,19 @@ shape to aim at.
 ---
 
 ## Ideas, not yet designed
+
+**Push-blocks, and ground with height.** David's Sokoban vault, revived
+2026-09-28 when Brad saw the chest on its block in the title's hall. The 3D
+view already draws heights (walls 1.35, chests 0.65) though the game beneath is
+flat, so a crate is the chest's block without the chest. Most of a push exists:
+knockback already moves a thing one cell if the cell beyond is clear, and pits
+make a natural goal (a crate fills one). Glyphs Brad chose: `nf-md-texture_box`
+F0FE6, ASCII `x`, symbol `¤`. **The hard part is soft-locks** -- a crate in a
+corner makes a puzzle unsolvable and there is no undo -- so vault layouts that
+cannot lock, or a second exit so failing costs the reward and not the run.
+Crossovers: a crate shoved into a doorway holds it against a guard; a raised
+platform could give shots from it a bonus (the combat update); a ledge reached
+only by pushing a crate over first.
 
 **Mercenaries.** A parent at the playtest: the dead-party system takes many runs
 to pay off, so why not hire help? Brad's version: the trader offers RISEN

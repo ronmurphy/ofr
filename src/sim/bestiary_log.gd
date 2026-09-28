@@ -31,6 +31,11 @@ static var _loaded := false
 ## player's own record.
 static var _path := PATH
 
+## While true, nothing is noted. The title screen builds a real floor to show,
+## and building a floor notes every monster in view -- a floor-6 backdrop would
+## otherwise mark monsters as met that the player has never seen.
+static var paused := false
+
 static func use_path(p: String) -> void:
 	_path = p
 	_loaded = false
@@ -64,7 +69,7 @@ static func count() -> int:
 ## Records a first sighting. Answers true only the FIRST time, so a caller can
 ## say something about it without having to remember whether it already did.
 static func note(app: StringName) -> bool:
-	if app == &"" or app == &"player":
+	if paused or app == &"" or app == &"player":
 		return false
 	if not _loaded:
 		_load()

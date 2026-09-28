@@ -89,3 +89,9 @@ func reveal_all() -> void:
 ## the class the member access is direct and the write sticks.
 func set_all_visible() -> void:
 	visible_now.fill(1)
+
+## One cell lit. For the title screen's backdrop, which shows a remembered floor
+## with only its monsters in sight. Same copy-on-write reason as above.
+func show_cell(x: int, y: int) -> void:
+	if in_bounds(x, y):
+		visible_now[idx(x, y)] = 1

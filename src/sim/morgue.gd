@@ -126,6 +126,21 @@ static func records(path: String) -> Array:
 	f.close()
 	return out
 
+## How many runs in this morgue ended in an escape.
+##
+## Not from records(): an escape line has no "on depth N", so PATTERN never
+## matches it and records() -- which exists to raise the DEAD -- skips it. That
+## is right for graves and wrong for this, so it is counted by the phrase
+## morgue_line writes. The JSON morgue in BACKLOG would end this kind of thing.
+static func escapes(path: String) -> int:
+	if not FileAccess.file_exists(path):
+		return 0
+	var n := 0
+	for line in FileAccess.get_file_as_string(path).split("\n"):
+		if line.contains("escaped the dungeon"):
+			n += 1
+	return n
+
 static func parse(line: String) -> Dictionary:
 	if line.strip_edges() == "":
 		return {}

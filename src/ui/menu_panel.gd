@@ -9,6 +9,7 @@ signal pad_requested()
 signal text_size_requested()
 signal save_and_quit_requested()
 signal new_run_requested()
+signal morgue_requested()
 
 @export var font: Font
 @export var font_bold: Font
@@ -28,7 +29,7 @@ var state: GameState
 ## claimed that it did -- a comment asserting a measurement that was never
 ## taken. _test_panels_do_not_overflow now asserts the rows fit too, so this is
 ## the one place the height is stated and the claim is true again.
-const PANEL := Vector2(460.0, 318.0)
+const PANEL := Vector2(460.0, 352.0)
 const PAD := 26.0
 const ROW_H := 34.0
 
@@ -36,6 +37,7 @@ const OPTIONS_DESKTOP := [
 	["c", "continue", "resume"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
+	["m", "open the morgue folder", "morgue"],
 	["s", "save and quit", "save"],
 	["n", "abandon this run", "new"],
 ]
@@ -47,6 +49,7 @@ const OPTIONS_WEB := [
 	["c", "continue", "resume"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
+	["m", "download the morgue", "morgue"],
 	["s", "save for later", "save"],
 	["n", "abandon this run", "new"],
 ]
@@ -146,6 +149,7 @@ func _activate(i: int) -> void:
 		"resume": resume_requested.emit()
 		"pad": pad_requested.emit()
 		"text": text_size_requested.emit()
+		"morgue": morgue_requested.emit()
 		"save": save_and_quit_requested.emit()
 		"new": new_run_requested.emit()
 

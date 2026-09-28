@@ -170,6 +170,16 @@ flushed line by line, so a force-quit still leaves a readable file. With no pad
 attached it says `NO PAD CONNECTED -- nothing will be recorded`, so an empty
 result is still a diagnosis.
 
+### The pad watch -- F8, on screen
+
+A browser build's `user://` is the page's own storage, so the file above cannot
+be reached there. **F8**, from anywhere in the game, shows the controller as
+Godot sees it instead: all ten axes with the range each has moved, buttons
+0-20, the pad's name and GUID, the browser, the last few raw events, and what
+the 3D camera read from the right stick and triggers. It does not stop the pad
+working, so you can walk into the 3D view with it open. A screenshot of it is
+the whole report.
+
 **Please send that file, plus the device name.** The open question is whether a
 Steam Deck, a ROG and a Legion Go S agree about which button index is "A". If
 they don't, the fix is a per-device defaults table, and the logs are what make
