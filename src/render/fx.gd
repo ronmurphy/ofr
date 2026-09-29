@@ -21,8 +21,9 @@ extends RefCounted
 const SHOT_PER_CELL := 0.028
 const FLASH_LIFE := 0.30
 const POPUP_LIFE := 0.85
-## Weapon contact overlays the hit briefly without replacing its flash or number.
-const CONTACT_LIFE := 0.22
+## A quarter-cell steel mark stays legible over the warm hit flash beneath it.
+const CONTACT_BLOCK := 0.25
+const CONTACT_LIFE := 0.35
 ## How long a noise ring dwells on each cell it crosses.
 ##
 ## Per CELL, not per ring, so every wavefront travels at the same speed and a
@@ -108,6 +109,15 @@ func add_events(evts: Array, popup_size: int) -> void:
 		if e["kind"] == &"levelup":
 			list.append({"type": &"popup", "cell": to, "t": 0.0,
 				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": popup_size})
+			continue
+
+		if e["kind"] == &"healed":
+			# This floats like damage feedback, but it is motion; the sidebar's
+			# restored-bar glow remains available when the player chooses "still".
+			if Effects.any():
+				list.append({"type": &"popup", "cell": to, "t": 0.0,
+					"text": "+%d" % int(e["amount"]),
+					"colour": Palette.HP_GOOD, "size": popup_size})
 			continue
 
 		if e["kind"] == &"bone_step":
@@ -273,7 +283,7 @@ func _hit(e: Dictionary, state: GameState, motion: StepMotion) -> void:
 			damage_type = &"blunt"
 		list.append({"type": &"contact", "cell": to, "t": 0.0,
 			"life": CONTACT_LIFE, "dir": dir.normalized(), "style": damage_type,
-			"colour": Palette.HIT_FLASH})
+			"colour": Palette.CONTACT})
 	# Sparks in the magic colour: the one colour every enchanted or gem-set
 	# weapon already wears, so the spark says whose blade it was.
 	if attacker != null and attacker.is_player and not e["on_player"]:

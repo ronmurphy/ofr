@@ -79,6 +79,13 @@ Tick its box and add a **Done** note under it, like this:
 
 ## Jobs
 
+**One-time authorization (Brad, 2026-09-29):** Brad expressly authorized
+combining the final three jobs into one uncommitted change because his head was
+hurting and he thought looking at a monitor was most likely the issue. He asked
+for one quick run followed by one full run after the combined work, and said not
+to commit or push so he can review and do that later. This exception is for this
+task list only.
+
 - [x] **Inventory labels: "food & potions", and a "uniques" group**
   In `src/ui/inventory_panel.gd`: the tab (chip) labelled "potions" and the
   POTIONS heading also hold food (haunches of meat), so rename them to
@@ -99,7 +106,7 @@ Tick its box and add a **Done** note under it, like this:
   2,202 passed / 0 failed, 0 script errors. The full log also includes error
   output from existing malformed-data tests and Godot teardown resource notices.
 
-- [ ] **Healing you can see**
+- [x] **Healing you can see**
   A `healed` event (it carries `"amount"`) already plays a small green ring on
   the map, but the inventory stays open after drinking or eating, so a heal
   from the pack is never seen. Add: (a) a **green flare on the sidebar's HP
@@ -111,7 +118,16 @@ Tick its box and add a **Done** note under it, like this:
   "still"; the HP bar flare is UI, like the red one. Tests: the popup appears
   for a heal and not at full health; nothing on still.
 
-- [ ] **Weapon contact marks you can see**
+  Done 2026-09-29: added a brief green flare over the HP bar's restored
+  segment in `src/ui/sidebar.gd`, and a motion-gated floating `+N` popup in
+  `src/render/fx.gd`; the existing healing ring remains. Added view checks for
+  the restored segment, popup amount/colour, full health, and still mode in
+  `tests/run_view_tests.gd`. Quick: 250 passed / 0 failed, 0 script errors.
+  Full: 2,206 passed / 0 failed, 0 script errors. The full log includes
+  expected parse errors from malformed-data fixtures and Godot teardown
+  resource notices.
+
+- [x] **Weapon contact marks you can see**
   `Fx.contact_marks` (in `src/render/fx.gd`) draws the melee contact mark as
   blocks a tenth of a cell across, for 0.22 s, in `Palette.HIT_FLASH` -- the
   same colour as the hit flash under it, so players cannot see it. Make the
@@ -120,7 +136,14 @@ Tick its box and add a **Done** note under it, like this:
   Keep the three shapes (slash arc, pierce line, blunt cross). Update the
   existing contact tests in `tests/run_view_tests.gd` if they check sizes.
 
-- [ ] **A screenshot key (F9)** -- Gabe's request
+  Done 2026-09-29: enlarged contact marks to a quarter-cell and 0.35 s, and
+  gave them a steel-white colour in both renderers while preserving all three
+  weapon shapes. Updated contact view checks in `tests/run_view_tests.gd`.
+  Quick: 250 passed / 0 failed, 0 script errors. Full: 2,206 passed / 0
+  failed, 0 script errors. The full log includes expected parse errors from
+  malformed-data fixtures and Godot teardown resource notices.
+
+- [x] **A screenshot key (F9)** -- Gabe's request
   F9 saves a picture of the game. (F12 opens a browser's developer tools and
   Steam uses it for its own screenshots, so not F12.) Desktop: save a PNG to a
   screenshots folder under `user://` -- a **static path that
@@ -133,3 +156,11 @@ Tick its box and add a **Done** note under it, like this:
   `src/render/main.gd`, near the F8 pad watch. Add F9 to the legend's key
   list (`Sidebar.KEYS`). Tests: the path is redirected under scratch files;
   F9 is listed in the legend.
+
+  Done 2026-09-29: F9 now captures a timestamped PNG without the F8 pad watch,
+  saves it under the redirected screenshot directory on desktop, and downloads
+  it as `image/png` in the browser; the message log reports the result. Added
+  the F9 legend entry and path/key checks in `tests/run_tests.gd`. Quick: 250
+  passed / 0 failed, 0 script errors. Full: 2,206 passed / 0 failed, 0 script
+  errors. The full log includes expected parse errors from malformed-data
+  fixtures and Godot teardown resource notices.

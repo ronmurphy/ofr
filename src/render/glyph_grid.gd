@@ -819,7 +819,7 @@ func _draw_burst(e: Dictionary, t: float) -> void:
 ## Weapon-shaped contact marks, using the shared slash, thrust or blunt layout.
 ## Small blocks keep the cue legible without changing the ASCII glyphs.
 func _draw_contact(e: Dictionary, t: float) -> void:
-	var side := maxf(2.0, cell_size * 0.10)
+	var side := maxf(2.0, cell_size * Fx.CONTACT_BLOCK)
 	var cell := _centre(e["cell"])
 	var colour: Color = e["colour"]
 	for mark in Fx.contact_marks(e, t, state.map):

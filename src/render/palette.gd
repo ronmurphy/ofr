@@ -176,6 +176,8 @@ const SHOVE         := Color("ff9a5c")
 ## and orange. See tools/check_palette.py.
 const CORRUPTED     := Color("c33cff")
 const HIT_FLASH     := Color("ff9d6b")
+## Pale steel-white, separate from the orange hit flash the mark sits over.
+const CONTACT       := Color("e3e8ef")
 
 const CURSOR        := Color("7fd4ff")
 const PATH_HINT     := Color("3f6f8c")

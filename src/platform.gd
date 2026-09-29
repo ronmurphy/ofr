@@ -91,12 +91,13 @@ static func on_page_hidden(handler: Callable) -> Variant:
 ## more honest than copying the file somewhere the player did not choose.
 ##
 ## Returns what happened, as a sentence for the log.
-static func hand_over(path: String, download_name: String) -> String:
+static func hand_over(path: String, download_name: String,
+		content_type: String = "text/plain") -> String:
 	if not FileAccess.file_exists(path):
 		return ""
 	if is_web():
 		JavaScriptBridge.download_buffer(FileAccess.get_file_as_bytes(path),
-			download_name, "text/plain")
+			download_name, content_type)
 		return "Your browser is saving it as %s." % download_name
 	var folder := ProjectSettings.globalize_path(path.get_base_dir())
 	OS.shell_open(folder)

@@ -177,6 +177,8 @@ var _shot_mesh: SphereMesh
 var _shot_material: StandardMaterial3D
 ## Sparks and shards: small cubes, coloured per instance.
 var _bit_mesh: BoxMesh
+## Contact marks use larger cubes so their shared quarter-cell size reads here too.
+var _contact_bit_mesh: BoxMesh
 ## Drawn over the creatures, as classic draws them: a spark off a blade is in
 ## front of the thing it struck, never hidden behind it.
 var _bit_material: StandardMaterial3D
@@ -249,6 +251,8 @@ func _build_viewport() -> void:
 	_shot_material.albedo_color = Palette.SHOT
 	_bit_mesh = BoxMesh.new()
 	_bit_mesh.size = Vector3(0.08, 0.08, 0.08)
+	_contact_bit_mesh = BoxMesh.new()
+	_contact_bit_mesh.size = Vector3.ONE * Fx.CONTACT_BLOCK
 	_bit_material = _fx_material.duplicate()
 	_bit_material.no_depth_test = true
 	_bit_material.render_priority = PRIORITY_POPUP - 1
@@ -1421,6 +1425,8 @@ func _draw_fx() -> void:
 	var glows: Array = []
 	# Sparks and shards in the air: [position, colour].
 	var bits: Array = []
+	# Contact marks keep their shared offsets and fade, with a larger cube mesh.
+	var contact_bits: Array = []
 	for e in _creatures:
 		if e.is_player:
 			continue
@@ -1476,7 +1482,7 @@ func _draw_fx() -> void:
 				var contact_colour: Color = e["colour"]
 				for mark in Fx.contact_marks(e, t, map):
 					var off: Vector2 = mark[0]
-					bits.append([Vector3(contact_cell.x + 0.5 + off.x, 0.62,
+					contact_bits.append([Vector3(contact_cell.x + 0.5 + off.x, 0.62,
 						contact_cell.y + 0.5 + off.y),
 						Color(contact_colour, float(mark[1]))])
 			&"shove":
@@ -1513,6 +1519,8 @@ func _draw_fx() -> void:
 		_add_glows(pools, _pool_quad, _pool_material)
 	if not bits.is_empty():
 		_add_bits(bits)
+	if not contact_bits.is_empty():
+		_add_bits(contact_bits, _contact_bit_mesh)
 	_draw_swings()
 	# Small life: which, where and when is SmallLife, shared with classic.
 	var motes := life.motes(anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0)
@@ -1520,11 +1528,11 @@ func _draw_fx() -> void:
 		_add_motes(motes)
 
 ## Sparks and shards, all in one MultiMesh of small cubes.
-func _add_bits(bits: Array) -> void:
+func _add_bits(bits: Array, mesh: Mesh = null) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
-	mm.mesh = _bit_mesh
+	mm.mesh = _bit_mesh if mesh == null else mesh
 	mm.instance_count = bits.size()
 	for i in bits.size():
 		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, bits[i][0]))

@@ -47,6 +47,10 @@ static var DEATH_PATH := "user://death.save"
 ## output rather than deaths they had actually died.
 static var MORGUE_PATH := "user://morgue.txt"
 
+## Where F9 puts timestamped PNGs. A folder rather than one fixed file so a
+## screenshot can never silently replace the one before it.
+static var SCREENSHOT_DIR := "user://screenshots"
+
 ## The view mode, the effects mode, the volume and whether the trader's
 ## introduction has been heard. A file the PLAYER owns, so it lives here with
 ## the other three rather than as a const in each of the four modules that
@@ -98,6 +102,8 @@ static func use_scratch_files(tag: String) -> void:
 	# And the legends, which every ending appends to. Redirected from the
 	# file's first commit, as CLAUDE.md asks of every player-owned file.
 	LegendsLog.PATH = "user://scratch_%s_legends.json" % tag
+	# Screenshot tests and tools must never write into the player's folder.
+	SCREENSHOT_DIR = "user://scratch_%s_screenshots" % tag
 
 ## True in a test or a tool: anything that called use_scratch_files. The title
 ## screen is skipped then -- the harnesses load the real scene and expect to be

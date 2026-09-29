@@ -39,6 +39,7 @@ func _initialize() -> void:
 	if had_legends:
 		legends_before = FileAccess.get_file_as_string("user://legends.json")
 	print("")
+	_test_screenshot_paths_and_key()
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
 	_test_fov_blocked_by_walls()
@@ -283,6 +284,19 @@ func _initialize() -> void:
 	print("")
 	print("  %d passed, %d failed" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
+
+func _test_screenshot_paths_and_key() -> void:
+	var stamp := "2026-09-29_12-34-56_789"
+	check("screenshot folder is redirected with the other player files",
+		GameState.SCREENSHOT_DIR == "user://scratch_tests_screenshots")
+	check("a screenshot path keeps its timestamp under the scratch folder",
+		MainScene.screenshot_path(stamp)
+		== "user://scratch_tests_screenshots/ofr-%s.png" % stamp)
+	var f9_is_listed := false
+	for row in Sidebar.KEYS:
+		if row[0] == "F9" and row[1] == "screenshot" and int(row[2]) == KEY_F9:
+			f9_is_listed = true
+	check("F9 screenshot is listed in the legend keys", f9_is_listed)
 
 var _silent_ok := true
 ## How many check_silent calls the current gathered block has actually made.

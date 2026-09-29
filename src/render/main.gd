@@ -164,6 +164,11 @@ static func pad_pack_action(key: int, throw_mode: bool, bind_mode: bool) -> Stri
 			return &"throw"
 	return &""
 
+## A capture gets its own timestamped name, under the directory GameState
+## redirects for headless tools and tests.
+static func screenshot_path(timestamp: String) -> String:
+	return "%s/ofr-%s.png" % [GameState.SCREENSHOT_DIR, timestamp]
+
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
 	KEY_UP: Vector2i(0, -1), KEY_DOWN: Vector2i(0, 1),
@@ -660,6 +665,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		# the screen someone is stuck on is the one they need it over.
 		if key == KEY_F8:
 			pad_watch.toggle()
+			return
+		if key == KEY_F9:
+			_capture_screenshot()
 			return
 
 	# ` is a second Esc everywhere: the key beside it, which no browser
@@ -1203,6 +1211,56 @@ func _export_morgue() -> void:
 		# after a sentence.
 		state.msg_log.add("The morgue: every run that has ended here.", calm)
 		state.msg_log.add(said, calm)
+	_refresh()
+
+## Capture one fully rendered frame without the diagnostic overlay. Waiting for
+## the next post-draw signal can hang when the window is hidden, so explicitly
+## draw after process frames; this also lets PadWatch disappear from the texture.
+func _capture_screenshot() -> void:
+	if state == null or pad_watch == null:
+		return
+	var watch_was_visible: bool = pad_watch.visible
+	pad_watch.visible = false
+	for frame in 3:
+		await get_tree().process_frame
+		RenderingServer.force_draw(false)
+	var image: Image = get_viewport().get_texture().get_image()
+	pad_watch.visible = watch_was_visible
+	if image == null or image.is_empty():
+		_screenshot_failed("the game image was unavailable")
+		return
+
+	var folder := ProjectSettings.globalize_path(GameState.SCREENSHOT_DIR)
+	if not DirAccess.dir_exists_absolute(folder):
+		var mkdir_error: int = DirAccess.make_dir_recursive_absolute(folder)
+		if mkdir_error != OK:
+			_screenshot_failed("could not create the screenshots folder (%s)"
+				% error_string(mkdir_error))
+			return
+
+	var date := Time.get_datetime_dict_from_system()
+	var stamp := "%04d-%02d-%02d_%02d-%02d-%02d_%03d" % [
+		int(date["year"]), int(date["month"]), int(date["day"]),
+		int(date["hour"]), int(date["minute"]), int(date["second"]),
+		Time.get_ticks_msec() % 1000,
+	]
+	var path := screenshot_path(stamp)
+	var save_error: int = image.save_png(path)
+	if save_error != OK:
+		_screenshot_failed("could not write the PNG (%s)" % error_string(save_error))
+		return
+
+	var said := "Screenshot saved to %s." % path
+	if Platform.is_web():
+		said = Platform.hand_over(path, path.get_file(), "image/png")
+		if said == "":
+			_screenshot_failed("the browser could not start the download")
+			return
+	state.msg_log.add(said, Color(0.80, 0.85, 0.95))
+	_refresh()
+
+func _screenshot_failed(reason: String) -> void:
+	state.msg_log.add("Screenshot not saved: %s." % reason, Palette.HP_BAD)
 	_refresh()
 
 func _save_and_quit() -> void:

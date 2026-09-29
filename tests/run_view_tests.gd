@@ -1103,31 +1103,52 @@ func _test_the_animation_extras() -> void:
 	# A real heal: eating fungus while hurt.
 	gs.events.clear()
 	gs.player.hp = gs.player.max_hp - 5
+	var sidebar := Sidebar.new()
+	sidebar.state = gs
+	sidebar._process(0.0)
+	var hp_before: int = gs.player.hp
 	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FUNGUS)
 	gs._eat_fungus()
 	check("  eating fungus while hurt shows the healing cue", healed.call())
+	sidebar._process(0.0)
+	check("  the sidebar tracks the HP segment that was restored",
+		sidebar._heal_from_hp == hp_before and sidebar._last_hp > hp_before)
+	var healing_events: Array = gs.events.filter(func(e): return e["kind"] == &"healed")
+	sidebar.free()
 	gs.events.clear()
 	gs.player.hp = gs.player.max_hp
 	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FUNGUS)
 	gs._eat_fungus()
 	check("  and at full health it does not", not healed.call())
-	gs.events.clear()
-	gs._queue_healing_cue(0)
-	check("  nothing restored, no cue", gs.events.is_empty())
 
-	# The ring is motion: shown on simple and full, not on still.
+	# The popup and ring are motion: shown on simple and full, not on still.
 	var was_mode := Effects.mode()
 	var fx := Fx.new()
 	var cue := [{"kind": &"healed", "to": Vector2i(gs.player.x, gs.player.y), "amount": 3}]
 	Effects.set_mode(Effects.Mode.TIMERS)
+	fx.add_events(healing_events, 16)
+	var popups := fx.list.filter(func(e): return e["type"] == &"popup")
+	var healed_amount: int = int(healing_events[0]["amount"]) if not healing_events.is_empty() else 0
+	check("  a real heal creates a floating green +N",
+		popups.size() == 1 and popups[0]["text"] == ("+%d" % healed_amount)
+		and popups[0]["colour"] == Palette.HP_GOOD)
+	fx.list.clear()
+	fx.add_events(gs.events, 16)
+	check("  full health creates no healing popup",
+		fx.list.filter(func(e): return e["type"] == &"popup").is_empty())
+	fx.list.clear()
 	fx.add_impacts(cue, gs, StepMotion.new())
 	var rings := fx.list.filter(func(e): return e["type"] == &"ring")
 	check("  with motion on, the cue is a ring", rings.size() == 1)
 	fx.list.clear()
 	Effects.set_mode(Effects.Mode.NONE)
+	fx.add_events(cue, 16)
 	fx.add_impacts(cue, gs, StepMotion.new())
 	check("  on still it is not drawn (the bar and the log say it)", fx.list.is_empty())
 	Effects.set_mode(was_mode)
+	gs.events.clear()
+	gs._queue_healing_cue(0)
+	check("  nothing restored, no cue", gs.events.is_empty())
 
 	# Stepping onto bones throws up chips, from the event the step leaves.
 	var step_to := Vector2i(gs.player.x + 1, gs.player.y)
@@ -1150,6 +1171,19 @@ func _test_the_animation_extras() -> void:
 	check("  a thrust is a line of three, a slash an arc of five, a blow a cross",
 		mark.call(&"pierce").size() == 3 and mark.call(&"slash").size() == 5
 		and mark.call(&"blunt").size() == 5)
+	check("  contact marks use quarter-cell steel blocks for .35 seconds",
+		is_equal_approx(Fx.CONTACT_BLOCK, 0.25)
+		and is_equal_approx(Fx.CONTACT_LIFE, 0.35)
+		and Palette.CONTACT != Palette.HIT_FLASH)
+	var contact_fx := Fx.new()
+	var melee := [{"kind": &"melee", "from": at, "to": at + Vector2i.RIGHT,
+		"amount": 2, "on_player": false}]
+	_with_mode(Effects.Mode.TIMERS,
+		func() -> void: contact_fx.add_impacts(melee, gs, StepMotion.new()))
+	var contact_events: Array = contact_fx.list.filter(func(e): return e["type"] == &"contact")
+	check("  melee uses the separate steel colour",
+		contact_events.size() == 1 and contact_events[0]["colour"] == Palette.CONTACT
+		and is_equal_approx(float(contact_events[0]["life"]), 0.35))
 	check("  and it fades out and is culled",
 		Fx.contact_marks({"type": &"contact", "cell": at, "dir": Vector2(1, 0),
 			"style": &"slash", "life": Fx.CONTACT_LIFE}, Fx.CONTACT_LIFE, gs.map).is_empty()

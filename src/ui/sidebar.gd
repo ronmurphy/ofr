@@ -36,8 +36,13 @@ var hovered := Vector2i(-1, -1)
 var look_mode := false
 var aiming := false
 
+var _tracked_state: GameState = null
 var _last_hp := -1
+var _last_max_hp := -1
 var _hit_at := -10.0
+var _heal_from_hp := -1
+var _heal_from_max_hp := -1
+var _heal_at := -10.0
 
 const PAD := 14.0
 const LINE := 21.0
@@ -95,6 +100,7 @@ const KEYS := [
 	# effects like these stop some people playing games at all.
 	["e", "still / simple / full", KEY_E, ""],
 	["o", "the map", KEY_O, ""],
+	["F9", "screenshot", KEY_F9, ""],
 	["esc or `", "menu", KEY_ESCAPE, ""],
 	["click", "travel", 0, "--"],
 ]
@@ -169,10 +175,28 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if state == null:
 		return
+	# A replacement run is a new baseline, not a sudden hit or heal.
+	if _tracked_state != state:
+		_tracked_state = state
+		_last_hp = state.player.hp
+		_last_max_hp = state.player.max_hp
+		_hit_at = -10.0
+		_heal_from_hp = -1
+		_heal_from_max_hp = -1
+		_heal_at = -10.0
+		return
 	var hp := state.player.hp
-	if _last_hp >= 0 and hp < _last_hp:
-		_hit_at = Time.get_ticks_msec() / 1000.0
+	if _last_hp >= 0 and hp != _last_hp:
+		var now := Time.get_ticks_msec() / 1000.0
+		if hp < _last_hp:
+			_hit_at = now
+		else:
+			# Remember the old edge so the bar can glow only over restored HP.
+			_heal_from_hp = _last_hp
+			_heal_from_max_hp = _last_max_hp
+			_heal_at = now
 	_last_hp = hp
+	_last_max_hp = state.player.max_hp
 
 ## Breathing room between a row's left text and its right-aligned number.
 const GAP := 8.0
@@ -244,6 +268,10 @@ func _draw() -> void:
 		pulse = 1.0 - since_hit / 0.45
 	if frac < 0.3:
 		pulse = maxf(pulse, 0.30 + 0.30 * sin(now * 7.0))
+	# Healing is its own UI pulse, including in "still" mode: keep it over the
+	# segment that just changed so a small recovery is visible at a glance.
+	var since_heal := now - _heal_at
+	var heal_glow := maxf(0.0, 1.0 - since_heal / 0.55) if since_heal < 0.55 else 0.0
 
 	_line(font, y, "HP %d/%d" % [p.hp, p.max_hp], col if frac < 0.3 else Palette.UI_TEXT)
 	y += 8.0
@@ -255,6 +283,14 @@ func _draw() -> void:
 			Color(1, 1, 1, pulse * 0.42), true)
 		draw_rect(Rect2(Vector2(PAD - 2.0, y - 2.0), Vector2(bar_w + 4.0, 14.0)),
 			Color(Palette.HP_BAD, pulse * 0.85), false, 2.0)
+	if heal_glow > 0.0 and _heal_from_hp >= 0 and _heal_from_max_hp > 0:
+		var old_frac := clampf(float(_heal_from_hp) / float(_heal_from_max_hp), 0.0, 1.0)
+		var start_x := PAD + bar_w * old_frac
+		var glow_w := maxf(0.0, bar_w * frac - start_x)
+		if glow_w > 0.0:
+			var restored := Rect2(Vector2(start_x, y), Vector2(glow_w, 10.0))
+			draw_rect(restored, Color(0.55, 1.0, 0.64, heal_glow * 0.88), true)
+			draw_rect(restored, Color(0.92, 1.0, 0.90, heal_glow), false, 1.0)
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w, 10)), Palette.UI_FRAME, false, 1.0)
 	y += 10 + LINE
 
