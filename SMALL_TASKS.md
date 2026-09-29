@@ -43,15 +43,12 @@ leave clear notes.
 
    **A tally is not a pass.** A script error stops a test silently and the
    tally still prints, so the error count must be 0 as well.
-4. **Run the full suite before you say a job is done** (about 10 minutes):
-
-       XDG_DATA_HOME=/home/brad/ofr-freemodel-data godot --headless --script tests/run_tests.gd > /tmp/full.log 2>&1
-       grep -c "SCRIPT ERROR" /tmp/full.log      # must print 0
-       grep -E "passed, .* failed" /tmp/full.log  # must say 0 failed
-
-   If the tally line is missing, the run did not finish -- that is a failure.
-   Never run two suites at the same time, and never edit a `.gd` file while a
-   suite is running.
+4. **Do NOT run the full suite** (`tests/run_tests.gd`). It takes about ten
+   minutes, and checking on it while it runs uses up Brad's usage quickly --
+   every check re-reads the whole conversation (2026-09-29: most of a day's
+   allowance went to waiting on it). Claude runs the full suite when it
+   reviews your work. The quick suite above is your check. Never edit a `.gd`
+   file while any suite is running.
 5. **Both map views.** The game has a classic glyph view (`glyph_grid.gd`) and
    a 3D view (`diorama_view.gd`). Anything drawn on the map must work in both,
    through the shared effects layer (`src/render/fx.gd`): the game records an
@@ -73,7 +70,24 @@ Tick its box and add a **Done** note under it, like this:
 
     - [x] **Job name**
       Done 2026-10-02: what you changed (files), which tests you added, and the
-      suite results (quick N passed / full N passed, 0 script errors).
+      quick suite result (N passed, 0 failed, 0 script errors).
+
+## Lessons from reviews
+
+Claude reviews each round. What it found, so the next job avoids it:
+
+- **2026-09-29, round 1 (all four jobs): good work** -- clean code in the
+  project's style, careful failure handling, accurate done notes, tests
+  written. Two bugs got through:
+  1. **The HP bar's heal glow was 14 px short**, so a heal under about 6% of
+     max HP (a fungus, +1) drew nothing: one edge was measured with the bar's
+     left margin (PAD) and the other without. The tests checked the inputs
+     and the popup, not the drawn width. **Lesson: test the thing that is
+     DRAWN -- the rectangle, the size -- with the smallest real case (+1).**
+  2. **F9 in a browser left every PNG in the page's storage** after handing
+     it over as a download. **Lesson: in a browser, user:// is the page's
+     own storage, invisible to the player; a file written only to be
+     downloaded must be deleted afterwards.**
 
 ---
 

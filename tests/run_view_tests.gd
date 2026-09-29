@@ -1474,6 +1474,16 @@ func _test_the_playtest_fixes() -> void:
 	side._look_bottom = 320.0
 	check("  and it is not drawn where it is not wanted", not side.minimap_fits())
 	side.state = null
+	# The heal glow covers exactly what was restored -- a +1 too.
+	var bar_w := 228.0
+	var one := Sidebar.restored_rect(59, 60, 60.0 / 60.0, bar_w, 0.0)
+	check("  a heal of 1 (a fungus) still glows, as wide as one hit point",
+		one.size.x > 0.0 and absf(one.size.x - bar_w / 60.0) < 0.01, "%.2f px" % one.size.x)
+	var ten := Sidebar.restored_rect(30, 60, 40.0 / 60.0, bar_w, 0.0)
+	check("  and a heal of 10 glows over exactly those ten",
+		absf(ten.position.x - (Sidebar.PAD + bar_w * 0.5)) < 0.01
+		and absf(ten.size.x - bar_w * 10.0 / 60.0) < 0.01)
+	check("  a loss glows nothing", Sidebar.restored_rect(40, 60, 30.0 / 60.0, bar_w, 0.0).size.x == 0.0)
 	check("  the menu button and the help line do not overlap",
 		not side.menu_button_rect().intersects(side.help_line_rect()))
 	# One line now (Brad): the loud, bold help text must fit left of the button.

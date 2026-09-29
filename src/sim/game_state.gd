@@ -47,9 +47,10 @@ static var DEATH_PATH := "user://death.save"
 ## output rather than deaths they had actually died.
 static var MORGUE_PATH := "user://morgue.txt"
 
-## Where F9 puts timestamped PNGs. A folder rather than one fixed file so a
-## screenshot can never silently replace the one before it.
-static var SCREENSHOT_DIR := "user://screenshots"
+## Where F9 puts its PNGs. EMPTY means the player's desktop -- Brad: user:// is
+## a hidden folder nobody would find (see MainScene.screenshot_folder). Tests
+## and tools set it (use_scratch_files), so a suite never writes to a desktop.
+static var SCREENSHOT_DIR := ""
 
 ## The view mode, the effects mode, the volume and whether the trader's
 ## introduction has been heard. A file the PLAYER owns, so it lives here with

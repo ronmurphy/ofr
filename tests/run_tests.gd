@@ -286,12 +286,34 @@ func _initialize() -> void:
 	quit(1 if _failed > 0 else 0)
 
 func _test_screenshot_paths_and_key() -> void:
-	var stamp := "2026-09-29_12-34-56_789"
 	check("screenshot folder is redirected with the other player files",
 		GameState.SCREENSHOT_DIR == "user://scratch_tests_screenshots")
-	check("a screenshot path keeps its timestamp under the scratch folder",
-		MainScene.screenshot_path(stamp)
-		== "user://scratch_tests_screenshots/ofr-%s.png" % stamp)
+	var folder := MainScene.screenshot_folder()
+	check("and under scratch files it is never the desktop",
+		folder == ProjectSettings.globalize_path("user://scratch_tests_screenshots")
+		and folder != OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP))
+	# Numbered, one past the highest already there -- gaps never reused.
+	DirAccess.make_dir_recursive_absolute(folder)
+	for f in DirAccess.get_files_at(folder):
+		DirAccess.remove_absolute(folder.path_join(f))
+	check("an empty folder starts at 001",
+		MainScene.next_screenshot_name(folder) == "ofr_screenshot_001.png")
+	for n in ["ofr_screenshot_001.png", "ofr_screenshot_003.png", "holiday.png"]:
+		var f := FileAccess.open(folder.path_join(n), FileAccess.WRITE)
+		f.close()
+	check("after 001 and 003 (and someone else's picture) comes 004",
+		MainScene.next_screenshot_name(folder) == "ofr_screenshot_004.png",
+		MainScene.next_screenshot_name(folder))
+	for f in DirAccess.get_files_at(folder):
+		DirAccess.remove_absolute(folder.path_join(f))
+	DirAccess.remove_absolute(folder)
+	# The browser keeps its count in settings (scratch here).
+	var first := MainScene.next_web_screenshot_name()
+	var second := MainScene.next_web_screenshot_name()
+	check("in a browser the count carries on from settings",
+		first.begins_with("ofr_screenshot_") and second != first
+		and second.trim_prefix("ofr_screenshot_").to_int()
+			== first.trim_prefix("ofr_screenshot_").to_int() + 1, "%s then %s" % [first, second])
 	var f9_is_listed := false
 	for row in Sidebar.KEYS:
 		if row[0] == "F9" and row[1] == "screenshot" and int(row[2]) == KEY_F9:

@@ -284,11 +284,9 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(PAD - 2.0, y - 2.0), Vector2(bar_w + 4.0, 14.0)),
 			Color(Palette.HP_BAD, pulse * 0.85), false, 2.0)
 	if heal_glow > 0.0 and _heal_from_hp >= 0 and _heal_from_max_hp > 0:
-		var old_frac := clampf(float(_heal_from_hp) / float(_heal_from_max_hp), 0.0, 1.0)
-		var start_x := PAD + bar_w * old_frac
-		var glow_w := maxf(0.0, bar_w * frac - start_x)
-		if glow_w > 0.0:
-			var restored := Rect2(Vector2(start_x, y), Vector2(glow_w, 10.0))
+		var restored := Sidebar.restored_rect(_heal_from_hp, _heal_from_max_hp,
+			frac, bar_w, y)
+		if restored.size.x > 0.0:
 			draw_rect(restored, Color(0.55, 1.0, 0.64, heal_glow * 0.88), true)
 			draw_rect(restored, Color(0.92, 1.0, 0.90, heal_glow), false, 1.0)
 	draw_rect(Rect2(Vector2(PAD, y), Vector2(bar_w, 10)), Palette.UI_FRAME, false, 1.0)
@@ -566,6 +564,17 @@ func _draw_minimap() -> void:
 	var centre := r.position + (Vector2(state.player.x, state.player.y) + Vector2(0.5, 0.5)) * MINI_CELL
 	draw_line(centre, centre + Vector2(state.player.facing).normalized() * 7.0,
 		MapPanel.MARK_PLAYER, 1.5)
+
+## The part of the HP bar a heal just filled: from the old edge to the new.
+## Both edges measured from the bar's left end (PAD). The first version took
+## the new edge WITHOUT the PAD but the old one with it, so every glow was 14 px
+## short and a heal under about 6% of max HP -- a fungus, +1 -- drew nothing.
+static func restored_rect(old_hp: int, old_max: int, frac: float, bar_w: float,
+		y: float) -> Rect2:
+	var old_frac := clampf(float(old_hp) / float(maxi(1, old_max)), 0.0, 1.0)
+	var start_x := PAD + bar_w * old_frac
+	var end_x := PAD + bar_w * frac
+	return Rect2(Vector2(start_x, y), Vector2(maxf(0.0, end_x - start_x), 10.0))
 
 ## "wading · slowed x1.4". Separate so the tests can read what the row says.
 static func status_words(word: String, pace: float) -> String:

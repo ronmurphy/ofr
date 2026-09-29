@@ -164,10 +164,44 @@ static func pad_pack_action(key: int, throw_mode: bool, bind_mode: bool) -> Stri
 			return &"throw"
 	return &""
 
-## A capture gets its own timestamped name, under the directory GameState
-## redirects for headless tools and tests.
-static func screenshot_path(timestamp: String) -> String:
-	return "%s/ofr-%s.png" % [GameState.SCREENSHOT_DIR, timestamp]
+## Where F9 saves, as a real folder path: the player's DESKTOP (Windows'
+## Desktop, the XDG desktop on Linux), else Pictures, else the save folder --
+## Brad, 2026-09-29: "user://, idk where that is irl". Tests and tools set
+## GameState.SCREENSHOT_DIR, and then that wins, so no suite touches a desktop.
+static func screenshot_folder() -> String:
+	if GameState.SCREENSHOT_DIR != "":
+		return ProjectSettings.globalize_path(GameState.SCREENSHOT_DIR)
+	for which in [OS.SYSTEM_DIR_DESKTOP, OS.SYSTEM_DIR_PICTURES]:
+		var dir := OS.get_system_dir(which)
+		if dir != "" and DirAccess.dir_exists_absolute(dir):
+			return dir
+	return ProjectSettings.globalize_path("user://screenshots")
+
+## ofr_screenshot_001.png, 002, ...: one past the highest number already in
+## `folder`, so deleting old ones never makes a new one overwrite another.
+## "ofr_" so they are ours at a glance on a crowded desktop.
+static func next_screenshot_name(folder: String) -> String:
+	var top := 0
+	var re := RegEx.new()
+	re.compile("^ofr_screenshot_(\\d+)\\.png$")
+	var dir := DirAccess.open(folder)
+	if dir != null:
+		for f in dir.get_files():
+			var m := re.search(f)
+			if m != null:
+				top = maxi(top, m.get_string(1).to_int())
+	return "ofr_screenshot_%03d.png" % (top + 1)
+
+## The browser's count. There the picture is handed over as a download and
+## the stored copy deleted, so there is no folder to count; the last number is
+## kept in settings.cfg instead (redirected in tests with the rest).
+static func next_web_screenshot_name() -> String:
+	var cfg := ConfigFile.new()
+	cfg.load(GameState.SETTINGS_PATH)
+	var n := int(cfg.get_value("screenshots", "last", 0)) + 1
+	cfg.set_value("screenshots", "last", n)
+	cfg.save(GameState.SETTINGS_PATH)
+	return "ofr_screenshot_%03d.png" % n
 
 const MOVES := {
 	KEY_LEFT: Vector2i(-1, 0), KEY_RIGHT: Vector2i(1, 0),
@@ -1230,7 +1264,11 @@ func _capture_screenshot() -> void:
 		_screenshot_failed("the game image was unavailable")
 		return
 
-	var folder := ProjectSettings.globalize_path(GameState.SCREENSHOT_DIR)
+	var folder := screenshot_folder()
+	if Platform.is_web():
+		# Only a staging place in the page's own storage; the file is handed
+		# over as a download and deleted below.
+		folder = ProjectSettings.globalize_path("user://screenshots")
 	if not DirAccess.dir_exists_absolute(folder):
 		var mkdir_error: int = DirAccess.make_dir_recursive_absolute(folder)
 		if mkdir_error != OK:
@@ -1238,13 +1276,9 @@ func _capture_screenshot() -> void:
 				% error_string(mkdir_error))
 			return
 
-	var date := Time.get_datetime_dict_from_system()
-	var stamp := "%04d-%02d-%02d_%02d-%02d-%02d_%03d" % [
-		int(date["year"]), int(date["month"]), int(date["day"]),
-		int(date["hour"]), int(date["minute"]), int(date["second"]),
-		Time.get_ticks_msec() % 1000,
-	]
-	var path := screenshot_path(stamp)
+	var file_name := next_web_screenshot_name() if Platform.is_web() \
+		else next_screenshot_name(folder)
+	var path := folder.path_join(file_name)
 	var save_error: int = image.save_png(path)
 	if save_error != OK:
 		_screenshot_failed("could not write the PNG (%s)" % error_string(save_error))
@@ -1253,6 +1287,10 @@ func _capture_screenshot() -> void:
 	var said := "Screenshot saved to %s." % path
 	if Platform.is_web():
 		said = Platform.hand_over(path, path.get_file(), "image/png")
+		# The download now has it. The browser's own storage is the page's
+		# and invisible to the player, so a copy left there is a megabyte of
+		# litter per picture, forever.
+		DirAccess.remove_absolute(path)
 		if said == "":
 			_screenshot_failed("the browser could not start the download")
 			return
