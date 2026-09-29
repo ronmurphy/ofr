@@ -2938,7 +2938,10 @@ func _test_inventory_grouping() -> void:
 	var axe := Item.make(&"war_axe")
 	var mail := Item.make(&"leather_armour")
 	var potion := Item.make(&"potion_healing")
-	for it in [potion, dagger, axe, mail]:
+	var meat := Item.make(&"meat")
+	var rat_ring := Item.make(&"rat_ring")
+	var shovel := Item.make(&"shovel")
+	for it in [potion, meat, dagger, axe, mail, rat_ring, shovel]:
 		gs.give_item(it)
 	gs.player.equipped[Item.Slot.ARMOR] = mail
 
@@ -2954,20 +2957,89 @@ func _test_inventory_grouping() -> void:
 
 	var weapons := []
 	var in_weapons := false
+	var in_uniques := false
+	var in_food_and_potions := false
+	var unique_group_items: Array[Item] = []
+	var food_is_in_its_group: bool = false
 	for r in rows:
 		if r.has("header"):
 			in_weapons = r["header"] == "WEAPONS"
+			in_uniques = r["header"] == "UNIQUES"
+			in_food_and_potions = r["header"] == "FOOD & POTIONS"
 			continue
 		if in_weapons:
 			weapons.append(r["item"].name)
+		if in_uniques:
+			unique_group_items.append(r["item"])
+		if in_food_and_potions and r["item"] == meat:
+			food_is_in_its_group = true
 	check("better weapon sorts above worse", weapons == ["war axe", "dagger"], str(weapons))
+	check("unique ring and shovel have their own group",
+		unique_group_items.size() == 2 and unique_group_items.has(rat_ring)
+		and unique_group_items.has(shovel))
+	check("food is listed under FOOD & POTIONS", food_is_in_its_group)
 
 	panel.filter = InventoryPanel.Filter.POTIONS
 	var only: Array = panel._build_rows()
-	check("filtering shows only that kind",
-		only.size() == 1 and only[0]["item"] == potion)
+	check("food and potions share their filter",
+		only.size() == 2 and only.any(func(r): return r["item"] == potion)
+		and only.any(func(r): return r["item"] == meat))
 	check("filtering drops the group headers",
 		only.filter(func(r): return r.has("header")).is_empty())
+
+	panel.filter = InventoryPanel.Filter.UNIQUES
+	var unique_only: Array = panel._build_rows()
+	check("the uniques filter finds both unique items",
+		unique_only.size() == 2 and unique_only.any(func(r): return r["item"] == rat_ring)
+		and unique_only.any(func(r): return r["item"] == shovel))
+	panel.filter = InventoryPanel.Filter.WEAPONS
+	var weapons_only: Array = panel._build_rows()
+	check("the unique ring is excluded from weapons",
+		weapons_only.size() == 2 and not weapons_only.any(func(r): return r["item"] == rat_ring))
+	panel.filter = InventoryPanel.Filter.SCROLLS
+	var scrolls_only: Array = panel._build_rows()
+	check("the unique shovel is excluded from scrolls",
+		scrolls_only.is_empty())
+
+	panel.filter = InventoryPanel.Filter.GEMS
+	panel.cycle_filter()
+	check("filter cycling reaches uniques after gems",
+		panel.filter == InventoryPanel.Filter.UNIQUES)
+	panel.cycle_filter()
+	check("filter cycling wraps from uniques to all",
+		panel.filter == InventoryPanel.Filter.ALL)
+	panel.cycle_filter(-1)
+	check("reverse filter cycling reaches uniques",
+		panel.filter == InventoryPanel.Filter.UNIQUES)
+
+	gs.player.equipped[Item.Slot.WEAPON] = rat_ring
+	panel.filter = InventoryPanel.Filter.ALL
+	var worn_unique_rows: Array = panel._build_rows()
+	var in_equipped: bool = false
+	var unique_is_equipped: bool = false
+	var equipped_unique_is_duplicated: bool = false
+	for r in worn_unique_rows:
+		if r.has("header"):
+			in_equipped = r["header"] == "EQUIPPED"
+			in_uniques = r["header"] == "UNIQUES"
+			continue
+		if r["item"] == rat_ring:
+			unique_is_equipped = in_equipped
+			equipped_unique_is_duplicated = in_uniques
+	check("an equipped unique stays in EQUIPPED only",
+		unique_is_equipped and not equipped_unique_is_duplicated)
+
+	panel.font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	panel.size = Vector2(1600, 900)
+	var chips: Array = panel._chip_rects()
+	var panel_rect: Rect2 = panel._panel_rect()
+	var last_chip: Dictionary = chips.back()
+	var last_right: float = last_chip["rect"].end.x
+	var inner_right: float = panel_rect.end.x - InventoryPanel.PAD
+	check("filter chips include the long label and fit the panel",
+		chips.size() == 7 and chips[3]["label"] == "food & potions"
+		and chips[6]["label"] == "uniques" and last_right <= inner_right,
+		"last chip ends at %.1f; panel edge is %.1f" % [last_right, inner_right])
 	panel.free()
 
 func _test_blink_relocates() -> void:

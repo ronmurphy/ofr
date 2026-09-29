@@ -79,7 +79,7 @@ Tick its box and add a **Done** note under it, like this:
 
 ## Jobs
 
-- [ ] **Inventory labels: "food & potions", and a "uniques" group**
+- [x] **Inventory labels: "food & potions", and a "uniques" group**
   In `src/ui/inventory_panel.gd`: the tab (chip) labelled "potions" and the
   POTIONS heading also hold food (haunches of meat), so rename them to
   "food & potions" / "FOOD & POTIONS". Add a **uniques** group -- a tab and a
@@ -90,6 +90,14 @@ Tick its box and add a **Done** note under it, like this:
   enum, the chip list and the headings near the top of the file, and the
   filter test around line 162. Check the tab row still fits the panel. Tests:
   a unique lands in uniques and not in weapons; food lands in food & potions.
+
+  Done 2026-09-29: renamed the food and potion chip/group, added a uniques-only
+  chip/group with explicit chip-order cycling, and tightened chip spacing so
+  the row fits. Added coverage for unique grouping/filtering, equipped uniques,
+  food grouping, cycling, and chip bounds in `inventory_panel.gd` and
+  `tests/run_tests.gd`. Quick: 245 passed / 0 failed, 0 script errors. Full:
+  2,202 passed / 0 failed, 0 script errors. The full log also includes error
+  output from existing malformed-data tests and Godot teardown resource notices.
 
 - [ ] **Healing you can see**
   A `healed` event (it carries `"amount"`) already plays a small green ring on

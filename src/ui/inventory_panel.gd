@@ -21,18 +21,18 @@ signal close_requested()
 var pad_cfg: PadConfig = null
 var pad_input := false
 
-## GEMS is last so the existing order is untouched -- `cycle_filter` wraps on
-## FILTERS.size(), so appending is safe and inserting would shuffle the tabs
-## under a player who has learned where they are.
-enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS, GEMS, AMULET }
+## Keep existing IDs stable. AMULET is an all-view group without a filter chip,
+## so cycle_filter follows FILTERS' explicit order rather than the enum values.
+enum Filter { ALL, WEAPONS, ARMOUR, POTIONS, SCROLLS, GEMS, AMULET, UNIQUES }
 
 const FILTERS := [
 	{"id": Filter.ALL,      "label": "all"},
 	{"id": Filter.WEAPONS,  "label": "weapons"},
 	{"id": Filter.ARMOUR,   "label": "armour"},
-	{"id": Filter.POTIONS,  "label": "potions"},
+	{"id": Filter.POTIONS,  "label": "food & potions"},
 	{"id": Filter.SCROLLS,  "label": "scrolls"},
 	{"id": Filter.GEMS,     "label": "gems"},
+	{"id": Filter.UNIQUES,  "label": "uniques"},
 ]
 
 ## Every kind needs a group or its items are INVISIBLE -- the list is drawn by
@@ -42,13 +42,15 @@ const FILTERS := [
 const GROUPS := [
 	[Filter.WEAPONS, "WEAPONS"],
 	[Filter.ARMOUR,  "ARMOUR"],
-	[Filter.POTIONS, "POTIONS"],
+	[Filter.POTIONS, "FOOD & POTIONS"],
 	[Filter.SCROLLS, "SCROLLS"],
 	[Filter.GEMS,    "GEMS"],
 	# The thing the whole game is about, and it was homeless until a test went
 	# looking: Kind.AMULET belonged to no group, so the Amulet of the Deep was
 	# carried and never shown in the pack. Found by the guard written for gems.
 	[Filter.AMULET,  "AMULET"],
+	# Uniques have their own group regardless of the Kind used for equip/use.
+	[Filter.UNIQUES, "UNIQUES"],
 ]
 
 @export var font: Font
@@ -83,6 +85,8 @@ const ROW_H := 23.0
 const HEAD_H := 30.0
 const TOP := 100.0
 const BOTTOM := 54.0
+## A tighter gap keeps the longer food label and seventh tab inside the panel.
+const CHIP_GAP := 4.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -130,7 +134,13 @@ func close() -> void:
 	_hover_index = -1
 
 func cycle_filter(step: int = 1) -> void:
-	filter = wrapi(filter + step, 0, FILTERS.size())
+	var index: int = 0
+	for i in FILTERS.size():
+		if FILTERS[i]["id"] == filter:
+			index = i
+			break
+	index = wrapi(index + step, 0, FILTERS.size())
+	filter = FILTERS[index]["id"]
 	_hover_index = -1
 	queue_redraw()
 
@@ -154,15 +164,17 @@ func letter_to_index(key: int) -> int:
 
 # ------------------------------------------------------------------ model ---
 
+## Uniques use their own shelf instead of also appearing under their Kind.
 func _matches(item: Item, f: int) -> bool:
 	match f:
 		Filter.ALL:      return true
-		Filter.WEAPONS:  return item.kind == Item.Kind.WEAPON
-		Filter.ARMOUR:   return item.kind == Item.Kind.ARMOR
-		Filter.POTIONS:  return item.kind == Item.Kind.POTION
-		Filter.SCROLLS:  return item.kind == Item.Kind.SCROLL
-		Filter.GEMS:     return item.kind == Item.Kind.GEM
-		Filter.AMULET:   return item.kind == Item.Kind.AMULET
+		Filter.UNIQUES:  return item.unique
+		Filter.WEAPONS:  return not item.unique and item.kind == Item.Kind.WEAPON
+		Filter.ARMOUR:   return not item.unique and item.kind == Item.Kind.ARMOR
+		Filter.POTIONS:  return not item.unique and item.kind == Item.Kind.POTION
+		Filter.SCROLLS:  return not item.unique and item.kind == Item.Kind.SCROLL
+		Filter.GEMS:     return not item.unique and item.kind == Item.Kind.GEM
+		Filter.AMULET:   return not item.unique and item.kind == Item.Kind.AMULET
 	return true
 
 ## Best first, then alphabetical -- so deciding what to wear is a glance at the
@@ -253,7 +265,7 @@ func _chip_rects() -> Array:
 			-1, font_size - 2).x + 20.0
 		out.append({"id": f["id"], "label": f["label"],
 			"rect": Rect2(x, p.position.y + PAD + 32.0, w, 25.0)})
-		x += w + 6.0
+		x += w + CHIP_GAP
 	return out
 
 # ------------------------------------------------------------------ input ---
