@@ -1,8 +1,8 @@
 class_name SoundDeck
 extends Node
 
-## Plays turn-event effects and a generated background bed. Effects read the
-## same event queue the renderer animates from; the bed follows dungeon bands.
+## Plays turn-event effects and generated music. Effects read the same event
+## queue the renderer animates from; music follows the title or dungeon band.
 ##
 ## Effects only play where they carry INFORMATION THE EYE CAN MISS. There is no
 ## footstep, no swing, no door, no
@@ -21,8 +21,8 @@ extends Node
 ##   a change of footing         the mud slowdown was completely unreadable
 ##   a shrine, a forging         rare, and confirmable no other way
 ##
-## The ambient bed is a quiet exception: it carries no gameplay information,
-## and changes only when the dungeon changes bands.
+## The music is a quiet exception: it carries no gameplay information, and
+## changes when the title hands off to a run or the dungeon changes bands.
 
 const POOL := 10
 const MUSIC_FADE_SECONDS := 1.8
@@ -53,6 +53,10 @@ var _music_profile: Dictionary = {}
 var _music_from_profile: Dictionary = {}
 var _music_key := ""
 var _music_depth := 1
+## True while the title's theme is the one playing, so switching the music or
+## the sound back on returns to the title and not to a band. The title-music
+## patch used this without declaring it -- it did not compile as sent.
+var _music_is_title := false
 var _music_time := 0.0
 var _music_fade_elapsed := MUSIC_FADE_SECONDS
 ## Sounds waiting on a projectile: {id, gain, at}.
@@ -70,7 +74,7 @@ func _ready() -> void:
 	_music_generator.mix_rate = Synth.MUSIC_RATE
 	_music_generator.buffer_length = 0.25
 	_music_player = AudioStreamPlayer.new()
-	_music_player.name = "DungeonAmbience"
+	_music_player.name = "ProceduralMusic"
 	_music_player.bus = &"Master"
 	_music_player.stream = _music_generator
 	_music_player.volume_db = SILENT_DB
@@ -96,14 +100,22 @@ func _process(delta: float) -> void:
 ## dungeon. A theme only changes at band boundaries, and the return trip gets
 ## its altered version through Bands.is_corrupted().
 func sync_music(effective_depth: int) -> void:
+	_music_is_title = false
 	_music_depth = effective_depth
+	_sync_music_profile(Synth.music_profile(effective_depth),
+		"%d:%d" % [int(Bands.of(effective_depth)),
+			int(Bands.is_corrupted(effective_depth))])
+
+func sync_title_music() -> void:
+	_music_is_title = true
+	_sync_music_profile(Synth.title_music_profile(), "title")
+
+func _sync_music_profile(profile: Dictionary, key: String) -> void:
 	if muted or not music_on or _music_player == null:
 		return
 	if not _music_player.playing:
 		_music_player.play()
 		_music_playback = null
-	var profile := Synth.music_profile(effective_depth)
-	var key := "%d:%d" % [int(profile["band"]), int(profile["corrupted"])]
 	if key == _music_key:
 		return
 	_music_from_profile = _music_profile
@@ -252,9 +264,7 @@ func play(id: StringName, gain: float = 1.0) -> void:
 	p.play()
 
 func stop_all() -> void:
-	_pending.clear()
-	for p in _players:
-		p.stop()
+	stop_effects()
 	if _music_player != null:
 		_music_player.stop()
 	_music_playback = null
@@ -263,6 +273,11 @@ func stop_all() -> void:
 	_music_key = ""
 	_music_fade_elapsed = MUSIC_FADE_SECONDS
 
+func stop_effects() -> void:
+	_pending.clear()
+	for p in _players:
+		p.stop()
+
 # ---------------------------------------------------------------- settings ---
 
 func toggle_mute() -> String:
@@ -270,7 +285,7 @@ func toggle_mute() -> String:
 	if muted:
 		stop_all()
 	else:
-		sync_music(_music_depth)
+		_sync_current_music()
 	_apply_music_volume()
 	_save_settings()
 	return "Sound off." if muted else "Sound on."
@@ -285,7 +300,7 @@ func toggle_music() -> String:
 		_music_profile.clear()
 		_music_from_profile.clear()
 	_music_key = ""
-	sync_music(_music_depth)
+	_sync_current_music()
 	_apply_music_volume()
 	_save_settings()
 	return "Music on." if music_on else "Music off."
@@ -295,12 +310,18 @@ func nudge_volume(step: float) -> String:
 	if volume > 0.0 and muted:
 		muted = false
 		_music_key = ""
-		sync_music(_music_depth)
+		_sync_current_music()
 	_apply_music_volume()
 	_save_settings()
 	# Play the change so the number is not the only feedback.
 	play(&"hit")
 	return "Sound %d%%." % int(round(volume * 100.0))
+
+func _sync_current_music() -> void:
+	if _music_is_title:
+		sync_title_music()
+	else:
+		sync_music(_music_depth)
 
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()

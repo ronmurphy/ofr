@@ -241,6 +241,7 @@ func _ready() -> void:
 	title.chosen.connect(_on_title_chosen)
 	title.value_of = _setting_value
 	var use_title := not GameState.using_scratch()
+	_title_music_active = use_title
 	# A suspended run resumes straight into itself. Loading destroys the file,
 	# so there is nothing left to fall back to if this run goes badly.
 	# Behind the title nothing is decided yet: Continue loads it, New game
@@ -271,6 +272,7 @@ func _ready() -> void:
 	if use_title:
 		title.open(FileAccess.file_exists(GameState.SUSPEND_PATH),
 			not LegendsLog.escapes().is_empty())
+		sound.sync_title_music()
 	elif asking:
 		name_entry.open()
 		_refresh()
@@ -1120,6 +1122,7 @@ func _on_title_chosen(id: StringName) -> void:
 		&"continue":
 			var loaded := GameState.load_suspend()
 			title.close()
+			_title_music_active = false
 			if loaded == null:
 				# The file was there a moment ago and did not load. Say so
 				# rather than silently starting someone a new character.
@@ -1133,6 +1136,7 @@ func _on_title_chosen(id: StringName) -> void:
 			_bind_state(loaded)
 		&"new":
 			title.close()
+			_title_music_active = false
 			_start_new_run()
 		&"legends":
 			title.note = "The home is not open yet -- the Legends Run is still being built."
@@ -1161,11 +1165,13 @@ func _on_title_chosen(id: StringName) -> void:
 ## Set while the controller screen was opened from the title, so closing it
 ## goes back there rather than into the placeholder floor behind it.
 var _title_waiting := false
+var _title_music_active := false
 
 func _back_to_title_if_waiting() -> void:
 	if _title_waiting:
 		_title_waiting = false
 		title.visible = true
+		sound.sync_title_music()
 
 ## What a settings row on the title currently reads.
 func _setting_value(id: StringName) -> String:
@@ -1220,7 +1226,8 @@ func _start_new_run() -> void:
 	_end_aim()
 	_close_inventory()
 	menu.close()
-	sound.stop_all()
+	# Leave the title score running so the band theme can crossfade from it.
+	sound.stop_effects()
 	_saved_at_turn = -1
 	# Abandoning forfeits the slot, or the old run could be resumed later.
 	GameState.clear_suspend()
@@ -1488,9 +1495,12 @@ func _refresh() -> void:
 	# the guard on the very next redraw after a deliberate save and made the
 	# browser nag about a run it had just been told was safe.
 	if state != null:
-		# David's background music follows the band you are in. Cheap every
-		# refresh: it only changes theme when the band does.
-		sound.sync_music(state.effective_depth())
+		# Keep the hall's cue while the title or its controller setup is open;
+		# otherwise the score follows the active dungeon band.
+		if title != null and (title.visible or _title_waiting or _title_music_active):
+			sound.sync_title_music()
+		else:
+			sound.sync_music(state.effective_depth())
 		# The follow camera turns to your facing -- but not while travelling:
 		# it swings once, at the end. Brad: turning at every corner of a route
 		# was nauseating in another game.

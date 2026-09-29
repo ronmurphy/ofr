@@ -253,7 +253,11 @@ same evening**, waiting on play -- the title's settings, "3D camera". Brad: "wor
 amazingly great". **Open: make it the default?** Waiting on Gabe, David and
 especially Steph (motion sickness) -- ask her to try it with effects on (the
 camera swings) and off (it snaps). Also a Firefox answer: in follow mode the
-LEFT stick turns you, and the left stick works in Firefox. A settings
+LEFT stick turns you, and the left stick works in Firefox. **Steph (2026-09-28):
+no motion sickness from the game even on effects "full".** Still to ask: was
+that WITH the follow camera, which swings on every turn? **Yes -- swinging
+and snapping, no discomfort. DECIDED: new players start in 3D with the follow
+camera (defaults changed 2026-09-28); saved choices are kept.** A settings
 option, "camera: fixed / follows you", off by default. In follow mode the
 controls become Wizardry's, in our overhead 3D: up = step forward, down = step
 back, left/right = turn 45 degrees in place (free, no game turn), diagonals =
@@ -418,6 +422,24 @@ shape to aim at.
 ---
 
 ## Ideas, not yet designed
+
+**A minimap for the 3D view (Brad, 2026-09-28).** Brad's thought: the classic
+view as a minimap. Better base: the OVERVIEW map (`o` / from the legend), which
+already draws the whole floor compactly. Put it in the sidebar's empty middle
+(under UNDER CURSOR), covering nothing of the 3D view. North-up, NOT rotating,
+with an arrow for the player's facing -- with the follow camera swinging, a
+fixed-north map is what keeps a player oriented. Classic itself stays as a full
+option (cheap: shared layer, both views tested), just no longer designed-for
+first now that 3D + follow is the default.
+**Measured (from Brad's itch screenshot):** the look block (UNDER CURSOR /
+LOOKING AT, filled by `x` and the mouse) starts ~300 px down the 720 px
+sidebar; the help line is at ~680 -- about 17 lines of room. Its realistic
+worst case is 8-9 lines (an armed monster: tag + 3 gear, on a small loot pile,
++ terrain); an epitaph is ~6; each ally row above pushes it down one. The
+whole 96x54 floor at 2 px a cell is 192x108 -- about five lines, narrower than
+the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
+**Rule: the minimap gives way** -- not drawn on a frame when the description
+would reach it. Information always wins.
 
 **Push-blocks, and ground with height.** David's Sokoban vault, revived
 2026-09-28 when Brad saw the chest on its block in the title's hall. The 3D

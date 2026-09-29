@@ -57,6 +57,7 @@ func _initialize() -> void:
 	_test_reach_is_drawn()
 	_test_bodies_look_the_same_in_both_views()
 	_test_facing_and_the_follow_view()
+	_test_new_players_start_in_3d()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1085,6 +1086,33 @@ func _test_the_title_screen() -> void:
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
 
+## New players start in 3D with the follow camera (Brad, 2026-09-28); anyone
+## who saved a choice keeps it. On the scratch settings file, restored after.
+func _test_new_players_start_in_3d() -> void:
+	print("-- new players start in 3D, following")
+	var path := GameState.SETTINGS_PATH
+	var had := FileAccess.file_exists(path)
+	var kept := FileAccess.get_file_as_string(path) if had else ""
+	if had:
+		DirAccess.remove_absolute(path)
+	RenderTheme.load_settings()
+	check("  with no settings at all: the 3D view",
+		RenderTheme.diorama_enabled())
+	check("  and the camera follows", RenderTheme.camera_follows())
+	var cfg := ConfigFile.new()
+	cfg.set_value("view", "diorama", false)
+	cfg.set_value("view", "follow", false)
+	cfg.save(path)
+	RenderTheme.load_settings()
+	check("  a player who chose classic and a fixed camera keeps them",
+		not RenderTheme.diorama_enabled() and not RenderTheme.camera_follows())
+	DirAccess.remove_absolute(path)
+	if had:
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		f.store_string(kept)
+		f.close()
+	RenderTheme.load_settings()
+
 ## Facing turns by eighths, and every facing has exactly one view that puts it
 ## straight up the screen -- the follow camera's whole geometry.
 func _test_facing_and_the_follow_view() -> void:
@@ -1181,6 +1209,20 @@ func _test_davids_music() -> void:
 	check("  every sample is a number between -1 and 1", in_range)
 	check("  and the loop meets itself without a click", seam < 0.05, "jump %.3f" % seam)
 
+	# David's title theme (2026-09-28 patch): its own phrase, in range and
+	# seamless like the bands.
+	var title_p := Synth.title_music_profile()
+	var title_ok := true
+	for i in 400:
+		var v := Synth.music_sample(title_p, i * Synth.MUSIC_LOOP_SECONDS / 400.0)
+		title_ok = title_ok and is_finite(v) and absf(v) <= 1.0
+	var title_seam := absf(Synth.music_sample(title_p, Synth.MUSIC_LOOP_SECONDS
+		- 1.0 / Synth.MUSIC_RATE) - Synth.music_sample(title_p, 0.0))
+	check("  the title has its own theme, not floor 1's",
+		title_p["lead_cycles"] != Synth.music_profile(1)["lead_cycles"])
+	check("  in range, and seamless at the loop", title_ok and title_seam < 0.05,
+		"jump %.3f" % title_seam)
+
 	# The switch: music off leaves the rest of the sound alone, and holds.
 	var deck := SoundDeck.new()
 	root.add_child(deck)
@@ -1199,6 +1241,18 @@ func _test_davids_music() -> void:
 	root.add_child(again)
 	await process_frame
 	check("  and is remembered after a restart", not again.music_on)
+	# The title theme hands over to the band, and a switch keeps whichever is on.
+	again.toggle_music()
+	again.sync_title_music()
+	check("  the title plays its own theme", again._music_key == "title")
+	again.toggle_music()
+	again.toggle_music()
+	check("  and switching the music off and on keeps the title's",
+		again._music_key == "title")
+	again.sync_music(1)
+	check("  then a run hands over to the band's",
+		again._music_key != "title" and not again._music_is_title)
+	again.toggle_music()
 	if again.music_on != was_on:
 		again.toggle_music()
 	for d in [again, deck]:
@@ -1486,7 +1540,7 @@ func _test_both_views_share_one_moment() -> void:
 	st.bodies = []
 	# Gabe's follow camera, in the real scene: turn free, step forward and back.
 	var was_follow := RenderTheme.camera_follows()
-	if not was_follow:
+	if not RenderTheme.camera_follows():
 		RenderTheme.toggle_follow()
 	scene._select_map_view(true)
 	var gs2: GameState = scene.state
@@ -1524,14 +1578,17 @@ func _test_both_views_share_one_moment() -> void:
 	scene._refresh()
 	check("and swings once when travel ends",
 		scene.diorama._view == DioramaView.view_facing(Vector2i(0, 1)))
-	if not was_follow:
+	# Fixed: up is up the screen again, not "forward". Switched off by hand --
+	# follow is the DEFAULT now, so the test cannot count on finding it off.
+	if RenderTheme.camera_follows():
 		RenderTheme.toggle_follow()
-	# Fixed: up is up the screen again, not "forward".
 	gs2.player.facing = Vector2i(1, 0)
 	var at := Vector2i(gs2.player.x, gs2.player.y)
 	press.call(KEY_UP)
 	check("with the camera fixed, up is the screen's up, whatever you face",
 		Vector2i(gs2.player.x, gs2.player.y) - at == scene.diorama.map_relative_direction(Vector2i(0, -1)))
+	if RenderTheme.camera_follows() != was_follow:
+		RenderTheme.toggle_follow()
 	scene._select_map_view(false)
 	# Aiming hands the reach to BOTH views, and ending it clears both.
 	scene._begin_aim(4)

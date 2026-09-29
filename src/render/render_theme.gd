@@ -46,7 +46,10 @@ const MODE_NAMES := {
 static var _mode: int = Mode.ICONS
 ## The map renderer is a separate choice from its glyph theme. The 3D view
 ## always uses picture billboards, while `v` keeps cycling the classic themes.
-static var _diorama := false
+## 3D by default, from 2026-09-28 (Brad: "i have yet to talk to a person that
+## plays the game that dislikes it"). A player who chose classic keeps it: the
+## saved value wins over this default.
+static var _diorama := true
 static var _instances := {}
 
 ## Pixels per map cell, offered to the player rather than fixed.
@@ -77,7 +80,9 @@ static func diorama_enabled() -> bool:
 
 ## Gabe's follow camera (2026-09-28): in the 3D view the camera stays behind
 ## the player and the keys become forward/back/turn. Off by default.
-static var _follow := false
+## On by default too, after Gabe, David and Steph -- the most motion-sensitive
+## tester -- played it swinging and snapping without discomfort.
+static var _follow := true
 
 static func camera_follows() -> bool:
 	return _follow
@@ -143,8 +148,8 @@ static func load_settings() -> void:
 	if cfg.load(GameState.SETTINGS_PATH) != OK:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
-	_diorama = bool(cfg.get_value("view", "diorama", false))
-	_follow = bool(cfg.get_value("view", "follow", false))
+	_diorama = bool(cfg.get_value("view", "diorama", true))
+	_follow = bool(cfg.get_value("view", "follow", true))
 	# Set directly rather than through set_cell_size(), which would write the
 	# file back out during the load that is reading it.
 	var px := int(cfg.get_value("view", "cell", 18))

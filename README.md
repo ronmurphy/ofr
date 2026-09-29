@@ -296,14 +296,15 @@ mechanism from a breaking bone.
 
 ### The music
 
-David's background music follows the same rule of no files: a short phrase per
-band -- upper halls, caves, fortress, the deep -- generated in `synth.gd` and
-streamed by `sound_deck.gd`, fading across when the band changes. On the climb
-each theme comes back with two notes bent sharp and a semitone undertone: the
-same place, shifted while you were below. It is quiet on purpose and carries no
-information, which is why it has its own switch: **Shift+M** (or *music* in the
-title's settings) turns the music off and leaves the effects; `m` still silences
-everything. It plays under the title too, until a title theme exists.
+David's background music follows the same rule of no files: the title hall has
+a warmer, gently melodic threshold cue, and the dungeon has a short generated
+phrase per band -- upper halls, caves, fortress, the deep. `synth.gd` builds the
+profiles and `sound_deck.gd` streams them, fading between the title and the
+active band. On the climb each dungeon theme comes back with two notes bent
+sharp and a semitone undertone: the same place, shifted while you were below.
+It is quiet on purpose and carries no information, which is why it has its own
+switch: **Shift+M** (or *music* in the title's settings) turns the music off and
+leaves the effects; `m` still silences everything.
 
 ### The rule
 
@@ -377,7 +378,10 @@ clockwise on screen: the arrows walk the grid lines (up goes up-and-right), and
 the diagonal keys walk the grid's diagonals. In a straight-on view every key
 walks exactly where it points. Whatever a
 wall hides of a creature or an item is drawn as a dark silhouette.
-**Or let the camera follow you** (title → settings → *3D camera*, Gabe's idea):
+**New players start here, in 3D with the camera following them** -- the
+default since 2026-09-28, after every tester preferred it; the classic view is
+one key away (`q`), and a saved choice is kept. **The follow camera**
+(title → settings → *3D camera*, Gabe's idea):
 up steps forward and down steps back, left and right turn you 45° on the spot
 for free, and the camera swings round to stay behind you, Wizardry-style, in
 the overhead view. Click-travel and auto-travel turn it once, at the end, never
@@ -1511,8 +1515,8 @@ see for yourself.
 Made by Brad, with:
 
 - **Gabe** -- the 3D view.
-- **David** -- the background music: a generated theme for each band, bent out
-  of tune on the climb.
+- **David** -- the generated title cue and dungeon band music, bent out of tune
+  on the climb.
 
 JetBrains Mono, SIL Open Font License 1.1 -- see
 `assets/fonts/JetBrainsMono-OFL.txt`.

@@ -71,12 +71,32 @@ const MUSIC_PROFILES := {
 	},
 }
 
+## A more settled phrase for the hall above the dungeon: open fifths and
+## suspended notes keep it welcoming without turning the level-up triad into
+## background harmony. It still uses the same small oscillator palette.
+const TITLE_MUSIC_PROFILE := {
+	"root": 65.406, "scale": [0, 2, 5, 7, 9],
+	"motif": [0, 3, 4, 2, 1, 2, 3, 0], "wave": &"sine",
+	"bass_gain": 0.075, "lead_gain": 0.082, "air_gain": 0.018,
+	"air_ratio": 3.0, "harmonic_gain": 0.08,
+	"attack": 0.16, "decay": 2.5,
+}
+
 ## Builds the few per-theme values that are constant during playback. Keeping
 ## exponentiation out of the sample loop matters more than it sounds in GDScript.
 static func music_profile(effective_depth: int) -> Dictionary:
 	var band := Bands.of(effective_depth)
 	var profile: Dictionary = MUSIC_PROFILES[band].duplicate(true)
 	var corrupted := Bands.is_corrupted(effective_depth)
+	return _with_music_cycles(profile, band, corrupted)
+
+## The title cue is selected by the front door, then the current band takes
+## over when a run is loaded or started.
+static func title_music_profile() -> Dictionary:
+	return _with_music_cycles(TITLE_MUSIC_PROFILE.duplicate(true), -1, false)
+
+static func _with_music_cycles(profile: Dictionary, band: int,
+		corrupted: bool) -> Dictionary:
 	var root_hz := float(profile["root"])
 	var scale: Array = profile["scale"]
 	var motif: Array = profile["motif"]
@@ -129,7 +149,9 @@ static func music_sample(profile: Dictionary, seconds: float) -> float:
 		_:
 			lead_wave = sin(phase * TAU)
 	lead_wave += sin(phase * TAU * 2.0) * float(profile["harmonic_gain"])
-	var envelope := minf(1.0, local / 0.075) * exp(-4.0 * local / step_seconds)
+	var attack := float(profile.get("attack", 0.075))
+	var decay := float(profile.get("decay", 4.0))
+	var envelope := minf(1.0, local / attack) * exp(-decay * local / step_seconds)
 	sample += lead_wave * envelope * float(profile["lead_gain"])
 
 	var discord_gain := float(profile["discord_gain"])

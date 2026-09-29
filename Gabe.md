@@ -94,3 +94,17 @@ camera rather than resizing billboards.
 - `README.md`, `BACKLOG.md` and `CONTROLLER.md` describe the view, controls and
   current design status.
 
+## Generated music
+
+- `src/audio/synth.gd` defines the generated one-shot effects, four dungeon
+  band profiles, and the separate title-hall theme. `music_sample()` renders
+  one sample at a time from each profile; the title phrase uses a warmer,
+  slower open-note melody.
+- `src/audio/sound_deck.gd` streams those samples through an
+  `AudioStreamGenerator`, controls the music setting and volume, and crossfades
+  between the title cue and the active dungeon band.
+- `src/render/main.gd` selects the title cue while the title or its controller
+  setup is open, then selects a dungeon profile when a run starts or resumes.
+- David's preview tool (`tools/export_ambience_previews.gd`) and its listening
+  WAVs live in his own copy, not in this repo: anything under the project root
+  is imported and baked into the build. Runtime playback never needed them.
