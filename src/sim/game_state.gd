@@ -118,6 +118,12 @@ static func clear_scratch_files() -> void:
 	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, PadConfig.PATH, LegendsLog.PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
+	# The screenshots folder too, and what is in it -- a folder, so the loop
+	# above never saw it, and every run that took a picture left one behind.
+	if SCREENSHOT_DIR.contains("scratch_") and DirAccess.dir_exists_absolute(SCREENSHOT_DIR):
+		for f in DirAccess.get_files_at(SCREENSHOT_DIR):
+			DirAccess.remove_absolute(SCREENSHOT_DIR.path_join(f))
+		DirAccess.remove_absolute(SCREENSHOT_DIR)
 const SAVE_VERSION := 1
 
 const MAP_W := 96
