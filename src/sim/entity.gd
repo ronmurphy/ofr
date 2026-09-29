@@ -316,6 +316,23 @@ var alertness: int = Alert.ASLEEP
 ##   RANDOM everywhere else -- 0, 1 or 2 turns (GameState._reload_after_shot).
 ## Appended enum; saved as an int.
 enum Reload { NONE, STEADY, RANDOM }
+
+## WHICH WAY IT FACES, one of the eight steps. Set by every step and every
+## blow. Added for Gabe's follow camera (2026-09-28) -- in that mode forward is
+## always up the screen -- and it is also the piece the combat update needs
+## for flanking and blows from behind.
+var facing := Vector2i(0, -1)
+
+## The eight steps clockwise from north, on a screen where y grows downward.
+const CLOCKWISE: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
+	Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0), Vector2i(-1, -1)]
+
+## `step` turned `eighths` of a circle clockwise (negative: anticlockwise).
+static func turned(step: Vector2i, eighths: int) -> Vector2i:
+	var at := CLOCKWISE.find(step)
+	if at < 0:
+		return step
+	return CLOCKWISE[posmod(at + eighths, 8)]
 var reload_style: int = Reload.NONE
 ## Turns still to spend before the next shot.
 var reload_left := 0
@@ -437,6 +454,7 @@ func to_dict() -> Dictionary:
 		"notice_block": notice_block, "alive": alive,
 		"stance": stance,
 		"reload_style": reload_style, "reload_left": reload_left,
+		"facing": [facing.x, facing.y],
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -487,6 +505,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.stance = int(d.get("stance", Stance.LOOSE))
 	e.reload_style = int(d.get("reload_style", Reload.NONE))
 	e.reload_left = int(d.get("reload_left", 0))
+	var f: Array = d.get("facing", [0, -1])
+	e.facing = Vector2i(int(f[0]), int(f[1]))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))

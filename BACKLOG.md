@@ -248,7 +248,12 @@ bones cannot be traded; the counter opens after the trader speaks.
   black hole with a stone lip (`tools/probes/screenshot_pit.gd`). The
   shrine's carved ring had the UV bug too.
 
-**5b. The camera that follows you (Gabe's request, 2026-09-28).** A settings
+**5b. The camera that follows you (Gabe's request, 2026-09-28). BUILT the
+same evening**, waiting on play -- the title's settings, "3D camera". Brad: "works
+amazingly great". **Open: make it the default?** Waiting on Gabe, David and
+especially Steph (motion sickness) -- ask her to try it with effects on (the
+camera swings) and off (it snaps). Also a Firefox answer: in follow mode the
+LEFT stick turns you, and the left stick works in Firefox. A settings
 option, "camera: fixed / follows you", off by default. In follow mode the
 controls become Wizardry's, in our overhead 3D: up = step forward, down = step
 back, left/right = turn 45 degrees in place (free, no game turn), diagonals =

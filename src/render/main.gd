@@ -401,7 +401,10 @@ func _process(delta: float) -> void:
 				% [rx, lt, rt,
 				"firefox-mode" if _stick_on_triggers else "normal", turn]
 		if absf(turn) >= 0.75 and not _diorama_stick_down:
-			diorama.rotate_view(1 if turn > 0.0 else -1)
+			if _follow_active():
+				_turn_player(1 if turn > 0.0 else -1)
+			else:
+				diorama.rotate_view(1 if turn > 0.0 else -1)
 			_diorama_stick_down = true
 		elif absf(turn) < 0.30:
 			_diorama_stick_down = false
@@ -591,13 +594,55 @@ func _may_repeat() -> bool:
 
 ## One step on the map, watched for the things that should stop a held key.
 func _step(d: Vector2i) -> void:
-	d = _map_relative_direction(d)
+	var keep_facing := Vector2i.ZERO
+	if _follow_active():
+		# Wizardry's keys, in our overhead view: forward is always up the
+		# screen, left and right turn on the spot (free), and every other step
+		# -- back, and the four diagonals -- keeps you facing forward.
+		var f := state.player.facing
+		match d:
+			Vector2i(-1, 0):
+				_turn_player(-1)
+				return
+			Vector2i(1, 0):
+				_turn_player(1)
+				return
+			Vector2i(0, -1):
+				d = f
+			Vector2i(0, 1):
+				d = -f
+			Vector2i(-1, -1):
+				d = Entity.turned(f, -1)
+			Vector2i(1, -1):
+				d = Entity.turned(f, 1)
+			Vector2i(-1, 1):
+				d = Entity.turned(f, -3)
+			Vector2i(1, 1):
+				d = Entity.turned(f, 3)
+		if d != f:
+			keep_facing = f
+	else:
+		d = _map_relative_direction(d)
 	var hp_was := state.player.hp
 	var dealt_was := int(state.stats.get("dealt", 0))
-	if state.player_move(d.x, d.y):
+	var moved := state.player_move(d.x, d.y)
+	if keep_facing != Vector2i.ZERO:
+		state.player.facing = keep_facing
+	if moved:
 		_refresh()
 	if state.player.hp < hp_was or int(state.stats.get("dealt", 0)) > dealt_was:
 		_repeat_blocked = true
+
+## Gabe's follow camera: only in the 3D view, and only when chosen.
+func _follow_active() -> bool:
+	return _map_view == diorama and RenderTheme.camera_follows()
+
+## Turning on the spot, in follow mode. Free -- no game turn passes -- and the
+## camera swings round to stay behind you.
+func _turn_player(eighths: int) -> void:
+	state.player.facing = Entity.turned(state.player.facing, eighths)
+	diorama.face(state.player.facing)
+	_refresh()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key_event := event as InputEventKey
@@ -864,7 +909,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_refresh()
 		return
 	if _map_view == diorama and (key == KEY_BRACKETLEFT or key == KEY_BRACKETRIGHT):
-		diorama.rotate_view(-1 if key == KEY_BRACKETLEFT else 1)
+		if _follow_active():
+			_turn_player(-1 if key == KEY_BRACKETLEFT else 1)
+		else:
+			diorama.rotate_view(-1 if key == KEY_BRACKETLEFT else 1)
 		return
 
 	# Shift+M is the music alone; m is everything, as it always was.
@@ -1093,6 +1141,8 @@ func _on_title_chosen(id: StringName) -> void:
 			sound.toggle_mute()
 		&"music":
 			sound.toggle_music()
+		&"camera":
+			RenderTheme.toggle_follow()
 		&"text":
 			_cycle_text_size()
 		&"pad":
@@ -1117,6 +1167,7 @@ func _setting_value(id: StringName) -> String:
 		&"effects": return String(Effects.MODE_NAMES[Effects.mode()])
 		&"sound": return "off" if sound.muted else "on"
 		&"music": return "on" if sound.music_on else "off"
+		&"camera": return "follows you" if RenderTheme.camera_follows() else "fixed"
 		&"text": return "%d px" % RenderTheme.cell_size()
 	return ""
 
@@ -1433,6 +1484,12 @@ func _refresh() -> void:
 		# David's background music follows the band you are in. Cheap every
 		# refresh: it only changes theme when the band does.
 		sound.sync_music(state.effective_depth())
+		# The follow camera turns to your facing -- but not while travelling:
+		# it swings once, at the end. Brad: turning at every corner of a route
+		# was nauseating in another game.
+		diorama.set_follow_hint(_follow_active())
+		if _follow_active() and not state.travelling():
+			diorama.face(state.player.facing)
 		Platform.guard_against_leaving(
 			not state.game_over and state.turns != _saved_at_turn)
 		# The run just ended. Show what it came to, once.

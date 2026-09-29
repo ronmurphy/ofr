@@ -377,6 +377,12 @@ clockwise on screen: the arrows walk the grid lines (up goes up-and-right), and
 the diagonal keys walk the grid's diagonals. In a straight-on view every key
 walks exactly where it points. Whatever a
 wall hides of a creature or an item is drawn as a dark silhouette.
+**Or let the camera follow you** (title → settings → *3D camera*, Gabe's idea):
+up steps forward and down steps back, left and right turn you 45° on the spot
+for free, and the camera swings round to stay behind you, Wizardry-style, in
+the overhead view. Click-travel and auto-travel turn it once, at the end, never
+at each corner. Your facing is kept by the game -- the combat update's flanking
+will use it.
 Procedural flagstone and masonry surfaces,
 terrain-specific floor glyphs when no icon-font picture exists, icon billboards
 for mapped terrain, a modeled pit opening and distinct stone forms with

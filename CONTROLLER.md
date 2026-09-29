@@ -100,6 +100,11 @@ doesn't fire sixty moves a second. The d-pad's four buttons handle contextual
 actions rather than movement; the stick covers all eight movement directions.
 In the 3D view, the right stick -- or LT / RT -- turns the camera left or right in 45° steps (eight views).
 
+**The follow camera** (title → settings → 3D camera: follows you): the stick's
+up and down step forward and back, left and right turn you 45° on the spot for
+free, and the camera stays behind you. The right stick and LT / RT turn you
+too. Travel does not swing the camera at every corner; it turns once at the end.
+
 **Firefox:** its gamepad support mangles an Xbox Wireless pad's right stick and
 triggers. The stick turns the camera only some of the time, and the triggers
 not at all. In Firefox, turn the camera with `[` and `]`, or play on keyboard

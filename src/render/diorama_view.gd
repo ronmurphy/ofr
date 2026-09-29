@@ -42,6 +42,7 @@ const CAMERA_DISTANCE := 25.0
 const AXES: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 const DIAGONALS: Array[Vector2i] = [Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
 const TURN_TIME := 0.18
+const FOLLOW_HINT := "3D view, camera follows you     up / down: forward / back     left / right: turn     Q / d-pad up: classic"
 const DIORAMA_HINT := "3D view     [ / ], LT / RT or right stick: turn     click: move     Q / d-pad up: classic"
 const SURFACE_SHADER: Shader = preload("res://src/render/shaders/diorama_surface.gdshader")
 const ASCII_GROUND_TILES := [
@@ -501,6 +502,35 @@ static func turn_intent(right_x: float, left_trigger: float, right_trigger: floa
 ## holds them still, so this is Firefox's mislabelled stick, not two triggers.
 static func looks_like_centred_triggers(left_trigger: float, right_trigger: float) -> bool:
 	return absf(left_trigger - 0.5) < 0.05 and absf(right_trigger - 0.5) < 0.05
+
+## The view (0-7) in which the grid step `step` points straight up the screen.
+static func view_facing(step: Vector2i) -> int:
+	var best := 0
+	var best_dot := -INF
+	for v in VIEWS:
+		var yaw := CAMERA_YAW + float(v) * TURN_STEP
+		var d := grid_to_view(step, yaw).normalized().dot(Vector2(0, -1))
+		if d > best_dot:
+			best_dot = d
+			best = v
+	return best
+
+## Turns the camera, the short way round, until `step` is straight up the
+## screen -- the follow camera. Nothing happens if it already is. Each 45
+## degrees is an ordinary rotate_view, so it animates (or snaps, with effects
+## off) exactly as a turn by key does.
+func face(step: Vector2i) -> void:
+	if step == Vector2i.ZERO:
+		return
+	var delta := posmod(view_facing(step) - _view + 4, VIEWS) - 4
+	while delta != 0:
+		rotate_view(signi(delta))
+		delta -= signi(delta)
+
+## The hint line, for whichever controls are live.
+func set_follow_hint(on: bool) -> void:
+	if _hint != null:
+		_hint.text = FOLLOW_HINT if on else DIORAMA_HINT
 
 func rotate_view(direction: int) -> void:
 	var turn := signi(direction)

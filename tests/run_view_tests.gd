@@ -56,6 +56,7 @@ func _initialize() -> void:
 	await _test_davids_music()
 	_test_reach_is_drawn()
 	_test_bodies_look_the_same_in_both_views()
+	_test_facing_and_the_follow_view()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1084,6 +1085,26 @@ func _test_the_title_screen() -> void:
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
 
+## Facing turns by eighths, and every facing has exactly one view that puts it
+## straight up the screen -- the follow camera's whole geometry.
+func _test_facing_and_the_follow_view() -> void:
+	print("-- facing, and the view that puts it up")
+	check("  north turned one eighth clockwise is north-east",
+		Entity.turned(Vector2i(0, -1), 1) == Vector2i(1, -1)
+		and Entity.turned(Vector2i(0, -1), -1) == Vector2i(-1, -1)
+		and Entity.turned(Vector2i(1, 0), 2) == Vector2i(0, 1)
+		and Entity.turned(Vector2i(1, 1), 8) == Vector2i(1, 1))
+	var views := {}
+	var all_up := true
+	for step in Entity.CLOCKWISE:
+		var v := DioramaView.view_facing(step)
+		views[v] = true
+		var on_screen := DioramaView.grid_to_view(step,
+			DioramaView.CAMERA_YAW + float(v) * DioramaView.TURN_STEP).normalized()
+		all_up = all_up and on_screen.dot(Vector2(0, -1)) > 0.99
+	check("  every facing has a view that puts it straight up", all_up)
+	check("  and each its own view", views.size() == 8, "%d views" % views.size())
+
 ## One rot for both views (BodyLook), and the 3D view lays a body only where
 ## one is there to see.
 func _test_bodies_look_the_same_in_both_views() -> void:
@@ -1451,6 +1472,55 @@ func _test_both_views_share_one_moment() -> void:
 	scene.diorama._rebuild_world()
 	check("and a rotted one does not", scene.diorama._body_labels.is_empty())
 	st.bodies = []
+	# Gabe's follow camera, in the real scene: turn free, step forward and back.
+	var was_follow := RenderTheme.camera_follows()
+	if not was_follow:
+		RenderTheme.toggle_follow()
+	scene._select_map_view(true)
+	var gs2: GameState = scene.state
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			gs2.map.set_tile(gs2.player.x + dx, gs2.player.y + dy, Tiles.FLOOR)
+	gs2.entities = [gs2.player]
+	gs2.player.facing = Vector2i(0, -1)
+	var start := Vector2i(gs2.player.x, gs2.player.y)
+	var turns_was := gs2.turns
+	var press := func(k: int) -> void:
+		var ev := InputEventKey.new()
+		ev.keycode = k
+		ev.pressed = true
+		scene._unhandled_key_input(ev)
+	press.call(KEY_RIGHT)
+	check("follow: right turns you, free, without a step",
+		gs2.player.facing == Vector2i(1, -1) and Vector2i(gs2.player.x, gs2.player.y) == start
+		and gs2.turns == turns_was)
+	check("and the camera turns to put your facing up",
+		scene.diorama._view == DioramaView.view_facing(Vector2i(1, -1)))
+	press.call(KEY_UP)
+	check("up steps forward, the way you face",
+		Vector2i(gs2.player.x, gs2.player.y) == start + Vector2i(1, -1))
+	press.call(KEY_DOWN)
+	check("down steps back, still facing forward",
+		Vector2i(gs2.player.x, gs2.player.y) == start and gs2.player.facing == Vector2i(1, -1))
+	# Travelling: the camera holds, and swings once at the end.
+	var view_before: int = scene.diorama._view
+	gs2._travel = [start + Vector2i(1, 0)]
+	gs2.player.facing = Vector2i(0, 1)
+	scene._refresh()
+	check("while travelling the camera does not swing", scene.diorama._view == view_before)
+	gs2._travel = []
+	scene._refresh()
+	check("and swings once when travel ends",
+		scene.diorama._view == DioramaView.view_facing(Vector2i(0, 1)))
+	if not was_follow:
+		RenderTheme.toggle_follow()
+	# Fixed: up is up the screen again, not "forward".
+	gs2.player.facing = Vector2i(1, 0)
+	var at := Vector2i(gs2.player.x, gs2.player.y)
+	press.call(KEY_UP)
+	check("with the camera fixed, up is the screen's up, whatever you face",
+		Vector2i(gs2.player.x, gs2.player.y) - at == scene.diorama.map_relative_direction(Vector2i(0, -1)))
+	scene._select_map_view(false)
 	# Aiming hands the reach to BOTH views, and ending it clears both.
 	scene._begin_aim(4)
 	check("aiming gives both views the same reach",

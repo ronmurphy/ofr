@@ -154,7 +154,7 @@ static func backdrop_state(seed_value := 0) -> GameState:
 func rows() -> Array:
 	var out := []
 	if page == &"settings":
-		for id in [&"3d", &"effects", &"sound", &"music", &"text", &"pad"]:
+		for id in [&"3d", &"camera", &"effects", &"sound", &"music", &"text", &"pad"]:
 			out.append([id, _setting_label(id), String(value_of.call(id))])
 		out.append([&"back", "back", ""])
 		return out
@@ -175,6 +175,7 @@ static func _setting_label(id: StringName) -> String:
 		&"effects": return "effects"
 		&"sound": return "sound"
 		&"music": return "music"
+		&"camera": return "3D camera"
 		&"text": return "text size"
 		&"pad": return "controller"
 	return String(id)

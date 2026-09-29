@@ -75,6 +75,18 @@ static func mode() -> int:
 static func diorama_enabled() -> bool:
 	return _diorama
 
+## Gabe's follow camera (2026-09-28): in the 3D view the camera stays behind
+## the player and the keys become forward/back/turn. Off by default.
+static var _follow := false
+
+static func camera_follows() -> bool:
+	return _follow
+
+static func toggle_follow() -> String:
+	_follow = not _follow
+	_save()
+	return "Camera: %s." % ("follows you" if _follow else "fixed")
+
 static func toggle_diorama() -> String:
 	_diorama = not _diorama
 	_save()
@@ -132,6 +144,7 @@ static func load_settings() -> void:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
 	_diorama = bool(cfg.get_value("view", "diorama", false))
+	_follow = bool(cfg.get_value("view", "follow", false))
 	# Set directly rather than through set_cell_size(), which would write the
 	# file back out during the load that is reading it.
 	var px := int(cfg.get_value("view", "cell", 18))
@@ -142,5 +155,6 @@ static func _save() -> void:
 	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("view", "mode", _mode)
 	cfg.set_value("view", "diorama", _diorama)
+	cfg.set_value("view", "follow", _follow)
 	cfg.set_value("view", "cell", _cell)
 	cfg.save(GameState.SETTINGS_PATH)

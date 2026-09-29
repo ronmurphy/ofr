@@ -3292,6 +3292,9 @@ func player_move(dx: int, dy: int) -> bool:
 	if game_over:
 		return false
 	_travel.clear()
+	# Toward whatever you stepped at or swung at. See Entity.facing.
+	if dx != 0 or dy != 0:
+		player.facing = Vector2i(signi(dx), signi(dy))
 	var nx := player.x + dx
 	var ny := player.y + dy
 
@@ -5300,6 +5303,7 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 		_travel.clear()
 	# Deliberately not player_move(): that clears the travel queue.
 	var cost := move_cost_for(player, next.x, next.y)
+	player.facing = Vector2i(signi(next.x - player.x), signi(next.y - player.y))
 	player.x = next.x
 	player.y = next.y
 	_end_player_turn(cost)
