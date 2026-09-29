@@ -406,7 +406,7 @@ func sync_motion() -> void:
 		light.rebuild(state)
 		memory.update(state)
 		life.rebuild(state)
-		# Whoever just stepped into water, mud or rubble throws some of it up.
+		# Whoever just stepped into water, mud, rubble or bones throws some of it up.
 		fx.footfalls(motion.sync(state.entities, state.map), state)
 	_mark_dirty()
 
@@ -1470,6 +1470,15 @@ func _draw_fx() -> void:
 					var off: Vector2 = piece[0]
 					bits.append([Vector3(c.x + 0.5 + off.x, float(piece[1]), c.y + 0.5 + off.y),
 						Color(colour, float(piece[2]))])
+			&"contact":
+				# Same offsets and fade as classic; only the marks become cubes.
+				var contact_cell: Vector2i = e["cell"]
+				var contact_colour: Color = e["colour"]
+				for mark in Fx.contact_marks(e, t, map):
+					var off: Vector2 = mark[0]
+					bits.append([Vector3(contact_cell.x + 0.5 + off.x, 0.62,
+						contact_cell.y + 0.5 + off.y),
+						Color(contact_colour, float(mark[1]))])
 			&"shove":
 				for hit in Fx.shove_cells(e, t, map):
 					glows.append([Vector2(hit[0]), Color(Palette.SHOVE, hit[1]), FX_Y])

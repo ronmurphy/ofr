@@ -3717,6 +3717,7 @@ func _invoke_shrine(kind: int) -> void:
 		Shrines.MENDING:
 			var healed := player.max_hp - player.hp
 			player.hp = player.max_hp
+			_queue_healing_cue(healed)
 			msg_log.add("Warmth floods through you. %d hit points restored."
 				% healed, Color(0.55, 0.85, 0.55))
 
@@ -4069,6 +4070,7 @@ func player_wait() -> bool:
 	if brazier.x >= 0 and player.hp < player.max_hp:
 		var healed := mini(BRAZIER_HEAL, player.max_hp - player.hp)
 		player.hp += healed
+		_queue_healing_cue(healed)
 		brazier_charge[brazier] = int(brazier_charge[brazier]) - healed
 		msg_log.add("You warm yourself at the brazier. (+%d)" % healed,
 			Color(0.96, 0.76, 0.44))
@@ -4102,10 +4104,12 @@ func award_xp(amount: int) -> void:
 		_level_up()
 
 func _level_up() -> void:
+	var hp_before := player.hp
 	player.level += 1
 	player.max_hp += LEVEL_HP
 	# Healed by the gain, so a level is a small reprieve as well as a stat bump.
 	player.hp = mini(player.max_hp, player.hp + LEVEL_HP)
+	_queue_healing_cue(player.hp - hp_before)
 	if player.level % 2 == 0:
 		player.power += 1
 	if player.level % 3 == 0:
@@ -4805,6 +4809,7 @@ func _eat_fungus() -> bool:
 			Color(0.7, 0.6, 0.4))
 		return false
 	player.hp += 1
+	_queue_healing_cue(1)
 	map.set_tile(player.x, player.y,
 		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 		else Tiles.FLOOR)
@@ -5195,6 +5200,7 @@ func _apply_effect(item: Item) -> bool:
 				return false
 			var healed := mini(item.effective_magnitude(), player.max_hp - player.hp)
 			player.hp += healed
+			_queue_healing_cue(healed)
 			msg_log.add("You %s the %s. %d hp restored."
 				% [item.verb(), item.display_name(), healed],
 				Color(0.55, 0.85, 0.55))
@@ -5332,6 +5338,10 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 		# into something you can PREPARE -- walk it once while things are
 		# asleep and far off, and you have bought yourself a silent route for
 		# when you need one.
+		# Keep the stepped-on tile for the renderer: the map changes below before
+		# sync_motion can sample it. Fx consumes this presentation-only event in
+		# both renderers; it does not change the bone tile's gameplay rules.
+		events.append({"kind": &"bone_step", "to": Vector2i(player.x, player.y)})
 		map.set_tile(player.x, player.y,
 			Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 			else Tiles.FLOOR)
@@ -5375,6 +5385,15 @@ func _check_health_warning() -> void:
 	if low and not _hp_warned:
 		events.append({"kind": &"lowhp", "to": Vector2i(player.x, player.y)})
 	_hp_warned = low
+
+## Emit a cue only for hit points that have actually been restored. Fx suppresses
+## its moving ring in "still" mode, leaving the health bar and message as the
+## feedback there.
+func _queue_healing_cue(amount: int) -> void:
+	if amount <= 0:
+		return
+	events.append({"kind": &"healed", "to": Vector2i(player.x, player.y),
+		"amount": amount})
 
 # ----------------------------------------------------------- world turn ----
 
@@ -7336,6 +7355,7 @@ func _gem_strikes(gem: StringName, attacker: Entity, defender: Entity,
 			if drawn > 0:
 				attacker.hp += drawn
 				if attacker.is_player:
+					_queue_healing_cue(drawn)
 					msg_log.add("The gem drinks, and you feel it. (+%d)" % drawn,
 						Color(0.80, 0.55, 0.75))
 		&"crag":
@@ -7554,12 +7574,15 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	elif defender.is_player:
 		_tally("taken", dmg)
 
+	# Snapshot the strike style with the event; FX is consumed after the turn
+	# resolves, when either combatant may have moved or died.
 	events.append({
 		"kind": &"ranged" if ranged else &"melee",
 		"from": Vector2i(attacker.x, attacker.y),
 		"to": Vector2i(defender.x, defender.y),
 		"amount": dmg,
 		"on_player": defender.is_player,
+		"damage_type": kind,
 	})
 	if defender.is_player:
 		# Never keep auto-walking into something that is hurting you.

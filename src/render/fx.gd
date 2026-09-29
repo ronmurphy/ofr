@@ -21,6 +21,8 @@ extends RefCounted
 const SHOT_PER_CELL := 0.028
 const FLASH_LIFE := 0.30
 const POPUP_LIFE := 0.85
+## Weapon contact overlays the hit briefly without replacing its flash or number.
+const CONTACT_LIFE := 0.22
 ## How long a noise ring dwells on each cell it crosses.
 ##
 ## Per CELL, not per ring, so every wavefront travels at the same speed and a
@@ -44,9 +46,9 @@ const HURT_LIFE := 0.55
 ## Each is the colour, how many bits, how long they last, and how they move:
 ## where they start (base, in cells above the floor), how far out (speed), how
 ## hard up (lift) and how fast they come down (fall). Water splashes up and
-## drops fast, mud barely leaves the ground, rubble dust hangs and drifts. The
-## colours are paler versions of the ground's own, so a splash reads as that
-## ground thrown up and never as something new arriving.
+## drops fast, mud barely leaves the ground, rubble dust hangs and drifts, and
+## bones kick out a few chips. The colours stay close to the ground they came
+## from, so each reads as that ground thrown up rather than something arriving.
 const FOOTFALL := {
 	Tiles.WATER:  {"colour": Color(0.62, 0.80, 0.90), "count": 8, "life": 0.38,
 		"base": 0.04, "speed": 0.75, "lift": 1.90, "fall": 4.80},
@@ -54,6 +56,8 @@ const FOOTFALL := {
 		"base": 0.03, "speed": 0.35, "lift": 0.90, "fall": 3.60},
 	Tiles.RUBBLE: {"colour": Color(0.62, 0.56, 0.47), "count": 4, "life": 0.70,
 		"base": 0.05, "speed": 0.30, "lift": 0.45, "fall": 0.30},
+	Tiles.BONES:  {"colour": Color(0.88, 0.84, 0.72), "count": 4, "life": 0.38,
+		"base": 0.04, "speed": 0.85, "lift": 1.10, "fall": 3.60},
 }
 
 ## The effects in flight. Each is a Dictionary with a "type", a clock "t" in
@@ -106,6 +110,13 @@ func add_events(evts: Array, popup_size: int) -> void:
 				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": popup_size})
 			continue
 
+		if e["kind"] == &"bone_step":
+			# The player clears a bones tile before the renderers sample the
+			# landing tile for ordinary footfalls. Keep the event's cell and
+			# route its chips through that same shared particle definition.
+			_add_footfall(to, Tiles.BONES, StepMotion.STEP_TIME * 0.6)
+			continue
+
 		# Noise, drawn as the wavefront it already was.
 		#
 		# The simulation has always known exactly how far a sound carried, and
@@ -154,10 +165,9 @@ func add_events(evts: Array, popup_size: int) -> void:
 				"colour": Palette.ALERT, "size": popup_size + 3})
 			continue
 
-		# Everything else on the queue is for the ears. The same list feeds
-		# SoundDeck, and most of what is on it -- noise carrying through
-		# stone, a change of footing, crossing the health line -- has no
-		# picture to draw by definition.
+		# Events not handled in this pass either carry sound only or are turned
+		# into impacts below. Melee and ranged hits are handled here because
+		# their flash and damage number come from the same event.
 		if e["kind"] != &"melee" and e["kind"] != &"ranged":
 			continue
 
@@ -184,10 +194,10 @@ func play(evts: Array, popup_size: int, state: GameState, motion: StepMotion) ->
 	add_events(evts, popup_size)
 	add_impacts(evts, state, motion)
 
-## The breathe pass's impacts: lunges and recoils (handed to `motion`), sparks
-## off a magic weapon, a creature shattering, the red edge when you are hurt,
-## a ring of light when you level up or pray, and pictures for events that were
-## for the ears only -- blink, forging, a trap, the health line.
+## The breathe pass's impacts: lunges and recoils (handed to `motion`), weapon
+## contact, healing and shrine rings, sparks off a magic weapon, a creature
+## shattering, the red edge when you are hurt, and pictures for events that
+## were for the ears only -- blink, forging, a trap, the health line.
 ##
 ## Nothing here needs the simulation to say more than it already does. Who
 ## struck is whoever stands where the blow came from; what died is the creature
@@ -200,6 +210,13 @@ func add_impacts(evts: Array, state: GameState, motion: StepMotion) -> void:
 		match e["kind"]:
 			&"melee", &"ranged":
 				_hit(e, state, motion)
+			&"healed":
+				# The simulation adds this only after a positive HP change. In
+				# "still", the health bar and message already carry that feedback.
+				if Effects.any():
+					list.append({"type": &"ring", "cell": to, "t": 0.0,
+						"radius": 1, "life": 0.42, "strength": 1.8,
+						"colour": Palette.HP_GOOD})
 			&"kill":
 				_shatter(to, state)
 			&"levelup":
@@ -244,6 +261,19 @@ func _hit(e: Dictionary, state: GameState, motion: StepMotion) -> void:
 			var share := float(e["amount"]) / float(maxi(1, target.max_hp))
 			motion.nudge(target, dir, clampf(0.06 + share * 0.6, 0.06, 0.25),
 				StepMotion.RECOIL_TIME, delay if ranged else StepMotion.LUNGE_TIME * 0.4)
+	# A brief contact mark gives melee weapons different silhouettes. It sits
+	# beside the existing flash and recoil and is absent in the "still" mode.
+	if not ranged and from != to and Effects.any():
+		var damage_type: StringName = e.get("damage_type", &"")
+		if damage_type == &"" and attacker != null:
+			var contact_weapon: Item = attacker.equipped.get(Item.Slot.WEAPON)
+			if contact_weapon != null:
+				damage_type = contact_weapon.damage_type
+		if damage_type != &"slash" and damage_type != &"pierce":
+			damage_type = &"blunt"
+		list.append({"type": &"contact", "cell": to, "t": 0.0,
+			"life": CONTACT_LIFE, "dir": dir.normalized(), "style": damage_type,
+			"colour": Palette.HIT_FLASH})
 	# Sparks in the magic colour: the one colour every enchanted or gem-set
 	# weapon already wears, so the spark says whose blade it was.
 	if attacker != null and attacker.is_player and not e["on_player"]:
@@ -296,8 +326,23 @@ func _burst(at: Vector2i, colour: Color, count: int, delay: float) -> void:
 	list.append({"type": &"sparks", "cell": at, "t": -delay, "life": BURST_LIFE,
 		"colour": colour, "count": count, "seed": at.x * 37 + at.y * 211 + list.size()})
 
+## Add one configured terrain burst. `landing` delays the particles until the
+## moving foot reaches the cell; both the sampled tile path and the bone_step
+## event use this so their colour, shape and timing stay consistent.
+func _add_footfall(at: Vector2i, tile: int, landing: float) -> void:
+	if not Effects.any():
+		return
+	var kind: Dictionary = FOOTFALL.get(tile, {})
+	if kind.is_empty():
+		return
+	var puff := kind.duplicate()
+	puff.merge({"type": &"sparks", "cell": at, "t": -landing,
+		"seed": at.x * 53 + at.y * 197 + list.size()}, true)
+	list.append(puff)
+
 ## Ground you can see being walked on: a step into water splashes, into mud
-## squelches, onto rubble kicks up dust -- for anyone in sight, not just you.
+## squelches, onto rubble kicks up dust, and onto bones cracks off chips -- for
+## anyone in sight, not just you.
 ## `moved` is who StepMotion.sync just started gliding. Landing as the step
 ## does, so the splash is where the foot comes down, not where it lifted.
 ## Motion, so not on "still".
@@ -307,15 +352,9 @@ func footfalls(moved: Array, state: GameState) -> void:
 	for e in moved:
 		if not state.map.is_visible(e.x, e.y):
 			continue
-		var kind: Dictionary = FOOTFALL.get(state.map.get_tile(e.x, e.y), {})
-		if kind.is_empty():
-			continue
 		var at := Vector2i(e.x, e.y)
 		var landing := StepMotion.STEP_TIME * StepMotion.footing(state.map, e.x, e.y) * 0.6
-		var puff := kind.duplicate()
-		puff.merge({"type": &"sparks", "cell": at, "t": -landing,
-			"seed": at.x * 53 + at.y * 197 + list.size()}, true)
-		list.append(puff)
+		_add_footfall(at, state.map.get_tile(e.x, e.y), landing)
 
 ## ADD EVERY NEW EFFECT TYPE HERE. The fallthrough is "expired", so an effect
 ## this function has not been taught about is created correctly, culled on the
@@ -333,6 +372,7 @@ static func expired(e: Dictionary) -> bool:
 		&"popup": return e["t"] >= POPUP_LIFE
 		&"shove": return e["t"] >= float(e.get("life", SHOVE_LIFE))
 		&"sparks": return e["t"] >= float(e.get("life", BURST_LIFE))
+		&"contact": return e["t"] >= float(e.get("life", CONTACT_LIFE))
 		&"shatter": return e["t"] >= float(e.get("life", SHATTER_LIFE))
 		&"hurt": return e["t"] >= float(e.get("life", HURT_LIFE))
 	return true
@@ -471,6 +511,36 @@ static func burst_points(e: Dictionary, t: float, map: DungeonMap) -> Array:
 		var lift := up * t - down * t * t
 		out.append([Vector2(cos(angle), sin(angle)) * speed * t,
 			maxf(0.0, base + lift), 1.0 - k])
+	return out
+
+## The marks of a melee contact, in the struck cell: a curved slash, a straight
+## thrust, or a compact blunt hit. Both renderers place these same marks using
+## their own block or cube shapes; unseen cells never reveal an attack.
+static func contact_marks(e: Dictionary, t: float, map: DungeonMap) -> Array:
+	var out: Array = []
+	var at: Vector2i = e["cell"]
+	if t < 0.0 or not map.is_visible(at.x, at.y):
+		return out
+	var life := float(e.get("life", CONTACT_LIFE))
+	var alpha := (1.0 - clampf(t / life, 0.0, 1.0)) * 0.72
+	if alpha <= 0.01:
+		return out
+	var dir: Vector2 = e["dir"]
+	var across := Vector2(-dir.y, dir.x)
+	match e.get("style", &"blunt"):
+		&"pierce":
+			for i in 3:
+				out.append([dir * (-0.12 + float(i) * 0.12), alpha])
+		&"slash":
+			for i in 5:
+				var side := (float(i) - 2.0) * 0.09
+				out.append([across * side - dir * (0.03 + absf(side) * 0.26), alpha])
+		_:
+			out.append([Vector2.ZERO, alpha])
+			out.append([dir * 0.10, alpha])
+			out.append([-dir * 0.10, alpha])
+			out.append([across * 0.10, alpha])
+			out.append([-across * 0.10, alpha])
 	return out
 
 ## How much of a shattering creature's own picture is still there: gone in the

@@ -361,7 +361,7 @@ func sync_motion() -> void:
 	light.rebuild(state)
 	memory.update(state)
 	life.rebuild(state)
-	# Whoever just stepped into water, mud or rubble throws some of it up.
+	# Whoever just stepped into water, mud, rubble or bones throws some of it up.
 	fx.footfalls(motion.sync(state.entities, state.map), state)
 
 func set_aim_state(cursor: Vector2i, line: Array[Vector2i], valid: bool) -> void:
@@ -775,6 +775,7 @@ func _draw_effects() -> void:
 			&"ring":  _draw_ring(e, t)
 			&"shove": _draw_shove(e, t)
 			&"sparks": _draw_burst(e, t)
+			&"contact": _draw_contact(e, t)
 			&"shatter": _draw_shatter(e, t)
 
 ## A sound, crossing the floor -- which cells, and how strongly, is
@@ -814,6 +815,16 @@ func _draw_burst(e: Dictionary, t: float) -> void:
 			- Vector2(0.0, (float(piece[1]) - 0.45) * cell_size)
 		at = (at / q).floor() * q
 		draw_rect(Rect2(at, Vector2(q, q)), Color(colour, float(piece[2])), true)
+
+## Weapon-shaped contact marks, using the shared slash, thrust or blunt layout.
+## Small blocks keep the cue legible without changing the ASCII glyphs.
+func _draw_contact(e: Dictionary, t: float) -> void:
+	var side := maxf(2.0, cell_size * 0.10)
+	var cell := _centre(e["cell"])
+	var colour: Color = e["colour"]
+	for mark in Fx.contact_marks(e, t, state.map):
+		var at := cell + (mark[0] as Vector2) * cell_size - Vector2(side, side) * 0.5
+		draw_rect(Rect2(at, Vector2(side, side)), Color(colour, float(mark[1])), true)
 
 ## Spores, bubbles, drips and dust -- which, where and when is SmallLife; this
 ## only paints them. Blocks an eighth of a cell across, on an eighth-cell grid,
