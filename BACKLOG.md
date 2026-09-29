@@ -374,6 +374,38 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
+**The forager's satchel (unique; Brad and Claude, 2026-09-29).** Absorbs the
+old "fungus bag" idea. One pack slot that holds up to 10: nine meat or potions,
+and ONE stack of fungus (fungus stacks to 10; so fungus can be PICKED as well
+as eaten where it grows). Why: pack heals were invisible (the pack stays open
+over the map), the pack was full (Brad's 20/20 held five heals), and a quick
+heal mid-fight.
+- **Using anything from it costs a turn, and the chooser closes behind it**,
+  so the map shows the heal.
+- **Worn in the offhand** (a real trade against a shield -- the bulwark
+  makes that hurt): a key/button opens the chooser directly; food and potions
+  picked up go straight in until it is full; and **the fungus inside still
+  glows** -- a small light at your side -- which may draw rabbits (bait).
+- **The glow is COSMETIC only** (drawn on simple/full effects, not on still),
+  never a light in the rules: monsters notice you by light, and a real glow
+  would quietly break stealth -- Brad's kobold walked past him in the dark
+  with his torch out (PLAYTESTS 2026-09-28).
+- **Dropping a fungus keeps the fungus bag's purpose: it TAKES ROOT** -- an
+  ordinary FUNGUS tile, so it is light (fungus already lights), bait (rabbits
+  already seek it) and food, with no new rules. A turn, and only on open floor
+  (not water or a pit). **Throwing one** (throwing exists) roots it where it
+  lands: light a far corner, or lure a rabbit away from your route.
+- **In the pack, not worn: still usable** -- open the pack, open the satchel,
+  use (a turn, then it closes). Brad: his players are D&D players and will
+  look for exactly this bypass; allowing it at the same cost is the right
+  call. Worn only adds convenience and the glow.
+- The chooser: a small panel like the inventory -- letters for keys, up/down
+  and A on a pad, click with a mouse.
+- **Open:** the key -- `b` is taken (vi down-left) and all four d-pad
+  directions are bound; free **d-pad up** by moving the 3D/classic toggle to
+  the pause menu (rarely used now 3D is the default). Where it is found
+  (trader? caves, where food matters most?).
+
 **The Legends intro -- the game's first cutscene.** Brad's idea, 2026-09-28,
 from the cottage built as a first try at the title screen. Build after the
 title screen has been played.
