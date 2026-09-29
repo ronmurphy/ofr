@@ -625,6 +625,22 @@ func accepts_element(el: StringName) -> bool:
 ##
 ## Returns null for anything the catalogue does not know, including gear from a
 ## future version of the game a player has since rolled back.
+## What a stone of this element goes into, as the player would say it, for
+## "needs ..." hints: the same five hosts accepts_element checks.
+static func host_words(el: StringName) -> String:
+	match ELEMENTS.get(el, {}).get("hosts", &""):
+		&"shield":
+			return "a shield worn"
+		&"bow":
+			return "a bow in hand"
+		&"melee":
+			return "a melee weapon in hand"
+		&"weapon":
+			return "a weapon in hand"
+		&"armour":
+			return "body armour worn"
+	return "something to hold it"
+
 static func from_display_name(text: String) -> Item:
 	var trimmed := text.strip_edges()
 	if trimmed == "":

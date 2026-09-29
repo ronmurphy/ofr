@@ -124,6 +124,19 @@ strand at a time with play between:
 4. **Red fungus raises the dead.** It is a timer: after some turns the body it
    grew from rises -- less HP, hits harder, hunts the player (Brad: a zombie
    piloted by a fungus, The Last of Us). Burn it before it hatches (strand 6).
+   **Brad, 2026-09-29: confined to the room it rose in** -- a zombie room: it
+   hunts whatever is inside and never follows you out; go back in prepared, or
+   stay out. Caves have no rooms: a radius round where it rose. Proposals: the
+   room is readable from its doorway (drifting red spores, a red tint at the
+   door); it SNOWBALLS -- whatever the gong or a patrol leads in dies and rises
+   too, until someone burns it; and HATCHING TIME SCALES WITH SIZE -- a rat in
+   a few turns, a dragon's body much longer, a window to burn it (Brad's red
+   fungus young dragon, on floor 10: a boss-sized problem you made yourself). Brad agreed
+   the size scaling ("a dragon, you have time to hide") -- and it gives the
+   STEALTH play a reason. **The one exception to the room: the gong shrine.**
+   Ringing it frees the risen to answer the call, like everything else in
+   earshot. Shrine colours are shuffled per run, so "which colour was the
+   gong?" becomes knowledge that can save or end a run.
 5. **Pits as escape.** A fleeing monster lit by the player's torch several
    turns running is being chased; then a pit is an escape, not a no-go. It
    lands on the next floor wounded by the fall, awake, hunting, with a

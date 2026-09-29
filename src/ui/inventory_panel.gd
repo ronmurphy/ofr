@@ -480,13 +480,16 @@ func _draw_header(r: Rect2, text: String) -> void:
 ## out from the row itself.
 func _action_hint(item: Item) -> String:
 	if item.kind == Item.Kind.GEM:
-		var blade: Variant = state.player.equipped.get(Item.Slot.WEAPON, null)
+		# The host the GAME would choose (_default_host), not the weapon in
+		# hand. This used to look only at the weapon, from when every stone
+		# went into a blade -- so a gem of the bulwark, which goes in a SHIELD,
+		# told Brad "sling +2 (fire) is already set" with the buckler sitting
+		# in his pack (2026-09-29).
+		var blade: Variant = state._default_host(item)
 		if blade == null:
-			return "needs a weapon in hand"
+			return "needs %s" % Item.host_words(item.element)
 		if blade.element != &"":
 			return "%s is already set" % blade.display_name()
-		if not blade.accepts_element(item.element):
-			return "%s will not take it" % blade.name
 		if state._adjacent_embers().x >= 0:
 			return "set into %s" % blade.display_name()
 		if state._adjacent_brazier().x >= 0:

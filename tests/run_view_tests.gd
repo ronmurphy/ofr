@@ -58,6 +58,7 @@ func _initialize() -> void:
 	_test_bodies_look_the_same_in_both_views()
 	_test_facing_and_the_follow_view()
 	_test_new_players_start_in_3d()
+	_test_the_gem_hint_asks_the_right_host()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1085,6 +1086,32 @@ func _test_the_title_screen() -> void:
 		Morgue.records(path).size() == 1)
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
+
+## The inventory's gem hint asks the host the game would use. Brad's run,
+## 2026-09-29: a set fire sling in hand, a buckler in the pack, a gem of the
+## bulwark -- and the hint said the SLING was already set.
+func _test_the_gem_hint_asks_the_right_host() -> void:
+	print("-- the gem hint")
+	var gs := GameState.new(99)
+	gs.new_game()
+	var sling := Item.make(&"sling")
+	sling.element = &"fire"
+	var buckler := Item.make(&"buckler")
+	var bulwark := Item.make(&"gem_bulwark")
+	var fire := Item.make(&"gem_fire")
+	gs.player.inventory = [sling, buckler, bulwark, fire]
+	gs.player.equipped = {Item.Slot.WEAPON: sling}
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	check("  a bulwark with the buckler in the pack asks for a shield",
+		panel._action_hint(bulwark) == "needs a shield worn", panel._action_hint(bulwark))
+	check("  a fire stone with the fire sling in hand says the sling is set",
+		panel._action_hint(fire).ends_with("is already set"), panel._action_hint(fire))
+	gs.player.equipped[Item.Slot.OFFHAND] = buckler
+	var worn := panel._action_hint(bulwark)
+	check("  and with the buckler worn, it no longer names the sling or a shield",
+		not worn.contains("sling") and not worn.begins_with("needs a shield"), worn)
+	panel.free()
 
 ## New players start in 3D with the follow camera (Brad, 2026-09-28); anyone
 ## who saved a choice keeps it. On the scratch settings file, restored after.
