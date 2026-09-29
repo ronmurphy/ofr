@@ -1326,6 +1326,23 @@ func _test_the_playtest_fixes() -> void:
 		side._gui_input(click)
 		check("  a click on the sidebar at %s opens %s" % [case[1],
 			case[0] if case[0] != "" else "nothing"], got["v"] == case[0], got["v"])
+	# The minimap: inside the panel, above the help line, and it GIVES WAY.
+	var mini_gs := GameState.new(88)
+	mini_gs.new_game()
+	side.state = mini_gs
+	side.show_minimap = true
+	var mr := side.minimap_rect()
+	check("  the minimap sits inside the sidebar, above the help line",
+		mr.position.x >= Sidebar.PAD and mr.end.x <= side.size.x - Sidebar.PAD
+		and mr.end.y < side.help_line_rect().position.y)
+	side._look_bottom = 320.0
+	check("  with a short description the minimap shows", side.minimap_fits())
+	side._look_bottom = mr.position.y + 10.0
+	check("  and it gives way when the words would reach it", not side.minimap_fits())
+	side.show_minimap = false
+	side._look_bottom = 320.0
+	check("  and it is not drawn where it is not wanted", not side.minimap_fits())
+	side.state = null
 	check("  the menu button and the help line do not overlap",
 		not side.menu_button_rect().intersects(side.help_line_rect()))
 	# One line now (Brad): the loud, bold help text must fit left of the button.
@@ -1590,6 +1607,14 @@ func _test_both_views_share_one_moment() -> void:
 	if RenderTheme.camera_follows() != was_follow:
 		RenderTheme.toggle_follow()
 	scene._select_map_view(false)
+	# The minimap is the 3D view's: on there, off in classic.
+	scene._select_map_view(true)
+	scene._process(0.0)
+	var mini_in_3d: bool = scene.sidebar.show_minimap
+	scene._select_map_view(false)
+	scene._process(0.0)
+	check("the minimap shows in 3D and not in classic",
+		mini_in_3d and not scene.sidebar.show_minimap)
 	# Aiming hands the reach to BOTH views, and ending it clears both.
 	scene._begin_aim(4)
 	check("aiming gives both views the same reach",

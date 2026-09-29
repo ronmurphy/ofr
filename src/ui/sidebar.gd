@@ -132,6 +132,22 @@ var pad_input := false
 ## legend has been opened once. See LegendPanel.seen_ever.
 var help_loud := false
 
+## The minimap (3D view only, set by main.gd): the floor so far, north up,
+## at MINI_CELL pixels a square, just above the help line. It GIVES WAY: on a
+## frame when the look block's words would reach it, it is not drawn --
+## information always wins. Measured before building: the look block's
+## realistic worst is 8-9 lines, and the map leaves room for about 11.
+var show_minimap := false
+const MINI_CELL := 2
+## The floor's terrain as a picture, rebuilt once a turn rather than drawn as
+## five thousand rectangles every frame -- the sidebar redraws every frame, and
+## in a browser that would cost more than the whole rest of the panel.
+var _mini_tex: ImageTexture = null
+var _mini_turn := -1
+var _mini_map: DungeonMap = null
+## Where the look block's words end this frame, for the minimap to give way.
+var _look_bottom := 0.0
+
 ## A clickable menu button and a clickable help line, from the 2026-09-26
 ## playtest: in browser fullscreen Esc leaves fullscreen instead of opening
 ## the menu, and a 10-year-old gave up over it. The mouse needs a way in.
@@ -425,6 +441,7 @@ func _draw() -> void:
 		else:
 			_line(font, y, _fit(String(entry)), Palette.UI_TEXT)
 		y += LINE
+	_look_bottom = y - LINE * 0.6
 
 	# Derived from the list, not a hand-counted constant. Adding a row to KEYS
 	# once pushed the last baseline exactly onto the frame with a hard-coded
@@ -468,11 +485,51 @@ func _draw() -> void:
 	var lw := PadGlyphs.width(label, font, font_size)
 	PadGlyphs.draw(self, Vector2(r.position.x + (r.size.x - lw) * 0.5, y), label,
 		font, font_size, Color.WHITE if on else Palette.UI_TEXT)
+	_draw_minimap()
 
 ## The rule for a loud help hint, in one place main.gd and the tests share.
 static func help_is_loud(gs: GameState) -> bool:
 	return gs != null and not gs.ascending and gs.depth <= 2 \
 		and not LegendPanel.seen_ever()
+
+## Where the minimap goes: centred, its bottom just above the help line.
+func minimap_rect() -> Rect2:
+	if state == null or state.map == null:
+		return Rect2()
+	var s := Vector2(state.map.width * MINI_CELL, state.map.height * MINI_CELL)
+	var bottom := help_line_rect().position.y - 8.0
+	return Rect2(Vector2(floorf((size.x - s.x) * 0.5), bottom - s.y), s)
+
+## Whether the minimap is drawn this frame: wanted, and with room to spare.
+func minimap_fits() -> bool:
+	return show_minimap and state != null \
+		and _look_bottom <= minimap_rect().position.y - 6.0
+
+func _draw_minimap() -> void:
+	if not minimap_fits():
+		return
+	var r := minimap_rect()
+	if state.turns != _mini_turn or state.map != _mini_map or _mini_tex == null:
+		_mini_turn = state.turns
+		_mini_map = state.map
+		var img := Image.create(int(r.size.x), int(r.size.y), false, Image.FORMAT_RGBA8)
+		for y in state.map.height:
+			for x in state.map.width:
+				if not state.map.is_explored(x, y):
+					continue
+				var c := MapPanel._terrain_colour(state.map.get_tile(x, y))
+				if c.a > 0.0:
+					img.fill_rect(Rect2i(x * MINI_CELL, y * MINI_CELL, MINI_CELL, MINI_CELL), c)
+		_mini_tex = ImageTexture.create_from_image(img)
+	draw_rect(r.grow(4.0), Color(0, 0, 0, 0.35), true)
+	draw_rect(r.grow(4.0), Palette.UI_FRAME, false, 1.0)
+	draw_texture(_mini_tex, r.position)
+	MapPanel.draw_marks(self, state, r.position, MINI_CELL, 3.0)
+	# Which way you face: a short line from your dot. North stays up -- with
+	# the follow camera swinging, a map that does not turn keeps you oriented.
+	var centre := r.position + (Vector2(state.player.x, state.player.y) + Vector2(0.5, 0.5)) * MINI_CELL
+	draw_line(centre, centre + Vector2(state.player.facing).normalized() * 7.0,
+		MapPanel.MARK_PLAYER, 1.5)
 
 ## "wading · slowed x1.4". Separate so the tests can read what the row says.
 static func status_words(word: String, pace: float) -> String:

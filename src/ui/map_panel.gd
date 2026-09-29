@@ -90,50 +90,47 @@ func _draw() -> void:
 		"THE FLOOR SO FAR", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
 		Palette.STAIRS)
 
-	# Terrain first, landmarks over it.
 	for y in h:
 		for x in w:
 			if not state.map.is_explored(x, y):
 				continue
-			var t := state.map.get_tile(x, y)
-			var c := _terrain_colour(t)
-			if c.a <= 0.0:
-				continue
-			draw_rect(Rect2(at + Vector2(x * cell, y * cell),
-				Vector2(cell, cell)), c, true)
-
-	# The things you opened this to find.
-	for y in h:
-		for x in w:
-			if not state.map.is_explored(x, y):
-				continue
-			var mark := _landmark(x, y)
-			if mark.a <= 0.0:
-				continue
-			# Bigger than a terrain cell so a single brazier is findable on a
-			# floor of two thousand squares.
-			var r: float = maxf(cell, 4.0)
-			draw_rect(Rect2(at + Vector2(x * cell, y * cell)
-				- Vector2(r - cell, r - cell) * 0.5, Vector2(r, r)), mark, true)
-
-	# The trader, where you saw them. They never move, so a trader you have
-	# walked past is still standing exactly there -- see MapMemory.
-	var trader := MapMemory.remembered_trader(state)
-	if trader.x >= 0:
-		var tr: float = maxf(cell, 4.0)
-		draw_rect(Rect2(at + Vector2(trader.x * cell, trader.y * cell)
-			- Vector2(tr - cell, tr - cell) * 0.5, Vector2(tr, tr)), MARK_TRADER, true)
-
-	if state.player != null:
-		var pr: float = maxf(cell * 1.4, 6.0)
-		draw_rect(Rect2(at + Vector2(state.player.x * cell, state.player.y * cell)
-			- Vector2(pr - cell, pr - cell) * 0.5, Vector2(pr, pr)),
-			MARK_PLAYER, true)
-
+			var c := _terrain_colour(state.map.get_tile(x, y))
+			if c.a > 0.0:
+				draw_rect(Rect2(at + Vector2(x * cell, y * cell), Vector2(cell, cell)), c, true)
+	draw_marks(self, state, at, cell, 4.0)
 	_legend_line(at, board)
 
+## The landmarks, the trader and you, over terrain already drawn. Static and
+## given a canvas, because the sidebar's minimap draws the same marks -- one
+## drawing, so the overview and the minimap can never disagree. `least` is the
+## smallest a mark may be drawn: bigger than a cell, so a single brazier is
+## findable on a floor of two thousand squares.
+static func draw_marks(canvas: CanvasItem, gs: GameState, at: Vector2, cell: float,
+		least: float) -> void:
+	var w := gs.map.width
+	var h := gs.map.height
+	var r: float = maxf(cell, least)
+	for y in h:
+		for x in w:
+			if not gs.map.is_explored(x, y):
+				continue
+			var mark := _landmark_for(gs.map.get_tile(x, y))
+			if mark.a > 0.0:
+				canvas.draw_rect(Rect2(at + Vector2(x * cell, y * cell)
+					- Vector2(r - cell, r - cell) * 0.5, Vector2(r, r)), mark, true)
+	# The trader, where you saw them. They never move, so a trader you have
+	# walked past is still standing exactly there -- see MapMemory.
+	var trader := MapMemory.remembered_trader(gs)
+	if trader.x >= 0:
+		canvas.draw_rect(Rect2(at + Vector2(trader.x * cell, trader.y * cell)
+			- Vector2(r - cell, r - cell) * 0.5, Vector2(r, r)), MARK_TRADER, true)
+	if gs.player != null:
+		var pr: float = maxf(cell * 1.4, least + 2.0)
+		canvas.draw_rect(Rect2(at + Vector2(gs.player.x * cell, gs.player.y * cell)
+			- Vector2(pr - cell, pr - cell) * 0.5, Vector2(pr, pr)), MARK_PLAYER, true)
+
 ## Walls and floor only, and both dim: this is a shape, not a scene.
-func _terrain_colour(t: int) -> Color:
+static func _terrain_colour(t: int) -> Color:
 	if t == Tiles.WALL or t == Tiles.ROCK:
 		return Color(0.20, 0.20, 0.24)
 	if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
@@ -191,7 +188,7 @@ func _landmark(x: int, y: int) -> Color:
 ## Split from _landmark so the colours can be asserted without a map to stand
 ## on: a test that has to build a floor to find out what colour a spent brazier
 ## is will stop being written.
-func _landmark_for(t: int) -> Color:
+static func _landmark_for(t: int) -> Color:
 	match t:
 		Tiles.STAIRS_DOWN, Tiles.STAIRS_UP:
 			return MARK_STAIRS

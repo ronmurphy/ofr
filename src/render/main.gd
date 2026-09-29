@@ -425,6 +425,7 @@ func _process(delta: float) -> void:
 	sidebar.pad_input = _pad_input
 	sidebar.naming = name_entry.visible
 	sidebar.help_loud = Sidebar.help_is_loud(state)
+	sidebar.show_minimap = _map_view == diorama
 	legend.pad_input = _pad_input
 	trade.pad_input = _pad_input
 	talk.pad_input = _pad_input

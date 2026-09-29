@@ -118,3 +118,43 @@ view: "OK, make it like that and I will play it."
   reserve, shown in the legend. Planned for Monday morning.
 - **Visuals and 3D:** the breathe pass and Gabe's 3D view, both already
   planned, are what these players asked for most.
+
+## 2026-09-28 — the testers, and Brad's own evening run
+
+The day the title screen, David's music, the follow camera, bodies, slinger
+reloads and the minimap went in. Reports from Gabe, David and Steph by message;
+Brad's from his own play.
+
+**Gabe:** saw the title screen on itch and asked whether the three heroes meant
+multiplayer ("party/npc or live people"?). Loved the eight-view camera and the
+small effects. Asked for a camera that turns to the way the player faces,
+Wizardry-style but kept overhead -- built the same evening as the follow
+camera. Reads the legend to relearn keys after updates.
+
+**David:** likes all of it. His title-screen theme arrived as a patch and went
+in (it needed one missing variable declared).
+
+**Steph** (the most motion-sensitive tester): **no discomfort on effects
+"full", and none with the follow camera, swinging or snapping.** That settled
+it: new players now start in 3D with the follow camera.
+
+**Brad, a first-floor run in 3D with the follow camera and the minimap:**
+- A shrine's gong brought every monster in earshot running -- the noise system
+  doing its job.
+- With his torch out, standing still in a dark corner, a kobold walked right
+  past him just outside its own torchlight; he waited it out with `.`. Stealth
+  by darkness, with no rule written for that moment.
+- The follow camera made diagonal attacks easy: with forward always up, the
+  diagonal keys hit what they look like they hit.
+- The minimap got him back to the trader.
+- "The new camera and the 3D setup makes it a bit more tactical." The first
+  run where 3D + follow read as tactics rather than as a new look.
+- Bodies piled up in the gong room; the fungus family will make rooms like it
+  matter.
+
+### What came of it
+
+- 3D + follow camera is the default for new players (saved choices kept).
+- The minimap stays.
+- Still open: how the slingers' reloads feel in play; everyone's view of the
+  follow camera over longer runs.

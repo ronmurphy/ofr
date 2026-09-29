@@ -423,7 +423,10 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
-**A minimap for the 3D view (Brad, 2026-09-28).** Brad's thought: the classic
+**A minimap for the 3D view (Brad, 2026-09-28). BUILT the same night**,
+waiting on play: `Sidebar._draw_minimap`, drawn from the overview's own
+`MapPanel.draw_marks` so the two cannot disagree; terrain cached as a picture
+once a turn; a facing line on your dot; gives way to the look block. Brad's thought: the classic
 view as a minimap. Better base: the OVERVIEW map (`o` / from the legend), which
 already draws the whole floor compactly. Put it in the sidebar's empty middle
 (under UNDER CURSOR), covering nothing of the 3D view. North-up, NOT rotating,
