@@ -181,6 +181,15 @@ suggestion, PLAYTESTS 2026-09-26) would be two more rows on it.
 
 ## Next up
 
+**First, 2026-09-29:** (a) the inventory's labels -- "food & potions" for the
+potions tab (haunches were filed under potions), and a "uniques" heading and
+tab (the ring of the rat was filed under weapons; the shovel, the Horn later);
+(b) **Gabe: a screenshot key.** F9 (F12 opens browser dev tools, and Steam
+takes it for its own); desktop saves a PNG beside the saves and says where --
+a static path that use_scratch_files() moves, from its first commit;
+itch downloads it through Platform.hand_over, like the morgue; the pad watch
+and other overlays left out of the picture.
+
 **1. Small fixes from the 2026-09-26 playtest** (see PLAYTESTS.md):
 - **The `?` hint** in bold and colour on floors 1–2, back to normal after that or
   once the legend has been opened. Neither teen found the controls alone.
