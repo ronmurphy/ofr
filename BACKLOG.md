@@ -181,10 +181,10 @@ suggestion, PLAYTESTS 2026-09-26) would be two more rows on it.
 
 ## Next up
 
-**First, 2026-09-29:** (a) the inventory's labels -- "food & potions" for the
+**First, 2026-09-29 -- both moved to SMALL_TASKS.md:** (a) the inventory's labels -- "food & potions" for the
 potions tab (haunches were filed under potions), and a "uniques" heading and
 tab (the ring of the rat was filed under weapons; the shovel, the Horn later);
-(b) **Gabe: a screenshot key.** F9 (F12 opens browser dev tools, and Steam
+(b) **Gabe: a screenshot key -- moved to SMALL_TASKS.md.** F9 (F12 opens browser dev tools, and Steam
 takes it for its own); desktop saves a PNG beside the saves and says where --
 a static path that use_scratch_files() moves, from its first commit;
 itch downloads it through Platform.hand_over, like the morgue; the pad watch
@@ -317,6 +317,12 @@ Waiting on play. Open:
   the JSON morgue.
 
 ---
+
+## For the free model
+
+Small, self-contained jobs for the free model live in **`SMALL_TASKS.md`**,
+with the rules it works by (tests, both views, "still", no commits). Brad
+points it at that file; Claude reviews its commits.
 
 ## Known gaps
 

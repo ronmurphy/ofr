@@ -59,6 +59,7 @@ func _initialize() -> void:
 	_test_facing_and_the_follow_view()
 	_test_new_players_start_in_3d()
 	_test_the_gem_hint_asks_the_right_host()
+	_test_the_animation_extras()
 	await _test_both_views_share_one_moment()
 	var settings_after := ""
 	if FileAccess.file_exists("user://settings.cfg"):
@@ -1086,6 +1087,75 @@ func _test_the_title_screen() -> void:
 		Morgue.records(path).size() == 1)
 	check("  no morgue, no escapes", Morgue.escapes("user://no_such_morgue.txt") == 0)
 	DirAccess.remove_absolute(path)
+
+## The animation extras (2026-09-29, added with another model): the green ring
+## only when health really rises, bone chips on bones, and a contact mark shaped
+## by the weapon. They arrived without tests; these are theirs.
+func _test_the_animation_extras() -> void:
+	print("-- animation extras")
+	var gs := GameState.new(515)
+	gs.new_game()
+	var healed := func() -> bool:
+		for e in gs.events:
+			if e["kind"] == &"healed":
+				return true
+		return false
+	# A real heal: eating fungus while hurt.
+	gs.events.clear()
+	gs.player.hp = gs.player.max_hp - 5
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FUNGUS)
+	gs._eat_fungus()
+	check("  eating fungus while hurt shows the healing cue", healed.call())
+	gs.events.clear()
+	gs.player.hp = gs.player.max_hp
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FUNGUS)
+	gs._eat_fungus()
+	check("  and at full health it does not", not healed.call())
+	gs.events.clear()
+	gs._queue_healing_cue(0)
+	check("  nothing restored, no cue", gs.events.is_empty())
+
+	# The ring is motion: shown on simple and full, not on still.
+	var was_mode := Effects.mode()
+	var fx := Fx.new()
+	var cue := [{"kind": &"healed", "to": Vector2i(gs.player.x, gs.player.y), "amount": 3}]
+	Effects.set_mode(Effects.Mode.TIMERS)
+	fx.add_impacts(cue, gs, StepMotion.new())
+	var rings := fx.list.filter(func(e): return e["type"] == &"ring")
+	check("  with motion on, the cue is a ring", rings.size() == 1)
+	fx.list.clear()
+	Effects.set_mode(Effects.Mode.NONE)
+	fx.add_impacts(cue, gs, StepMotion.new())
+	check("  on still it is not drawn (the bar and the log say it)", fx.list.is_empty())
+	Effects.set_mode(was_mode)
+
+	# Stepping onto bones throws up chips, from the event the step leaves.
+	var step_to := Vector2i(gs.player.x + 1, gs.player.y)
+	gs.map.set_tile(step_to.x, step_to.y, Tiles.BONES)
+	gs.entities = [gs.player]
+	gs.events.clear()
+	gs.player_move(1, 0)
+	var chips := false
+	for e in gs.events:
+		chips = chips or (e["kind"] == &"bone_step" and e["to"] == step_to)
+	check("  a step onto bones leaves a bone_step where it landed (the premise: it moved)",
+		Vector2i(gs.player.x, gs.player.y) == step_to and chips)
+
+	# Contact marks: a shape per kind of weapon, only where it can be seen.
+	var at := Vector2i(gs.player.x, gs.player.y)
+	gs.map.show_cell(at.x, at.y)
+	var mark := func(style: StringName) -> Array:
+		return Fx.contact_marks({"type": &"contact", "cell": at, "dir": Vector2(1, 0),
+			"style": style, "life": Fx.CONTACT_LIFE}, 0.05, gs.map)
+	check("  a thrust is a line of three, a slash an arc of five, a blow a cross",
+		mark.call(&"pierce").size() == 3 and mark.call(&"slash").size() == 5
+		and mark.call(&"blunt").size() == 5)
+	check("  and it fades out and is culled",
+		Fx.contact_marks({"type": &"contact", "cell": at, "dir": Vector2(1, 0),
+			"style": &"slash", "life": Fx.CONTACT_LIFE}, Fx.CONTACT_LIFE, gs.map).is_empty()
+		and Fx.expired({"type": &"contact", "t": Fx.CONTACT_LIFE, "life": Fx.CONTACT_LIFE}))
+	gs.map.clear_visible()
+	check("  and an unseen blow draws nothing", mark.call(&"slash").is_empty())
 
 ## The inventory's gem hint asks the host the game would use. Brad's run,
 ## 2026-09-29: a set fire sling in hand, a buckler in the pack, a gem of the

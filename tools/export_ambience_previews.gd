@@ -25,6 +25,15 @@ func _initialize() -> void:
 			push_error("Could not create %s (error %d)." % [output_path, mkdir_error])
 			quit(1)
 			return
+	# Keep Godot out of this folder. It is inside the project, and .gitignore
+	# does not stop Godot importing: without a .gdignore every WAV here would
+	# be imported and BAKED INTO THE SHIPPED BUILD (see CLAUDE.md -- GameIcons
+	# cost most of the web build's size budget the same way).
+	var marker := output_path.path_join(".gdignore")
+	if not FileAccess.file_exists(marker):
+		var f := FileAccess.open(marker, FileAccess.WRITE)
+		if f != null:
+			f.close()
 
 	for clip in CLIPS:
 		var profile: Dictionary
