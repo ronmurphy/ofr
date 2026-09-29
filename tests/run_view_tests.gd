@@ -1462,6 +1462,18 @@ func _test_both_views_share_one_moment() -> void:
 	check("` opens the menu, as Esc does", scene.menu.visible)
 	scene._unhandled_key_input(tick)
 	check("and closes it again", not scene.menu.visible)
+	# The menu's help row: the legend for a pad whose View button never
+	# arrives (Firefox).
+	scene.menu.open()
+	var help_row := -1
+	for i in scene.menu.OPTIONS.size():
+		if scene.menu.OPTIONS[i][2] == "help":
+			help_row = i
+	check("the pause menu has a help row", help_row >= 0)
+	scene.menu._activate(help_row)
+	check("and it closes the menu and opens the legend",
+		not scene.menu.visible and scene.legend.visible)
+	scene.legend.close()
 	# A body where the player can see it is laid in 3D; a rotted one is not.
 	var st: GameState = scene.state
 	st.bodies = [{"x": st.player.x, "y": st.player.y, "app": "rat",

@@ -100,6 +100,10 @@ doesn't fire sixty moves a second. The d-pad's four buttons handle contextual
 actions rather than movement; the stick covers all eight movement directions.
 In the 3D view, the right stick -- or LT / RT -- turns the camera left or right in 45° steps (eight views).
 
+**The legend without the View button:** Start opens the pause menu, and its
+*help* row opens the legend. In Firefox an Xbox pad's View button never arrives
+at all, so this is the way to the keys there.
+
 **The follow camera** (title → settings → 3D camera: follows you): the stick's
 up and down step forward and back, left and right turn you 45° on the spot for
 free, and the camera stays behind you. The right stick and LT / RT turn you

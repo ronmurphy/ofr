@@ -10,6 +10,11 @@ signal text_size_requested()
 signal save_and_quit_requested()
 signal new_run_requested()
 signal morgue_requested()
+## The legend, from the menu. Brad, 2026-09-28: in Firefox an Xbox pad's View
+## button -- the legend's button -- never arrives at all (the pad watch showed
+## nothing), but Start does. Every device reaches this menu, so the legend is
+## one row away everywhere, with no button rebound.
+signal help_requested()
 
 @export var font: Font
 @export var font_bold: Font
@@ -29,12 +34,13 @@ var state: GameState
 ## claimed that it did -- a comment asserting a measurement that was never
 ## taken. _test_panels_do_not_overflow now asserts the rows fit too, so this is
 ## the one place the height is stated and the claim is true again.
-const PANEL := Vector2(460.0, 352.0)
+const PANEL := Vector2(460.0, 386.0)
 const PAD := 26.0
 const ROW_H := 34.0
 
 const OPTIONS_DESKTOP := [
 	["c", "continue", "resume"],
+	["h", "help -- every key", "help"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
 	["m", "open the morgue folder", "morgue"],
@@ -47,6 +53,7 @@ const OPTIONS_DESKTOP := [
 ## the same thing, for someone who wants to be told it worked.
 const OPTIONS_WEB := [
 	["c", "continue", "resume"],
+	["h", "help -- every key", "help"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
 	["m", "download the morgue", "morgue"],
@@ -150,6 +157,7 @@ func _activate(i: int) -> void:
 		"pad": pad_requested.emit()
 		"text": text_size_requested.emit()
 		"morgue": morgue_requested.emit()
+		"help": help_requested.emit()
 		"save": save_and_quit_requested.emit()
 		"new": new_run_requested.emit()
 

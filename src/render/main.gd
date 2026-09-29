@@ -299,6 +299,7 @@ func _ready() -> void:
 	menu.save_and_quit_requested.connect(_save_and_quit)
 	menu.new_run_requested.connect(_start_new_run)
 	menu.morgue_requested.connect(_export_morgue)
+	menu.help_requested.connect(_help_from_menu)
 	sidebar.menu_clicked.connect(_on_sidebar_menu)
 	sidebar.help_clicked.connect(_on_sidebar_help)
 	menu.text_size_requested.connect(_cycle_text_size)
@@ -1092,6 +1093,12 @@ func _on_name_chosen(chosen_name: String) -> void:
 
 func _close_menu() -> void:
 	menu.close()
+	_refresh()
+
+## The pause menu's help row: close the menu and open the legend.
+func _help_from_menu() -> void:
+	menu.close()
+	legend.open()
 	_refresh()
 
 ## The sidebar's menu button and help line, for mouse players -- see Sidebar.
