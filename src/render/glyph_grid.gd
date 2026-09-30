@@ -469,6 +469,11 @@ func _draw() -> void:
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
 			_draw_wound(e)
+			# Marked: a frame in the colour of the fungus it carries.
+			var spore := CreatureMarks.spore_colour(e)
+			if spore.a > 0.0:
+				draw_rect(Rect2(_screen_f(_visual_cell(e)) + Vector2(1, 1),
+					Vector2(cell_size - 2, cell_size - 2)), spore, false, 2.0)
 			# The glyph still says WHICH creature; the colour only says that
 			# the climb has been at it. One override rather than a second set
 			# of theme entries, because there is nothing per-creature to say.

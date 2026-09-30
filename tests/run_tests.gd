@@ -102,6 +102,7 @@ func _initialize() -> void:
 	_test_slingers_reload()
 	_test_the_wrong_fungus()
 	_test_the_dark_is_fair()
+	_test_the_fungus_spreads()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1546,6 +1547,88 @@ func _suspended_state() -> GameState:
 	gs.update_vision()
 	return gs
 
+## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
+## and rats drawn to fresh bodies.
+func _test_the_fungus_spreads() -> void:
+	var g := GameState.new(9191)
+	g.new_game()
+	g.depth = 7
+	g.build_level()
+	var o := Vector2i(g.player.x, g.player.y)
+	for dy in range(-6, 7):
+		for dx in range(-9, 10):
+			g.map.set_tile(o.x + dx, o.y + dy, Tiles.FLOOR)
+	g.entities = [g.player]
+	g.bodies = []
+	g.pathfinder = Pathfinder.new(g.map)
+	g._gather_lights()
+	g.update_vision()
+
+	var gob := GameState.monster_from(_bestiary_entry("goblin"), o.x + 3, o.y)
+	g._corrupt(gob)
+	check("a corrupted creature is born purple-marked (Brad's lore)", gob.spores == &"purple")
+	gob.take_spores(&"red")
+	gob.take_spores(&"purple")
+	check("red is never downgraded to purple", gob.spores == &"red")
+	check("an old save's red mark carries over",
+		Entity.from_dict({"name": "rat", "app": "rat", "spore_marked": true}).spores == &"red")
+
+	# Marked deaths take their fungus with them.
+	var pur := GameState.monster_from(_bestiary_entry("kobold"), o.x + 4, o.y + 2)
+	pur.take_spores(&"purple")
+	pur.hp = 0
+	pur.alive = false
+	g._settle_death(pur, g.player)
+	var pb: Dictionary = g.bodies[-1]
+	check("a purple-marked body is seeded as it falls, no rat needed",
+		int(pb["seeded"]) == g.turns and not bool(pb["claimed"]))
+	var red := GameState.monster_from(_bestiary_entry("kobold"), o.x - 4, o.y + 2)
+	red.take_spores(&"red")
+	red.hp = 0
+	red.alive = false
+	g._settle_death(red, g.player)
+	var rb: Dictionary = g.bodies[-1]
+	check("a red-marked body is claimed, with red under it",
+		bool(rb["claimed"]) and g.map.get_tile(red.x, red.y) == Tiles.FUNGUS_RED)
+	g._burn_fungus(Vector2i(red.x, red.y))
+	g.bodies = []
+
+	# Trails: only an awake, marked walker leaves them.
+	var walker := GameState.monster_from(_bestiary_entry("kobold"), o.x + 6, o.y - 4)
+	walker.alertness = Entity.Alert.AWAKE
+	var plain := GameState.monster_from(_bestiary_entry("kobold"), o.x - 6, o.y - 4)
+	plain.alertness = Entity.Alert.AWAKE
+	var dozing := GameState.monster_from(_bestiary_entry("kobold"), o.x - 6, o.y + 4)
+	dozing.take_spores(&"purple")
+	g.entities = [g.player, walker, plain, dozing]
+	walker.take_spores(&"purple")
+	var trail := false
+	for i in 400:
+		g.turns += 1
+		g._grow_fungus()
+		if g.map.get_tile(walker.x, walker.y) == Tiles.FUNGUS_PURPLE:
+			trail = true
+			break
+	check("a marked walker leaves its fungus behind, now and then", trail)
+	check("an unmarked one never does",
+		not Tiles.is_bad_fungus(g.map.get_tile(plain.x, plain.y)))
+	check("nor a marked one asleep",
+		not Tiles.is_bad_fungus(g.map.get_tile(dozing.x, dozing.y)))
+	g._burn_fungus(Vector2i(walker.x, walker.y))
+
+	# Rats: drawn to a fresh body, not to one already seeded.
+	var rat := GameState.monster_from(_bestiary_entry("giant rat"), o.x - 7, o.y)
+	g.entities = [g.player, rat]
+	var body_at := o + Vector2i(-2, 0)
+	g.bodies = [{"x": body_at.x, "y": body_at.y, "app": "kobold", "turn": g.turns,
+		"corrupted": false, "e": {"name": "kobold"}, "seeded": -1, "claimed": false}]
+	var was := Los.steps(rat.x, rat.y, body_at.x, body_at.y)
+	check("a sleeping rat smells a fresh body, stirs and goes to it",
+		g._rat_to_body(rat) and rat.alertness == Entity.Alert.SUSPICIOUS
+		and Los.steps(rat.x, rat.y, body_at.x, body_at.y) < was)
+	g.bodies[0]["seeded"] = g.turns
+	check("but not to one already seeded", not g._rat_to_body(rat))
+
 ## Shooters in the dark: a margin of 2 past a full torch, none where the torch
 ## is cut down; and a magic shot lights the shooter (Brad, 2026-09-29, at 2 hp).
 func _test_the_dark_is_fair() -> void:
@@ -1786,6 +1869,8 @@ func _test_the_wrong_fungus() -> void:
 
 	# Careless walkers are hurt; flyers are not.
 	var kobold := GameState.monster_from(_bestiary_entry("kobold"), p_at.x + 2, p_at.y + 2)
+	# Awake: it walked in by choice. (A sleeper would shuffle off -- below.)
+	kobold.alertness = Entity.Alert.AWAKE
 	var bat := GameState.monster_from(_bestiary_entry("cave bat"), p_at.x + 3, p_at.y + 2)
 	g._set_fungus(Vector2i(kobold.x, kobold.y), Tiles.FUNGUS_PURPLE)
 	g._set_fungus(Vector2i(bat.x, bat.y), Tiles.FUNGUS_PURPLE)
@@ -1801,6 +1886,34 @@ func _test_the_wrong_fungus() -> void:
 	g._grow_fungus()
 	check("and one that dies in it leaves a body, like any death",
 		not kobold.alive and g.bodies.size() == 1)
+	# A sleeper in it stirs, shuffles off, and sleeps on -- marked if red.
+	var sleeper := GameState.monster_from(_bestiary_entry("goblin"), p_at.x - 2, p_at.y - 2)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	var bed := Vector2i(sleeper.x, sleeper.y)
+	g._set_fungus(bed, Tiles.FUNGUS_RED)
+	g.entities = [g.player, sleeper]
+	var s_hp := sleeper.hp
+	g._grow_fungus()
+	check("a sleeper in red takes its bite and is marked (the premise)",
+		sleeper.hp == s_hp - GameState.RED_HURT and sleeper.spores == &"red")
+	check("then shuffles off it onto safe ground, still asleep",
+		Vector2i(sleeper.x, sleeper.y) != bed
+		and not Tiles.is_bad_fungus(g.map.get_tile(sleeper.x, sleeper.y))
+		and sleeper.alertness == Entity.Alert.ASLEEP)
+	var boxed := GameState.monster_from(_bestiary_entry("goblin"), p_at.x + 3, p_at.y - 3)
+	boxed.alertness = Entity.Alert.ASLEEP
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			g._set_fungus(Vector2i(boxed.x + dx, boxed.y + dy), Tiles.FUNGUS_PURPLE)
+	g.entities = [g.player, boxed]
+	var boxed_at := Vector2i(boxed.x, boxed.y)
+	g._grow_fungus()
+	check("one ringed by fungus has nowhere to go, and stays",
+		Vector2i(boxed.x, boxed.y) == boxed_at)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			g._burn_fungus(Vector2i(boxed.x + dx, boxed.y + dy))
+	g._burn_fungus(bed)
 	g._burn_fungus(Vector2i(kobold.x, kobold.y))
 	g._burn_fungus(Vector2i(bat.x, bat.y))
 	g.bodies = []
@@ -1839,7 +1952,7 @@ func _test_the_wrong_fungus() -> void:
 	g.entities = [g.player, walker]
 	g._grow_fungus()
 	check("a creature standing on red is marked, and the mark is saved",
-		walker.spore_marked and Entity.from_dict(walker.to_dict()).spore_marked)
+		walker.spores == &"red" and Entity.from_dict(walker.to_dict()).spores == &"red")
 	# Saved: the torch's work in progress.
 	g.scorched = {"3,4": 2}
 	var back := GameState.new(1)

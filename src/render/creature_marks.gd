@@ -9,6 +9,17 @@ extends RefCounted
 ## The marker over a creature's head, as {"text", "colour"}; empty when there
 ## is nothing to say. Awareness markers are STATE, not events -- they persist
 ## for as long as the monster is in that state, unlike the one-shot "!".
+## The spores a creature carries, as the colour of its outline -- the visual
+## tell (Brad, 2026-09-29): red means "kill it and it comes back", purple that
+## its body will rot into purple. Transparent for an unmarked creature.
+static func spore_colour(e: Entity) -> Color:
+	match e.spores:
+		&"red":
+			return Palette.FUNGUS_RED
+		&"purple":
+			return Palette.FUNGUS_PURPLE
+	return Color(0, 0, 0, 0)
+
 static func awareness(e: Entity) -> Dictionary:
 	# Unaware AND actually asleep. A patrolling guard has not noticed you
 	# either, but it is walking -- drawing "z" over something mid-stride would

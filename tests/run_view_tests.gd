@@ -1686,6 +1686,23 @@ func _test_both_views_share_one_moment() -> void:
 	check("and it closes the menu and opens the legend",
 		not scene.menu.visible and scene.legend.visible)
 	scene.legend.close()
+	# A marked creature wears its fungus as its outline in 3D; others do not.
+	var st0: GameState = scene.state
+	var marked := GameState.monster_from(GameState.BESTIARY[1], st0.player.x + 1, st0.player.y)
+	marked.take_spores(&"red")
+	st0.map.set_tile(marked.x, marked.y, Tiles.FLOOR)
+	st0.entities.append(marked)
+	st0.update_vision()
+	scene.diorama._rebuild_world()
+	var outline_ok := false
+	if scene.diorama._creatures.has(marked):
+		var lab: Label3D = scene.diorama._creatures[marked]["label"]
+		outline_ok = lab.outline_modulate == Palette.FUNGUS_RED
+	check("a red-marked creature wears a red outline in 3D", outline_ok)
+	check("and the colour is shared by both views",
+		CreatureMarks.spore_colour(marked) == Palette.FUNGUS_RED
+		and CreatureMarks.spore_colour(GameState.monster_from(GameState.BESTIARY[1], 0, 0)).a == 0.0)
+	st0.entities.erase(marked)
 	# A body where the player can see it is laid in 3D; a rotted one is not.
 	var st: GameState = scene.state
 	st.bodies = [{"x": st.player.x, "y": st.player.y, "app": "rat",

@@ -2300,6 +2300,8 @@ func _place_corrupted() -> void:
 ## nineteen points of danger rather than nineteen points of accounting.
 func _corrupt(m: Entity) -> void:
 	m.corrupted = true
+	# Brad's lore: the corrupted crossed purple fungus and were changed.
+	m.take_spores(&"purple")
 	m.max_hp = int(round(float(m.max_hp) * CORRUPT_SCALE))
 	m.hp = m.max_hp
 	m.power = int(round(float(m.power) * CORRUPT_SCALE))
@@ -3454,6 +3456,13 @@ const TORCH_SCORCHES := 3
 const RED_CAP := 60
 ## Who carries spores from a body.
 const SPORE_CARRIERS := [&"rat", &"bat", &"rabbit"]
+## A marked creature, awake and on plain floor, leaves its fungus behind it on
+## this share of its turns: a trail you can read. Brad: 5 was his first
+## thought, 3 to start cautious. Capped per colour, so it never runs away.
+const TRAIL_CHANCE := 0.03
+const PURPLE_CAP := 60
+## How far a rat smells a fresh body.
+const RAT_NOSE := 8
 ## Its own stream: how many colour rolls a floor makes depends on how the
 ## fights go (CLAUDE.md -- anything whose draw count varies gets its own rng).
 var fungus_rng := RandomNumberGenerator.new()
@@ -3461,9 +3470,17 @@ var fungus_rng := RandomNumberGenerator.new()
 var scorched: Dictionary = {}
 
 func _lay_body(victim: Entity) -> void:
+	# A marked death takes its fungus with it. Purple: seeded as it falls, so
+	# it rots into purple with no carrier needed. Red: claimed on the spot --
+	# strand 4 raises claimed bodies -- and until then red grows under it.
+	var seeded := turns if victim.spores == &"purple" else -1
+	var claimed := victim.spores == &"red"
 	bodies.append({"x": victim.x, "y": victim.y, "app": String(victim.appearance),
 		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict(),
-		"seeded": -1, "claimed": false})
+		"seeded": seeded, "claimed": claimed})
+	var at := Vector2i(victim.x, victim.y)
+	if claimed and _fungus_can_grow(at) and pathfinder != null:
+		_set_fungus(at, Tiles.FUNGUS_RED)
 
 ## True within FIRE_SAFE of a lit brazier, where no wrong fungus will grow.
 func _near_fire(c: Vector2i) -> bool:
@@ -3537,6 +3554,21 @@ func _grow_fungus() -> void:
 	# Red crawls toward the dead.
 	if turns % CRAWL_EVERY == 0:
 		_crawl_red()
+	# Trails: marked walkers leave their fungus behind, now and then.
+	for e in entities:
+		if not e.alive or e.is_player or e.flying or e.spores == &"" \
+				or e.alertness == Entity.Alert.ASLEEP:
+			continue
+		var at := Vector2i(e.x, e.y)
+		if not _fungus_can_grow(at) or fungus_rng.randf() >= TRAIL_CHANCE:
+			continue
+		var colour := Tiles.FUNGUS_RED if e.spores == &"red" else Tiles.FUNGUS_PURPLE
+		if _count_tiles(colour) >= (RED_CAP if colour == Tiles.FUNGUS_RED else PURPLE_CAP):
+			continue
+		_set_fungus(at, colour)
+		if map.is_visible(at.x, at.y):
+			msg_log.add("The %s leaves %s fungus where it walks." % [e.name, String(e.spores)],
+				Color(0.78, 0.60, 0.80) if colour == Tiles.FUNGUS_PURPLE else Color(0.88, 0.45, 0.45))
 	# Careless walkers pay for it, and red marks them (flyers never touch it).
 	for e in entities.duplicate():
 		if not e.alive or e.is_player or e.flying:
@@ -3544,9 +3576,14 @@ func _grow_fungus() -> void:
 		var t := map.get_tile(e.x, e.y)
 		if not Tiles.is_bad_fungus(t):
 			continue
-		if t == Tiles.FUNGUS_RED:
-			e.spore_marked = true
+		e.take_spores(&"red" if t == Tiles.FUNGUS_RED else &"purple")
 		e.take_damage(PURPLE_HURT if t == Tiles.FUNGUS_PURPLE else RED_HURT)
+		if e.alive and e.alertness == Entity.Alert.ASLEEP:
+			# A sleeper that finds itself in it -- spawned there, or grown
+			# under -- stirs, shuffles to safe ground beside it and settles
+			# again (Brad, 2026-09-29: rather than dying in its sleep, unseen).
+			# The mark and the hurt it already took stay; it stays asleep.
+			_shuffle_off_fungus(e, t)
 		if not e.alive:
 			if map.is_visible(e.x, e.y):
 				msg_log.add("The %s dies in the %s fungus." % [e.name,
@@ -3555,6 +3592,36 @@ func _grow_fungus() -> void:
 			# rest of a death, as any other. It stands as its own killer here;
 			# the killer is only named on the player's death line.
 			_settle_death(e, e)
+
+func _count_tiles(t: int) -> int:
+	var n := 0
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == t:
+				n += 1
+	return n
+
+## A rat that is not hunting you smells a fresh, unseeded body and goes to it
+## (Brad's plague carriers): the aftermath of a fight draws them in. It stirs
+## if asleep -- SUSPICIOUS, so it shows. True if it spent its turn on that.
+func _rat_to_body(actor: Entity) -> bool:
+	var best := Vector2i(-1, -1)
+	var best_d := RAT_NOSE + 1
+	for b in bodies:
+		if int(b.get("seeded", -1)) != -1 or bool(b.get("claimed", false)):
+			continue
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		var d := Los.steps(actor.x, actor.y, at.x, at.y)
+		if d < best_d:
+			best_d = d
+			best = at
+	if best.x < 0:
+		return false
+	if actor.alertness == Entity.Alert.ASLEEP:
+		actor.alertness = Entity.Alert.SUSPICIOUS
+	if best_d > 1:
+		_step_toward(actor, best)
+	return true
 
 func _crawl_red() -> void:
 	var reds: Array[Vector2i] = []
@@ -3595,6 +3662,24 @@ func _crawl_red() -> void:
 				_set_fungus(c, Tiles.FUNGUS_RED)
 				reds.append(c)
 				break
+
+## Moves a creature to the nearest safe square beside it: walkable, empty,
+## and not the wrong fungus. Stays put if there is none.
+func _shuffle_off_fungus(e: Entity, from_tile: int) -> void:
+	for i in 8:
+		var d := Entity.turned(Vector2i(0, -1), i)
+		var c := Vector2i(e.x + d.x, e.y + d.y)
+		if not map.is_walkable(c.x, c.y) or Tiles.is_avoided(map.get_tile(c.x, c.y)) \
+				or Tiles.is_bad_fungus(map.get_tile(c.x, c.y)) or entity_at(c.x, c.y) != null:
+			continue
+		var was_seen := map.is_visible(e.x, e.y)
+		e.x = c.x
+		e.y = c.y
+		if was_seen or map.is_visible(c.x, c.y):
+			msg_log.add("The %s stirs and shuffles off the %s fungus." % [e.name,
+				"purple" if from_tile == Tiles.FUNGUS_PURPLE else "red"],
+				Color(0.78, 0.72, 0.62))
+		return
 
 ## Standing on the wrong fungus hurts, every turn you stay.
 func _fungus_underfoot(underfoot: int) -> void:
@@ -6234,6 +6319,11 @@ func _take_ai_turn(actor: Entity) -> int:
 	# while unaware -- nothing stops mid-fight to try on armour.
 	if actor.alertness != Entity.Alert.AWAKE and actor.scavenges \
 			and _scavenge(actor):
+		return _last_move_cost
+
+	# Rats go to fresh bodies when they are not hunting you.
+	if actor.alertness != Entity.Alert.AWAKE and actor.appearance == &"rat" \
+			and _rat_to_body(actor):
 		return _last_move_cost
 
 	# TWO QUESTIONS, ASKED IN ORDER. Has it noticed you -- and if not, what was

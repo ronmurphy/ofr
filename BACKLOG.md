@@ -141,7 +141,15 @@ strand at a time with play between:
    three; the climb mirrors it. **OPEN: the caves (4-6) rely on green fungus
    as their deliberate potion replacement (CLAUDE.md) -- keep green steady
    there, or accept a harder cave on purpose.**
-2b. **Spreading, and the visual tell (Brad, 2026-09-29).** Careless walkers
+2b. **BUILT 2026-09-29, waiting on play:** Entity.spores (&"purple"/&"red",
+   red wins; old saves' spore_marked -> red); corrupted creatures born purple;
+   a purple-marked death is seeded as it falls, a red-marked one CLAIMED with
+   red under it; awake marked walkers on plain floor leave their fungus 3% of
+   turns (TRAIL_CHANCE; capped 60 per colour); rats not hunting you go to fresh
+   unseeded bodies within 8 (stirring to SUSPICIOUS); sleepers hurt by fungus
+   shuffle off it and sleep on. The tell: an outline in the spore colour -- 3D
+   label outline, classic frame -- from CreatureMarks.spore_colour.
+   **Spreading, and the visual tell (Brad, 2026-09-29).** Careless walkers
    carry spores onward. **Any creature that has touched the wrong fungus
    wears its colour** -- a tint or an outline on its picture/glyph, in both
    views -- so the player knows before the kill: RED means "kill this and it

@@ -1249,6 +1249,12 @@ func _add_items_and_entities() -> void:
 			_legible(color, entity.x, entity.y), _floor_point(entity.x, entity.y), box)
 		label.render_priority = PRIORITY_CREATURE
 		label.outline_render_priority = PRIORITY_CREATURE - 1
+		# Marked: its outline wears the fungus it carries, and thicker, so it
+		# reads before you strike.
+		var spore := CreatureMarks.spore_colour(entity)
+		if spore.a > 0.0:
+			label.outline_modulate = spore
+			label.outline_size = maxi(3, label.outline_size * 3)
 		var ink := _ink_size(String(app.get("ch", "?")), box)
 		var nodes := {"label": label, "tall": ink.y, "wide": ink.x,
 			"shape": _add_silhouette(label, color, PRIORITY_CREATURE - 1)}

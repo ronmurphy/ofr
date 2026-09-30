@@ -38,6 +38,13 @@ func _run() -> void:
 	g.bodies = [{"x": o.x + 4, "y": o.y + 2, "app": "goblin", "turn": g.turns,
 		"corrupted": false, "e": {"name": "goblin"}, "seeded": -1, "claimed": false}]
 	g.map.set_tile(o.x + 2, o.y + 1, Tiles.FUNGUS_RED)
+	# Marked creatures, to show the outline: a red-marked kobold and a
+	# purple-marked (corrupted) goblin.
+	var redk := GameState.monster_from(GameState.BESTIARY[1], o.x - 2, o.y + 1)
+	redk.take_spores(&"red")
+	var purg := GameState.monster_from(GameState.BESTIARY[4], o.x + 1, o.y + 2)
+	g._corrupt(purg)
+	g.entities = [g.player, redk, purg]
 	g.pathfinder = Pathfinder.new(g.map)
 	g._gather_lights()
 	g.update_vision()

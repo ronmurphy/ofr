@@ -323,9 +323,18 @@ enum Reload { NONE, STEADY, RANDOM }
 ## for flanking and blows from behind.
 var facing := Vector2i(0, -1)
 
-## Walked over red fungus: the spores are on it. Next strand, a marked
-## creature that dies rises again (Dwarf Fortress plan, strand 4). Saved.
-var spore_marked := false
+## THE SPORES IT CARRIES: &"" none, &"purple" or &"red" (red wins -- it is the
+## worse). Walking on the wrong fungus marks a creature; a corrupted one is
+## born purple (Brad's lore: the climb's corrupted crossed purple and were
+## changed). Marked creatures leave trails, wear their colour as an outline,
+## and die into fungus: purple rots into purple, red is claimed (strand 4
+## raises it). Saved.
+var spores: StringName = &""
+
+## Walked through the wrong fungus: take its spores. Red is never downgraded.
+func take_spores(colour: StringName) -> void:
+	if spores != &"red":
+		spores = colour
 ## Knows better than to walk through the wrong fungus: routes round it (the
 ## careful grid). The smart kinds -- dragons, wizards, liches. Everything else
 ## walks through and is hurt by it. From the bestiary; saved.
@@ -468,7 +477,7 @@ func to_dict() -> Dictionary:
 		"stance": stance,
 		"reload_style": reload_style, "reload_left": reload_left,
 		"facing": [facing.x, facing.y],
-		"spore_marked": spore_marked, "careful": careful,
+		"spores": String(spores), "careful": careful,
 		"casts": casts, "flare_until": flare_until,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
@@ -522,7 +531,10 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.reload_left = int(d.get("reload_left", 0))
 	var f: Array = d.get("facing", [0, -1])
 	e.facing = Vector2i(int(f[0]), int(f[1]))
-	e.spore_marked = bool(d.get("spore_marked", false))
+	e.spores = StringName(d.get("spores", ""))
+	# A save from before purple could mark: its one mark was red.
+	if bool(d.get("spore_marked", false)) and e.spores == &"":
+		e.spores = &"red"
 	e.careful = bool(d.get("careful", false))
 	e.casts = bool(d.get("casts", false))
 	e.flare_until = int(d.get("flare_until", -1))
