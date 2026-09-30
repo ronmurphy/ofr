@@ -1497,6 +1497,13 @@ func _draw_fx() -> void:
 				var ring_colour: Color = e.get("colour", Palette.NOISE)
 				for hit in Fx.ring_cells(e, t, map):
 					glows.append([Vector2(hit[0]), Color(ring_colour, hit[1]), FX_Y])
+			&"burn":
+				var cell: Vector2i = e["cell"]
+				for ember in Fx.burn_points(e, t, map):
+					var off: Vector2 = ember[0]
+					var colour: Color = ember[3]
+					bits.append([Vector3(cell.x + 0.5 + off.x, float(ember[1]),
+						cell.y + 0.5 + off.y), Color(colour, float(ember[2]))])
 			&"sparks", &"shatter":
 				var c: Vector2i = e["cell"]
 				if e["type"] == &"shatter":

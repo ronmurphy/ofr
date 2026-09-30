@@ -36,6 +36,7 @@ func _initialize() -> void:
 	_test_hurt_reddens_the_edge()
 	_test_still_keeps_only_information()
 	_test_every_impact_ends()
+	_test_burning_fungus()
 	_test_light_knows_whose_it_is()
 	_test_light_moves_only_when_asked()
 	_test_shaders_read_what_light_writes()
@@ -339,6 +340,7 @@ func _test_every_impact_ends() -> void:
 		{"kind": &"levelup", "to": here},
 		{"kind": &"pray", "to": here},
 		{"kind": &"forge", "to": here},
+		{"kind": &"burn", "to": here},
 		{"kind": &"trap", "to": here},
 		{"kind": &"blink", "from": here, "to": Vector2i(orc.x, orc.y)},
 		{"kind": &"lowhp", "to": here},
@@ -354,7 +356,49 @@ func _test_every_impact_ends() -> void:
 	var kinds := _types(fx)
 	check("every impact lives, then ends (%s)" % str(kinds),
 		bad.is_empty() and kinds.has(&"shatter") and kinds.has(&"sparks")
-		and kinds.has(&"hurt") and kinds.has(&"ring"), str(bad))
+		and kinds.has(&"burn") and kinds.has(&"hurt") and kinds.has(&"ring"), str(bad))
+
+func _test_burning_fungus() -> void:
+	var gs: GameState = _ground_room()[0]
+	var at := Vector2i(12, 8)
+	gs._set_fungus(at, Tiles.FUNGUS_RED)
+	check("burn test starts with red fungus on its source square",
+		gs.map.get_tile(at.x, at.y) == Tiles.FUNGUS_RED)
+	gs.events.clear()
+	gs._burn_fungus(at)
+	check("burning fungus emits burn, not forge",
+		gs.events.size() == 1 and gs.events[0]["kind"] == &"burn"
+		and not gs.events.any(func(e): return e["kind"] == &"forge"))
+
+	var fx := Fx.new()
+	_with_mode(Effects.Mode.SHADERS, func(): fx.play(gs.events, 16, gs, StepMotion.new()))
+	var effect: Dictionary = {}
+	for e in fx.list:
+		if e["type"] == &"burn":
+			effect = e
+			break
+	var low: Array = Fx.burn_points(effect, 0.16, gs.map) if not effect.is_empty() else []
+	var high: Array = Fx.burn_points(effect, 0.32, gs.map) if not effect.is_empty() else []
+	var rising := low.size() == Fx.BURN_COUNT and high.size() == low.size()
+	var orange := false
+	var red := false
+	for i in mini(low.size(), high.size()):
+		var colour: Color = low[i][3]
+		orange = orange or colour == Palette.BRAZIER
+		red = red or colour == Palette.FUNGUS_RED
+		rising = rising and float(high[i][1]) > float(low[i][1])
+	check("the burn effect raises orange and red embers", rising and orange and red)
+	check("the burn effect is alive when it is created",
+		not effect.is_empty() and not Fx.expired(effect))
+	fx.tick(Fx.BURN_LIFE * 0.5)
+	var survives_halfway := not fx.list.is_empty()
+	fx.tick(Fx.BURN_LIFE)
+	check("the burn burst is present halfway and gone at its lifetime",
+		survives_halfway and fx.list.is_empty())
+
+	var still := Fx.new()
+	_with_mode(Effects.Mode.NONE, func(): still.play(gs.events, 16, gs, StepMotion.new()))
+	check("burn embers do not animate on still", not _types(still).has(&"burn"))
 
 ## The whole point of the layer: the real scene hands both views one list and
 ## one set of glides, and the 3D view draws what the list holds.
@@ -1855,6 +1899,19 @@ func _test_both_views_share_one_moment() -> void:
 		if node is Label3D and node.text == "37":
 			drawn = true
 	check("the 3D view draws the damage number the list holds", drawn)
+	# Burning uses a dedicated 3D particle branch; the points and colours still
+	# come from the one shared Fx list the classic view reads.
+	scene.diorama.fx.list.clear()
+	scene.diorama.play_events([{"kind": &"burn", "to": p}])
+	for e in scene.diorama.fx.list:
+		e["t"] = 0.16
+	scene.diorama._draw_fx()
+	var drew_burn := false
+	for node in scene.diorama._fx_root.get_children():
+		if node is MultiMeshInstance3D and node.multimesh.mesh == scene.diorama._bit_mesh \
+				and node.multimesh.instance_count == Fx.BURN_COUNT:
+			drew_burn = true
+	check("the 3D view draws the shared burn embers", drew_burn)
 	# The red edge: one overlay over the map, hidden until something shows.
 	scene.diorama.fx.list.clear()
 	for _i in 2:

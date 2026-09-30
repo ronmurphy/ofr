@@ -40,6 +40,10 @@ const RING_PER_CELL := 0.045
 const SHOVE_LIFE := 0.80
 ## The breathe pass's impacts. Short: an impact is a moment, not a scene.
 const BURST_LIFE := 0.45
+## Burning bad fungus gets its own colour and upward drift, rather than looking
+## like the forge that used to stand in for it.
+const BURN_LIFE := 0.58
+const BURN_COUNT := 10
 const SHATTER_LIFE := 0.60
 const HURT_LIFE := 0.55
 
@@ -207,7 +211,8 @@ func play(evts: Array, popup_size: int, state: GameState, motion: StepMotion) ->
 ## The breathe pass's impacts: lunges and recoils (handed to `motion`), weapon
 ## contact, healing and shrine rings, sparks off a magic weapon, a creature
 ## shattering, the red edge when you are hurt, and pictures for events that
-## were for the ears only -- blink, forging, a trap, the health line.
+## were for the ears only: blink, forging, burning fungus, traps and the
+## health line.
 ##
 ## Nothing here needs the simulation to say more than it already does. Who
 ## struck is whoever stands where the blow came from; what died is the creature
@@ -241,6 +246,8 @@ func add_impacts(evts: Array, state: GameState, motion: StepMotion) -> void:
 						"strength": 2.0})
 			&"forge":
 				_burst(to, Palette.EMBERS, 10, 0.0)
+			&"burn":
+				_burn(to)
 			&"trap":
 				_burst(to, Palette.TRAP, 6, 0.0)
 			&"blink":
@@ -336,6 +343,14 @@ func _burst(at: Vector2i, colour: Color, count: int, delay: float) -> void:
 	list.append({"type": &"sparks", "cell": at, "t": -delay, "life": BURST_LIFE,
 		"colour": colour, "count": count, "seed": at.x * 37 + at.y * 211 + list.size()})
 
+## Burning fungus throws a brief, rising mix of orange and red embers. Keeping
+## it separate from the forge lets each view draw the same little upward burst.
+func _burn(at: Vector2i) -> void:
+	if not Effects.any():
+		return
+	list.append({"type": &"burn", "cell": at, "t": 0.0, "life": BURN_LIFE,
+		"count": BURN_COUNT, "seed": at.x * 37 + at.y * 211 + list.size()})
+
 ## Add one configured terrain burst. `landing` delays the particles until the
 ## moving foot reaches the cell; both the sampled tile path and the bone_step
 ## event use this so their colour, shape and timing stay consistent.
@@ -382,6 +397,7 @@ static func expired(e: Dictionary) -> bool:
 		&"popup": return e["t"] >= POPUP_LIFE
 		&"shove": return e["t"] >= float(e.get("life", SHOVE_LIFE))
 		&"sparks": return e["t"] >= float(e.get("life", BURST_LIFE))
+		&"burn": return e["t"] >= float(e.get("life", BURN_LIFE))
 		&"contact": return e["t"] >= float(e.get("life", CONTACT_LIFE))
 		&"shatter": return e["t"] >= float(e.get("life", SHATTER_LIFE))
 		&"hurt": return e["t"] >= float(e.get("life", HURT_LIFE))
@@ -521,6 +537,34 @@ static func burst_points(e: Dictionary, t: float, map: DungeonMap) -> Array:
 		var lift := up * t - down * t * t
 		out.append([Vector2(cos(angle), sin(angle)) * speed * t,
 			maxf(0.0, base + lift), 1.0 - k])
+	return out
+
+## Each ember rises from the burned cell, spreading slightly as it fades. The
+## stagger and drift come from the event's cell seed, so both views agree.
+static func burn_points(e: Dictionary, t: float, map: DungeonMap) -> Array:
+	var out: Array = []
+	var at: Vector2i = e["cell"]
+	var life := float(e.get("life", BURN_LIFE))
+	if t < 0.0 or t >= life or not map.is_visible(at.x, at.y):
+		return out
+	var seed: int = e.get("seed", 0)
+	for i in int(e.get("count", BURN_COUNT)):
+		var h := _noise01(seed, i * 3)
+		var delay := _noise01(seed, i * 3 + 1) * 0.10
+		var age := t - delay
+		if age < 0.0:
+			continue
+		var span := maxf(0.01, life - delay)
+		var fade := 1.0 - clampf(age / span, 0.0, 1.0)
+		var angle := _noise01(seed, i * 3 + 2) * TAU
+		var drift := Vector2(cos(angle), sin(angle))
+		var offset := drift * (0.025 + age * 0.16) \
+			+ Vector2(sin(age * 14.0 + h * TAU), cos(age * 11.0 + h * TAU)) * 0.025
+		var height := 0.04 + age * (1.5 + h * 0.7)
+		var alpha := minf(1.0, age / 0.04) * fade
+		if alpha > 0.01:
+			var colour := Palette.BRAZIER if i % 2 == 0 else Palette.FUNGUS_RED
+			out.append([offset, height, alpha, colour])
 	return out
 
 ## The marks of a melee contact, in the struck cell: a curved slash, a straight

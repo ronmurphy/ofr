@@ -219,7 +219,7 @@ task list only.
   only. Added view checks for both tints, still mode and the shared cap/order.
   Quick: 260 passed / 0 failed / 0 script errors.
 
-- [ ] **A burn effect**
+- [x] **A burn effect**
   Burning the wrong fungus (`_burn_fungus` in `src/sim/game_state.gd`) reuses
   the forge's event (`{"kind": &"forge", ...}`) for its picture and sound. Give
   it its own event, `&"burn"`, with its own effect in `src/render/fx.gd` -- a
@@ -231,6 +231,15 @@ task list only.
   Note (2026-09-30): `_burn_fungus` now also burns a BODY lying on the square
   (that is how a red-claimed body is stopped). Leave that code alone; the
   event is still one per burned square.
+
+  Done 2026-09-30: `_burn_fungus` now emits `burn`; `Fx` makes a seeded,
+  0.58-second burst of rising orange and red embers, drawn through the shared
+  effect list in both views and suppressed on "still". The sound deck maps it
+  to the forge voice. The body-burning code is unchanged. Added burn-event,
+  particle, lifetime, still-mode, 3D draw and sound checks. Quick: 267 passed /
+  0 failed / 0 script errors. Targeted sound test: 7 passed / 0 failed /
+  0 script errors.
+  Full suite not run, as instructed.
 
 - [ ] **Test litter in the save folder**
   Three tests in `tests/run_tests.gd` switch to their own scratch files inside

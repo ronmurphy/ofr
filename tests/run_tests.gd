@@ -4255,6 +4255,7 @@ func _test_sounds_map_to_real_voices() -> void:
 		{"kind": &"trap", "to": Vector2i(3, 3)},
 		{"kind": &"pray", "to": Vector2i(3, 3)},
 		{"kind": &"forge", "to": Vector2i(3, 3)},
+		{"kind": &"burn", "to": Vector2i(3, 3)},
 		{"kind": &"kill", "to": Vector2i(3, 3)},
 		{"kind": &"death", "to": Vector2i(3, 3)},
 		{"kind": &"lowhp", "to": Vector2i(3, 3)},
@@ -4273,6 +4274,10 @@ func _test_sounds_map_to_real_voices() -> void:
 		if not Synth.SOUNDS.has(id):
 			missing.append(id)
 	check("every event maps to a voice that exists", missing.is_empty(), str(missing))
+	var burn_sound: Dictionary = deck.choose([{"kind": &"burn",
+		"to": Vector2i(3, 3)}])["now"]
+	check("burning fungus plays the forge sound", burn_sound.has(&"forge")
+		and not burn_sound.has(&"burn"))
 	check("each footing kind has its own voice",
 		deck._footing_sound(Tiles.WATER) != deck._footing_sound(Tiles.MUD)
 		and deck._footing_sound(Tiles.MUD) != deck._footing_sound(Tiles.RUBBLE))

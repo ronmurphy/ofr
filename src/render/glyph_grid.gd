@@ -787,6 +787,7 @@ func _draw_effects() -> void:
 			&"ring":  _draw_ring(e, t)
 			&"shove": _draw_shove(e, t)
 			&"sparks": _draw_burst(e, t)
+			&"burn": _draw_burn(e, t)
 			&"contact": _draw_contact(e, t)
 			&"shatter": _draw_shatter(e, t)
 
@@ -827,6 +828,17 @@ func _draw_burst(e: Dictionary, t: float) -> void:
 			- Vector2(0.0, (float(piece[1]) - 0.45) * cell_size)
 		at = (at / q).floor() * q
 		draw_rect(Rect2(at, Vector2(q, q)), Color(colour, float(piece[2])), true)
+
+## The burned fungus's orange and red embers rise as little blocks, like the
+## shared points the 3D view turns into cubes.
+func _draw_burn(e: Dictionary, t: float) -> void:
+	var q := cell_size * 0.25
+	for ember in Fx.burn_points(e, t, state.map):
+		var at := _centre(e["cell"]) + (ember[0] as Vector2) * cell_size \
+			- Vector2(0.0, (float(ember[1]) - 0.45) * cell_size)
+		at = (at / q).floor() * q
+		var colour: Color = ember[3]
+		draw_rect(Rect2(at, Vector2(q, q)), Color(colour, float(ember[2])), true)
 
 ## Weapon-shaped contact marks, using the shared slash, thrust or blunt layout.
 ## Small blocks keep the cue legible without changing the ASCII glyphs.

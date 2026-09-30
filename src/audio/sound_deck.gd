@@ -19,7 +19,7 @@ extends Node
 ##   damage, and dying           the health bar is at the edge of vision
 ##   a trap springing            happens TO you, with no warning frame
 ##   a change of footing         the mud slowdown was completely unreadable
-##   a shrine, a forging         rare, and confirmable no other way
+##   a shrine, forging or fungus burning -- rare, confirmable no other way
 ##
 ## The music is a quiet exception: it carries no gameplay information, and
 ## changes when the title hands off to a run or the dungeon changes bands.
@@ -206,7 +206,7 @@ func choose(evts: Array) -> Dictionary:
 				_loudest(now, &"trap", 1.0)
 			&"pray":
 				_loudest(now, &"pray", 1.0)
-			&"forge":
+			&"forge", &"burn":
 				_loudest(now, &"forge", 1.0)
 			&"kill":
 				_loudest(now, &"kill", 1.0)

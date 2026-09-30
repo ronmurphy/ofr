@@ -4003,7 +4003,8 @@ func _burn_fungus(c: Vector2i) -> void:
 	scorched.erase("%d,%d" % [c.x, c.y])
 	_set_fungus(c, Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN
 		else Tiles.FLOOR)
-	events.append({"kind": &"forge", "to": c})
+	# The views and sound deck give this a small ember burst, not forge sparks.
+	events.append({"kind": &"burn", "to": c})
 
 ## Drops the bodies that have rotted away. Every player turn.
 func _rot_bodies() -> void:
