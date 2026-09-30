@@ -5232,6 +5232,74 @@ func player_kindle() -> bool:
 	_end_player_turn()
 	return true
 
+## FIRE RELIGHTS A COLD BRAZIER (Brad, 2026-09-30). Two or three minutes in,
+## most fires on a floor have guttered, and a gem wants embers -- so the fire
+## you carry can buy one back. A gem of fire is crushed into the coals for a
+## brazier bigger than any is built with (the top of FLARE_KINDLE): enough to
+## heal, then forge, then work the embers. A fire weapon in your hand gives up
+## its fire, not itself -- it keeps its +, loses "(fire)", and can take another
+## stone -- for an ordinary fire. So the choice is "this brazier, or my answer
+## to the red": a fire blade is also what burns fungus in one stroke.
+const GEM_KINDLE := 15
+const BLADE_KINDLE := BRAZIER_CHARGE
+
+## A guttered or black brazier beside you, or (-1, -1).
+func _adjacent_cold_brazier() -> Vector2i:
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			var t := map.get_tile(c.x, c.y)
+			if t == Tiles.BRAZIER_SPENT or t == Tiles.BRAZIER_DEAD:
+				return c
+	return Vector2i(-1, -1)
+
+## The fire you would give a cold brazier: the fire weapon IN YOUR HAND first
+## (what you hold is what you chose), else a gem of fire from your pack. A
+## spare fire weapon in the pack has to be taken in hand first -- deliberate,
+## so the key never spends a blade you were not holding. Null for none.
+func _fire_to_give() -> Item:
+	if _fire_in_hand():
+		return player.equipped[Item.Slot.WEAPON]
+	for it in player.inventory:
+		if it.kind == Item.Kind.GEM and it.element == &"fire":
+			return it
+	return null
+
+func _relight_charge(fire: Item) -> int:
+	return GEM_KINDLE if fire.kind == Item.Kind.GEM else BLADE_KINDLE
+
+## G at a cold brazier with fire to give. False, spending nothing, without.
+func player_relight() -> bool:
+	if game_over:
+		return false
+	var c := _adjacent_cold_brazier()
+	var fire := _fire_to_give()
+	if c.x < 0 or fire == null:
+		return false
+	_travel.clear()
+	var give := _relight_charge(fire)
+	var coals := "black" if map.get_tile(c.x, c.y) == Tiles.BRAZIER_DEAD else "dying"
+	map.set_tile(c.x, c.y, Tiles.BRAZIER)
+	brazier_charge[c] = give
+	# A live fire again; the ember clock belongs to the next time it dies.
+	ember_until.erase(c)
+	_gather_lights()
+	_lay_the_beat()
+	_tally("kindled")
+	if fire.kind == Item.Kind.GEM:
+		player.inventory.erase(fire)
+		msg_log.add("You crush the %s into the %s coals. The brazier roars up. (%d)"
+			% [fire.name, coals, give], Color(1.00, 0.82, 0.45))
+	else:
+		var was := fire.display_name()
+		fire.element = &""
+		msg_log.add("You hold the %s to the %s coals. Its fire goes into them, and they catch. (%d)"
+			% [was, coals, give], Color(1.00, 0.82, 0.45))
+		msg_log.add("The %s is plain again, ready for another stone."
+			% fire.display_name(), Color(0.80, 0.75, 0.60))
+	_end_player_turn()
+	return true
+
 func _adjacent_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
 		for dx in [-1, 0, 1]:
@@ -5331,6 +5399,10 @@ func actions_here() -> Array:
 			# Taught here, because this box is where players learn the game.
 			out.append([KEY_G, "burn the fungus" if _fire_in_hand()
 				else "scorch the fungus (torch)"])
+		elif _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
+			var f := _fire_to_give()
+			out.append([KEY_G, ("relight it with the %s (%d)" if f.kind == Item.Kind.GEM
+				else "relight it with the %s's fire (%d)") % [f.name, _relight_charge(f)]])
 	return out
 
 ## Which wrong fungus G would burn: the one AHEAD (your facing -- the follow
@@ -5393,6 +5465,11 @@ func player_pickup() -> bool:
 		var fungus := burn_target()
 		if fungus.x >= 0 and _can_burn():
 			return _burn_at(fungus)
+		# A cold brazier and fire to give it. After the fungus, deliberately:
+		# burning costs nothing, relighting costs a gem or a blade's fire, so a
+		# press meant for the red never spends it.
+		if _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
+			return player_relight()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:

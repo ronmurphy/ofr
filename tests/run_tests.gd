@@ -105,6 +105,7 @@ func _initialize() -> void:
 	_test_the_fungus_spreads()
 	_test_the_miasma()
 	_test_the_red_raises_the_dead()
+	_test_fire_relights_braziers()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1862,6 +1863,69 @@ func _test_the_red_raises_the_dead() -> void:
 		rotted["plain"].has(Tiles.FUNGUS_RED))
 	check("a purple-marked body always rots purple",
 		rotted["purple"].count(Tiles.FUNGUS_PURPLE) == 12, str(rotted["purple"]))
+
+## FIRE RELIGHTS A COLD BRAZIER (Brad, 2026-09-30): a gem of fire for a big
+## fire, a fire weapon's fire (not the weapon) for an ordinary one.
+func _test_fire_relights_braziers() -> void:
+	var gs := _arena(12, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	var br := Vector2i(6, 4)
+	gs.map.set_tile(br.x, br.y, Tiles.BRAZIER_DEAD)
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	gs.player.inventory.clear()
+	var offers := func() -> String:
+		var words := ""
+		for a in gs.actions_here():
+			words += String(a[1]) + "|"
+		return words
+	# Nothing to give: G refuses and spends nothing; the box offers nothing.
+	check("no fire, no relight", not gs.player_pickup()
+		and gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER_DEAD
+		and not offers.call().contains("relight"))
+	# A gem of fire: crushed in, a big fire.
+	var gem := Item.make(&"gem_fire")
+	gs.give_item(gem)
+	check("the box offers the gem", offers.call().contains("relight it with the gem of fire (15)"),
+		offers.call())
+	check("a gem of fire relights a black brazier (and must)", gs.player_pickup()
+		and gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER
+		and int(gs.brazier_charge[br]) == GameState.GEM_KINDLE)
+	check("and the gem is gone", not gs.player.inventory.has(gem))
+	# A fire blade in hand, with a gem in the pack too: the blade goes first,
+	# gives its fire, and is kept.
+	gs.map.set_tile(br.x, br.y, Tiles.BRAZIER_SPENT)
+	gs.ember_until[br] = gs.turns + 10
+	var blade := Item.make(&"short_sword")
+	blade.element = &"fire"
+	gs.give_item(blade)
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+	var spare := Item.make(&"gem_fire")
+	gs.give_item(spare)
+	check("the box offers the blade's fire", offers.call().contains("short sword's fire (10)"),
+		offers.call())
+	gs.player_pickup()
+	check("a fire blade relights a guttered brazier to an ordinary fire",
+		gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER
+		and int(gs.brazier_charge[br]) == GameState.BLADE_KINDLE
+		and not gs.ember_until.has(br))
+	check("the blade is kept, plain, and can take another stone",
+		gs.player.inventory.has(blade) and blade.element == &""
+		and not blade.display_name().contains("fire"))
+	check("the gem in the pack was not spent", gs.player.inventory.has(spare))
+	# A lit brazier wants nothing.
+	check("a lit brazier is not offered a relight", not offers.call().contains("relight"))
+	# The red first: with fungus beside you and fire in hand, G burns the
+	# fungus and the brazier stays cold.
+	gs.map.set_tile(br.x, br.y, Tiles.BRAZIER_DEAD)
+	blade.element = &"fire"
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs._set_fungus(Vector2i(4, 4), Tiles.FUNGUS_RED)
+	gs.player.facing = Vector2i(-1, 0)
+	gs.player_pickup()
+	check("fungus beside you is burned before any fire is spent",
+		gs.map.get_tile(4, 4) != Tiles.FUNGUS_RED
+		and gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER_DEAD and blade.element == &"fire")
 
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.

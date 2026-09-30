@@ -210,6 +210,84 @@ strand at a time with play between:
    Also cures fleeing monsters dying in room corners.
 6. **Fire.** Flame weapons and the flare ignite fungus (a flare of light, the
    food lost), bones and wooden doors; the answer to red fungus.
+6b. **Fire relights a cold brazier. BUILT 2026-09-30**, waiting on play.
+   Brad's problem: two or three minutes in, most braziers have guttered, and
+   gems want embers. G beside a guttered or black brazier: the fire weapon IN
+   HAND gives up its fire (keeps its +, loses "(fire)", can take another
+   stone) for BLADE_KINDLE 10; else a gem of fire from the pack is crushed in
+   for GEM_KINDLE 15 -- enough to heal, forge, then work the embers, and a new
+   reason for the trader's 3-for-1. G burns adjacent fungus FIRST, so a press
+   meant for the red never spends fire. A tinderbox unique (two free relights
+   a floor) was considered and dropped: it would cancel the brazier clock.
+   The legend's black brazier now reads "cold, until fire".
+6c. **Gems feed the uniques. DESIGNED 2026-09-30, next after 6b is played.**
+   Brad: the ring of the rat became the key to surviving the red, so it must
+   be reusable; likewise the undertaker's shovel. **You and the red compete
+   for the dead, and every body gets at most one second life.**
+   - Ring of the rat: at 0 charges it goes COLD instead of crumbling (you
+     still turn back mid-room -- the horror stays -- but keep the ring). At a
+     brazier's EMBERS, G with the ring in hand feeds it a gem: +50 turns, capped
+     at its full 220.
+   - Undertaker's shovel: goes DULL after a raise instead of vanishing; one
+     gem at the embers gives one more raise (holds one at most).
+   - Gaps found while designing, to fix with it: (1) a shovel ally can rise
+     again as a red risen -- nothing marks it; one shared "has risen once"
+     flag, set by the shovel and the red, checked by `_can_rise`. (2) A
+     reusable shovel duplicates gear: the first death drops loot, the ally
+     wears a copy, and an ally's death hands back ALL of it -- a raised
+     creature must drop nothing, as the red risen already do (grave heroes keep
+     their bone rule). (3) The shovel can already snatch a red-claimed body
+     inside its 5-turn window (a red body rises in 8+); it should strip the
+     spores, or the rescued ally wears the red outline and trails red.
+   - Gems then have three sinks: weapons, the ring, the shovel. Brad says gems
+     are plentiful (he traded 3-for-1 twice); if the uniques sit idle in play,
+     tune gem supply, not the cost.
+6d. **Gems in the world. DESIGNED 2026-09-30; build ALL of them, after 6c**
+   (Brad: "they are all good ideas"). One rule, set by the fire gem's relight:
+   **crush a gem into the world with G where you stand (or throw it), and the
+   HERE box says what it will do** -- so every gem is a choice between your
+   gear and the floor, and the trader's 3-for-1 gains a purpose. Suggested
+   build order, the first three first (each leans only on systems that exist):
+   1. **Gem of the boss -> a decoy crash.** Thrown, it shatters LOUD where it
+      lands. The blind risen hunt by sound, so it empties a red room's far
+      wall while you take the near one; it also pulls a guard off its round.
+   2. **Gem of thirst -> drink the dead.** Crushed on a fresh body: you drain
+      it for hp and the body is gone -- a THIRD claimant for the dead beside
+      the red and the shovel. Denies the red a body when you have no fire.
+   3. **Gem of the mirror -> a shrine's true name.** Crushed at an unknown
+      shrine, it names it. Shrine colours are shuffled per run, so it answers
+      "which colour was the gong?" -- the one that frees the risen.
+   4. **Gem of frost -> THE FROZEN ROOM (Brad's design).** Thrown into a room
+      or cave, it freezes everything in it for a number of turns, and SOUND IS
+      MUFFLED there meanwhile -- so a player may cross a small room past its
+      risen. Always a close call: a 10x10 room gives about 8 turns. **OPEN --
+      Brad gave two duration rules, choose at build time:** (a) the room's
+      longer side, minus 1 per door; or (b) plus 1 per door, where closing a
+      door behind you ends it -- "if the math is right, a near miss". Needs:
+      thrown gems (gems do not throw today), a region for caves (rooms have
+      `room_rects`; caves need theirs kept -- the risen leash falls back to a
+      radius), what "muffled" does to `_make_noise` inside it, and frozen
+      creatures neither act nor hear. (Also, from the earlier brainstorm:
+      crushed at WATER it could freeze a crossing -- a second, smaller use.)
+      **Brad's second version, same day -- THE WET FREEZE:** thrown, it
+      freezes every creature (monster or animal) standing in water or WET --
+      in water within the last ~3 turns. Frozen: it does not move, it can be
+      hit without hitting back, and it does not stay frozen long -- so the
+      choice is free blows or a head start. A frozen creature does NOT react
+      to any noise made while it was frozen (it is not left holding a `heard`
+      spot or woken when it thaws). Needs a "wet until" turn on Entity
+      (saved), and builds naturally on the existing `Entity.chilled` from
+      frost weapons. **OPEN -- choose at build time: the wet freeze INSTEAD of
+      the frozen room, or both** (e.g. the room freeze for everything, water
+      making it last longer or hit harder).
+   5. **Gem of the crag -> fill a pit.** Stone into the hole: it becomes
+      floor. Closes a fleeing monster's escape (strand 5) or makes a path.
+   6. **Gem of returning -> recall.** Crushed at a brazier it marks it; a
+      second crushed anywhere steps you back. Two gems: an escape kept rare.
+   7. **Gem of the bulwark -> a barricaded door.** Monsters cannot open it for
+      a while; bears still smash it. Shuts a chase behind you.
+   8. **Gem of the road -> the way out.** Shows the route to the stairs on the
+      minimap -- the route-choosing play the red brought on.
 Further strands from the same brainstorm, all welcome (Brad: "all of your
 ideas are really good"): blood trails that scavengers follow; watchable
 hunting; frost freezing water to ice; rubble cracked by force (gems); alarm-

@@ -82,9 +82,10 @@ const NOTES := {
 	Tiles.FUNGUS: "glows faintly",
 	Tiles.BRAZIER: "rest at it, or forge",
 	# Named, not explained. What a spent brazier is still good for is the one
-	# thing in this list worth finding out by standing next to one, so the
-	# legend says only that the third state is the end of the road.
-	Tiles.BRAZIER_DEAD: "cold for good",
+	# thing in this list worth finding out by standing next to one. The black
+	# one said "cold for good" until fire could relight it (a flare, a gem of
+	# fire, a fire blade -- 2026-09-30); now it says only what wakes it.
+	Tiles.BRAZIER_DEAD: "cold, until fire",
 	Tiles.TRAP: "springs once",
 	Tiles.PIT: "drops you a floor",
 	Tiles.TRAP + 1000: "",

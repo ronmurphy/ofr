@@ -99,7 +99,8 @@ Claude reviews each round. What it found, so the next job avoids it:
 
 ## Jobs
 
-**One-time authorization (Brad, 2026-09-29):** Brad expressly authorized
+**EXPIRED -- applied to round 1 only. Do one job at a time, one commit each.**
+~~One-time authorization (Brad, 2026-09-29):~~ Brad expressly authorized
 combining the final three jobs into one uncommitted change because his head was
 hurting and he thought looking at a monitor was most likely the issue. He asked
 for one quick run followed by one full run after the combined work, and said not
@@ -214,6 +215,9 @@ task list only.
   sound the forge does. Remember `Fx.expired` must learn any new effect type
   (read its comment). Tests: burning emits a `burn` event (not `forge`); the
   effect expires; nothing on still.
+  Note (2026-09-30): `_burn_fungus` now also burns a BODY lying on the square
+  (that is how a red-claimed body is stopped). Leave that code alone; the
+  event is still one per burned square.
 
 - [ ] **Test litter in the save folder**
   Three tests in `tests/run_tests.gd` switch to their own scratch files inside
@@ -269,3 +273,27 @@ task list only.
   as a pure function (e.g. a static `cut_corners(cell, cloud) -> Array` of
   which corners are cut) on a lone square (all four cut) and on a square in
   the middle of a 3x3 cloud (none cut).
+
+- [ ] **The red crawls, visibly**
+  Belongs with the cloud job above: purple is a cloud that drifts, red is a
+  thing that REACHES. Red fungus crawls one square every 3 turns toward the
+  nearest body (`_crawl_red` in `src/sim/game_state.gd`; the step is the loop
+  under "One square toward the body", where `_set_fungus(c, Tiles.FUNGUS_RED)`
+  is called). Today the new square just appears. Make the growth visible:
+  (a) at that call, append an event `{"kind": &"crawl", "from": from,
+  "to": c}` -- `from` is the red square it grew out of, `c` the new one; they
+  are always neighbours (diagonals included). Change nothing else in the sim.
+  (b) In `src/render/fx.gd`, turn a `crawl` event into a new effect type: over
+  about 0.5 s a line in `Palette.FUNGUS_RED`, about 15% of a cell thick, grows
+  from the centre of `from` to the centre of `to`, then fades over about 0.2 s
+  more. Model it on how an existing event becomes an effect (read how
+  `&"forge"` is handled near line 242), including whatever visibility rule
+  the others follow (an unseen square shows nothing). Both views draw it
+  through the shared layer, as the other effects are. `Fx.expired` must learn
+  the new type. Not on "still" (`Effects.any()` false): no effect at all.
+  Tests (`tests/run_view_tests.gd`, and one sim check in
+  `tests/run_tests.gd` run by name with `tools/run_one_test.gd`): a crawl step
+  emits exactly one `crawl` event whose `from` and `to` are neighbours and
+  whose `to` is now red; the effect expires by its life; nothing on still.
+  Also check the precondition: that the crawl actually grew a square in your
+  test (a body in reach, a red square beside the path, no brazier near).
