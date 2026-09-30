@@ -323,6 +323,14 @@ enum Reload { NONE, STEADY, RANDOM }
 ## for flanking and blows from behind.
 var facing := Vector2i(0, -1)
 
+## Walked over red fungus: the spores are on it. Next strand, a marked
+## creature that dies rises again (Dwarf Fortress plan, strand 4). Saved.
+var spore_marked := false
+## Knows better than to walk through the wrong fungus: routes round it (the
+## careful grid). The smart kinds -- dragons, wizards, liches. Everything else
+## walks through and is hurt by it. From the bestiary; saved.
+var careful := false
+
 ## The eight steps clockwise from north, on a screen where y grows downward.
 const CLOCKWISE: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
 	Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0), Vector2i(-1, -1)]
@@ -455,6 +463,7 @@ func to_dict() -> Dictionary:
 		"stance": stance,
 		"reload_style": reload_style, "reload_left": reload_left,
 		"facing": [facing.x, facing.y],
+		"spore_marked": spore_marked, "careful": careful,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -507,6 +516,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.reload_left = int(d.get("reload_left", 0))
 	var f: Array = d.get("facing", [0, -1])
 	e.facing = Vector2i(int(f[0]), int(f[1]))
+	e.spore_marked = bool(d.get("spore_marked", false))
+	e.careful = bool(d.get("careful", false))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))

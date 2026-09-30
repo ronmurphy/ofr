@@ -101,7 +101,29 @@ strand at a time with play between:
    camera (3D), darkening and fading over BODY_ROT = 120 turns, then gone.
    `GameState.bodies` keeps the whole creature for the later strands; one
    `BodyLook` colours it for both views; the shovel takes the body it raises.
-2. **The fungus family.** Brad's additions (2026-09-28): **fire is the answer
+2. **The fungus family. BUILT 2026-09-29**, waiting on play -- with the red
+   CRAWL pulled forward from strand 4. As built: purple and red are TILES (not
+   creatures: one creature per square is a hard rule, and "walk onto it and
+   take damage" needs two). Standing on purple hurts 2, red 1. **Reworked the
+   same night on Brad's call -- crossing is a CHOICE, never a wall:** walking
+   in steps on (and hurts); **G burns** (B on a pad): the fungus AHEAD
+   (facing) first, else underfoot, else the nearest beside -- a fire weapon in
+   one press, a lit torch in three; the HERE box offers it. The pathfinder
+   keeps two grids: CAREFUL (dragon, wizard, arch lich: bestiary "careful",
+   and the player's auto-travel) routes round both colours; everyone else
+   walks through and takes the damage (flyers do not), and red marks them
+   (spore_marked, saved). A fire shot burns it from range. A rat, bat or rabbit
+   beside a body seeds it; 15 turns later the body is purple or red (never
+   green; none on floors 1-2). Red crawls one square per 3 turns toward the
+   nearest body within 8 and CLAIMS it on arrival (strand 4 raises claimed
+   bodies); burning a link cuts the chain. Nothing wrong grows within 2 of a
+   lit brazier. Brad's table in MapGen.FUNGUS_TABLE. Shows on the minimap.
+   Probe: tools/probes/screenshot_fungus.gd. **Later (Brad): the climb has its
+   own, worse table (MapGen.FUNGUS_CLIMB_TABLE) and braziers protect only 1
+   square. Fungus drawn in a VAULT (`*`) is guaranteed GREEN -- the vaults are
+   the climb's reliable food. The vault editor should get symbols for purple
+   and red eventually.** Brad's original additions
+   (2026-09-28): **fire is the answer
    to the bad fungi** -- a flame weapon or fire gem burns a purple or red one
    away; the caves (4-6) trade a LITTLE green for seeded purple and red;
    monsters do NOT avoid red (walking over it tags them, and a tagged monster
@@ -119,6 +141,16 @@ strand at a time with play between:
    three; the climb mirrors it. **OPEN: the caves (4-6) rely on green fungus
    as their deliberate potion replacement (CLAUDE.md) -- keep green steady
    there, or accept a harder cave on purpose.**
+2b. **Spreading, and the visual tell (Brad, 2026-09-29).** Careless walkers
+   carry spores onward. **Any creature that has touched the wrong fungus
+   wears its colour** -- a tint or an outline on its picture/glyph, in both
+   views -- so the player knows before the kill: RED means "kill this and it
+   comes back"; PURPLE means its body will rot into purple fungus.
+   **Lore (Brad, 2026-09-29): the climb's CORRUPTED creatures are ones that
+   crossed purple fungus and were changed** -- their colour (Palette
+   .CORRUPTED) is already that purple, by luck. So corrupted = purple carriers:
+   when one dies its body rots straight into purple fungus, and the purple
+   outline tell is free for them.
 3. **The miasma, redesigned around purple:** ONE purple fungus is a source
    (no 2x2 group needed).
 4. **Red fungus raises the dead.** It is a timer: after some turns the body it

@@ -45,6 +45,8 @@ const OVERRIDES := {
 	# "~" was always a compromise for water. "≈" is the thing itself.
 	&"water":  {"ch": "≈"},
 	&"fungus": {"ch": "◌"},
+	&"purple_fungus": {"ch": "◌"},
+	&"red_fungus": {"ch": "◌"},
 
 	# The one unambiguous pictograph the font does have, and it lands on the
 	# one tile that is purely a hazard.

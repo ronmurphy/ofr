@@ -100,6 +100,7 @@ func _initialize() -> void:
 	_test_legends_log()
 	_test_bodies_lie_and_rot()
 	_test_slingers_reload()
+	_test_the_wrong_fungus()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1543,6 +1544,254 @@ func _suspended_state() -> GameState:
 	gs.player.hp = 17
 	gs.update_vision()
 	return gs
+
+## A bestiary entry by name, for tests that want a particular creature.
+func _bestiary_entry(name: String) -> Dictionary:
+	for entry in GameState.BESTIARY:
+		if entry["name"] == name:
+			return entry
+	return {}
+
+## THE WRONG FUNGUS (Dwarf Fortress plan, strand 2): purple and red, where
+## they grow, bodies taken by them, red crawling to the dead, and fire.
+func _test_the_wrong_fungus() -> void:
+	check("the new fungi are appended after every older tile (saves hold ints)",
+		Tiles.FUNGUS_PURPLE > Tiles.CHEST and Tiles.FUNGUS_RED > Tiles.CHEST)
+	check("the ground never walls it off: purple and red are bad fungus, not avoided ground",
+		not Tiles.is_avoided(Tiles.FUNGUS_PURPLE) and not Tiles.is_avoided(Tiles.FUNGUS_RED)
+		and Tiles.is_bad_fungus(Tiles.FUNGUS_RED) and not Tiles.is_bad_fungus(Tiles.FUNGUS))
+	check("the smart kinds are careful; a kobold is not",
+		GameState.monster_from(_bestiary_entry("young dragon"), 0, 0).careful
+		and GameState.monster_from(_bestiary_entry("wizard"), 0, 0).careful
+		and GameState.monster_from(_bestiary_entry("arch lich"), 0, 0).careful
+		and not GameState.monster_from(_bestiary_entry("kobold"), 0, 0).careful)
+	# Brad's table.
+	check("floors 1-2 grow only green, whatever the roll",
+		MapGen.fungus_for(1, 0.999) == Tiles.FUNGUS and MapGen.fungus_for(2, 0.5) == Tiles.FUNGUS)
+	check("floor 3 grows purple but never red",
+		MapGen.fungus_for(3, 0.9) == Tiles.FUNGUS_PURPLE and MapGen.fungus_for(3, 0.999) == Tiles.FUNGUS_PURPLE)
+	check("the caves keep most of their green, with a little of each",
+		MapGen.fungus_for(4, 0.69) == Tiles.FUNGUS and MapGen.fungus_for(4, 0.94) == Tiles.FUNGUS_PURPLE
+		and MapGen.fungus_for(4, 0.97) == Tiles.FUNGUS_RED)
+	check("floors 7-9 are mostly red", MapGen.fungus_for(8, 0.65) == Tiles.FUNGUS_RED)
+	# The climb is worse than the way down, by the same floor numbers.
+	var down_green := 0
+	var up_green := 0
+	for f in range(1, 10):
+		down_green += int(MapGen.fungus_parts(f)[0])
+		up_green += int(MapGen.fungus_parts(f, true)[0])
+	check("the climb grows less green than the descent, floor for floor",
+		up_green < down_green, "%d vs %d" % [up_green, down_green])
+	check("but its caves keep real green to eat",
+		int(MapGen.fungus_parts(5, true)[0]) >= 40)
+	check("and the top of the climb grows the wrong fungus, where the way down had none",
+		MapGen.fungus_for(1, 0.9, true) != Tiles.FUNGUS and MapGen.fungus_for(1, 0.1, true) == Tiles.FUNGUS)
+	# Real floors: none on 1-2; some on the deep floors; none by a lit brazier.
+	var shallow_bad := 0
+	var deep_bad := 0
+	var by_fire := 0
+	for seed_no in 10:
+		for d in [1, 2, 8, 9]:
+			var gs := GameState.new(7000 + seed_no)
+			gs.new_game()
+			gs.depth = d
+			gs.build_level()
+			for y in gs.map.height:
+				for x in gs.map.width:
+					if Tiles.is_bad_fungus(gs.map.get_tile(x, y)):
+						if d <= 2:
+							shallow_bad += 1
+						else:
+							deep_bad += 1
+						if gs._near_fire(Vector2i(x, y)):
+							by_fire += 1
+	check("no purple or red is generated on floors 1-2", shallow_bad == 0, "%d" % shallow_bad)
+	check("floors 8-9 do generate it", deep_bad > 0, "%d" % deep_bad)
+	check("and none grows beside a lit brazier", by_fire == 0, "%d" % by_fire)
+
+	# A clean room to work in, on floor 7.
+	var g := GameState.new(7171)
+	g.new_game()
+	g.depth = 7
+	g.build_level()
+	var o := Vector2i(g.player.x, g.player.y)
+	for dy in range(-4, 5):
+		for dx in range(-6, 7):
+			g.map.set_tile(o.x + dx, o.y + dy, Tiles.FLOOR)
+	g.entities = [g.player]
+	g.bodies = []
+	g.pathfinder = Pathfinder.new(g.map)
+	g._gather_lights()
+	g.update_vision()
+
+	# Bodies: seeded by a passing rat, taken after the spores root.
+	var at := o + Vector2i(3, 0)
+	g.bodies = [{"x": at.x, "y": at.y, "app": "kobold", "turn": g.turns,
+		"corrupted": false, "e": {"name": "kobold"}, "seeded": -1, "claimed": false}]
+	var rat := GameState.monster_from(GameState.BESTIARY[0], at.x, at.y + 1)
+	g.entities.append(rat)
+	g._grow_fungus()
+	check("a rat beside a body carries spores to it (the premise)",
+		int(g.bodies[0]["seeded"]) == g.turns)
+	g.entities.erase(rat)
+	g.turns += GameState.FUNGUS_ROOT
+	g._grow_fungus()
+	var grew := g.map.get_tile(at.x, at.y)
+	check("the rooted body is gone and purple or red stands there, never green",
+		g.bodies.is_empty() and Tiles.is_bad_fungus(grew), Tiles.appearance_id(grew))
+	g._burn_fungus(at)
+
+	# On floor 1 a body never grows the wrong fungus.
+	var one := GameState.new(7272)
+	one.new_game()
+	check("floor 1 grows no fungus from bodies", one._body_fungus() == -1)
+
+	# Red crawls toward a body, one square a crawl, and claims it.
+	var body_at := o + Vector2i(5, 2)
+	var red_at := o + Vector2i(0, 2)
+	g.bodies = [{"x": body_at.x, "y": body_at.y, "app": "goblin", "turn": g.turns,
+		"corrupted": false, "e": {"name": "goblin"}, "seeded": -1, "claimed": false}]
+	g._set_fungus(red_at, Tiles.FUNGUS_RED)
+	g._crawl_red()
+	check("red grows one square toward the body",
+		g.map.get_tile(red_at.x + 1, red_at.y) == Tiles.FUNGUS_RED)
+	for i in 5:
+		g._crawl_red()
+	check("and reaches it, claiming it", bool(g.bodies[0]["claimed"]))
+	# A cut chain: burn the links, and the crawl starts again from what is left.
+	g.bodies[0]["claimed"] = false
+	for x in range(1, 5):
+		g._burn_fungus(Vector2i(red_at.x + x, red_at.y))
+	g._crawl_red()
+	check("a burned chain regrows from what is left, not across the gap",
+		g.map.get_tile(red_at.x + 1, red_at.y) == Tiles.FUNGUS_RED
+		and g.map.get_tile(red_at.x + 2, red_at.y) != Tiles.FUNGUS_RED)
+	for y in range(-4, 5):
+		for x in range(-6, 7):
+			if Tiles.is_bad_fungus(g.map.get_tile(o.x + x, o.y + y)):
+				g._burn_fungus(o + Vector2i(x, y))
+	g.bodies = []
+
+	# Careful routes go round it; careless ones straight through.
+	var wall_x := o.x + 2
+	for y in range(-4, 5):
+		g._set_fungus(Vector2i(wall_x, o.y + y), Tiles.FUNGUS_PURPLE)
+	var from := Vector2i(o.x, o.y)
+	var to := Vector2i(o.x + 4, o.y)
+	var careless_route: Array = g.pathfinder.path(from, to)
+	var careful_route: Array = g.pathfinder.path(from, to, true)
+	check("a careless route walks straight through the purple (the premise: one exists)",
+		not careless_route.is_empty() and careless_route.any(func(c): return c.x == wall_x))
+	check("a careful route will not cross it", careful_route.is_empty()
+		or not careful_route.any(func(c): return Tiles.is_bad_fungus(g.map.get_tile(c.x, c.y))))
+	for y in range(-4, 5):
+		g._burn_fungus(Vector2i(wall_x, o.y + y))
+
+	# G burns: the one ahead first. A fire weapon in one press, a torch in
+	# three. Walking into it is a CHOICE: you step on, and it hurts.
+	var p_at := Vector2i(g.player.x, g.player.y)
+	var purple := p_at + Vector2i(1, 0)
+	var side := p_at + Vector2i(0, 1)
+	g._set_fungus(purple, Tiles.FUNGUS_PURPLE)
+	g._set_fungus(side, Tiles.FUNGUS_RED)
+	g.player.facing = Vector2i(1, 0)
+	check("G aims at the fungus ahead, not the one beside", g.burn_target() == purple)
+	var sword := Item.make(&"short_sword")
+	sword.element = &"fire"
+	g.player.inventory = [sword]
+	g.player.equipped = {Item.Slot.WEAPON: sword}
+	var here_rows: Array = g.actions_here()
+	check("the HERE box teaches it: G, burn the fungus",
+		here_rows.any(func(r): return r[0] == KEY_G and String(r[1]) == "burn the fungus"))
+	var turns_was := g.turns
+	g.player_pickup()
+	check("a fire blade burns it in one press of G, without a step",
+		g.map.get_tile(purple.x, purple.y) != Tiles.FUNGUS_PURPLE
+		and Vector2i(g.player.x, g.player.y) == p_at and g.turns == turns_was + 1)
+	check("and then G turns to the one beside", g.burn_target() == side)
+	g._burn_fungus(side)
+	g.player.equipped = {}
+	g._set_fungus(purple, Tiles.FUNGUS_PURPLE)
+	g.torch_lit = true
+	g.player.facing = Vector2i(1, 0)
+	g.player_pickup()
+	g.player_pickup()
+	var after_two := g.map.get_tile(purple.x, purple.y)
+	g.player_pickup()
+	check("a torch scorches it away on the third press, not before",
+		after_two == Tiles.FUNGUS_PURPLE and g.map.get_tile(purple.x, purple.y) != Tiles.FUNGUS_PURPLE)
+	g._set_fungus(purple, Tiles.FUNGUS_PURPLE)
+	g.player.hp = g.player.max_hp
+	g.player_move(1, 0)
+	check("walking into it -- torch lit or not -- steps on, and it hurts",
+		Vector2i(g.player.x, g.player.y) == purple
+		and g.player.hp == g.player.max_hp - GameState.PURPLE_HURT,
+		"%d/%d" % [g.player.hp, g.player.max_hp])
+	g.player_move(-1, 0)
+	g._burn_fungus(purple)
+
+	# Careless walkers are hurt; flyers are not.
+	var kobold := GameState.monster_from(_bestiary_entry("kobold"), p_at.x + 2, p_at.y + 2)
+	var bat := GameState.monster_from(_bestiary_entry("cave bat"), p_at.x + 3, p_at.y + 2)
+	g._set_fungus(Vector2i(kobold.x, kobold.y), Tiles.FUNGUS_PURPLE)
+	g._set_fungus(Vector2i(bat.x, bat.y), Tiles.FUNGUS_PURPLE)
+	g.entities = [g.player, kobold, bat]
+	var k_hp := kobold.hp
+	var b_hp := bat.hp
+	g._grow_fungus()
+	check("a kobold standing in purple is hurt by it",
+		kobold.hp == k_hp - GameState.PURPLE_HURT, "%d -> %d" % [k_hp, kobold.hp])
+	check("a bat flying over it is not", bat.hp == b_hp)
+	kobold.hp = 1
+	g.bodies = []
+	g._grow_fungus()
+	check("and one that dies in it leaves a body, like any death",
+		not kobold.alive and g.bodies.size() == 1)
+	g._burn_fungus(Vector2i(kobold.x, kobold.y))
+	g._burn_fungus(Vector2i(bat.x, bat.y))
+	g.bodies = []
+	g.entities = [g.player]
+
+	# A fire shot burns it from range; any other shot refuses.
+	var far := Vector2i(g.player.x + 3, g.player.y)
+	g._set_fungus(far, Tiles.FUNGUS_RED)
+	g.update_vision()
+	var sling := Item.make(&"sling")
+	sling.ammo = 5
+	g.player.inventory = [sling]
+	g.player.equipped = {Item.Slot.WEAPON: sling}
+	check("a plain sling will not touch it", not g.player_fire(far)
+		and g.map.get_tile(far.x, far.y) == Tiles.FUNGUS_RED)
+	sling.element = &"fire"
+	check("a fire sling burns it from range, and spends the stone",
+		g.player_fire(far) and g.map.get_tile(far.x, far.y) != Tiles.FUNGUS_RED and sling.ammo == 4)
+
+	# Auto-travel stops short.
+	g._set_fungus(far, Tiles.FUNGUS_RED)
+	var stand := Vector2i(g.player.x, g.player.y)
+	g._travel = [stand + Vector2i(1, 0)]
+	g._set_fungus(stand + Vector2i(1, 0), Tiles.FUNGUS_RED)
+	check("auto-travel stops short of it", not g._step_travel(true)
+		and Vector2i(g.player.x, g.player.y) == stand)
+	# Rabbits only eat green.
+	var bunny := GameState.monster_from(GameState.BESTIARY[0], stand.x, stand.y + 2)
+	bunny.appearance = &"rabbit"
+	g.entities = [g.player, bunny]
+	var meal := g._nearest_fungus(bunny)
+	check("a rabbit does not go for purple or red",
+		meal.x < 0 or g.map.get_tile(meal.x, meal.y) == Tiles.FUNGUS, str(meal))
+	# Anything that stands on red is marked by it, and keeps the mark.
+	var walker := GameState.monster_from(GameState.BESTIARY[1], far.x, far.y)
+	g.entities = [g.player, walker]
+	g._grow_fungus()
+	check("a creature standing on red is marked, and the mark is saved",
+		walker.spore_marked and Entity.from_dict(walker.to_dict()).spore_marked)
+	# Saved: the torch's work in progress.
+	g.scorched = {"3,4": 2}
+	var back := GameState.new(1)
+	back.apply_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	check("a half-scorched fungus is still half-scorched after a save",
+		int(back.scorched.get("3,4", 0)) == 2)
 
 ## Slingers reload: every other turn on their first floor, 0-2 turns elsewhere.
 ## Brad's call (2026-09-28): 8 of his 22 deaths were slingers on floors 1-2.

@@ -35,6 +35,12 @@ enum {
 	## A chest. Appended last -- tiles are saved as integers, so inserting
 	## would rewrite what every existing suspend means.
 	CHEST,
+	## The wrong fungus (Dwarf Fortress plan, 2026-09-29), appended for the same
+	## reason. PURPLE is poison -- it will be the miasma's source -- and RED is
+	## blood: it crawls toward the dead and, next strand, raises them. Neither
+	## can be eaten, standing on either hurts, and fire burns both.
+	FUNGUS_PURPLE,
+	FUNGUS_RED,
 }
 
 ## walk  = an actor may stand here
@@ -72,6 +78,8 @@ const DATA := {
 	BONES:       {"id": &"bones",       "walk": true,  "clear": true},
 	# Faintly luminous. Light you did not have to carry, and cannot put out.
 	FUNGUS:      {"id": &"fungus",      "walk": true,  "clear": true},
+	FUNGUS_PURPLE: {"id": &"purple_fungus", "walk": true, "clear": true},
+	FUNGUS_RED:    {"id": &"red_fungus",    "walk": true, "clear": true},
 	# Walkable on purpose: falling in is always a choice, never an accident.
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.
@@ -111,7 +119,7 @@ static func appearance_id(t: int) -> StringName:
 ## painting over a corridor or a staircase.
 static func is_open_floor(t: int) -> bool:
 	return t == FLOOR or t == CAVE_FLOOR or t == RUBBLE or t == WATER \
-		or t == MUD or t == BONES or t == FUNGUS
+		or t == MUD or t == BONES or t == FUNGUS or t == FUNGUS_PURPLE or t == FUNGUS_RED
 
 ## What it costs to step onto this, as a multiple of an ordinary stride.
 ##
@@ -143,12 +151,20 @@ static func footing_word(t: int) -> String:
 
 ## Ground a route should never be planned through, even though a determined
 ## player may still step there.
+##
+## NOT the wrong fungus: whether a creature walks through purple or red is its
+## own nature (Entity.careful), not a rule of the ground -- see Pathfinder's
+## careful grid. Brad, 2026-09-29: crossing it is a CHOICE, never a wall.
 static func is_avoided(t: int) -> bool:
 	return t == PIT or t == TRAP
+
+## Purple or red: the fungus that hurts, cannot be eaten, and burns.
+static func is_bad_fungus(t: int) -> bool:
+	return t == FUNGUS_PURPLE or t == FUNGUS_RED
 
 ## How far the noise of crossing this carries. Zero for anything quiet.
 static func noise_radius(t: int) -> int:
 	return 7 if t == BONES else 0
 
 static func is_luminous(t: int) -> bool:
-	return t == FUNGUS
+	return t == FUNGUS or t == FUNGUS_PURPLE or t == FUNGUS_RED

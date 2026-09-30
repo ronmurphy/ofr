@@ -49,6 +49,7 @@ const ASCII_GROUND_TILES := [
 	Tiles.FLOOR, Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
 	Tiles.CAVE_FLOOR, Tiles.RUBBLE, Tiles.WATER, Tiles.MUD, Tiles.BONES,
 	Tiles.FUNGUS, Tiles.PIT, Tiles.TRAP, Tiles.SHRINE, Tiles.GRAVE,
+	Tiles.FUNGUS_PURPLE, Tiles.FUNGUS_RED,
 ]
 ## Surface colour alpha that tells the shader "remembered, but show me as I
 ## am" -- the stairs, which the classic view never lets memory dim.
@@ -1013,7 +1014,7 @@ func _tile_uses_icon(tile: int) -> bool:
 		and tile != Tiles.PIT and tile != Tiles.STALAGMITE \
 		and tile != Tiles.CAVE_FLOOR and tile != Tiles.RUBBLE \
 		and tile != Tiles.WATER and tile != Tiles.MUD and tile != Tiles.BONES \
-		and tile != Tiles.FUNGUS
+		and tile != Tiles.FUNGUS and tile != Tiles.FUNGUS_PURPLE and tile != Tiles.FUNGUS_RED
 
 func _tile_has_picture(tile: int) -> bool:
 	if not _pictured.has(tile):
@@ -1074,6 +1075,7 @@ func _add_door(batches: Dictionary, x: int, y: int, tile: int,
 const GROUND_KINDS := {
 	Tiles.CAVE_FLOOR: "cave", Tiles.RUBBLE: "rubble", Tiles.WATER: "water",
 	Tiles.MUD: "mud", Tiles.BONES: "bones", Tiles.FUNGUS: "fungus",
+	Tiles.FUNGUS_PURPLE: "fungus", Tiles.FUNGUS_RED: "fungus",
 	Tiles.PIT: "pit", Tiles.STAIRS_DOWN: "stairs", Tiles.STAIRS_UP: "stairs",
 	Tiles.TRAP: "trap", Tiles.SHRINE: "shrine",
 }

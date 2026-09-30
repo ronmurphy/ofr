@@ -139,6 +139,12 @@ static func _terrain_colour(t: int) -> Color:
 		return Color(0.16, 0.26, 0.36)
 	if t == Tiles.PIT:
 		return Color(0.06, 0.05, 0.07)
+	# The wrong fungus shows on the map, so an infested room is visible from
+	# the overview and the minimap -- the zombie room you decide to avoid.
+	if t == Tiles.FUNGUS_PURPLE:
+		return Color(0.40, 0.26, 0.52)
+	if t == Tiles.FUNGUS_RED:
+		return Color(0.55, 0.18, 0.20)
 	if Tiles.is_walkable(t):
 		return Color(0.32, 0.31, 0.33)
 	return Color(0, 0, 0, 0)

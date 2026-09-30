@@ -63,6 +63,9 @@ func status_line() -> String:
 	if state == null or state.game_over:
 		return ""
 	var ground := state.map.get_tile(state.player.x, state.player.y)
+	if Tiles.is_bad_fungus(ground):
+		return "%s fungus -- it hurts to stand here" % ("purple"
+			if ground == Tiles.FUNGUS_PURPLE else "red")
 	var word := Tiles.footing_word(ground)
 	if word == "":
 		return ""

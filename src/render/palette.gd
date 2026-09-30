@@ -52,6 +52,10 @@ const WATER         := Color("4d7f9e")
 const MUD           := Color("7a6248")
 const BONES         := Color("bdb69f")
 const FUNGUS        := Color("7fd9b0")
+## The wrong fungus: a sickly violet and a wet, dark red -- both kept well
+## apart from the green, so a player can tell food from poison at a glance.
+const FUNGUS_PURPLE := Color("b77be8")
+const FUNGUS_RED    := Color("d8434a")
 const PIT_RIM       := Color("5a5044")
 const TRAP          := Color("d4674f")
 const MUD_BG        := Color("241d16")

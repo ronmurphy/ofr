@@ -23,6 +23,8 @@ const TABLE := {
 	&"mud":         {"ch": "░", "fg": Palette.MUD,      "bg": Palette.MUD_BG},
 	&"bones":       {"ch": ",",      "fg": Palette.BONES,    "bg": Color("1d1c19")},
 	&"fungus":      {"ch": "*",      "fg": Palette.FUNGUS,   "bg": Color("14201b")},
+	&"purple_fungus": {"ch": "*",    "fg": Palette.FUNGUS_PURPLE, "bg": Color("1c1424")},
+	&"red_fungus":  {"ch": "*",      "fg": Palette.FUNGUS_RED, "bg": Color("241314")},
 	&"pit":         {"ch": " ",      "fg": Palette.PIT_RIM,  "bg": Color("000000")},
 	&"trap":        {"ch": "^",      "fg": Palette.TRAP,     "bg": Color("2a1714")},
 	&"stalagmite":  {"ch": "▲", "fg": Palette.ROCK_LIGHT, "bg": Color("241f19")},

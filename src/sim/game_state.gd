@@ -1008,7 +1008,7 @@ const BESTIARY := [
 	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0, "unliving": true},
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
-	 "threat": 28, "caves": 2.0},
+	 "threat": 28, "caves": 2.0, "careful": true},
 
 	# The rabbit, and what it turns into.
 	#
@@ -1079,7 +1079,7 @@ const BESTIARY := [
 	# walk.
 	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
 	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
-	 "min_depth": 8, "threat": 22, "caves": 0.4, "patrol": true, "scavenge": true},
+	 "min_depth": 8, "threat": 22, "caves": 0.4, "patrol": true, "scavenge": true, "careful": true},
 	# What the caves have in them on the way back out.
 	#
 	# Only the SECOND ascent-only creature in the bestiary -- the climb has
@@ -1101,7 +1101,7 @@ const BESTIARY := [
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
 	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
-	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"]},
+	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "careful": true},
 ]
 
 ## The deepest tier that exists.
@@ -1170,6 +1170,8 @@ func build_level() -> void:
 	# march in lockstep and a floor's graves would predict its magic.
 	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
 	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
+	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
+	scorched = {}
 	_reload_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
@@ -1320,6 +1322,7 @@ func build_level() -> void:
 		ally.y = spot.y
 		entities.append(ally)
 
+	_keep_the_fire_clean()
 	pathfinder = Pathfinder.new(map)
 	_teach_the_slingers()
 	update_vision()
@@ -1399,6 +1402,13 @@ func _gather_lights() -> void:
 				# never gets mistaken for firelight.
 				static_lights.append(LightSource.new(x, y, 3,
 					Color(0.34, 0.86, 0.62), Color(0.10, 0.28, 0.22), 0.45, false))
+			elif t == Tiles.FUNGUS_PURPLE:
+				# Dimmer than the green, and sickly: a glow you do not want.
+				static_lights.append(LightSource.new(x, y, 2,
+					Color(0.66, 0.44, 0.88), Color(0.22, 0.12, 0.30), 0.40, false))
+			elif t == Tiles.FUNGUS_RED:
+				static_lights.append(LightSource.new(x, y, 2,
+					Color(0.86, 0.26, 0.28), Color(0.30, 0.08, 0.10), 0.40, false))
 
 ## How dangerous this floor is, as opposed to which floor it is.
 ##
@@ -2461,6 +2471,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
 	m.reload_style = Entity.Reload.RANDOM if entry.get("reload", false) else Entity.Reload.NONE
+	m.careful = entry.get("careful", false)
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
@@ -3119,6 +3130,22 @@ func player_fire(cell: Vector2i) -> bool:
 		return false
 
 	var target := entity_at(cell.x, cell.y)
+	# A shot at the wrong fungus: fire burns it from range; nothing else does.
+	if target == null and Tiles.is_bad_fungus(map.get_tile(cell.x, cell.y)):
+		var sling: Item = player.equipped.get(Item.Slot.WEAPON, null)
+		if sling == null or sling.element != &"fire":
+			msg_log.add("Only fire will touch it.", Color(0.7, 0.6, 0.4))
+			return false
+		if sling.uses_ammo():
+			if sling.ammo <= 0:
+				msg_log.add("The %s is empty." % sling.name, Color(0.9, 0.6, 0.35))
+				return false
+			sling.ammo -= 1
+		_travel.clear()
+		_burn_fungus(cell)
+		msg_log.add("Your shot burns the fungus away.", Color(0.96, 0.66, 0.36))
+		_end_player_turn()
+		return true
 	if target == null or target.is_player:
 		# Refused rather than spent: a misclick should cost neither a turn nor
 		# a shot.
@@ -3398,9 +3425,225 @@ func player_move(dx: int, dy: int) -> bool:
 var bodies: Array = []
 const BODY_ROT := 120
 
+## THE WRONG FUNGUS (Dwarf Fortress plan, strand 2, 2026-09-29).
+## A rat, bat or rabbit passing next to a body carries spores to it; ROOT turns
+## later the body is gone and purple or red fungus stands where it lay -- never
+## green (Brad: eating a fungus grown from a kill is not fun to think about).
+const FUNGUS_ROOT := 15
+## Red crawls one square toward the nearest body in reach every CRAWL_EVERY
+## turns, a chain you can see and cut; reaching the body CLAIMS it (strand 4
+## raises it). So how long a body takes to rise is how far away the red was.
+const CRAWL_EVERY := 3
+const CRAWL_REACH := 8
+## No wrong fungus grows within this of a LIT brazier: fire keeps it off. One
+## square: at two it turned most room beds green, doubling the green share of
+## the climb (measured 2026-09-29) -- Brad asked for braziers to protect only
+## their own ground.
+const FIRE_SAFE := 1
+## Standing on it hurts: poison more than blood.
+const PURPLE_HURT := 2
+const RED_HURT := 1
+## A torch scorches it away in this many bumps; a fire weapon, in one.
+const TORCH_SCORCHES := 3
+## A floor can only hold so much crawling red; past this it stops spreading.
+const RED_CAP := 60
+## Who carries spores from a body.
+const SPORE_CARRIERS := [&"rat", &"bat", &"rabbit"]
+## Its own stream: how many colour rolls a floor makes depends on how the
+## fights go (CLAUDE.md -- anything whose draw count varies gets its own rng).
+var fungus_rng := RandomNumberGenerator.new()
+## Torch scorches landed so far, "x,y" -> count. One floor only.
+var scorched: Dictionary = {}
+
 func _lay_body(victim: Entity) -> void:
 	bodies.append({"x": victim.x, "y": victim.y, "app": String(victim.appearance),
-		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict()})
+		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict(),
+		"seeded": -1, "claimed": false})
+
+## True within FIRE_SAFE of a lit brazier, where no wrong fungus will grow.
+func _near_fire(c: Vector2i) -> bool:
+	for dy in range(-FIRE_SAFE, FIRE_SAFE + 1):
+		for dx in range(-FIRE_SAFE, FIRE_SAFE + 1):
+			if map.get_tile(c.x + dx, c.y + dy) == Tiles.BRAZIER:
+				return true
+	return false
+
+## After generation: any purple or red that landed by a lit brazier grows
+## green instead. No draws -- the floor decides it, so seeds do not move.
+func _keep_the_fire_clean() -> void:
+	for y in map.height:
+		for x in map.width:
+			if Tiles.is_bad_fungus(map.get_tile(x, y)) and _near_fire(Vector2i(x, y)):
+				map.set_tile(x, y, Tiles.FUNGUS)
+
+## Where wrong fungus may take hold: plain floor, away from fire.
+func _fungus_can_grow(c: Vector2i) -> bool:
+	var t := map.get_tile(c.x, c.y)
+	return (t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR) and not _near_fire(c)
+
+## The colour a body grows on this floor: Brad's table without its green.
+## Empty on floors 1-2, which have no wrong fungus at all.
+func _body_fungus() -> int:
+	var parts: Array = MapGen.fungus_parts(Bands.mirrored(effective_depth()),
+		Bands.is_corrupted(effective_depth()))
+	var bad := float(parts[1]) + float(parts[2])
+	if bad <= 0.0:
+		return -1
+	return Tiles.FUNGUS_PURPLE if fungus_rng.randf() * bad < float(parts[1]) \
+		else Tiles.FUNGUS_RED
+
+func _set_fungus(c: Vector2i, t: int) -> void:
+	map.set_tile(c.x, c.y, t)
+	pathfinder.set_fungus(c.x, c.y, Tiles.is_bad_fungus(t))
+	_gather_lights()
+
+## Spores carried, bodies taken, and red crawling toward the dead. Every
+## player turn, after the world has moved, so a rat's step this turn counts.
+func _grow_fungus() -> void:
+	# Carried: a spore-bearer beside a body seeds it.
+	for b in bodies:
+		if int(b.get("seeded", -1)) >= 0 or bool(b.get("claimed", false)):
+			continue
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		for e in entities:
+			if e.alive and not e.is_player and e.appearance in SPORE_CARRIERS \
+					and absi(e.x - at.x) <= 1 and absi(e.y - at.y) <= 1:
+				b["seeded"] = turns
+				break
+	# Taken: a seeded body becomes fungus once the spores have rooted.
+	var still: Array = []
+	for b in bodies:
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		var seeded := int(b.get("seeded", -1))
+		if seeded >= 0 and turns - seeded >= FUNGUS_ROOT and not bool(b.get("claimed", false)):
+			var grows := _body_fungus()
+			if grows >= 0 and _fungus_can_grow(at):
+				_set_fungus(at, grows)
+				if map.is_visible(at.x, at.y):
+					msg_log.add("The %s's body is gone. %s fungus stands where it lay."
+						% [String(b["e"].get("name", b["app"])),
+						"Purple" if grows == Tiles.FUNGUS_PURPLE else "Red"],
+						Color(0.78, 0.60, 0.80) if grows == Tiles.FUNGUS_PURPLE
+						else Color(0.88, 0.45, 0.45))
+				continue
+			b["seeded"] = -2
+		still.append(b)
+	bodies = still
+	# Red crawls toward the dead.
+	if turns % CRAWL_EVERY == 0:
+		_crawl_red()
+	# Careless walkers pay for it, and red marks them (flyers never touch it).
+	for e in entities.duplicate():
+		if not e.alive or e.is_player or e.flying:
+			continue
+		var t := map.get_tile(e.x, e.y)
+		if not Tiles.is_bad_fungus(t):
+			continue
+		if t == Tiles.FUNGUS_RED:
+			e.spore_marked = true
+		e.take_damage(PURPLE_HURT if t == Tiles.FUNGUS_PURPLE else RED_HURT)
+		if not e.alive:
+			if map.is_visible(e.x, e.y):
+				msg_log.add("The %s dies in the %s fungus." % [e.name,
+					"purple" if t == Tiles.FUNGUS_PURPLE else "red"], Color(0.65, 0.70, 0.85))
+			# The fungus is the killer: no experience, but a body, loot and the
+			# rest of a death, as any other. It stands as its own killer here;
+			# the killer is only named on the player's death line.
+			_settle_death(e, e)
+
+func _crawl_red() -> void:
+	var reds: Array[Vector2i] = []
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) == Tiles.FUNGUS_RED:
+				reds.append(Vector2i(x, y))
+	if reds.is_empty():
+		return
+	for b in bodies:
+		if bool(b.get("claimed", false)):
+			continue
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		var from := Vector2i(-1, -1)
+		var best := CRAWL_REACH + 1
+		for r in reds:
+			var d: int = maxi(absi(r.x - at.x), absi(r.y - at.y))
+			if d < best:
+				best = d
+				from = r
+		if from.x < 0:
+			continue
+		if best <= 1:
+			b["claimed"] = true
+			if map.is_visible(at.x, at.y):
+				msg_log.add("The red fungus reaches the %s's body."
+					% String(b["e"].get("name", b["app"])), Color(0.88, 0.45, 0.45))
+			continue
+		if reds.size() >= RED_CAP:
+			continue
+		# One square toward the body: the diagonal first, then either axis.
+		var step := Vector2i(signi(at.x - from.x), signi(at.y - from.y))
+		for s in [step, Vector2i(step.x, 0), Vector2i(0, step.y)]:
+			if s == Vector2i.ZERO:
+				continue
+			var c: Vector2i = from + s
+			if _fungus_can_grow(c):
+				_set_fungus(c, Tiles.FUNGUS_RED)
+				reds.append(c)
+				break
+
+## Standing on the wrong fungus hurts, every turn you stay.
+func _fungus_underfoot(underfoot: int) -> void:
+	if not Tiles.is_bad_fungus(underfoot):
+		return
+	var hurt := PURPLE_HURT if underfoot == Tiles.FUNGUS_PURPLE else RED_HURT
+	player.take_damage(hurt)
+	_tally("taken", hurt)
+	msg_log.add(("The purple fungus bursts in your face. (-%d hp)" if underfoot == Tiles.FUNGUS_PURPLE
+		else "The red fungus bites at your feet. (-%d hp)") % hurt,
+		Color(0.92, 0.48, 0.40))
+	events.append({"kind": &"melee", "from": Vector2i(player.x, player.y),
+		"to": Vector2i(player.x, player.y), "amount": hurt, "on_player": true})
+	if not player.alive:
+		game_over = true
+		death_cause = "poisoned by purple fungus" if underfoot == Tiles.FUNGUS_PURPLE \
+			else "eaten by red fungus"
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
+		write_morgue()
+		write_death_dump()
+
+## Fire against the wrong fungus, from G: a fire weapon burns it in one, a lit
+## torch scorches it away in TORCH_SCORCHES. True if this spent the turn.
+func _burn_at(c: Vector2i) -> bool:
+	if not Tiles.is_bad_fungus(map.get_tile(c.x, c.y)):
+		return false
+	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	var fire: bool = blade != null and blade.element == &"fire"
+	var what := "purple" if map.get_tile(c.x, c.y) == Tiles.FUNGUS_PURPLE else "red"
+	if fire:
+		_burn_fungus(c)
+		msg_log.add("Your %s burns the %s fungus away." % [blade.name, what],
+			Color(0.96, 0.66, 0.36))
+		_end_player_turn()
+		return true
+	if not torch_lit:
+		return false
+	var key := "%d,%d" % [c.x, c.y]
+	scorched[key] = int(scorched.get(key, 0)) + 1
+	if int(scorched[key]) >= TORCH_SCORCHES:
+		_burn_fungus(c)
+		msg_log.add("Your torch scorches the %s fungus away." % what,
+			Color(0.96, 0.66, 0.36))
+	else:
+		msg_log.add("You scorch the %s fungus with your torch. (%d/%d)"
+			% [what, int(scorched[key]), TORCH_SCORCHES], Color(0.90, 0.72, 0.50))
+	_end_player_turn()
+	return true
+
+func _burn_fungus(c: Vector2i) -> void:
+	scorched.erase("%d,%d" % [c.x, c.y])
+	_set_fungus(c, Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	events.append({"kind": &"forge", "to": c})
 
 ## Drops the bodies that have rotted away. Every player turn.
 func _rot_bodies() -> void:
@@ -4714,7 +4957,33 @@ func actions_here() -> Array:
 		var fire := flare_target()
 		if fire.x >= 0:
 			out.append([KEY_G, "kindle the brazier (%d)" % flare_kindle(torch_flare)])
+		elif burn_target().x >= 0 and _can_burn():
+			# Taught here, because this box is where players learn the game.
+			out.append([KEY_G, "burn the fungus" if _fire_in_hand()
+				else "scorch the fungus (torch)"])
 	return out
+
+## Which wrong fungus G would burn: the one AHEAD (your facing -- the follow
+## camera's gift to this), else the one you stand on, else the nearest beside
+## you, turning clockwise from your facing. (-1, -1) if none.
+func burn_target() -> Vector2i:
+	var here := Vector2i(player.x, player.y)
+	if Tiles.is_bad_fungus(map.get_tile(here.x + player.facing.x, here.y + player.facing.y)):
+		return here + player.facing
+	if Tiles.is_bad_fungus(map.get_tile(here.x, here.y)):
+		return here
+	for i in 8:
+		var d := Entity.turned(player.facing, i)
+		if Tiles.is_bad_fungus(map.get_tile(here.x + d.x, here.y + d.y)):
+			return here + d
+	return Vector2i(-1, -1)
+
+func _fire_in_hand() -> bool:
+	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
+	return blade != null and blade.element == &"fire"
+
+func _can_burn() -> bool:
+	return _fire_in_hand() or torch_lit
 
 func player_pickup() -> bool:
 	if game_over:
@@ -4750,6 +5019,10 @@ func player_pickup() -> bool:
 		# this is the one neighbouring-cell act the key has.
 		if torch_flare > 0 and _adjacent_any_brazier().x >= 0:
 			return player_kindle()
+		# The wrong fungus, beside you or under you: burn it.
+		var fungus := burn_target()
+		if fungus.x >= 0 and _can_burn():
+			return _burn_at(fungus)
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
@@ -5275,7 +5548,7 @@ func _apply_effect(item: Item) -> bool:
 func begin_travel(to: Vector2i) -> bool:
 	if game_over or not map.is_explored(to.x, to.y):
 		return false
-	var route := pathfinder.path(Vector2i(player.x, player.y), to)
+	var route := pathfinder.path(Vector2i(player.x, player.y), to, true)
 	if route.is_empty():
 		return false
 	_travel = route
@@ -5302,6 +5575,14 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 	var next := _travel[0]
 	var dx := next.x - player.x
 	var dy := next.y - player.y
+	# Never walk someone into the wrong fungus on their behalf. Monsters cross
+	# red freely; the player's route stops short and says why.
+	if Tiles.is_bad_fungus(map.get_tile(next.x, next.y)):
+		_travel.clear()
+		msg_log.add("You stop short of the %s fungus." % ("purple"
+			if map.get_tile(next.x, next.y) == Tiles.FUNGUS_PURPLE else "red"),
+			Color(0.9, 0.55, 0.35))
+		return false
 	if entity_at(next.x, next.y) != null or not map.is_walkable(next.x, next.y):
 		_travel.clear()
 		return false
@@ -5346,6 +5627,9 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	if not ratted():
 		_make_noise(Vector2i(player.x, player.y), Tiles.noise_radius(underfoot))
 	_burn_the_ring()
+	_fungus_underfoot(underfoot)
+	if game_over:
+		return
 	if underfoot == Tiles.BONES:
 		# Crossing it destroys it. That turns a boneyard from a standing toll
 		# into something you can PREPARE -- walk it once while things are
@@ -5383,6 +5667,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	_let_the_stone_settle()
 	update_vision()
 	_run_world()
+	_grow_fungus()
 	update_vision()
 	_check_health_warning()
 
@@ -5511,6 +5796,8 @@ func to_dict() -> Dictionary:
 		"bodies": bodies,
 		"reload_rng": [str(reload_rng.seed), str(reload_rng.state)],
 		"reload_said": _reload_said,
+		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
+		"scorched": scorched,
 		"gem_found": gem_found,
 		"rooms_found": rooms_found.keys(),
 		"player_name": player_name,
@@ -5613,6 +5900,14 @@ func apply_dict(d: Dictionary) -> bool:
 		reload_rng.seed = str(rrng[0]).to_int()
 		reload_rng.state = str(rrng[1]).to_int()
 	_reload_said = bool(d.get("reload_said", false))
+	var frng: Array = d.get("fungus_rng", [])
+	if frng.size() == 2:
+		fungus_rng.seed = str(frng[0]).to_int()
+		fungus_rng.state = str(frng[1]).to_int()
+	scorched = {}
+	var sc: Dictionary = d.get("scorched", {})
+	for k in sc:
+		scorched[String(k)] = int(sc[k])
 	# Derived from the map rather than saved, so a resumed run does not depend
 	# on a route written by an older version of this code.
 	_lay_the_beat()
@@ -6791,7 +7086,7 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 	return true
 
 func _step_toward(actor: Entity, target: Vector2i) -> void:
-	var route := pathfinder.path(Vector2i(actor.x, actor.y), target)
+	var route := pathfinder.path(Vector2i(actor.x, actor.y), target, actor.careful)
 	if route.is_empty():
 		return
 	var step: Vector2i = route[0]

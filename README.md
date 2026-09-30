@@ -274,6 +274,28 @@ never give away an archer's position.
 The effect system is deliberately generic -- a damage number and an overhead
 `!` or `zzZ` are the same thing, a marker that appears above a cell and fades.
 
+## The wrong fungus
+
+Green fungus is food and light. **Purple and red are not.** Purple is poison;
+red is blood, and it CRAWLS toward the dead -- one square every few turns, a
+chain you can see -- and claims the body it reaches. Standing on either hurts.
+Monsters walk round purple but cross red without a thought, and carry its
+spores. A rat, bat or rabbit passing a body seeds it, and some turns later the
+body is gone and purple or red stands where it lay.
+
+**Crossing it is a choice.** Walk into it and you step on, and it hurts -- your
+auto-travel stops short rather than decide that for you. The smart creatures
+(dragons, wizards, liches) route round it; everything else charges straight
+through and is hurt too, so a pack that crosses purple to reach you arrives
+wounded.
+
+**Fire is the answer.** Beside one, **G** (B on a pad) burns it: the one you
+face first. A fire weapon burns it in one press; your torch scorches it off in
+three; a shot from a fire weapon burns it from range. The HERE box says so when
+one is beside you. Nothing wrong grows near a lit brazier. Floors 1-2 grow none; from
+floor 3 down there is more and more of it (the caves keep most of their green,
+the one thing standing in for potions down there).
+
 ## Sound
 
 There are no audio files. Every sound is **synthesized at startup** from a

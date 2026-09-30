@@ -811,6 +811,43 @@ func _cave_cell() -> Vector2i:
 		rng.randi_range(region.position.x + 1, maxi(region.position.x + 1, region.end.x - 2)),
 		rng.randi_range(region.position.y + 1, maxi(region.position.y + 1, region.end.y - 2)))
 
+## BRAD'S FUNGUS TABLE (2026-09-29), by floor on the way down; the climb
+## mirrors it. Green, purple, red, in parts of 100:
+##   1-2 all green | 3: 80/20/0 | 4-5 (caves): 70/25/5 | 6 (caves): 60/25/15
+##   7-9: 30/30/40 | 10: 34/33/33
+## The caves keep most of their green on purpose: green fungus is their
+## deliberate stand-in for potions (CLAUDE.md), so they trade only a little.
+const FUNGUS_TABLE := {
+	1: [100, 0, 0], 2: [100, 0, 0], 3: [80, 20, 0], 4: [70, 25, 5],
+	5: [70, 25, 5], 6: [60, 25, 15], 7: [30, 30, 40], 8: [30, 30, 40],
+	9: [30, 30, 40], 10: [34, 33, 33],
+}
+## THE CLIMB IS WORSE, by the same floor numbers read on the way back up (Brad,
+## 2026-09-29: "especially on the ascend, there should be more red and purple
+## than green, but enough green to be useful"). The climb caves keep 40 green:
+## green is still their food.
+const FUNGUS_CLIMB_TABLE := {
+	1: [50, 30, 20], 2: [50, 30, 20], 3: [45, 35, 20], 4: [40, 35, 25],
+	5: [40, 35, 25], 6: [40, 35, 25], 7: [25, 30, 45], 8: [25, 30, 45],
+	9: [25, 30, 45], 10: [34, 33, 33],
+}
+
+## The fungus a roll of `r` (0..1) gives on floor `floor_no` (1-10, the climb
+## read by the same numbers), from the descent's table or the climb's.
+static func fungus_for(floor_no: int, r: float, climbing := false) -> int:
+	var parts: Array = fungus_parts(floor_no, climbing)
+	var at := r * 100.0
+	if at < float(parts[0]):
+		return Tiles.FUNGUS
+	if at < float(parts[0]) + float(parts[1]):
+		return Tiles.FUNGUS_PURPLE
+	return Tiles.FUNGUS_RED
+
+## [green, purple, red] in parts of 100 for a floor, going down or climbing.
+static func fungus_parts(floor_no: int, climbing := false) -> Array:
+	var table: Dictionary = FUNGUS_CLIMB_TABLE if climbing else FUNGUS_TABLE
+	return table.get(clampi(floor_no, 1, 10), [100, 0, 0])
+
 ## Fungus patches and pits: features rather than ground, so they are scattered
 ## rather than rolled per room.
 func _scatter_features(map: DungeonMap) -> void:
@@ -826,7 +863,14 @@ func _scatter_features(map: DungeonMap) -> void:
 	# on these floors the glow is finally worth more than the hit point.
 	var caveish := Bands.is_caves(depth)
 	var patches := rng.randi_range(4, 6) if caveish else rng.randi_range(1, 3)
+	# Which fungus each bed is, drawn from its OWN stream seeded from the run:
+	# drawing it from `rng` would move every later roll and change every
+	# existing seed's floor (CLAUDE.md).
+	var colour_rng := RandomNumberGenerator.new()
+	colour_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0xF0F0
 	for _patch in patches:
+		var bed := fungus_for(Bands.mirrored(depth), colour_rng.randf(),
+			Bands.is_corrupted(depth))
 		var seed_cell := _cave_cell() if caveish else Vector2i(-1, -1)
 		if seed_cell.x < 0:
 			seed_cell = _random_open(map)
@@ -850,7 +894,7 @@ func _scatter_features(map: DungeonMap) -> void:
 			var c := seed_cell + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
 			if map.get_tile(c.x, c.y) == Tiles.FLOOR \
 					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:
-				map.set_tile(c.x, c.y, Tiles.FUNGUS)
+				map.set_tile(c.x, c.y, bed)
 
 	for _snare in rng.randi_range(0, 3):
 		var t := _open_ground(map)

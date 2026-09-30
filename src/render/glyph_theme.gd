@@ -147,6 +147,8 @@ const OVERRIDES := {
 	# picture of water DOING something, and it gives a shader an edge to move.
 	&"water":         0xEF30,    # fa-water
 	&"fungus":        0xF07DF,   # md-mushroom
+	&"purple_fungus": 0xF07DF,   # the same mushroom; its colour says which
+	&"red_fungus":    0xF07DF,
 	&"trap":          0xF0026,   # md-alert
 	&"bones":         0xF00B9,   # md-bone
 }
