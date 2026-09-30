@@ -2550,6 +2550,12 @@ func _settle_the_grave() -> void:
 		Color(0.70, 0.72, 0.78))
 
 func _drop_loot(victim: Entity) -> void:
+	# Risen by the red: everything it had dropped when it first died, so this
+	# is a copy. Nothing twice -- not gear, not meat, not the dragon's sack.
+	if victim.fungal:
+		victim.equipped.clear()
+		victim.inventory.clear()
+		return
 	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit" \
 			or victim.appearance == &"bear":
 		_drop_meat(victim)
@@ -3470,6 +3476,23 @@ const RAT_NOSE := 8
 ## POISON_LINGER turns after you leave. It is AIR -- flyers breathe it too.
 const POISON_HURT := 1
 const POISON_LINGER := 3
+## THE RED RAISES THE DEAD (strand 4; Brad's numbers, 2026-09-30). A claimed
+## body rises RISE_BASE + its max hp turns after the red takes it -- a rat in 8,
+## a young dragon in 59, time to burn it or to hide. It gets up at half its hp
+## and hitting RISEN_HITS as hard, hostile to everything with a side, and it
+## never leaves the room it rose in (RISEN_REACH squares round the spot in caves
+## and corridors) until the gong calls it. Its second death is its last.
+const RISE_BASE := 4
+const RISEN_HITS := 1.5
+const RISEN_REACH := 4
+## The log says a body is stirring this many turns before it gets up.
+const RISE_WARNING := 3
+## THE RISEN ARE BLIND (Brad, 2026-09-30: sound over sight, The Last of Us's
+## clickers). They find you by what they hear: any noise whose ring reaches
+## them, and footsteps this close. Rats make none -- they are the red's own
+## carriers -- and neither does a ring-rat, until noise gives it away. A risen
+## SKELETON keeps its eyes, and the dead are not fooled by the ring.
+const RISEN_HEARING := 3
 
 ## Every square in a purple cloud, as a set, for the views to tint -- worked
 ## out once a turn (or when fungus changes), not per square per frame. Brad,
@@ -3525,16 +3548,36 @@ var scorched: Dictionary = {}
 
 func _lay_body(victim: Entity) -> void:
 	# A marked death takes its fungus with it. Purple: seeded as it falls, so
-	# it rots into purple with no carrier needed. Red: claimed on the spot --
-	# strand 4 raises claimed bodies -- and until then red grows under it.
+	# it rots into purple with no carrier needed. Red: red grows under it, and
+	# if it is a body the red can raise, it is claimed on the spot.
+	var at := Vector2i(victim.x, victim.y)
 	var seeded := turns if victim.spores == &"purple" else -1
-	var claimed := victim.spores == &"red"
+	var can_rise := _can_rise(victim)
+	var red := victim.spores == &"red" and _red_can_hold(at)
+	var claimed := red and can_rise
 	bodies.append({"x": victim.x, "y": victim.y, "app": String(victim.appearance),
 		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict(),
-		"seeded": seeded, "claimed": claimed})
-	var at := Vector2i(victim.x, victim.y)
-	if claimed and _fungus_can_grow(at) and pathfinder != null:
+		"seeded": seeded, "claimed": claimed, "still": not can_rise,
+		"rises": turns + _hatch(victim.max_hp) if claimed else -1})
+	if red and map.get_tile(at.x, at.y) != Tiles.FUNGUS_RED and pathfinder != null:
 		_set_fungus(at, Tiles.FUNGUS_RED)
+
+## Whether the red can raise this creature: the living, and skeletons (Brad,
+## 2026-09-30: a red-risen skeleton is more zombie than not). Not the other
+## undead or the golem -- nothing in them for it to grow in -- and nothing that
+## has already come back once, from the red or from a grave.
+func _can_rise(e: Entity) -> bool:
+	if e.fungal or e.risen or e.appearance == &"golem":
+		return false
+	return not e.unliving or e.appearance == &"skeleton"
+
+## Red already there, or ground it could grow on.
+func _red_can_hold(c: Vector2i) -> bool:
+	return map.get_tile(c.x, c.y) == Tiles.FUNGUS_RED or _fungus_can_grow(c)
+
+## How long a claimed body takes to rise: the bigger, the longer.
+func _hatch(max_hp: int) -> int:
+	return RISE_BASE + max_hp
 
 ## True within FIRE_SAFE of a lit brazier, where no wrong fungus will grow.
 func _near_fire(c: Vector2i) -> bool:
@@ -3593,7 +3636,11 @@ func _grow_fungus() -> void:
 		var at := Vector2i(int(b["x"]), int(b["y"]))
 		var seeded := int(b.get("seeded", -1))
 		if seeded >= 0 and turns - seeded >= FUNGUS_ROOT and not bool(b.get("claimed", false)):
-			var grows := _body_fungus()
+			# A purple-marked body keeps the tell's promise and rots purple;
+			# only an unmarked one, seeded by a passing carrier, rolls the
+			# floor's table. (Brad, 2026-09-30: a corrupted kobold rotted red.)
+			var grows := Tiles.FUNGUS_PURPLE \
+				if String(b["e"].get("spores", "")) == "purple" else _body_fungus()
 			if grows >= 0 and _fungus_can_grow(at):
 				_set_fungus(at, grows)
 				if map.is_visible(at.x, at.y):
@@ -3606,9 +3653,10 @@ func _grow_fungus() -> void:
 			b["seeded"] = -2
 		still.append(b)
 	bodies = still
-	# Red crawls toward the dead.
+	# Red crawls toward the dead, and the dead it holds get up.
 	if turns % CRAWL_EVERY == 0:
 		_crawl_red()
+	_raise_the_red()
 	# Trails: marked walkers leave their fungus behind, now and then.
 	for e in entities:
 		if not e.alive or e.is_player or e.flying or e.spores == &"" \
@@ -3636,9 +3684,13 @@ func _grow_fungus() -> void:
 		if not e.alive or e.is_player or e.flying:
 			continue
 		var t := map.get_tile(e.x, e.y)
-		if not Tiles.is_bad_fungus(t):
+		if not Tiles.is_bad_fungus(t) or (e.fungal and t == Tiles.FUNGUS_RED):
 			continue
 		e.take_spores(&"red" if t == Tiles.FUNGUS_RED else &"purple")
+		# The red lets its carriers be (Brad, 2026-09-30): it marks a rat and
+		# does not bite it.
+		if t == Tiles.FUNGUS_RED and e.appearance == &"rat":
+			continue
 		e.take_damage(PURPLE_HURT if t == Tiles.FUNGUS_PURPLE else RED_HURT)
 		if e.alive and e.alertness == Entity.Alert.ASLEEP:
 			# A sleeper that finds itself in it -- spawned there, or grown
@@ -3654,6 +3706,147 @@ func _grow_fungus() -> void:
 			# rest of a death, as any other. It stands as its own killer here;
 			# the killer is only named on the player's death line.
 			_settle_death(e, e)
+
+## The claimed dead get up when their time comes -- unless something is
+## standing on them, in which case they wait. A few turns before, a body you
+## can see stirs, once: the last warning to burn it.
+func _raise_the_red() -> void:
+	var still: Array = []
+	for b in bodies:
+		if not bool(b.get("claimed", false)):
+			still.append(b)
+			continue
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		# Claimed in a save from before the rising existed: start its clock.
+		if int(b.get("rises", -1)) < 0:
+			b["rises"] = turns + _hatch(int(b["e"].get("max_hp", 1)))
+		var left := int(b["rises"]) - turns
+		if left <= RISE_WARNING and not bool(b.get("stirred", false)) \
+				and map.is_visible(at.x, at.y):
+			b["stirred"] = true
+			msg_log.add("The %s's body twitches in the red fungus."
+				% String(b["e"].get("name", b["app"])), Color(0.88, 0.45, 0.45))
+		if left > 0 or entity_at(at.x, at.y) != null or not _rise_from(b):
+			still.append(b)
+	bodies = still
+
+## One body up: the creature it was, at half its hp and hitting harder, on
+## the side of nothing. False if the body could not be read.
+func _rise_from(b: Dictionary) -> bool:
+	var r := Entity.from_dict(b["e"])
+	if r == null:
+		return false
+	var at := Vector2i(int(b["x"]), int(b["y"]))
+	r.x = at.x
+	r.y = at.y
+	r.alive = true
+	r.faction = Entity.Faction.RISEN
+	r.fungal = true
+	r.spores = &"red"
+	r.leash = _leash_at(at)
+	r.alertness = Entity.Alert.AWAKE
+	r.fleeing = false
+	r.flee_below = 0.0
+	r.shaken = 0
+	r.poisoned = 0
+	r.chilled = 0
+	r.regen = 0
+	r.careful = false
+	r.max_hp = maxi(1, r.max_hp / 2)
+	r.hp = r.max_hp
+	r.power = maxi(1, ceili(r.power * RISEN_HITS))
+	var was := r.name.trim_prefix("risen ")
+	r.name = "risen %s" % was
+	entities.append(r)
+	Scheduler.spend(r, Scheduler.ACTION_COST)
+	# The body got up: the shovel cannot have it as well.
+	for rec in recent_dead.duplicate():
+		var d: Dictionary = rec["e"]
+		if int(rec["turn"]) == int(b["turn"]) and int(d.get("x", -1)) == at.x \
+				and int(d.get("y", -1)) == at.y:
+			recent_dead.erase(rec)
+	events.append({"kind": &"notice", "to": at})
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The %s rises out of the red fungus." % was, Color(0.92, 0.40, 0.40))
+	return true
+
+## Where a risen body may walk: the room (or vault) it rose in, else a square
+## RISEN_REACH round the spot -- caves and corridors have no walls to hold it.
+func _leash_at(at: Vector2i) -> Rect2i:
+	for room in room_rects:
+		if room.has_point(at):
+			return room
+	for vr in vault_rects:
+		if vr.has_point(at):
+			return vr
+	return Rect2i(at - Vector2i(RISEN_REACH, RISEN_REACH),
+		Vector2i(RISEN_REACH * 2 + 1, RISEN_REACH * 2 + 1))
+
+## THE RISEN (strand 4). The red walks it at the nearest thing with a side --
+## you, an ally, a monster -- that it perceives (see _risen_perceives) inside
+## its room or at the room's edge (a doorway); failing that, to the last thing
+## it heard. It never steps out: go back in prepared, or stay out. Freed by the
+## gong, it hunts you wherever you are.
+func _ai_risen(actor: Entity) -> void:
+	var free := not actor.leash.has_area()
+	var reach := actor.leash.grow(1)
+	var foe: Entity = null
+	var best := 0
+	for e in entities:
+		if not e.alive or not actor.hostile_to(e):
+			continue
+		if not free and not reach.has_point(Vector2i(e.x, e.y)):
+			continue
+		if not (free and e.is_player) and not _risen_perceives(actor, e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if foe == null or d < best:
+			foe = e
+			best = d
+	var goal := Vector2i(-1, -1)
+	if foe != null:
+		if actor.is_adjacent(foe):
+			_attack(actor, foe)
+			return
+		goal = Vector2i(foe.x, foe.y)
+	elif actor.heard.x >= 0:
+		# Gone to the sound and found nothing: it forgets it.
+		if Los.steps(actor.x, actor.y, actor.heard.x, actor.heard.y) <= 1:
+			actor.heard = Vector2i(-1, -1)
+			return
+		goal = actor.heard
+	else:
+		return
+	var from := Vector2i(actor.x, actor.y)
+	var held := not free and actor.leash.has_point(from)
+	if held:
+		# Not even the door: opening it would be a step out.
+		var route := pathfinder.path(from, goal)
+		if route.is_empty() or not actor.leash.has_point(route[0]):
+			return
+	_step_toward(actor, goal)
+	# A step round a blocker can land outside the room: take it back.
+	if held and not actor.leash.has_point(Vector2i(actor.x, actor.y)):
+		actor.x = from.x
+		actor.y = from.y
+
+## Whether a risen body knows this creature is there. Blind, so: whatever is
+## where it last heard something; whatever steps within RISEN_HEARING (or
+## touches it) -- except a rat, real or ring. A risen skeleton also SEES, and
+## the dead are not fooled by the ring. Real rats it never hunts at all.
+func _risen_perceives(actor: Entity, e: Entity) -> bool:
+	if e.appearance == &"rat" and not e.is_player:
+		return false
+	if actor.unliving and _can_see(actor, e):
+		return true
+	if actor.heard.x >= 0 and Los.steps(e.x, e.y, actor.heard.x, actor.heard.y) <= 1:
+		return true
+	if e.is_player and ratted():
+		return false
+	var d := Los.steps(actor.x, actor.y, e.x, e.y)
+	if d <= 1:
+		return true
+	return not e.flying and d <= RISEN_HEARING
 
 func _count_tiles(t: int) -> int:
 	var n := 0
@@ -3694,9 +3887,11 @@ func _crawl_red() -> void:
 	if reds.is_empty():
 		return
 	for b in bodies:
-		if bool(b.get("claimed", false)):
+		if bool(b.get("claimed", false)) or bool(b.get("still", false)):
 			continue
 		var at := Vector2i(int(b["x"]), int(b["y"]))
+		if not _red_can_hold(at):
+			continue
 		var from := Vector2i(-1, -1)
 		var best := CRAWL_REACH + 1
 		for r in reds:
@@ -3708,6 +3903,9 @@ func _crawl_red() -> void:
 			continue
 		if best <= 1:
 			b["claimed"] = true
+			b["rises"] = turns + _hatch(int(b["e"].get("max_hp", 1)))
+			if map.get_tile(at.x, at.y) != Tiles.FUNGUS_RED:
+				_set_fungus(at, Tiles.FUNGUS_RED)
 			if map.is_visible(at.x, at.y):
 				msg_log.add("The red fungus reaches the %s's body."
 					% String(b["e"].get("name", b["app"])), Color(0.88, 0.45, 0.45))
@@ -3746,6 +3944,9 @@ func _shuffle_off_fungus(e: Entity, from_tile: int) -> void:
 ## Standing on the wrong fungus hurts, every turn you stay.
 func _fungus_underfoot(underfoot: int) -> void:
 	if not Tiles.is_bad_fungus(underfoot):
+		return
+	# Nor a ring-rat: to the red, a rat is a rat.
+	if underfoot == Tiles.FUNGUS_RED and ratted():
 		return
 	var hurt := PURPLE_HURT if underfoot == Tiles.FUNGUS_PURPLE else RED_HURT
 	player.take_damage(hurt)
@@ -3792,6 +3993,13 @@ func _burn_at(c: Vector2i) -> bool:
 	return true
 
 func _burn_fungus(c: Vector2i) -> void:
+	# A body lying in it burns too: that is how a claimed one is stopped.
+	for b in bodies.duplicate():
+		if int(b["x"]) == c.x and int(b["y"]) == c.y:
+			bodies.erase(b)
+			if map.is_visible(c.x, c.y):
+				msg_log.add("The %s's body burns with it."
+					% String(b["e"].get("name", b["app"])), Color(0.96, 0.66, 0.36))
 	scorched.erase("%d,%d" % [c.x, c.y])
 	_set_fungus(c, Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN
 		else Tiles.FLOOR)
@@ -3803,7 +4011,8 @@ func _rot_bodies() -> void:
 		return
 	var still: Array = []
 	for b in bodies:
-		if turns - int(b["turn"]) < BODY_ROT:
+		# The red holds what it has claimed: it rises, it does not rot.
+		if turns - int(b["turn"]) < BODY_ROT or bool(b.get("claimed", false)):
 			still.append(b)
 	bodies = still
 
@@ -3815,7 +4024,7 @@ func _rot_bodies() -> void:
 var recent_dead: Array = []
 
 func _remember_the_dead(victim: Entity) -> void:
-	if victim.is_player or victim.faction == Entity.Faction.PLAYER:
+	if victim.is_player or victim.faction == Entity.Faction.PLAYER or victim.fungal:
 		return
 	recent_dead.append({"turn": turns, "e": victim.to_dict()})
 	var still: Array = []
@@ -4089,6 +4298,9 @@ func _invoke_shrine(kind: int) -> void:
 				# things answer" was true about the waking and a lie about the
 				# answering.
 				e.pursue_turns = VIGIL_PURSUIT
+				# The one thing that lets the risen out of their room.
+				if e.faction == Entity.Faction.RISEN:
+					e.leash = Rect2i()
 			# The loudest thing in the game, and until now the only one with no
 			# picture. It does not wake through _make_noise -- it wakes the
 			# whole floor directly, above -- so this is called afterwards purely
@@ -4219,6 +4431,12 @@ func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void
 	# needs to know is that they were LOUD; whether the room happened to be
 	# empty is a separate fact, and the message log already carries it.
 	events.append({"kind": &"noise", "to": at, "radius": radius, "cause": cause})
+	# The blind dead turn to it -- if it is in their room, or at its edge.
+	for e in entities:
+		if e.alive and e.faction == Entity.Faction.RISEN \
+				and Los.steps(e.x, e.y, at.x, at.y) <= radius \
+				and (not e.leash.has_area() or e.leash.grow(1).has_point(at)):
+			e.heard = at
 	var roused := 0
 	for e in entities:
 		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
@@ -6205,7 +6423,12 @@ func morgue_line() -> String:
 	else:
 		fate = "left the dungeon on depth %d" % depth
 	var carried := "with the Amulet" if _carrying_amulet() else "empty-handed"
-	var line := "%s  level %d  %s, %s, after %d turns" \
+	# An escape already says the Amulet in its fate; saying it twice read as
+	# "...with the Amulet of the Deep, with the Amulet, after..." (Brad's first
+	# Legends entry, 2026-09-30). The importer's escape pattern skips to
+	# ", after", so both forms still read.
+	var line := "%s  level %d  %s, after %d turns" % [when, player.level, fate, turns] \
+		if won else "%s  level %d  %s, %s, after %d turns" \
 		% [when, player.level, fate, carried, turns]
 	# The run record, appended rather than replacing anything, so the line stays
 	# something you can read and every line already written still parses. This
@@ -6336,6 +6559,13 @@ func _take_ai_turn(actor: Entity) -> int:
 	# this floor" into a lie the legend tells.
 	if actor.faction == Entity.Faction.NEUTRAL:
 		return Scheduler.ACTION_COST
+
+	# The risen have no awareness to update and nothing to feel: the red
+	# walks them at whatever is in their room. See _ai_risen.
+	if actor.faction == Entity.Faction.RISEN:
+		_last_move_cost = Scheduler.ACTION_COST
+		_ai_risen(actor)
+		return _last_move_cost
 
 	# Regeneration ticks even while asleep, so a troll you wounded and fled
 	# from is whole again when you come back. That is the point of it.
@@ -8077,8 +8307,18 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	if defender.is_player:
 		# Never keep auto-walking into something that is hurting you.
 		_travel.clear()
-	else:
+	elif attacker.faction == Entity.Faction.RISEN:
+		# Woken by the dead, not by you: no "notices you", and it turns on
+		# what hit it.
+		if defender.alertness != Entity.Alert.AWAKE:
+			defender.alertness = Entity.Alert.AWAKE
+			defender.last_seen = Vector2i(attacker.x, attacker.y)
+			defender.lost_turns = 0
+	elif defender.faction != Entity.Faction.RISEN:
 		wake(defender)
+	# A risen hit carries the red: what it kills, rises. The snowball.
+	if attacker.fungal and not defender.is_player:
+		defender.take_spores(&"red")
 
 	# Fighting is loud, and it is loud at BOTH ends.
 	#

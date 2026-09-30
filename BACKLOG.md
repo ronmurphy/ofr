@@ -165,7 +165,27 @@ strand at a time with play between:
    breathing it poisons -- 1 hp a turn, lingering 3 turns after leaving
    (Entity.poisoned, saved). It is air: flyers breathe it. Sidebar status
    "poisoned · N" in purple; HERE says how long; one log line on and off.
-4. **Red fungus raises the dead.** It is a timer: after some turns the body it
+4. **Red fungus raises the dead. BUILT 2026-09-30**, waiting on play. As
+   built (Brad's calls): a claimed body always has red under it; it rises
+   RISE_BASE 4 + its max hp turns after the claim (rat 8, kobold 10, troll 34,
+   dragon 59) and never rots while it waits; "twitches" in the log 3 turns
+   before; something standing on it holds it down. It gets up as "risen X",
+   half hp, power x1.5, Faction.RISEN (appended) -- hostile to you, your allies
+   AND the monsters -- held to its room (room_rects, then vault_rects; else 4
+   squares round the spot), never opening the door. **BLIND -- it hunts by
+   SOUND (Brad, 2026-09-30, the clickers):** any noise whose ring reaches its
+   room (a door, a fight, bones) draws it to the spot, where it finds what is
+   there; footsteps within RISEN_HEARING 3, or a touch, find you. A rat makes
+   no footsteps -- nor does a ring-rat, until noise gives it away. A risen
+   SKELETON keeps its eyes and sees through the ring. Real rats are never
+   hunted and red never bites them (nor a ring-rat): they are its carriers.
+   Its hits mark the victim red (the snowball).
+   The gong frees it. Living creatures and skeletons rise; wights, shadows,
+   liches, banshees and golems do not (red grows, nothing is claimed). Its
+   second death is its last: no body claimed, nothing dropped (the first death
+   dropped it all), no shovel. Burning the red it lies in burns the body.
+   Test: _test_the_red_raises_the_dead. Original design notes follow.
+   It is a timer: after some turns the body it
    grew from rises -- less HP, hits harder, hunts the player (Brad: a zombie
    piloted by a fungus, The Last of Us). Burn it before it hatches (strand 6).
    **Brad, 2026-09-29: confined to the room it rose in** -- a zombie room: it

@@ -5,7 +5,10 @@ extends RefCounted
 ## Entity with `is_player` set. That is deliberate: when a party arrives later,
 ## it is four of these in a list rather than a new concept.
 
-enum Faction { PLAYER, MONSTER, NEUTRAL }
+## RISEN is APPENDED (factions are saved as ints): the dead the red fungus
+## raised. Hostile to everything with a side -- you, your allies and the
+## monsters alike -- which is what lets a red room snowball.
+enum Faction { PLAYER, MONSTER, NEUTRAL, RISEN }
 
 ## Whether these two would fight, which is NOT the same question as "is one of
 ## them the player".
@@ -346,6 +349,17 @@ var casts := false
 var poisoned := 0
 ## The turn its last flare lasts until; -1 for none. Saved.
 var flare_until := -1
+## Raised by the red fungus (strand 4). Its second death is its last: its body
+## never rises again, it drops nothing (its gear dropped the first time) and
+## the shovel will not have it. Saved.
+var fungal := false
+## Where a risen body may walk: the room it rose in, or a square round the
+## spot in caves and corridors. An empty rect means free -- the gong's call.
+## Saved.
+var leash := Rect2i()
+## Where a risen body last heard something, or (-1, -1). It goes there and
+## finds what is there -- that is how a ring-rat is caught. Saved.
+var heard := Vector2i(-1, -1)
 
 ## The eight steps clockwise from north, on a screen where y grows downward.
 const CLOCKWISE: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
@@ -481,6 +495,8 @@ func to_dict() -> Dictionary:
 		"facing": [facing.x, facing.y],
 		"spores": String(spores), "careful": careful,
 		"casts": casts, "flare_until": flare_until, "poisoned": poisoned,
+		"fungal": fungal, "heard": [heard.x, heard.y],
+		"leash": [leash.position.x, leash.position.y, leash.size.x, leash.size.y],
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -541,6 +557,11 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.casts = bool(d.get("casts", false))
 	e.poisoned = int(d.get("poisoned", 0))
 	e.flare_until = int(d.get("flare_until", -1))
+	e.fungal = bool(d.get("fungal", false))
+	var h: Array = d.get("heard", [-1, -1])
+	e.heard = Vector2i(int(h[0]), int(h[1]))
+	var l: Array = d.get("leash", [0, 0, 0, 0])
+	e.leash = Rect2i(int(l[0]), int(l[1]), int(l[2]), int(l[3]))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))

@@ -104,6 +104,7 @@ func _initialize() -> void:
 	_test_the_dark_is_fair()
 	_test_the_fungus_spreads()
 	_test_the_miasma()
+	_test_the_red_raises_the_dead()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1610,6 +1611,258 @@ func _test_the_miasma() -> void:
 	g._burn_fungus(purple)
 	check("and goes when the fungus burns", not g.miasma_cloud().has(purple + Vector2i(1, 1)))
 
+## THE RED RAISES THE DEAD (strand 4): claimed bodies rise on a timer that
+## grows with size, held to their room until the gong; fire stops them; the
+## second death is the last.
+func _test_the_red_raises_the_dead() -> void:
+	var g := GameState.new(9494)
+	g.new_game()
+	g.depth = 7
+	g.build_level()
+	var o := Vector2i(g.player.x, g.player.y)
+	for dy in range(-6, 7):
+		for dx in range(-9, 10):
+			g.map.set_tile(o.x + dx, o.y + dy, Tiles.FLOOR)
+	g.entities = [g.player]
+	g.bodies = []
+	g.recent_dead = []
+	var room := Rect2i(o.x - 3, o.y - 3, 7, 7)
+	g.room_rects = [room]
+	g.vault_rects = []
+	g.pathfinder = Pathfinder.new(g.map)
+	g._gather_lights()
+	g.update_vision()
+
+	# Who the red can raise: the living and skeletons; not the other undead,
+	# not the golem.
+	var kinds := {"kobold": true, "skeleton": true, "wight": false, "stone golem": false}
+	for name in kinds:
+		var m := GameState.monster_from(_bestiary_entry(name), o.x + 2, o.y)
+		check("the red %s %s" % ["can raise a" if kinds[name] else "cannot raise a", name],
+			g._can_rise(m) == kinds[name])
+
+	# A red-marked kobold dies: red under it, claimed, a timer by its size.
+	var kob := GameState.monster_from(_bestiary_entry("kobold"), o.x + 2, o.y)
+	kob.spores = &"red"
+	kob.inventory.append(Item.make(&"meat"))
+	g.entities = [g.player, kob]
+	g._settle_death(kob, kob)
+	var at := Vector2i(o.x + 2, o.y)
+	check("a red-marked death is claimed, with red under it",
+		g.bodies.size() == 1 and bool(g.bodies[0]["claimed"])
+		and g.map.get_tile(at.x, at.y) == Tiles.FUNGUS_RED)
+	var rises := int(g.bodies[0]["rises"])
+	check("it rises RISE_BASE + its max hp turns later",
+		rises == g.turns + GameState.RISE_BASE + kob.max_hp, "%d" % rises)
+	# A red-marked wight: red grows, nothing is claimed.
+	var wight := GameState.monster_from(_bestiary_entry("wight"), o.x - 2, o.y)
+	wight.spores = &"red"
+	g.entities = [g.player, wight]
+	g._settle_death(wight, wight)
+	check("a wight's body gets red under it but is never claimed",
+		g.map.get_tile(o.x - 2, o.y) == Tiles.FUNGUS_RED
+		and not bool(g.bodies[1]["claimed"]) and bool(g.bodies[1]["still"]))
+	g.bodies.pop_back()
+	g.recent_dead.pop_back()
+	g.entities = [g.player]
+	check("precondition: the shovel remembers the kobold", g.recent_dead.size() == 1)
+
+	# Claimed bodies do not rot while they wait.
+	var t0 := g.turns
+	g.turns = t0 + GameState.BODY_ROT + 1
+	g._rot_bodies()
+	check("a claimed body does not rot away", g.bodies.size() == 1)
+	g.turns = t0
+
+	# Before its time, nothing; at the warning, a stir; then it gets up.
+	g._raise_the_red()
+	check("before its time it lies still",
+		g.bodies.size() == 1 and g.entities.size() == 1)
+	g.turns = rises - GameState.RISE_WARNING
+	g._raise_the_red()
+	check("a few turns before, a body you can see stirs",
+		g.bodies.size() == 1 and bool(g.bodies[0].get("stirred", false)))
+	g.turns = rises
+	var sitter := GameState.monster_from(_bestiary_entry("giant rat"), at.x, at.y)
+	g.entities = [g.player, sitter]
+	g._raise_the_red()
+	check("something standing on it holds it down", g.bodies.size() == 1)
+	g.entities = [g.player]
+	g._raise_the_red()
+	check("then it rises, and the body is gone",
+		g.bodies.is_empty() and g.entities.size() == 2)
+	var risen: Entity = g.entities[1]
+	check("the risen kobold is the kobold, on no one's side",
+		risen.name == "risen kobold" and risen.faction == Entity.Faction.RISEN
+		and risen.fungal and risen.spores == &"red"
+		and risen.hostile_to(g.player) and risen.hostile_to(sitter))
+	check("at half its hp, hitting half as hard again",
+		risen.max_hp == maxi(1, kob.max_hp / 2) and risen.hp == risen.max_hp
+		and risen.power == ceili(kob.power * GameState.RISEN_HITS),
+		"hp %d power %d" % [risen.max_hp, risen.power])
+	check("held to the room it rose in", risen.leash == room)
+	check("what rose, the shovel cannot also dig up", g.recent_dead.is_empty())
+	var back := Entity.from_dict(risen.to_dict())
+	check("and all of that is saved",
+		back.fungal and back.leash == room and back.faction == Entity.Faction.RISEN)
+
+	# It walks the red unharmed.
+	var hp_before := risen.hp
+	g._grow_fungus()
+	check("it stands in the red without hurt", risen.alive and risen.hp == hp_before)
+
+	# THE ROOM. Just outside it, close enough to hear: it stays. At its edge:
+	# it comes to the edge and no further. The gong: it follows you out.
+	g.player.x = o.x + 5
+	g.player.y = o.y
+	risen.x = o.x + 3
+	risen.y = o.y
+	g._gather_lights()
+	g.update_vision()
+	check("precondition: it hears you out there", g._risen_perceives(risen, g.player))
+	g._take_ai_turn(risen)
+	check("you outside its room: it does not come", risen.x == o.x + 3)
+	g.player.x = o.x + 4
+	risen.x = o.x + 1
+	for i in 4:
+		g._take_ai_turn(risen)
+	check("you at its edge: it comes to the edge (and must)",
+		risen.x == o.x + 3 and risen.is_adjacent(g.player), "x %d" % (risen.x - o.x))
+	g.player.x = o.x + 6
+	for i in 3:
+		g._take_ai_turn(risen)
+	check("you step back out: it stays in", risen.x == o.x + 3)
+	g._invoke_shrine(Shrines.VIGIL)
+	check("the gong frees it", not risen.leash.has_area())
+	g._take_ai_turn(risen)
+	check("and it follows you out", risen.x == o.x + 4)
+
+	# BLIND (Brad: sound over sight). A risen kobold in the room, you lit
+	# across it: unseen. Within earshot: found.
+	var blind := GameState.monster_from(_bestiary_entry("kobold"), o.x - 2, o.y)
+	blind.faction = Entity.Faction.RISEN
+	blind.fungal = true
+	blind.leash = room
+	g.entities = [g.player, blind]
+	g.player.x = o.x + 2
+	g.player.y = o.y
+	g._gather_lights()
+	g.update_vision()
+	check("a risen kobold does not see you across its room, lit or not",
+		not g._risen_perceives(blind, g.player))
+	g.player.x = o.x + 1
+	check("but hears you within three (and must)", g._risen_perceives(blind, g.player))
+	# The ring: a rat makes no footsteps, not even brushing past.
+	var prev: Variant = g.player.equipped.get(Item.Slot.WEAPON, null)
+	var ring := Item.make(&"rat_ring")
+	g.give_item(ring)
+	g.player.equipped[Item.Slot.WEAPON] = ring
+	check("precondition: you are a rat", g.ratted())
+	check("a ring-rat within earshot goes unheard", not g._risen_perceives(blind, g.player))
+	g.player.x = o.x - 1
+	check("even brushing past it", not g._risen_perceives(blind, g.player))
+	# Noise gives it away: it turns to the sound, and finds the rat there.
+	g._make_noise(Vector2i(g.player.x, g.player.y), GameState.COMBAT_NOISE, &"combat")
+	check("a noise in its room is heard, where it was",
+		blind.heard == Vector2i(g.player.x, g.player.y))
+	check("and at the sound, a ring-rat is caught", g._risen_perceives(blind, g.player))
+	check("what it heard is saved", Entity.from_dict(blind.to_dict()).heard == blind.heard)
+	blind.heard = Vector2i(-1, -1)
+	g._make_noise(Vector2i(o.x + 8, o.y), 12, &"combat")
+	check("a noise outside its room is not its business", blind.heard.x < 0)
+	# A risen skeleton keeps its eyes, and the ring does not fool it.
+	var bones := GameState.monster_from(_bestiary_entry("skeleton"), o.x - 3, o.y + 2)
+	bones.faction = Entity.Faction.RISEN
+	bones.fungal = true
+	bones.leash = room
+	g.player.x = o.x + 1
+	g.entities = [g.player, blind, bones]
+	check("a risen skeleton sees the ring-rat across the room",
+		g._risen_perceives(bones, g.player) and not g._risen_perceives(blind, g.player))
+	# The red and its carriers: a real rat is never hunted, and never bitten.
+	var carrier := GameState.monster_from(_bestiary_entry("giant rat"), blind.x + 1, blind.y)
+	check("a real rat beside it is let be", not g._risen_perceives(blind, carrier))
+	g._set_fungus(Vector2i(o.x - 1, o.y + 3), Tiles.FUNGUS_RED)
+	carrier.x = o.x - 1
+	carrier.y = o.y + 3
+	var gob2 := GameState.monster_from(_bestiary_entry("goblin"), o.x - 1, o.y + 3)
+	g.entities = [g.player, gob2]
+	var gob_hp := gob2.hp
+	g._grow_fungus()
+	check("precondition: the red bites a goblin", gob2.hp < gob_hp)
+	g.entities = [g.player, carrier]
+	var rat_hp := carrier.hp
+	g._grow_fungus()
+	check("but only marks a rat", carrier.hp == rat_hp and carrier.spores == &"red")
+	var my_hp := g.player.hp
+	g._fungus_underfoot(Tiles.FUNGUS_RED)
+	check("nor bites a ring-rat", g.player.hp == my_hp)
+	g.player.equipped.erase(Item.Slot.WEAPON)
+	if prev != null:
+		g.player.equipped[Item.Slot.WEAPON] = prev
+	g._fungus_underfoot(Tiles.FUNGUS_RED)
+	check("and you, yourself again, it bites", g.player.hp < my_hp)
+	g.entities = [g.player, risen]
+
+	# The snowball: what it hits carries the red, and wakes to it, not you.
+	var gob := GameState.monster_from(_bestiary_entry("goblin"), risen.x, risen.y + 1)
+	gob.alertness = Entity.Alert.ASLEEP
+	g.entities = [g.player, risen, gob]
+	check("precondition: the goblin is unmarked", gob.spores == &"")
+	g._attack(risen, gob)
+	check("a risen hit marks its victim red and wakes it toward the risen",
+		gob.spores == &"red" and gob.alertness == Entity.Alert.AWAKE
+		and gob.last_seen == Vector2i(risen.x, risen.y))
+
+	# The second death is the last: nothing dropped, no body to raise, no dig.
+	risen.inventory.append(Item.make(&"meat"))
+	var r_at := Vector2i(risen.x, risen.y)
+	var ground_before := g.items_at(r_at.x, r_at.y).size()
+	g.bodies = []
+	g._settle_death(risen, g.player)
+	check("a risen dies for good: its body is never claimed",
+		g.bodies.size() == 1 and not bool(g.bodies[0]["claimed"])
+		and bool(g.bodies[0]["still"]))
+	check("it drops nothing a second time",
+		g.items_at(r_at.x, r_at.y).size() == ground_before)
+	check("and the shovel cannot have it", g.recent_dead.is_empty())
+
+	# The crawl claims a body it reaches, and puts red under it; not a still one.
+	g.bodies = []
+	var goner := GameState.monster_from(_bestiary_entry("goblin"), o.x - 2, o.y + 2)
+	g.entities = [g.player, goner]
+	g._settle_death(goner, goner)
+	check("precondition: an unmarked body is unclaimed",
+		g.bodies.size() == 1 and not bool(g.bodies[0]["claimed"]))
+	g._set_fungus(Vector2i(o.x - 3, o.y + 2), Tiles.FUNGUS_RED)
+	g._crawl_red()
+	check("red beside a body claims it, grows under it and starts its clock",
+		bool(g.bodies[0]["claimed"]) and int(g.bodies[0]["rises"]) > g.turns
+		and g.map.get_tile(o.x - 2, o.y + 2) == Tiles.FUNGUS_RED)
+	# Fire: burn the red it lies in and the body burns with it.
+	g._burn_fungus(Vector2i(o.x - 2, o.y + 2))
+	check("burning the red it lies in burns the body", g.bodies.is_empty())
+
+	# The tell keeps its promise: a purple-marked body rots PURPLE, even where
+	# the floor's table leans red; an unmarked one rolls the table.
+	var rot_at := Vector2i(o.x - 6, o.y - 5)
+	g.entities = [g.player]
+	g.turns += 100  # "seeded ROOT turns ago" must not be a negative turn
+	var rotted := {"purple": [], "plain": []}
+	for kind in ["purple", "plain"]:
+		for i in 12:
+			g.bodies = [{"x": rot_at.x, "y": rot_at.y, "app": "kobold", "turn": g.turns,
+				"corrupted": kind == "purple", "e": {"name": "kobold",
+				"spores": "purple" if kind == "purple" else ""},
+				"seeded": g.turns - GameState.FUNGUS_ROOT, "claimed": false}]
+			g._grow_fungus()
+			rotted[kind].append(g.map.get_tile(rot_at.x, rot_at.y))
+			g._set_fungus(rot_at, Tiles.FLOOR)
+	check("unmarked bodies roll the table: some rot red here (the premise)",
+		rotted["plain"].has(Tiles.FUNGUS_RED))
+	check("a purple-marked body always rots purple",
+		rotted["purple"].count(Tiles.FUNGUS_PURPLE) == 12, str(rotted["purple"]))
+
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.
 func _test_the_fungus_spreads() -> void:
@@ -1858,8 +2111,13 @@ func _test_the_wrong_fungus() -> void:
 	for i in 5:
 		g._crawl_red()
 	check("and reaches it, claiming it", bool(g.bodies[0]["claimed"]))
+	check("and grows under it (strand 4: a claimed body lies in red)",
+		g.map.get_tile(body_at.x, body_at.y) == Tiles.FUNGUS_RED)
 	# A cut chain: burn the links, and the crawl starts again from what is left.
+	# The red under the body is cleared by hand, not burned -- burning it would
+	# burn the body too.
 	g.bodies[0]["claimed"] = false
+	g._set_fungus(body_at, Tiles.FLOOR)
 	for x in range(1, 5):
 		g._burn_fungus(Vector2i(red_at.x + x, red_at.y))
 	g._crawl_red()
@@ -2359,6 +2617,16 @@ func _test_morgue_line() -> void:
 	var victory := gs.morgue_line()
 	check("a win reads as an escape", victory.contains("escaped"))
 	check("and records the amulet", victory.contains("with the Amulet"))
+	check("and says it once", victory.count("with the Amulet") == 1, victory)
+	var probe_path := "user://scratch_escape_line_probe.txt"
+	var pf := FileAccess.open(probe_path, FileAccess.WRITE)
+	pf.store_line(victory)
+	pf.close()
+	var read_back := LegendsLog.import_text(probe_path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe_path))
+	check("and the Legends importer still reads it as an escape",
+		read_back.size() == 1 and read_back[0]["fate"] == "escaped"
+		and int(read_back[0]["turns"]) == gs.turns, str(read_back))
 
 func _shrine_arena(kind: int) -> GameState:
 	var gs := _arena(31, 13)
