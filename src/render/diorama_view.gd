@@ -779,6 +779,7 @@ func _rebuild_world() -> void:
 	light.upload(state, memory)
 	_add_multimeshes(batches)
 	_add_dots()
+	_add_miasma()
 	_add_bodies()
 	_add_items_and_entities()
 	_add_preview_and_cursor()
@@ -1111,6 +1112,35 @@ func _add_ascii_ground_mark(tile: int, x: int, y: int, visible: bool,
 	_scene_root.add_child(label)
 
 ## Every floor dot of the rebuild, in one MultiMesh -- see _add_ascii_ground_mark.
+## The miasma's cloud: a violet wash over each square of it you can see, one
+## batch -- the same squares and colour the classic view tints (Palette.MIASMA).
+var miasma_count := 0
+
+func _add_miasma() -> void:
+	var cells: Array[Vector2i] = []
+	for c in state.miasma_cloud():
+		if map_visible(c) and state.map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
+			cells.append(c)
+	miasma_count = cells.size()
+	if cells.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = _fx_quad
+	mm.instance_count = cells.size()
+	for i in cells.size():
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY,
+			Vector3(cells[i].x + 0.5, WASH_Y, cells[i].y + 0.5)))
+		mm.set_instance_color(i, Palette.MIASMA)
+	var node := MultiMeshInstance3D.new()
+	node.multimesh = mm
+	node.material_override = _fx_material
+	_scene_root.add_child(node)
+
+func map_visible(c: Vector2i) -> bool:
+	return state.map.in_bounds(c.x, c.y) and state.map.is_visible(c.x, c.y)
+
 ## The dead, each its own picture lying flat on its floor cell -- on its side,
 ## and turned with the camera so it always reads the same way up. Coloured by
 ## BodyLook, as the classic view colours it. Only where you can see.

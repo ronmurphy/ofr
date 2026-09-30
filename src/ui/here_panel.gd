@@ -62,6 +62,9 @@ func press_name(key: int) -> String:
 func status_line() -> String:
 	if state == null or state.game_over:
 		return ""
+	if state.player.poisoned > 0:
+		return "poisoned -- 1 hp a turn, %d more turn%s" % [state.player.poisoned,
+			"" if state.player.poisoned == 1 else "s"]
 	var ground := state.map.get_tile(state.player.x, state.player.y)
 	if Tiles.is_bad_fungus(ground):
 		return "%s fungus -- it hurts to stand here" % ("purple"

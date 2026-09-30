@@ -1414,6 +1414,10 @@ func _test_the_playtest_fixes() -> void:
 	here.state = gs
 	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FLOOR)
 	check("  on firm ground the HERE box says nothing extra", here.status_line() == "")
+	gs.player.poisoned = 2
+	check("  poisoned, it says so, and how long",
+		here.status_line() == "poisoned -- 1 hp a turn, 2 more turns", here.status_line())
+	gs.player.poisoned = 0
 	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.MUD)
 	check("  in mud it says so, with the cost",
 		here.status_line() == "sinking -- every step costs 2.0 turns", here.status_line())
@@ -1703,6 +1707,18 @@ func _test_both_views_share_one_moment() -> void:
 		CreatureMarks.spore_colour(marked) == Palette.FUNGUS_RED
 		and CreatureMarks.spore_colour(GameState.monster_from(GameState.BESTIARY[1], 0, 0)).a == 0.0)
 	st0.entities.erase(marked)
+	# The miasma's cloud is washed over its squares in 3D.
+	var stc: GameState = scene.state
+	var pc := Vector2i(stc.player.x + 2, stc.player.y)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			stc.map.set_tile(pc.x + dx, pc.y + dy, Tiles.FLOOR)
+	stc._set_fungus(pc, Tiles.FUNGUS_PURPLE)
+	stc.update_vision()
+	scene.diorama._rebuild_world()
+	check("the miasma's cloud is tinted in 3D, over the squares round the fungus",
+		scene.diorama.miasma_count >= 4, "%d squares" % scene.diorama.miasma_count)
+	stc._burn_fungus(pc)
 	# A body where the player can see it is laid in 3D; a rotted one is not.
 	var st: GameState = scene.state
 	st.bodies = [{"x": st.player.x, "y": st.player.y, "app": "rat",

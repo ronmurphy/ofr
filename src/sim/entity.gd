@@ -342,6 +342,8 @@ var careful := false
 ## Shoots with magic or fire (dragons, wizards, liches): a shot LIGHTS its own
 ## square, so you see what fired and where. From the bestiary; saved.
 var casts := false
+## Poisoned by the purple miasma: turns of 1 hp still to come. Saved.
+var poisoned := 0
 ## The turn its last flare lasts until; -1 for none. Saved.
 var flare_until := -1
 
@@ -478,7 +480,7 @@ func to_dict() -> Dictionary:
 		"reload_style": reload_style, "reload_left": reload_left,
 		"facing": [facing.x, facing.y],
 		"spores": String(spores), "careful": careful,
-		"casts": casts, "flare_until": flare_until,
+		"casts": casts, "flare_until": flare_until, "poisoned": poisoned,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -537,6 +539,7 @@ static func from_dict(d: Dictionary) -> Entity:
 		e.spores = &"red"
 	e.careful = bool(d.get("careful", false))
 	e.casts = bool(d.get("casts", false))
+	e.poisoned = int(d.get("poisoned", 0))
 	e.flare_until = int(d.get("flare_until", -1))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))

@@ -49,6 +49,12 @@ leave clear notes.
    allowance went to waiting on it). Claude runs the full suite when it
    reviews your work. The quick suite above is your check. Never edit a `.gd`
    file while any suite is running.
+   **To run the full-suite tests you wrote or touched**, run just those, in
+   seconds, by name:
+
+       XDG_DATA_HOME=/home/brad/ofr-freemodel-data godot --headless --path . -s tools/run_one_test.gd -- _test_name_here > /tmp/one.log 2>&1
+       grep -c "SCRIPT ERROR" /tmp/one.log       # must print 0
+       tail -1 /tmp/one.log                      # must say 0 failed
 5. **Both map views.** The game has a classic glyph view (`glyph_grid.gd`) and
    a 3D view (`diorama_view.gd`). Anything drawn on the map must work in both,
    through the shared effects layer (`src/render/fx.gd`): the game records an
@@ -178,3 +184,88 @@ task list only.
   passed / 0 failed, 0 script errors. Full: 2,206 passed / 0 failed, 0 script
   errors. The full log includes expected parse errors from malformed-data
   fixtures and Godot teardown resource notices.
+
+- [ ] **Vault symbols for purple and red fungus**
+  In `src/sim/vault.gd`, the `TERRAIN` table maps a vault file's characters to
+  tiles; `*` is green fungus (and stays green -- Brad's rule: vault fungus is
+  guaranteed green unless drawn otherwise). Add two characters for
+  `Tiles.FUNGUS_PURPLE` and `Tiles.FUNGUS_RED`. Suggested: `:` purple, `;`
+  red -- first CHECK they are not already used anywhere in vault.gd (content
+  markers too) or in any file under `assets/vaults/`; if either is taken, pick
+  another hard-to-mistype character and say which. Document them wherever the
+  vault format is described (search the repo for the `*` fungus entry). Tests:
+  a small vault layout string using both characters produces the two tiles.
+
+- [ ] **Spores off purple and red fungus**
+  `src/render/small_life.gd` makes pale green spores drift up off GREEN fungus
+  (`Tiles.FUNGUS`), in both views. Make purple and red fungus give off spores
+  too, each in its own colour (`Palette.FUNGUS_PURPLE`, `Palette.FUNGUS_RED`),
+  sharing the existing limits (MAX_FUNGUS and the nearest-first rule) so a
+  big infested cave costs no more than now. Motion only (not on "still"),
+  as the green ones already are. Tests in `tests/run_view_tests.gd`: a purple
+  fungus in view produces spores of the purple colour; none on still.
+
+- [ ] **A burn effect**
+  Burning the wrong fungus (`_burn_fungus` in `src/sim/game_state.gd`) reuses
+  the forge's event (`{"kind": &"forge", ...}`) for its picture and sound. Give
+  it its own event, `&"burn"`, with its own effect in `src/render/fx.gd` -- a
+  short burst of orange and red embers rising from the square, both views,
+  not on "still" -- and in `src/audio/sound_deck.gd` have `burn` play the same
+  sound the forge does. Remember `Fx.expired` must learn any new effect type
+  (read its comment). Tests: burning emits a `burn` event (not `forge`); the
+  effect expires; nothing on still.
+
+- [ ] **Test litter in the save folder**
+  Three tests in `tests/run_tests.gd` switch to their own scratch files inside
+  a loop -- `use_scratch_files("bearfit%d")`, `"pity%d_%d"` and
+  `"reach%d_%d_%s"` -- and leave `scratch_bearfit*`, `scratch_pity*` and
+  `scratch_reach*` files behind in the player's save folder after every run.
+  Clean up after each: call `GameState.clear_scratch_files()` before switching
+  tag, and restore the suite's own tag (`"tests"`) after the loop.
+  `clear_scratch_files()` (in `src/sim/game_state.gd`) also misses the
+  scratch SETTINGS file -- add `SETTINGS_PATH` to what it removes, only when
+  the path contains "scratch_" (the same guard the others use; never the real
+  settings.cfg). Check: run those three test functions with
+  `tools/run_one_test.gd`, then list the save folder
+  (`$XDG_DATA_HOME/godot/app_userdata/OFR/`) -- no `scratch_` files left.
+
+
+- [ ] **The miasma cloud's shape: rounded in 3D, angled corners in classic**
+  Today every square of a purple fungus's cloud is tinted as a plain square
+  (`Palette.MIASMA`, which is violet at alpha 0.32). The squares are listed by
+  `GameState.miasma_cloud()` (a Dictionary of `Vector2i -> true`; skip squares
+  whose tile is `Tiles.FUNGUS_PURPLE` -- the fungus draws itself). Change only
+  the DRAWING; which squares are in the cloud must not change.
+  **3D (`src/render/diorama_view.gd`, `_add_miasma`):** replace the one-quad-
+  per-square MultiMesh with ONE flat quad covering the whole map, textured by
+  a small picture of the cloud: an `Image` of exactly `map.width` x
+  `map.height` pixels (ONE pixel per map square), where a cloud square is
+  `Palette.MIASMA` and everything else is fully transparent (alpha 0). Make an
+  `ImageTexture` from it and draw it with LINEAR filtering (not nearest) --
+  that smoothing is what rounds the corners and merges overlapping clouds
+  into one blob. The quad is `map.width` world units by `map.height` world
+  units (a map square is exactly 1 world unit), its corner at world (0, 0),
+  lying flat at height `WASH_Y` (the constant already used), so pixel (x, y)
+  of the image sits exactly over map square (x, y). Material: unshaded, alpha
+  transparency, the texture as albedo, texture filter linear. Rebuild it where
+  `_add_miasma` is called now (once per world rebuild), and only the squares
+  you can see (`map_visible(c)`) go into the picture, as now. Keep
+  `miasma_count` = the number of squares painted (a test reads it).
+  **Classic (`src/render/glyph_grid.gd`, the "miasma's cloud" loop in
+  `_draw`):** keep one tint per square, but draw each as a polygon with its
+  OUTER corners cut: for each of the square's four corners, if BOTH of the
+  two squares that share that corner edge (the one beside it and the one
+  above/below it) are NOT in the cloud, cut that corner off with a straight
+  diagonal, removing a triangle whose two short sides are each 30% of
+  `cell_size`. Corners inside the cloud stay square, so the cloud's edge
+  steps diagonally and its inside stays solid. Same colour, `Palette.MIASMA`.
+  **Also, on "simple" and "full" only (`Effects.any()`):** let the cloud
+  drift -- in 3D, slowly scroll the texture's offset or wobble its alpha by
+  no more than +/-0.08 over about 3 seconds; in classic, the same small alpha
+  wobble. On "still", no movement at all.
+  **Tests (`tests/run_view_tests.gd`):** the existing check "the miasma's
+  cloud is tinted in 3D" must still pass; add a check that the 3D cloud is
+  now ONE node (not one per square), and a check of the classic corner rule
+  as a pure function (e.g. a static `cut_corners(cell, cloud) -> Array` of
+  which corners are cut) on a lone square (all four cut) and on a square in
+  the middle of a 3x3 cloud (none cut).

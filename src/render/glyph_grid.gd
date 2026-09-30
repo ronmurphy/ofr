@@ -424,6 +424,13 @@ func _draw() -> void:
 		for x in range(x0, x1):
 			_draw_cell(map, x, y)
 
+	# The miasma's cloud, over the floor, where you can see it. Information,
+	# so on every effects setting -- steady, like the torch's shading.
+	for c in state.miasma_cloud():
+		if c.x >= x0 and c.x < x1 and c.y >= y0 and c.y < y1 \
+				and map.is_visible(c.x, c.y) and map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
+			draw_rect(Rect2(_screen(c), Vector2(cell_size, cell_size)), Palette.MIASMA, true)
+
 	# Bodies under everything that stands: the dead lie on the floor.
 	_draw_bodies()
 

@@ -1171,6 +1171,7 @@ func build_level() -> void:
 	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
 	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
+	_cloud_turn = -1
 	scorched = {}
 	_reload_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
@@ -3463,6 +3464,59 @@ const TRAIL_CHANCE := 0.03
 const PURPLE_CAP := 60
 ## How far a rat smells a fresh body.
 const RAT_NOSE := 8
+## THE MIASMA (Dwarf Fortress plan, strand 3; Brad chose poison over time,
+## 2026-09-30). Every purple fungus breathes a cloud over itself and the eight
+## squares round it. Breathing it poisons: POISON_HURT a turn, lasting
+## POISON_LINGER turns after you leave. It is AIR -- flyers breathe it too.
+const POISON_HURT := 1
+const POISON_LINGER := 3
+
+## Every square in a purple cloud, as a set, for the views to tint -- worked
+## out once a turn (or when fungus changes), not per square per frame. Brad,
+## 2026-09-30: the cloud was invisible past the fungus square, so he walked
+## into it thinking the squares round it were safe.
+var _cloud := {}
+var _cloud_turn := -1
+
+func miasma_cloud() -> Dictionary:
+	if _cloud_turn == turns:
+		return _cloud
+	_cloud_turn = turns
+	_cloud = {}
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) != Tiles.FUNGUS_PURPLE:
+				continue
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					_cloud[Vector2i(x + dx, y + dy)] = true
+	return _cloud
+
+## In the purple's cloud: on a purple square or beside one.
+func in_miasma(x: int, y: int) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if map.get_tile(x + dx, y + dy) == Tiles.FUNGUS_PURPLE:
+				return true
+	return false
+
+## One turn of air for a creature: the cloud poisons (or re-poisons), and the
+## poison bites. True if it killed.
+func _breathe(e: Entity) -> bool:
+	if in_miasma(e.x, e.y):
+		if e.is_player and e.poisoned == 0:
+			msg_log.add("You breathe the purple miasma. You are poisoned.",
+				Color(0.78, 0.60, 0.80))
+		e.poisoned = POISON_LINGER
+	if e.poisoned <= 0:
+		return false
+	e.take_damage(POISON_HURT)
+	e.poisoned -= 1
+	if e.is_player:
+		_tally("taken", POISON_HURT)
+		if e.poisoned == 0 and e.alive:
+			msg_log.add("The poison passes.", Color(0.70, 0.78, 0.70))
+	return not e.alive
 ## Its own stream: how many colour rolls a floor makes depends on how the
 ## fights go (CLAUDE.md -- anything whose draw count varies gets its own rng).
 var fungus_rng := RandomNumberGenerator.new()
@@ -3516,6 +3570,7 @@ func _body_fungus() -> int:
 
 func _set_fungus(c: Vector2i, t: int) -> void:
 	map.set_tile(c.x, c.y, t)
+	_cloud_turn = -1
 	pathfinder.set_fungus(c.x, c.y, Tiles.is_bad_fungus(t))
 	_gather_lights()
 
@@ -3569,6 +3624,13 @@ func _grow_fungus() -> void:
 		if map.is_visible(at.x, at.y):
 			msg_log.add("The %s leaves %s fungus where it walks." % [e.name, String(e.spores)],
 				Color(0.78, 0.60, 0.80) if colour == Tiles.FUNGUS_PURPLE else Color(0.88, 0.45, 0.45))
+	# The miasma: every creature breathes, flyers included.
+	for e in entities.duplicate():
+		if e.alive and not e.is_player and _breathe(e):
+			if map.is_visible(e.x, e.y):
+				msg_log.add("The %s chokes on the miasma and dies." % e.name,
+					Color(0.65, 0.70, 0.85))
+			_settle_death(e, e)
 	# Careless walkers pay for it, and red marks them (flyers never touch it).
 	for e in entities.duplicate():
 		if not e.alive or e.is_player or e.flying:
@@ -5719,6 +5781,13 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	_burn_the_ring()
 	_fungus_underfoot(underfoot)
 	if game_over:
+		return
+	if _breathe(player):
+		game_over = true
+		death_cause = "poisoned by the miasma"
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
+		write_morgue()
+		write_death_dump()
 		return
 	if underfoot == Tiles.BONES:
 		# Crossing it destroys it. That turns a boneyard from a standing toll

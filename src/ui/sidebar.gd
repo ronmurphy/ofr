@@ -359,7 +359,13 @@ func _draw() -> void:
 	var ground := state.map.get_tile(state.player.x, state.player.y)
 	var pace := Tiles.move_cost(ground)
 	var word := Tiles.footing_word(ground)
-	if pace > 1.0 and word != "":
+	if state.player.poisoned > 0:
+		# Poison first: it is the status that is costing you hit points.
+		draw_string(font, Vector2(PAD, y), "status", HORIZONTAL_ALIGNMENT_LEFT, -1,
+			font_size, Palette.UI_DIM)
+		draw_string(font, Vector2(PAD, y), "poisoned · %d" % state.player.poisoned,
+			HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, Palette.FUNGUS_PURPLE)
+	elif pace > 1.0 and word != "":
 		var glyph := String(RenderTheme.active().appearance(
 			Tiles.appearance_id(ground)).get("ch", "~"))
 		var gs := GlyphTheme.draw_size(glyph, font_size)

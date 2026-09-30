@@ -103,6 +103,7 @@ func _initialize() -> void:
 	_test_the_wrong_fungus()
 	_test_the_dark_is_fair()
 	_test_the_fungus_spreads()
+	_test_the_miasma()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1547,6 +1548,68 @@ func _suspended_state() -> GameState:
 	gs.update_vision()
 	return gs
 
+## THE MIASMA (strand 3): purple breathes a poison cloud over itself and its
+## eight neighbours -- 1 hp a turn, lingering 3 turns after you leave.
+func _test_the_miasma() -> void:
+	var g := GameState.new(9393)
+	g.new_game()
+	g.depth = 7
+	g.build_level()
+	var o := Vector2i(g.player.x, g.player.y)
+	for dy in range(-6, 7):
+		for dx in range(-9, 10):
+			g.map.set_tile(o.x + dx, o.y + dy, Tiles.FLOOR)
+	g.entities = [g.player]
+	g.bodies = []
+	g.pathfinder = Pathfinder.new(g.map)
+	var purple := o + Vector2i(1, 0)
+	g._set_fungus(purple, Tiles.FUNGUS_PURPLE)
+	check("beside purple is in the cloud; two away is not",
+		g.in_miasma(o.x, o.y) and not g.in_miasma(o.x - 1, o.y))
+	g.player.hp = g.player.max_hp
+	g._breathe(g.player)
+	check("breathing it poisons and bites once",
+		g.player.poisoned == GameState.POISON_LINGER - 1
+		and g.player.hp == g.player.max_hp - GameState.POISON_HURT)
+	# Out of the cloud: it lingers, then passes.
+	g.player.x -= 3
+	var hp_left := g.player.hp
+	for i in 5:
+		g._breathe(g.player)
+	check("out of the cloud it lingers its turns, then passes",
+		g.player.poisoned == 0 and g.player.hp == hp_left - (GameState.POISON_LINGER - 1),
+		"%d -> %d" % [hp_left, g.player.hp])
+	g.player.x += 3
+	# A monster in the cloud: poisoned, and killed by it with a body left.
+	var kob := GameState.monster_from(_bestiary_entry("kobold"), o.x + 1, o.y + 1)
+	kob.alertness = Entity.Alert.AWAKE
+	kob.hp = 1
+	g.entities = [g.player, kob]
+	g._grow_fungus()
+	check("a monster breathing it dies of it, leaving a body",
+		not kob.alive and g.bodies.size() == 1)
+	# It is air: a bat above the fungus is spared the ground, not the cloud.
+	var bat := GameState.monster_from(_bestiary_entry("cave bat"), o.x + 1, o.y - 1)
+	g.entities = [g.player, bat]
+	var bat_hp := bat.hp
+	g._grow_fungus()
+	check("a bat breathes it too", bat.poisoned > 0 and bat.hp == bat_hp - GameState.POISON_HURT)
+	# The player's turn: poison can kill, and says so.
+	g.entities = [g.player]
+	g.player.hp = 1
+	g._end_player_turn()
+	check("the miasma can kill you, and the morgue says how",
+		g.game_over and g.death_cause == "poisoned by the miasma")
+	check("poison is saved with the creature", Entity.from_dict(bat.to_dict()).poisoned == bat.poisoned)
+	# The cloud the views tint: the purple's eight neighbours, and it follows
+	# the fungus -- burn it and the cloud goes with it.
+	var cloud := g.miasma_cloud()
+	check("the cloud covers the squares round the purple",
+		cloud.has(purple + Vector2i(1, 1)) and cloud.has(purple + Vector2i(-1, 0))
+		and not cloud.has(purple + Vector2i(2, 0)))
+	g._burn_fungus(purple)
+	check("and goes when the fungus burns", not g.miasma_cloud().has(purple + Vector2i(1, 1)))
+
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.
 func _test_the_fungus_spreads() -> void:
@@ -1862,7 +1925,7 @@ func _test_the_wrong_fungus() -> void:
 	g.player_move(1, 0)
 	check("walking into it -- torch lit or not -- steps on, and it hurts",
 		Vector2i(g.player.x, g.player.y) == purple
-		and g.player.hp == g.player.max_hp - GameState.PURPLE_HURT,
+		and g.player.hp == g.player.max_hp - GameState.PURPLE_HURT - GameState.POISON_HURT,
 		"%d/%d" % [g.player.hp, g.player.max_hp])
 	g.player_move(-1, 0)
 	g._burn_fungus(purple)
@@ -1878,9 +1941,12 @@ func _test_the_wrong_fungus() -> void:
 	var k_hp := kobold.hp
 	var b_hp := bat.hp
 	g._grow_fungus()
-	check("a kobold standing in purple is hurt by it",
-		kobold.hp == k_hp - GameState.PURPLE_HURT, "%d -> %d" % [k_hp, kobold.hp])
-	check("a bat flying over it is not", bat.hp == b_hp)
+	# The ground's bite and the cloud's (strand 3, the miasma) together.
+	check("a kobold standing in purple is hurt by the ground and the cloud",
+		kobold.hp == k_hp - GameState.PURPLE_HURT - GameState.POISON_HURT,
+		"%d -> %d" % [k_hp, kobold.hp])
+	check("a bat flying over it is spared the ground, not the air",
+		bat.hp == b_hp - GameState.POISON_HURT, "%d -> %d" % [b_hp, bat.hp])
 	kobold.hp = 1
 	g.bodies = []
 	g._grow_fungus()

@@ -56,6 +56,10 @@ const FUNGUS        := Color("7fd9b0")
 ## apart from the green, so a player can tell food from poison at a glance.
 const FUNGUS_PURPLE := Color("b77be8")
 const FUNGUS_RED    := Color("d8434a")
+## The purple miasma's cloud over the squares round a purple fungus: the same
+## violet, about half as strong, so it reads as "the air here is bad" without
+## outshining the fungus. Both views.
+const MIASMA        := Color(0.72, 0.48, 0.91, 0.32)
 const PIT_RIM       := Color("5a5044")
 const TRAP          := Color("d4674f")
 const MUD_BG        := Color("241d16")

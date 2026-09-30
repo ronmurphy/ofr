@@ -160,7 +160,11 @@ strand at a time with play between:
    when one dies its body rots straight into purple fungus, and the purple
    outline tell is free for them.
 3. **The miasma, redesigned around purple:** ONE purple fungus is a source
-   (no 2x2 group needed).
+   (no 2x2 group needed). **BUILT 2026-09-30 (Brad chose poison over
+   time):** each purple breathes a cloud over itself and its 8 neighbours;
+   breathing it poisons -- 1 hp a turn, lingering 3 turns after leaving
+   (Entity.poisoned, saved). It is air: flyers breathe it. Sidebar status
+   "poisoned · N" in purple; HERE says how long; one log line on and off.
 4. **Red fungus raises the dead.** It is a timer: after some turns the body it
    grew from rises -- less HP, hits harder, hunts the player (Brad: a zombie
    piloted by a fungus, The Last of Us). Burn it before it hatches (strand 6).
