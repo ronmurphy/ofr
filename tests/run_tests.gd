@@ -58,6 +58,7 @@ func _initialize() -> void:
 	_test_terrain_properties()
 	_test_pillar_casts_a_shadow()
 	_test_spawn_points_are_open()
+	_test_vault_fungus_symbols()
 	_test_caves_are_reachable()
 	_test_line_of_sight()
 	_test_ranged_attacks_from_afar()
@@ -3259,6 +3260,21 @@ func _test_vaults_load() -> void:
 	check("and its box turns with it",
 		sample.oriented(1, false).size() == sample.size().x
 			or sample.size().x == sample.size().y)
+
+func _test_vault_fungus_symbols() -> void:
+	var vault := Vault.parse("name: fungus symbols\nweight: 8\nLAYOUT\n" \
+		+ "#####\n#v;.#\n##+##\n", "fungus_symbols")
+	check("a small vault with both fungus marks parses", vault != null)
+	if vault == null:
+		return
+	var gen := MapGen.new(RandomNumberGenerator.new())
+	var map := DungeonMap.new(5, 3)
+	map.tiles.fill(Tiles.WALL)
+	gen.vault_spots.append({"grid": vault.oriented(0, false),
+		"rect": Rect2i(0, 0, 5, 3), "vault": vault})
+	gen._stamp_vaults(map)
+	check("v stamps purple fungus into a vault", map.get_tile(1, 1) == Tiles.FUNGUS_PURPLE)
+	check("; stamps red fungus into a vault", map.get_tile(2, 1) == Tiles.FUNGUS_RED)
 
 func _test_vaults_are_placed_intact() -> void:
 	var floors_with := 0

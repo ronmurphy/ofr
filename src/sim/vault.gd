@@ -15,6 +15,9 @@ const TERRAIN := {
 	"+": Tiles.DOOR_CLOSED, "'": Tiles.DOOR_OPEN, "O": Tiles.PILLAR,
 	"^": Tiles.STALAGMITE, "~": Tiles.WATER, "=": Tiles.MUD,
 	"%": Tiles.RUBBLE, ",": Tiles.BONES, "*": Tiles.FUNGUS,
+	# `:` is the header's metadata separator, so violet gets `v` instead; `;`
+	# is a distinct, unused mark for red.
+	"v": Tiles.FUNGUS_PURPLE, ";": Tiles.FUNGUS_RED,
 	"&": Tiles.BRAZIER, "A": Tiles.SHRINE, "X": Tiles.PIT, "t": Tiles.TRAP,
 	">": Tiles.STAIRS_DOWN, "<": Tiles.STAIRS_UP,
 	# Chosen for the shape of a headstone. Deliberately not `T`, which sits one

@@ -12,7 +12,8 @@ const DIR := "res://assets/vaults/"
 const TERRAIN := {
 	"#": "wall", ".": "floor", "_": "cave floor", "+": "closed door",
 	"'": "open door", "O": "pillar", "^": "stalagmite", "~": "water",
-	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus", "&": "brazier",
+	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus",
+	"v": "purple fungus", ";": "red fungus", "&": "brazier",
 	"A": "shrine", "X": "pit", "t": "trap", ">": "stairs down", "<": "stairs up",
 	"n": "grave", "C": "chest",
 }
@@ -25,8 +26,8 @@ const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 ## tiles.gd says so explicitly, and the reason is that a headstone which
 ## blocked movement would be one more thing generation has to prove it never
 ## wedged into a corridor.
-const PASSABLE := [".", "_", "+", "'", "~", "=", "%", ",", "*", "A", "X", "t",
-	">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "("]
+const PASSABLE := [".", "_", "+", "'", "~", "=", "%", ",", "*", "v", ";",
+	"A", "X", "t", ">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "("]
 
 var _problems := 0
 var _warnings := 0

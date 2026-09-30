@@ -110,6 +110,8 @@ Terrain:
 | `%` | rubble | slightly slow |
 | `,` | bones | slow, **loud**, and crumbles once crossed |
 | `*` | fungus | glows faintly |
+| `v` | purple fungus | poisonous; walking over it is dangerous |
+| `;` | red fungus | carries spores; walking over it is dangerous |
 | `&` | brazier | lit; rest or forge at it |
 | `A` | shrine | an altar; its kind is rolled per level |
 | `X` | pit | walkable, but drops you a floor |

@@ -186,7 +186,7 @@ task list only.
   errors. The full log includes expected parse errors from malformed-data
   fixtures and Godot teardown resource notices.
 
-- [ ] **Vault symbols for purple and red fungus**
+- [x] **Vault symbols for purple and red fungus**
   In `src/sim/vault.gd`, the `TERRAIN` table maps a vault file's characters to
   tiles; `*` is green fungus (and stays green -- Brad's rule: vault fungus is
   guaranteed green unless drawn otherwise). Add two characters for
@@ -196,6 +196,13 @@ task list only.
   another hard-to-mistype character and say which. Document them wherever the
   vault format is described (search the repo for the `*` fungus entry). Tests:
   a small vault layout string using both characters produces the two tiles.
+
+  Done 2026-09-30: `:` is already the vault header's metadata separator, so
+  `v` (violet) maps to purple fungus and `;` maps to red. Updated the terrain
+  loader, vault linter and its passable cells, and the vault README. Added a
+  synthetic layout-and-stamp check in `tests/run_tests.gd`. Quick: 257 passed /
+  0 failed / 0 script errors. Targeted test: 3 passed / 0 failed. Vault lint:
+  0 problems, 0 warnings across 19 vaults.
 
 - [ ] **Spores off purple and red fungus**
   `src/render/small_life.gd` makes pale green spores drift up off GREEN fungus
