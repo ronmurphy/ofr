@@ -134,6 +134,47 @@ const STEP_TIME := StepMotion.STEP_TIME
 ## sound_deck.gd keeps its own copy of this, timed to land with the picture.
 const SHOT_PER_CELL := Fx.SHOT_PER_CELL
 
+## Which outside corners of one miasma square can be clipped. A corner stays
+## square when either adjacent orthogonal cell also belongs to the cloud.
+static func cut_corners(cell: Vector2i, cloud: Dictionary) -> Array[StringName]:
+	var cuts: Array[StringName] = []
+	if not cloud.has(cell + Vector2i.LEFT) and not cloud.has(cell + Vector2i.UP):
+		cuts.append(&"top_left")
+	if not cloud.has(cell + Vector2i.RIGHT) and not cloud.has(cell + Vector2i.UP):
+		cuts.append(&"top_right")
+	if not cloud.has(cell + Vector2i.RIGHT) and not cloud.has(cell + Vector2i.DOWN):
+		cuts.append(&"bottom_right")
+	if not cloud.has(cell + Vector2i.LEFT) and not cloud.has(cell + Vector2i.DOWN):
+		cuts.append(&"bottom_left")
+	return cuts
+
+## The polygon follows the cell's outside edge, replacing a cut corner with a
+## diagonal whose short sides are 30% of the cell.
+static func miasma_polygon(origin: Vector2, side: float,
+		cuts: Array[StringName]) -> PackedVector2Array:
+	var inset := side * 0.3
+	var end := origin + Vector2(side, side)
+	var points := PackedVector2Array()
+	points.append(origin + (Vector2(inset, 0.0) if cuts.has(&"top_left") else Vector2.ZERO))
+	if cuts.has(&"top_right"):
+		points.append(Vector2(end.x - inset, origin.y))
+		points.append(Vector2(end.x, origin.y + inset))
+	else:
+		points.append(Vector2(end.x, origin.y))
+	if cuts.has(&"bottom_right"):
+		points.append(Vector2(end.x, end.y - inset))
+		points.append(Vector2(end.x - inset, end.y))
+	else:
+		points.append(end)
+	if cuts.has(&"bottom_left"):
+		points.append(Vector2(origin.x + inset, end.y))
+		points.append(Vector2(origin.x, end.y - inset))
+	else:
+		points.append(Vector2(origin.x, end.y))
+	if cuts.has(&"top_left"):
+		points.append(Vector2(origin.x, origin.y + inset))
+	return points
+
 ## False for a grid that is only scenery -- the title screen's backdrop. Read
 ## in _ready, because _ready is where the mouse is claimed, and setting
 ## mouse_filter from outside was undone whenever _ready ran after it.
@@ -242,6 +283,7 @@ func _process(delta: float) -> void:
 	else:
 		_camera_visual = target
 
+	var miasma_animating := Effects.any() and _has_visible_miasma()
 	var animating := fx.running() or _motion_running()
 	fx.tick(delta)
 
@@ -249,8 +291,23 @@ func _process(delta: float) -> void:
 	# Effects, when running, redraw at full rate.
 	var flicker_due := light.tick(delta)
 
-	if animating or flicker_due:
+	if animating or flicker_due or miasma_animating:
 		queue_redraw()
+
+func _has_visible_miasma() -> bool:
+	if state == null:
+		return false
+	var map := state.map
+	var visible_cells := viewport_cells()
+	var x0 := maxi(0, _origin.x - 1)
+	var y0 := maxi(0, _origin.y - 1)
+	var x1 := mini(map.width, _origin.x + visible_cells.x + 2)
+	var y1 := mini(map.height, _origin.y + visible_cells.y + 2)
+	for c in state.miasma_cloud():
+		if c.x >= x0 and c.x < x1 and c.y >= y0 and c.y < y1 \
+				and map.is_visible(c.x, c.y) and map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
+			return true
+	return false
 
 ## Turns simulation events into animations -- see Fx.add_events, shared with
 ## the 3D view. The outcome is already decided by the time this runs.
@@ -424,12 +481,18 @@ func _draw() -> void:
 		for x in range(x0, x1):
 			_draw_cell(map, x, y)
 
-	# The miasma's cloud, over the floor, where you can see it. Information,
-	# so on every effects setting -- steady, like the torch's shading.
-	for c in state.miasma_cloud():
+	# The cloud's cells are information and remain visible in every mode. Only
+	# its small opacity drift stops when the player chooses "still".
+	var cloud := state.miasma_cloud()
+	var cloud_colour := Palette.MIASMA
+	cloud_colour.a = MiasmaVisual.alpha_at(
+		anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0,
+		Effects.any())
+	for c in cloud:
 		if c.x >= x0 and c.x < x1 and c.y >= y0 and c.y < y1 \
 				and map.is_visible(c.x, c.y) and map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
-			draw_rect(Rect2(_screen(c), Vector2(cell_size, cell_size)), Palette.MIASMA, true)
+			draw_colored_polygon(miasma_polygon(_screen(c), float(cell_size),
+				cut_corners(c, cloud)), cloud_colour)
 
 	# Bodies under everything that stands: the dead lie on the floor.
 	_draw_bodies()

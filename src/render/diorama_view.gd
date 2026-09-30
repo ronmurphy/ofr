@@ -196,6 +196,11 @@ var _shadow_material: StandardMaterial3D
 ## Depth-tested, unlike sparks: a spore behind a wall is behind the wall.
 var _mote_mesh: SphereMesh
 var _mote_material: StandardMaterial3D
+## One map-sized alpha texture and its single floor quad, rebuilt with the map.
+var _miasma_image: Image
+var _miasma_texture: ImageTexture
+var _miasma_material: StandardMaterial3D
+var _miasma_node: MeshInstance3D
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -373,6 +378,7 @@ func _process(delta: float) -> void:
 	var now := anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0
 	for m in _surface_materials:
 		m.set_shader_parameter("t", now)
+	_update_miasma_opacity(now)
 	if not _swings.is_empty():
 		for cell in _swings.keys():
 			_swings[cell]["t"] += delta
@@ -1112,31 +1118,57 @@ func _add_ascii_ground_mark(tile: int, x: int, y: int, visible: bool,
 	_scene_root.add_child(label)
 
 ## Every floor dot of the rebuild, in one MultiMesh -- see _add_ascii_ground_mark.
-## The miasma's cloud: a violet wash over each square of it you can see, one
-## batch -- the same squares and colour the classic view tints (Palette.MIASMA).
+## The miasma is one map-sized picture: one texel per visible cloud cell, with
+## linear filtering to soften the cell corners into a continuous drifting veil.
 var miasma_count := 0
 
 func _add_miasma() -> void:
-	var cells: Array[Vector2i] = []
+	var map := state.map
+	miasma_count = 0
+	_miasma_image = null
+	_miasma_texture = null
+	_miasma_material = null
+	_miasma_node = null
+	_miasma_image = Image.create(map.width, map.height, false, Image.FORMAT_RGBA8)
+	# Keep the cloud hue in transparent texels too, so linear filtering softens
+	# alpha at its edge without pulling the colour toward black.
+	_miasma_image.fill(Color(Palette.MIASMA.r, Palette.MIASMA.g,
+		Palette.MIASMA.b, 0.0))
 	for c in state.miasma_cloud():
-		if map_visible(c) and state.map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
-			cells.append(c)
-	miasma_count = cells.size()
-	if cells.is_empty():
+		if not map_visible(c) or map.get_tile(c.x, c.y) == Tiles.FUNGUS_PURPLE:
+			continue
+		_miasma_image.set_pixel(c.x, c.y, Palette.MIASMA)
+		miasma_count += 1
+	if miasma_count == 0:
+		_miasma_image = null
 		return
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = _fx_quad
-	mm.instance_count = cells.size()
-	for i in cells.size():
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY,
-			Vector3(cells[i].x + 0.5, WASH_Y, cells[i].y + 0.5)))
-		mm.set_instance_color(i, Palette.MIASMA)
-	var node := MultiMeshInstance3D.new()
-	node.multimesh = mm
-	node.material_override = _fx_material
-	_scene_root.add_child(node)
+	_miasma_texture = ImageTexture.create_from_image(_miasma_image)
+	_miasma_material = StandardMaterial3D.new()
+	_miasma_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_miasma_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_miasma_material.albedo_texture = _miasma_texture
+	_miasma_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(map.width, map.height)
+	_miasma_node = MeshInstance3D.new()
+	_miasma_node.name = "MiasmaCloud"
+	_miasma_node.mesh = mesh
+	_miasma_node.material_override = _miasma_material
+	# PlaneMesh is centred on its origin, so this puts its lower-left map corner
+	# at world (0, 0) while its pixels remain aligned to the cell grid.
+	_miasma_node.position = Vector3(map.width * 0.5, WASH_Y, map.height * 0.5)
+	_scene_root.add_child(_miasma_node)
+	_update_miasma_opacity(anim_time if anim_time >= 0.0 \
+		else Time.get_ticks_msec() / 1000.0)
+
+func _update_miasma_opacity(clock: float) -> void:
+	if _miasma_material == null:
+		return
+	var alpha := MiasmaVisual.alpha_at(clock, Effects.any())
+	# The image keeps Palette.MIASMA's requested per-square colour and alpha;
+	# this white tint scales only its alpha while the veil drifts.
+	_miasma_material.albedo_color = Color(1.0, 1.0, 1.0,
+		alpha / Palette.MIASMA.a)
 
 func map_visible(c: Vector2i) -> bool:
 	return state.map.in_bounds(c.x, c.y) and state.map.is_visible(c.x, c.y)

@@ -47,6 +47,7 @@ func _initialize() -> void:
 	_test_heavy_ground_slows_the_step()
 	_test_footfalls_throw_up_the_ground()
 	_test_small_life()
+	_test_miasma_geometry_and_drift()
 	_test_the_trader_idles()
 	_test_fft_keys_walk_the_grid()
 	_test_the_camera_turns_on_stick_or_triggers()
@@ -831,6 +832,43 @@ func _test_small_life() -> void:
 	var shown := {}
 	_with_mode(Effects.Mode.SHADERS, func(): shown["n"] = life.motes(2.0).size())
 	check("nothing is drawn where you cannot see", shown["n"] == 0)
+
+func _test_miasma_geometry_and_drift() -> void:
+	var lone := {Vector2i(4, 4): true}
+	var lone_cuts := GlyphGrid.cut_corners(Vector2i(4, 4), lone)
+	check("a lone miasma square clips all four outer corners",
+		lone_cuts.size() == 4 and lone_cuts.has(&"top_left")
+		and lone_cuts.has(&"top_right") and lone_cuts.has(&"bottom_right")
+		and lone_cuts.has(&"bottom_left"), str(lone_cuts))
+	var filled := {}
+	for y in range(3, 6):
+		for x in range(3, 6):
+			filled[Vector2i(x, y)] = true
+	var middle_cuts := GlyphGrid.cut_corners(Vector2i(4, 4), filled)
+	check("a miasma square inside a filled patch keeps square corners",
+		middle_cuts.is_empty(), str(middle_cuts))
+	var lone_polygon := GlyphGrid.miasma_polygon(Vector2.ZERO, 20.0, lone_cuts)
+	check("each clipped corner is a straight 30% diagonal",
+		lone_polygon.size() == 8 and lone_polygon[0].is_equal_approx(Vector2(6, 0))
+		and lone_polygon[1].is_equal_approx(Vector2(14, 0))
+		and lone_polygon[2].is_equal_approx(Vector2(20, 6)), str(lone_polygon))
+	var center_polygon := GlyphGrid.miasma_polygon(Vector2.ZERO, 20.0, middle_cuts)
+	check("unclipped miasma squares remain four-sided",
+		center_polygon.size() == 4, str(center_polygon))
+
+	var still_peak := MiasmaVisual.alpha_at(0.75, false)
+	var still_trough := MiasmaVisual.alpha_at(2.25, false)
+	var moving_peak := MiasmaVisual.alpha_at(0.75, true)
+	var moving_trough := MiasmaVisual.alpha_at(2.25, true)
+	var next_cycle := MiasmaVisual.alpha_at(3.75, true)
+	check("miasma stays still on still and pulses within 0.08 over three seconds",
+		is_equal_approx(still_peak, Palette.MIASMA.a)
+		and is_equal_approx(still_trough, Palette.MIASMA.a)
+		and moving_peak <= Palette.MIASMA.a + 0.08001
+		and moving_trough >= Palette.MIASMA.a - 0.08001
+		and is_equal_approx(moving_peak, next_cycle),
+		"still %.3f/%.3f, moving %.3f/%.3f" % [still_peak, still_trough,
+			moving_peak, moving_trough])
 
 ## The trader idling (SmallLife.idle_offset): shifting about on "full" only,
 ## the same at the same moment, leaning towards you when you are near, and
@@ -1803,6 +1841,57 @@ func _test_both_views_share_one_moment() -> void:
 	scene.diorama._rebuild_world()
 	check("the miasma's cloud is tinted in 3D, over the squares round the fungus",
 		scene.diorama.miasma_count >= 4, "%d squares" % scene.diorama.miasma_count)
+	var cloud_node_count := 0
+	for child in scene.diorama._scene_root.get_children():
+		if child.name == "MiasmaCloud":
+			cloud_node_count += 1
+	var cloud_node: MeshInstance3D = scene.diorama._miasma_node
+	var cloud_mesh_ok := false
+	if cloud_node != null and cloud_node.mesh is PlaneMesh:
+		var cloud_mesh := cloud_node.mesh as PlaneMesh
+		cloud_mesh_ok = cloud_mesh.size == Vector2(stc.map.width, stc.map.height) \
+			and cloud_node.position == Vector3(stc.map.width * 0.5,
+				DioramaView.WASH_Y, stc.map.height * 0.5)
+	check("the 3D cloud is one map-sized quad, aligned to the map corner",
+		cloud_node_count == 1 and cloud_mesh_ok, "%d cloud nodes" % cloud_node_count)
+	var painted_cell := Vector2i(-1, -1)
+	for c in stc.miasma_cloud():
+		if scene.diorama.map_visible(c) and stc.map.get_tile(c.x, c.y) != Tiles.FUNGUS_PURPLE:
+			painted_cell = c
+			break
+	var cloud_image_ok: bool = scene.diorama._miasma_image != null \
+		and scene.diorama._miasma_image.get_size() == Vector2i(stc.map.width, stc.map.height) \
+		and painted_cell.x >= 0
+	if cloud_image_ok and painted_cell.x >= 0:
+		var painted_pixel: Color = scene.diorama._miasma_image.get_pixel(painted_cell.x, painted_cell.y)
+		var source_pixel: Color = scene.diorama._miasma_image.get_pixel(pc.x, pc.y)
+		cloud_image_ok = absf(painted_pixel.r - Palette.MIASMA.r) < 0.01 \
+			and absf(painted_pixel.g - Palette.MIASMA.g) < 0.01 \
+			and absf(painted_pixel.b - Palette.MIASMA.b) < 0.01 \
+			and absf(painted_pixel.a - Palette.MIASMA.a) < 0.01 \
+			and source_pixel.a == 0.0
+	var cloud_material: StandardMaterial3D = scene.diorama._miasma_material
+	var cloud_material_ok := false
+	if cloud_material != null:
+		cloud_material_ok = cloud_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED \
+			and cloud_material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
+			and cloud_material.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR \
+			and cloud_material.albedo_texture == scene.diorama._miasma_texture
+	check("one visible cloud cell per texture pixel; the fungus pixel is clear",
+		cloud_image_ok and cloud_material_ok)
+	var material_alpha := {"moving": 0.0, "still": 0.0}
+	if cloud_material != null:
+		_with_mode(Effects.Mode.TIMERS, func():
+			scene.diorama._update_miasma_opacity(0.75)
+			material_alpha["moving"] = cloud_material.albedo_color.a * Palette.MIASMA.a)
+		_with_mode(Effects.Mode.NONE, func():
+			scene.diorama._update_miasma_opacity(0.75)
+			material_alpha["still"] = cloud_material.albedo_color.a * Palette.MIASMA.a)
+		scene.diorama._update_miasma_opacity(scene.diorama.anim_time if scene.diorama.anim_time >= 0.0 \
+			else Time.get_ticks_msec() / 1000.0)
+	check("the 3D material pulses with effects and holds on still",
+		absf(material_alpha["moving"] - material_alpha["still"]) > 0.07
+		and is_equal_approx(material_alpha["still"], Palette.MIASMA.a))
 	stc._burn_fungus(pc)
 	# A body where the player can see it is laid in 3D; a rotted one is not.
 	var st: GameState = scene.state

@@ -264,7 +264,7 @@ task list only.
   listed no `scratch_` files afterward. Full suite not run, as instructed.
 
 
-- [ ] **The miasma cloud's shape: rounded in 3D, angled corners in classic**
+- [x] **The miasma cloud's shape: rounded in 3D, angled corners in classic**
   Today every square of a purple fungus's cloud is tinted as a plain square
   (`Palette.MIASMA`, which is violet at alpha 0.32). The squares are listed by
   `GameState.miasma_cloud()` (a Dictionary of `Vector2i -> true`; skip squares
@@ -303,6 +303,13 @@ task list only.
   as a pure function (e.g. a static `cut_corners(cell, cloud) -> Array` of
   which corners are cut) on a lone square (all four cut) and on a square in
   the middle of a 3x3 cloud (none cut).
+
+  Done 2026-09-30: classic now clips exposed cell corners by 30%; 3D uses one
+  map-sized image and a single linearly filtered floor quad. Both views share
+  a three-second opacity pulse of at most +/-0.08 on simple/full and stay
+  steady on still. Added geometry, texture, node-count and motion checks.
+  Quick: 275 passed / 0 failed / 0 script errors. Full suite not run, as
+  instructed.
 
 - [ ] **The red crawls, visibly**
   Belongs with the cloud job above: purple is a cloud that drifts, red is a
