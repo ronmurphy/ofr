@@ -29,9 +29,9 @@ const DRIP_SHARE := 0.06
 ## Of the lit ground near you, about this share holds a mote of dust.
 const DUST_SHARE := 0.22
 
-## Each kind's colour. A spore is fungus light, pale green; a bubble is mud a
-## shade lighter than the mud; a drop is cold water; dust is torchlight caught
-## on nothing much.
+## Each kind's colour. A spore takes the colour of its fungus (green stays
+## pale green); a bubble is mud a shade lighter than the mud; a drop is cold
+## water; dust is torchlight caught on nothing much.
 const SPORE := Color(0.80, 1.00, 0.90)
 const BUBBLE := Color(0.58, 0.48, 0.36)
 const DROP := Color(0.72, 0.84, 0.98)
@@ -72,7 +72,10 @@ func rebuild(state: GameState) -> void:
 				continue
 			var d := (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y)
 			var tile := map.get_tile(x, y)
-			if tile == Tiles.FUNGUS:
+			# All three colours share one nearest-first budget. A mixed cave must
+			# not cost more to animate than a green-only one.
+			if tile == Tiles.FUNGUS or tile == Tiles.FUNGUS_PURPLE \
+					or tile == Tiles.FUNGUS_RED:
 				found["fungus"].append([d, Vector2i(x, y)])
 			elif tile == Tiles.MUD:
 				found["mud"].append([d, Vector2i(x, y)])
@@ -102,13 +105,14 @@ func motes(t: float) -> Array:
 	var map := _state.map
 	# Spores: two to a patch, rising and swaying as they go, fading in and out.
 	for c in _fungus:
+		var spore_colour := _spore_colour(map.get_tile(c.x, c.y))
 		for k in 2:
 			var h := LivingLight.hash01(c.x * 3 + k * 17, c.y * 5 + k * 29)
 			var cyc := fposmod(t / (3.5 + h * 2.5) + h, 1.0)
 			var home := Vector2(c) + Vector2(0.3 + h * 0.4, 0.3 + fposmod(h * 7.0, 1.0) * 0.4)
 			var sway := Vector2(sin(t * 0.9 + h * 20.0) * 0.16, cos(t * 0.7 + h * 13.0) * 0.10)
 			_add(out, map, home + sway * cyc, 0.10 + cyc * 0.90,
-				Color(SPORE, sin(cyc * PI) * 0.85), 0.09, false)
+				Color(spore_colour, sin(cyc * PI) * 0.85), 0.09, false)
 	# Mud: a bubble swells, then pops into two flecks.
 	for c in _mud:
 		var h := LivingLight.hash01(c.x * 7 + 3, c.y * 11 + 5)
@@ -145,6 +149,16 @@ func motes(t: float) -> Array:
 		_add(out, map, at, 0.45 + 0.35 * sin(t * 0.3 + h * 9.0),
 			Color(DUST, 0.45), 0.05, true)
 	return out
+
+## The source patch colours its spores; green keeps its existing pale tint.
+static func _spore_colour(tile: int) -> Color:
+	match tile:
+		Tiles.FUNGUS_PURPLE:
+			return Palette.FUNGUS_PURPLE
+		Tiles.FUNGUS_RED:
+			return Palette.FUNGUS_RED
+		_:
+			return SPORE
 
 ## Where the trader stands off their own cell at time `t`, in cells on the
 ## floor, with you at `you_at` (where you are drawn, so the lean follows your

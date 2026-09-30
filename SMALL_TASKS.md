@@ -204,7 +204,7 @@ task list only.
   0 failed / 0 script errors. Targeted test: 3 passed / 0 failed. Vault lint:
   0 problems, 0 warnings across 19 vaults.
 
-- [ ] **Spores off purple and red fungus**
+- [x] **Spores off purple and red fungus**
   `src/render/small_life.gd` makes pale green spores drift up off GREEN fungus
   (`Tiles.FUNGUS`), in both views. Make purple and red fungus give off spores
   too, each in its own colour (`Palette.FUNGUS_PURPLE`, `Palette.FUNGUS_RED`),
@@ -212,6 +212,12 @@ task list only.
   big infested cave costs no more than now. Motion only (not on "still"),
   as the green ones already are. Tests in `tests/run_view_tests.gd`: a purple
   fungus in view produces spores of the purple colour; none on still.
+
+  Done 2026-09-30: purple and red patches now emit spores in their own palette
+  colours through the shared `SmallLife` used by both views; all three fungus
+  types retain one nearest-first `MAX_FUNGUS` budget and remain full-motion
+  only. Added view checks for both tints, still mode and the shared cap/order.
+  Quick: 260 passed / 0 failed / 0 script errors.
 
 - [ ] **A burn effect**
   Burning the wrong fungus (`_burn_fungus` in `src/sim/game_state.gd`) reuses

@@ -724,6 +724,47 @@ func _test_small_life() -> void:
 	_with_mode(Effects.Mode.NONE, func(): got["still"] = life.motes(1.0).size())
 	check("small life is only on full: none on simple or still",
 		got["simple"] == 0 and got["still"] == 0)
+	# Poison patches keep the same motion, with the colour of the source. Keep
+	# them apart so a mote cannot be mistaken for one from the neighbouring patch.
+	var purple_at := Vector2i(8, 8)
+	var red_at := Vector2i(17, 8)
+	gs.map.set_tile(purple_at.x, purple_at.y, Tiles.FUNGUS_PURPLE)
+	gs.map.set_tile(red_at.x, red_at.y, Tiles.FUNGUS_RED)
+	life.rebuild(gs)
+	var tinted := {"purple": false, "red": false}
+	_with_mode(Effects.Mode.SHADERS, func():
+		for i in 60:
+			for m in life.motes(float(i) * 0.13):
+				var cell := Vector2i(floori(m[0].x), floori(m[0].y))
+				var colour: Color = m[2]
+				if float(m[1]) <= 0.1 or colour.a <= 0.1:
+					continue
+				if (cell - purple_at).length() <= 1.0 \
+						and Color(colour.r, colour.g, colour.b).is_equal_approx(Palette.FUNGUS_PURPLE):
+					tinted["purple"] = true
+				if (cell - red_at).length() <= 1.0 \
+						and Color(colour.r, colour.g, colour.b).is_equal_approx(Palette.FUNGUS_RED):
+					tinted["red"] = true)
+	check("purple and red fungus spores use their source colours",
+		tinted["purple"] and tinted["red"], str(tinted))
+	_with_mode(Effects.Mode.NONE, func(): got["bad_still"] = life.motes(1.0).size())
+	check("purple and red spores do not move on still", got["bad_still"] == 0)
+	# A mixed patch field still gets exactly one capped, nearest-first budget.
+	for y in range(1, gs.map.height - 1):
+		for x in range(1, gs.map.width - 1):
+			gs.map.set_tile(x, y, Tiles.FUNGUS_PURPLE if (x + y) % 2 == 0 else Tiles.FUNGUS_RED)
+	life.rebuild(gs)
+	var ordered := life._fungus.size() == SmallLife.MAX_FUNGUS
+	var previous_distance := -1
+	for c in life._fungus:
+		var distance := (c - Vector2i(gs.player.x, gs.player.y)).length_squared()
+		ordered = ordered and distance >= previous_distance
+		previous_distance = distance
+	check("mixed fungus shares the nearest-first spore limit",
+		ordered and life._fungus[0] == Vector2i(gs.player.x, gs.player.y),
+		"%d cells, nearest distance %d" % [life._fungus.size(),
+			(life._fungus[0] - Vector2i(gs.player.x, gs.player.y)).length_squared()
+			if not life._fungus.is_empty() else -1])
 	var lit_ok := true
 	for c in life._dust:
 		var d := c - Vector2i(gs.player.x, gs.player.y)
