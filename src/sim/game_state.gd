@@ -115,7 +115,8 @@ static func using_scratch() -> bool:
 ## Removes whatever use_scratch_files created.
 static func clear_scratch_files() -> void:
 	BestiaryLog.clear_scratch()
-	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, PadConfig.PATH, LegendsLog.PATH]:
+	for path in [SUSPEND_PATH, MORGUE_PATH, DEATH_PATH, SETTINGS_PATH, PadConfig.PATH,
+			LegendsLog.PATH]:
 		if path.contains("scratch_") and FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 	# The screenshots folder too, and what is in it -- a folder, so the loop

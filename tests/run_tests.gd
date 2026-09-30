@@ -40,6 +40,7 @@ func _initialize() -> void:
 		legends_before = FileAccess.get_file_as_string("user://legends.json")
 	print("")
 	_test_screenshot_paths_and_key()
+	_test_scratch_cleanup_removes_only_scratch_settings()
 	_test_generation_is_deterministic()
 	_test_map_always_connected()
 	_test_fov_blocked_by_walls()
@@ -326,6 +327,34 @@ func _test_screenshot_paths_and_key() -> void:
 		if row[0] == "F9" and row[1] == "screenshot" and int(row[2]) == KEY_F9:
 			f9_is_listed = true
 	check("F9 screenshot is listed in the legend keys", f9_is_listed)
+
+func _test_scratch_cleanup_removes_only_scratch_settings() -> void:
+	var real_existed_before := FileAccess.file_exists("user://settings.cfg")
+	var real_before := FileAccess.get_file_as_string("user://settings.cfg") \
+		if real_existed_before else ""
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("clear_settings_test")
+	var scratch_settings := GameState.SETTINGS_PATH
+	var scratch_file := FileAccess.open(scratch_settings, FileAccess.WRITE)
+	if scratch_file != null:
+		scratch_file.store_string("scratch setting")
+		scratch_file.close()
+	var scratch_existed_before := FileAccess.file_exists(scratch_settings)
+	GameState.clear_scratch_files()
+	check("scratch cleanup has a settings file to remove", scratch_existed_before)
+	check("scratch cleanup removes its settings file",
+		not FileAccess.file_exists(scratch_settings))
+
+	# Point only the settings path at the real file: the same guard must protect
+	# it even while the other paths still point into scratch storage.
+	GameState.SETTINGS_PATH = "user://settings.cfg"
+	GameState.clear_scratch_files()
+	var real_existed_after := FileAccess.file_exists("user://settings.cfg")
+	var real_after := FileAccess.get_file_as_string("user://settings.cfg") \
+		if real_existed_after else ""
+	check("scratch cleanup leaves real settings.cfg untouched",
+		real_existed_before == real_existed_after and real_before == real_after)
+	GameState.use_scratch_files("tests")
 
 var _silent_ok := true
 ## How many check_silent calls the current gathered block has actually made.
@@ -706,6 +735,7 @@ func _test_threat_ceiling_holds() -> void:
 	var cave_worst := 0
 	var biggest_ceiling := 0
 	var smallest_ceiling := 1 << 30
+	GameState.clear_scratch_files()
 	for d in range(1, 9):
 		for i in 25:
 			var gs := GameState.new(21000 + d * 100 + i)
@@ -728,7 +758,9 @@ func _test_threat_ceiling_holds() -> void:
 					cave_worst = maxi(cave_worst, sum - roof)
 				elif sum > mine:
 					own_breaches += 1
-			gs.clear_scratch_files()
+			GameState.clear_scratch_files()
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("tests")
 	check("no cave is deadlier than a room (%d caves, depths 1-8)" % caves_checked,
 		cave_breaches == 0, "%d breaches, worst %d over" % [cave_breaches, cave_worst])
 	check("and none exceeds the ceiling its own size earns it",
@@ -743,6 +775,7 @@ func _test_threat_ceiling_holds() -> void:
 	# afford until depth 7 -- by which point the caves band is over.
 	var roomy := 0
 	var bear_capable := 0
+	GameState.clear_scratch_files()
 	for i in 40:
 		var gs := GameState.new(58000 + i)
 		gs.use_scratch_files("bearfit%d" % i)
@@ -753,7 +786,9 @@ func _test_threat_ceiling_holds() -> void:
 			roomy += 1
 			if gs.cave_threat_ceiling_for(gs.cave_cells(region)) >= 17:
 				bear_capable += 1
-		gs.clear_scratch_files()
+		GameState.clear_scratch_files()
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("tests")
 	check("some caves can afford a cave bear at depth 5 (%d of %d)"
 		% [bear_capable, roomy], bear_capable > 0,
 		"none of %d caves" % roomy)
@@ -3999,6 +4034,7 @@ func _test_map_always_connected() -> void:
 	# effective 15 -- the caves band on the climb, where yesterday's sealed-room
 	# bug lived and where nothing had actually been looking.
 	var cut_off := []
+	GameState.clear_scratch_files()
 	for i in 30:
 		for spec in [[1, false], [5, false], [6, false], [8, false],
 				[10, false], [5, true]]:
@@ -4037,7 +4073,9 @@ func _test_map_always_connected() -> void:
 				cut_off.append("seed %d d%d%s: %d of %d (%.0f%%)"
 					% [70000 + i, d, " up" if climbing else "", got, total,
 					100.0 * float(got) / float(maxi(total, 1))])
-			gs.clear_scratch_files()
+			GameState.clear_scratch_files()
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("tests")
 	check("every walkable cell is reachable from where you start (%d floors)"
 		% (30 * 6), cut_off.is_empty(),
 		"%d stranded: %s" % [cut_off.size(), str(cut_off.slice(0, 4))])
@@ -8989,6 +9027,7 @@ func _test_the_pity_gem_is_earned() -> void:
 	var placed := 0
 	var in_start := 0
 	var nearer := 0
+	GameState.clear_scratch_files()
 	for i in 60:
 		for d in GameState.GEM_PITY_FLOORS:
 			var gs := GameState.new(23000 + i * 29 + int(d))
@@ -8997,7 +9036,7 @@ func _test_the_pity_gem_is_earned() -> void:
 			gs.depth = d
 			gs.build_level()
 			if gs.room_rects.size() < 2:
-				gs.clear_scratch_files()
+				GameState.clear_scratch_files()
 				continue
 			var gem: Item = null
 			for it in gs.ground:
@@ -9005,7 +9044,7 @@ func _test_the_pity_gem_is_earned() -> void:
 					gem = it
 					break
 			if gem == null:
-				gs.clear_scratch_files()
+				GameState.clear_scratch_files()
 				continue
 			placed += 1
 			var home: Rect2i = gs.room_rects[0]
@@ -9021,7 +9060,9 @@ func _test_the_pity_gem_is_earned() -> void:
 			avg /= float(gs.room_rects.size())
 			if float(mine) < avg:
 				nearer += 1
-			gs.clear_scratch_files()
+			GameState.clear_scratch_files()
+	GameState.clear_scratch_files()
+	GameState.use_scratch_files("tests")
 	check("early gems get placed at all (%d)" % placed, placed > 0)
 	check("and never in the room you start in", in_start == 0,
 		"%d of %d in the starting room" % [in_start, placed])

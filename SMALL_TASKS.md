@@ -241,7 +241,7 @@ task list only.
   0 script errors.
   Full suite not run, as instructed.
 
-- [ ] **Test litter in the save folder**
+- [x] **Test litter in the save folder**
   Three tests in `tests/run_tests.gd` switch to their own scratch files inside
   a loop -- `use_scratch_files("bearfit%d")`, `"pity%d_%d"` and
   `"reach%d_%d_%s"` -- and leave `scratch_bearfit*`, `scratch_pity*` and
@@ -254,6 +254,14 @@ task list only.
   settings.cfg). Check: run those three test functions with
   `tools/run_one_test.gd`, then list the save folder
   (`$XDG_DATA_HOME/godot/app_userdata/OFR/`) -- no `scratch_` files left.
+
+  Done 2026-09-30: `clear_scratch_files()` now removes `SETTINGS_PATH` only
+  under its existing `scratch_` guard. The three loop tests clean each tag
+  before switching and restore `scratch_tests` afterward. Added a regression
+  check that scratch settings are removed and real `settings.cfg` survives.
+  Quick: 267 passed / 0 failed / 0 script errors. Targeted cleanup and three
+  named tests: 15 passed / 0 failed / 0 script errors. The isolated save folder
+  listed no `scratch_` files afterward. Full suite not run, as instructed.
 
 
 - [ ] **The miasma cloud's shape: rounded in 3D, angled corners in classic**
