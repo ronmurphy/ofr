@@ -356,6 +356,16 @@ Small, self-contained jobs for the free model live in **`SMALL_TASKS.md`**,
 with the rules it works by (tests, both views, "still", no commits). Brad
 points it at that file; Claude reviews its commits.
 
+**The fair dark (Brad, 2026-09-29 -- at 2 hp from a young dragon firing out
+of the climb's dark). BUILT, waiting on play.** Shooters may stand
+DARK_SHOT_GRACE (2) past the edge of your light only with a full torch (or a
+burning flare); where the torch is cut down -- caves, the dark climb, doused --
+the margin is 0: they must be at the very edge of your light. Magic and fire
+shooters (dragon, wizard, arch lich: bestiary "casts") LIGHT their own square
+when they fire, this turn and next, so you see what fired and where. The
+climb's caves remember the map faintly (0.15) instead of not at all -- one
+rule now, MapMemory.strength_for, for both views.
+
 ## Known gaps
 
 **One leaked object at every quit since the music (harmless).** Godot reports

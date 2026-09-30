@@ -975,10 +975,7 @@ const CAVE_MEMORY := 0.45
 ## How brightly remembered ground is drawn on this floor: 1 outside the caves,
 ## CAVE_MEMORY in them, and nothing on the corrupted climb. GlyphGrid's rule.
 func _memory_strength() -> float:
-	var effective := state.effective_depth()
-	if not Bands.is_caves(effective):
-		return 1.0
-	return 0.0 if Bands.is_corrupted(effective) else CAVE_MEMORY
+	return MapMemory.strength_for(state.effective_depth())
 
 ## Hand the surface shader the light, one texel per cell, the way GlyphGrid's
 ## _upload_cells hands its shader the tiles. rgb is the light map, a is 1 for a

@@ -330,6 +330,11 @@ var spore_marked := false
 ## careful grid). The smart kinds -- dragons, wizards, liches. Everything else
 ## walks through and is hurt by it. From the bestiary; saved.
 var careful := false
+## Shoots with magic or fire (dragons, wizards, liches): a shot LIGHTS its own
+## square, so you see what fired and where. From the bestiary; saved.
+var casts := false
+## The turn its last flare lasts until; -1 for none. Saved.
+var flare_until := -1
 
 ## The eight steps clockwise from north, on a screen where y grows downward.
 const CLOCKWISE: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
@@ -464,6 +469,7 @@ func to_dict() -> Dictionary:
 		"reload_style": reload_style, "reload_left": reload_left,
 		"facing": [facing.x, facing.y],
 		"spore_marked": spore_marked, "careful": careful,
+		"casts": casts, "flare_until": flare_until,
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
 		"pursue_turns": pursue_turns,
@@ -518,6 +524,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.facing = Vector2i(int(f[0]), int(f[1]))
 	e.spore_marked = bool(d.get("spore_marked", false))
 	e.careful = bool(d.get("careful", false))
+	e.casts = bool(d.get("casts", false))
+	e.flare_until = int(d.get("flare_until", -1))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
 	e.shaken = int(d.get("shaken", 0))

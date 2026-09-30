@@ -1008,7 +1008,7 @@ const BESTIARY := [
 	 "speed": 130, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 9, "threat": 19, "caves": 1.0, "unliving": true},
 	{"name": "young dragon", "app": &"dragon", "hp": 55, "power": 14, "def": 6,
 	 "speed": 110, "ai": &"ranged", "range": 5, "flee": 0.0, "flying": true, "min_depth": 10,
-	 "threat": 28, "caves": 2.0, "careful": true},
+	 "threat": 28, "caves": 2.0, "careful": true, "casts": true},
 
 	# The rabbit, and what it turns into.
 	#
@@ -1079,7 +1079,7 @@ const BESTIARY := [
 	# walk.
 	{"name": "wizard", "app": &"wizard", "hp": 18, "power": 11, "def": 1,
 	 "speed": 90, "ai": &"ranged", "range": 7, "standoff": 3, "flee": 0.0,
-	 "min_depth": 8, "threat": 22, "caves": 0.4, "patrol": true, "scavenge": true, "careful": true},
+	 "min_depth": 8, "threat": 22, "caves": 0.4, "patrol": true, "scavenge": true, "careful": true, "casts": true},
 	# What the caves have in them on the way back out.
 	#
 	# Only the SECOND ascent-only creature in the bestiary -- the climb has
@@ -1101,7 +1101,7 @@ const BESTIARY := [
 	# fade window is undisturbed; `ascent_from` does the actual gating.
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
 	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
-	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "careful": true},
+	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "careful": true, "casts": true},
 ]
 
 ## The deepest tier that exists.
@@ -2472,6 +2472,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.attack_range = entry.get("range", 1)
 	m.reload_style = Entity.Reload.RANDOM if entry.get("reload", false) else Entity.Reload.NONE
 	m.careful = entry.get("careful", false)
+	m.casts = entry.get("casts", false)
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
@@ -2998,6 +2999,10 @@ func update_vision() -> void:
 			e.light.x = e.x
 			e.light.y = e.y
 			sources.append(e.light)
+		# A casting flare: a short, bright burst on the shooter's square.
+		if e.flare_until >= turns:
+			sources.append(LightSource.new(e.x, e.y, 2,
+				Color(1.00, 0.78, 0.50), Color(0.40, 0.26, 0.20), 1.2, false))
 	light_map.compute(map, sources)
 
 	# VISION, in two halves, and the second is new.
@@ -6933,6 +6938,10 @@ func _ai_ranged(actor: Entity, foe: Entity) -> void:
 			return
 		_attack(actor, foe, true)
 		actor.reload_left = _reload_after_shot(actor)
+		# Magic and fire give away the shooter: its square lights up, so you
+		# see what fired and where, even from the dark.
+		if actor.casts:
+			actor.flare_until = turns + CAST_FLARE_TURNS
 		return
 
 	_step_toward(actor, Vector2i(foe.x, foe.y))
@@ -6959,7 +6968,21 @@ func _fair_from_the_dark(shooter: Entity, target: Entity) -> bool:
 	for c in Los.path(target.x, target.y, shooter.x, shooter.y):
 		if map.is_visible(c.x, c.y):
 			seen = maxi(seen, maxi(absi(c.x - target.x), absi(c.y - target.y)))
-	return Los.steps(target.x, target.y, shooter.x, shooter.y) - seen <= DARK_SHOT_GRACE
+	return Los.steps(target.x, target.y, shooter.x, shooter.y) - seen <= dark_shot_grace()
+
+## How far past the edge of your light a shooter may stand. DARK_SHOT_GRACE
+## with a full torch -- Brad's ruling of 2026-09-27 -- but NONE where the torch
+## is cut down (the caves, the dark climb, a doused torch): there a margin of 2
+## was half your sight again, and a young dragon (range 5) against a torch of
+## 4 always fired from the dark. Brad was at 2 hp from exactly that
+## (2026-09-29): shooters must now stand at the very edge of your light.
+func dark_shot_grace() -> int:
+	if torch_flare > 0 or (torch_lit and torch_radius() >= TORCH_RADIUS):
+		return DARK_SHOT_GRACE
+	return 0
+
+## A magic or fire shot lights the shooter for this long: this turn and next.
+const CAST_FLARE_TURNS := 1
 
 ## How long after a blink before it can blink again.
 ##

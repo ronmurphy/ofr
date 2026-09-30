@@ -101,6 +101,7 @@ func _initialize() -> void:
 	_test_bodies_lie_and_rot()
 	_test_slingers_reload()
 	_test_the_wrong_fungus()
+	_test_the_dark_is_fair()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1544,6 +1545,59 @@ func _suspended_state() -> GameState:
 	gs.player.hp = 17
 	gs.update_vision()
 	return gs
+
+## Shooters in the dark: a margin of 2 past a full torch, none where the torch
+## is cut down; and a magic shot lights the shooter (Brad, 2026-09-29, at 2 hp).
+func _test_the_dark_is_fair() -> void:
+	var room := GameState.new(8181)
+	room.new_game()
+	room.depth = 2
+	room.build_level()
+	check("with a full torch on a room floor, shooters keep a margin of 2",
+		room.dark_shot_grace() == GameState.DARK_SHOT_GRACE)
+	var climb := GameState.new(8282)
+	climb.new_game()
+	climb.ascending = true
+	climb.depth = 5
+	climb.build_level()
+	check("in the climb's caves the torch is short (the premise)",
+		climb.torch_radius() < GameState.TORCH_RADIUS)
+	check("and there a shooter must be at the very edge of your light",
+		climb.dark_shot_grace() == 0)
+	climb.torch_flare = 5
+	check("unless your flare is burning", climb.dark_shot_grace() == GameState.DARK_SHOT_GRACE)
+	climb.torch_flare = 0
+	check("the dragon, wizard and arch lich cast; a slinger does not",
+		GameState.monster_from(_bestiary_entry("young dragon"), 0, 0).casts
+		and GameState.monster_from(_bestiary_entry("wizard"), 0, 0).casts
+		and GameState.monster_from(_bestiary_entry("arch lich"), 0, 0).casts
+		and not GameState.monster_from(_bestiary_entry("kobold slinger"), 0, 0).casts)
+
+	# A flare shows the shooter across the dark. An open strip beyond the torch.
+	var g := GameState.new(8383)
+	g.new_game()
+	g.ascending = true
+	g.depth = 5
+	g.build_level()
+	var o := Vector2i(g.player.x, g.player.y)
+	for dx in range(-1, 12):
+		for dy in range(-1, 2):
+			g.map.set_tile(o.x + dx, o.y + dy, Tiles.FLOOR)
+	g.static_lights = []
+	var far := o + Vector2i(g.torch_radius() + 4, 0)
+	var dragon := GameState.monster_from(_bestiary_entry("young dragon"), far.x, far.y)
+	g.entities = [g.player, dragon]
+	g.update_vision()
+	check("a dragon beyond your light is unseen (the premise)",
+		not g.map.is_visible(far.x, far.y))
+	dragon.flare_until = g.turns
+	g.update_vision()
+	check("its breath lights it: you see it where it stands", g.map.is_visible(far.x, far.y))
+	g.turns += GameState.CAST_FLARE_TURNS + 1
+	g.update_vision()
+	check("and the flare dies away", not g.map.is_visible(far.x, far.y))
+	check("a flare is saved with the creature",
+		Entity.from_dict(dragon.to_dict()).flare_until == dragon.flare_until)
 
 ## A bestiary entry by name, for tests that want a particular creature.
 func _bestiary_entry(name: String) -> Dictionary:
@@ -7607,8 +7661,10 @@ func _test_memory_by_band() -> void:
 	check("caves are remembered dimly (%.2f)" % grid._memory_strength(),
 		grid._memory_strength() > 0.0 and grid._memory_strength() < 1.0)
 	gs.ascending = true
-	check("and the corrupted ones not at all",
-		is_zero_approx(grid._memory_strength()), str(grid._memory_strength()))
+	var cave_down := MapMemory.CAVE_MEMORY
+	check("and the corrupted ones only just (Brad, 2026-09-29: barely visible)",
+		grid._memory_strength() > 0.0 and grid._memory_strength() < cave_down,
+		str(grid._memory_strength()))
 	gs.depth = 2
 	check("but only in that band -- the climb out is remembered again",
 		is_equal_approx(grid._memory_strength(), 1.0),

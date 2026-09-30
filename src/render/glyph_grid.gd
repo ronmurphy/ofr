@@ -949,10 +949,7 @@ const ANIM_SHADER := "res://src/render/shaders/block_anim.gdshader"
 func _memory_strength() -> float:
 	if state == null:
 		return 1.0
-	var eff := state.effective_depth()
-	if not Bands.is_caves(eff):
-		return 1.0
-	return 0.0 if Bands.is_corrupted(eff) else CAVE_MEMORY
+	return MapMemory.strength_for(state.effective_depth())
 
 ## Remembered cave ground, as a fraction of ordinary remembered ground.
 const CAVE_MEMORY := 0.45

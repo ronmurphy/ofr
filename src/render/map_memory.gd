@@ -86,6 +86,18 @@ func fades(turns: int) -> PackedFloat32Array:
 
 ## The fade for ground last seen `age` turns ago. Split out so the curve can be
 ## checked without a floor to stand on.
+## How brightly remembered ground is drawn on a floor: whole outside the caves,
+## dim in them, and on the climb's caves only just there. ONE rule for both
+## views -- it was copied into each. The climb's caves were 0 (nothing at all)
+## until Brad, 2026-09-29, with a dragon shooting from the dark: keep the
+## gloom, but let the memory be barely visible.
+const CAVE_MEMORY := 0.45
+const CLIMB_CAVE_MEMORY := 0.15
+static func strength_for(effective: int) -> float:
+	if not Bands.is_caves(effective):
+		return 1.0
+	return CLIMB_CAVE_MEMORY if Bands.is_corrupted(effective) else CAVE_MEMORY
+
 static func fade_for_age(age: int) -> float:
 	var k := clampf(float(age - FADE_AFTER) / float(FADE_FULL - FADE_AFTER), 0.0, 1.0)
 	return 1.0 - (1.0 - FADE_FLOOR) * k
