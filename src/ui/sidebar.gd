@@ -709,10 +709,17 @@ func _draw() -> void:
 	if pad_cfg != null:
 		how = pad_cfg.icon(KEY_QUESTION, pad_input)
 	# Loud until the legend has been found once: bold and gold on floors 1-2.
+	# Drawn as a button like the menu's (the UI review): it has been clickable
+	# since the 2026-09-26 playtest, and now it looks it.
 	var help_colour: Color = Palette.STAIRS if help_loud else Palette.UI_DIM
 	if _hover_button == "help":
 		help_colour = Color.WHITE
-	PadGlyphs.draw(self, Vector2(PAD, y), help_text(),
+	var hb := help_button_rect()
+	draw_rect(hb, Color(Palette.CURSOR, 0.16) if _hover_button == "help"
+		else Palette.UI_PANEL_BG, true)
+	draw_rect(hb, Palette.UI_TEXT if _hover_button == "help" else Palette.UI_FRAME,
+		false, 1.0)
+	PadGlyphs.draw(self, Vector2(PAD + 7.0, y), help_text(),
 		font_bold if help_loud else font, font_size, help_colour)
 
 	# The menu button, on the same line, right-aligned (Brad: one line, to
@@ -735,12 +742,58 @@ static func help_is_loud(gs: GameState) -> bool:
 	return gs != null and not gs.ascending and gs.depth <= 2 \
 		and not LegendPanel.seen_ever()
 
-## Where the minimap goes: centred, its bottom just above the help line.
+## THE MINIMAP'S LEGEND (the UI review): a line under the map naming its
+## marks -- stairs, shrine, the wrong fungus, you -- as a square of the mark's
+## own colour and a word, laid out by the chips' measured rule. The map cannot
+## grow (96 squares at 2 px is already the panel's width), so this is what
+## "a minimap you can read" costs: one line.
+const LEGEND_H := 18.0
+const LEGEND_SQ := 7.0
+
+func legend_items() -> Array:
+	return [
+		{"text": "you", "colour": MapPanel.MARK_PLAYER},
+		{"text": "stairs", "colour": MapPanel.MARK_STAIRS},
+		{"text": "shrine", "colour": MapPanel.MARK_SHRINE},
+		{"text": "red", "colour": MapPanel._terrain_colour(Tiles.FUNGUS_RED)},
+		{"text": "purple", "colour": MapPanel._terrain_colour(Tiles.FUNGUS_PURPLE)},
+	]
+
+func legend_font_size() -> int:
+	return font_size - 4
+
+func legend_width(item: Dictionary) -> float:
+	return LEGEND_SQ + 4.0 + font.get_string_size(String(item["text"]),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, legend_font_size()).x
+
+## The legend's rows, by the same measured rule as the chips.
+func legend_rows() -> Array:
+	var widths: Array = []
+	for item in legend_items():
+		widths.append(legend_width(item))
+	return chip_rows(widths, size.x - PAD * 2.0)
+
+func _draw_legend(y: float) -> void:
+	var items := legend_items()
+	var fs := legend_font_size()
+	for row in legend_rows():
+		var x := PAD
+		for i in row:
+			var item: Dictionary = items[i]
+			draw_rect(Rect2(Vector2(x, y - LEGEND_SQ), Vector2(LEGEND_SQ, LEGEND_SQ)),
+				item["colour"], true)
+			draw_string(font, Vector2(x + LEGEND_SQ + 4.0, y), String(item["text"]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Palette.UI_DIM)
+			x += legend_width(item) + CHIP_GAP
+		y += LEGEND_H
+
+## Where the minimap goes: centred, its bottom just above the legend, which
+## sits just above the help line.
 func minimap_rect() -> Rect2:
 	if state == null or state.map == null:
 		return Rect2()
 	var s := Vector2(state.map.width * MINI_CELL, state.map.height * MINI_CELL)
-	var bottom := help_line_rect().position.y - 8.0
+	var bottom := help_line_rect().position.y - 8.0 - LEGEND_H * legend_rows().size()
 	return Rect2(Vector2(floorf((size.x - s.x) * 0.5), bottom - s.y), s)
 
 ## Whether the minimap is drawn this frame: wanted, and with room to spare.
@@ -773,6 +826,7 @@ func _draw_minimap() -> void:
 	var centre := r.position + (Vector2(state.player.x, state.player.y) + Vector2(0.5, 0.5)) * MINI_CELL
 	draw_line(centre, centre + Vector2(state.player.facing).normalized() * 7.0,
 		MapPanel.MARK_PLAYER, 1.5)
+	_draw_legend(r.end.y + 4.0 + LEGEND_H * 0.8)
 
 ## The part of the HP bar a heal just filled: from the old edge to the new.
 ## Both edges measured from the bar's left end (PAD). The first version took
@@ -820,6 +874,14 @@ func menu_button_rect() -> Rect2:
 	var baseline := size.y - PAD - LINE
 	var h := LINE + 2.0
 	return Rect2(size.x - PAD - w, baseline - h + 6.0, w, h)
+
+## The help button's frame: sized to its label, inside the help line, which
+## stays the (wider) click area.
+func help_button_rect() -> Rect2:
+	var face: Font = font_bold if help_loud else font
+	var w := (PadGlyphs.width(help_text(), face, font_size) if face != null else 90.0) + 14.0
+	var line := help_line_rect()
+	return Rect2(line.position, Vector2(minf(w, line.size.x), line.size.y))
 
 ## The rest of the line, left of the button.
 func help_line_rect() -> Rect2:

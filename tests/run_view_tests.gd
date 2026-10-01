@@ -1796,8 +1796,70 @@ func _test_the_ui_review() -> void:
 				HORIZONTAL_ALIGNMENT_LEFT, -1, side.chip_font_size()).x)
 	check("  both lines fit beside the ring (%.0f <= %.0f px)" % [widest_line, limit - Sidebar.RING_W],
 		widest_line <= limit - Sidebar.RING_W)
+
+	# THE MINIMAP'S LEGEND sits under the map, above the help line, and takes
+	# a row or two by the chips' rule; the map still clears the panel.
+	side.state = gs
+	side.show_minimap = true
+	var legend_rows: int = side.legend_rows().size()
+	check("  the legend takes two rows at most (%d)" % legend_rows, legend_rows >= 1 and legend_rows <= 2)
+	var mr := side.minimap_rect()
+	check("  the minimap leaves room for the legend above the help line",
+		mr.end.y + Sidebar.LEGEND_H * legend_rows + 8.0 <= side.help_line_rect().position.y + 0.01
+		and mr.position.x >= Sidebar.PAD and mr.end.x <= side.size.x - Sidebar.PAD)
+	# THE HELP BUTTON: framed to its label, inside the click area it had.
+	for loud in [true, false]:
+		side.help_loud = loud
+		var hb := side.help_button_rect()
+		check("  the help button sits inside its click area (%s)" % ("loud" if loud else "quiet"),
+			side.help_line_rect().encloses(hb) and hb.size.x >= PadGlyphs.width(side.help_text(),
+				side.font_bold if loud else side.font, side.font_size))
+	side.help_loud = false
 	side.state = null
 	side.free()
+
+	# THE LOG: a rule in the line's colour, a wash under a danger, and the
+	# widest real line still fits past the rule.
+	check("  a hit on you is a danger; a notice is not; plain text is not",
+		MessageView.is_danger(Color(0.90, 0.45, 0.40)) and MessageView.is_danger(Color(1.0, 0.35, 0.35))
+		and MessageView.is_danger(Color(0.92, 0.40, 0.40))
+		and not MessageView.is_danger(Color(0.98, 0.78, 0.35))
+		and not MessageView.is_danger(Color(0.78, 0.78, 0.72)))
+	var log_font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var long_line := "The red fungus has laid claim to Brandywine. If they fall, they will rise against you."
+	var log_w := log_font.get_string_size(long_line, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var log_room := 964.0 - MessageView.text_x() - MessageView.PAD
+	check("  the widest warning fits past the rule (%.0f <= %.0f px)" % [log_w, log_room],
+		log_w <= log_room)
+
+	# THE HERE BOX: keycaps inside the key column, the status in its colour.
+	var hgs := GameState.new(78)
+	hgs.new_game()
+	var here := HerePanel.new()
+	here.state = hgs
+	here.font = log_font
+	here.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	var widest_cap := 0.0
+	var widest_key := ""
+	for b in [JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_LEFT_SHOULDER,
+			JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_START]:
+		var label := PadConfig.button_name(b)
+		var w := here.keycap_rect(40.0, label).size.x
+		if w > widest_cap:
+			widest_cap = w
+			widest_key = label
+	check("  the widest keycap fits the key column (\"%s\" %.0f <= %.0f px)"
+		% [widest_key, widest_cap, HerePanel.KEY_COL], widest_cap <= HerePanel.KEY_COL)
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.FLOOR)
+	hgs.player.poisoned = 2
+	check("  poisoned, the status chip is purple", here.status_colour() == Palette.FUNGUS_PURPLE)
+	hgs.player.poisoned = 0
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.FUNGUS_RED)
+	check("  on red fungus, red", here.status_colour() == Palette.FUNGUS_RED
+		and here.status_line().begins_with("red fungus"), here.status_line())
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.MUD)
+	check("  slow ground keeps the brazier amber", here.status_colour() == Palette.BRAZIER)
+	here.free()
 
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:

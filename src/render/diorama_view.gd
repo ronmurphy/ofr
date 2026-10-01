@@ -42,8 +42,11 @@ const CAMERA_DISTANCE := 25.0
 const AXES: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 const DIAGONALS: Array[Vector2i] = [Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1)]
 const TURN_TIME := 0.18
-const FOLLOW_HINT := "3D view, camera follows you     up / down: forward / back     left / right: turn     Q / d-pad up: classic"
-const DIORAMA_HINT := "3D view     [ / ], LT / RT or right stick: turn     click: move     Q / d-pad up: classic"
+## Short (the UI review, 2026-10-01): the strip over the map used to spell
+## out every key, every turn. It now says which view this is and how to leave
+## it; the keys are one press away under ?, and the HERE box teaches the rest.
+const FOLLOW_HINT := "3D · camera follows you     Q / d-pad up: classic     ? keys"
+const DIORAMA_HINT := "3D     [ / ] or right stick: turn     Q / d-pad up: classic     ? keys"
 const SURFACE_SHADER: Shader = preload("res://src/render/shaders/diorama_surface.gdshader")
 const ASCII_GROUND_TILES := [
 	Tiles.FLOOR, Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
