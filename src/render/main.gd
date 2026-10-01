@@ -138,7 +138,7 @@ const CONFIRM: Array[int] = [KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER]
 const PACK_FORGE_KEY := KEY_X       ## Y
 const PACK_BACK_KEY := KEY_G        ## B
 const PACK_USE_KEY := KEY_Q         ## d-pad up (the 3D view switch outside the pack)
-const PACK_DROP_KEY := KEY_GREATER  ## d-pad down
+const PACK_DROP_KEY := KEY_S        ## d-pad down (the satchel outside the pack, 2026-10-01)
 const PACK_FORGE_ALT := KEY_T       ## d-pad left
 const PACK_THROW_KEY := KEY_P       ## d-pad right
 
@@ -158,7 +158,9 @@ static func pad_pack_action(key: int, throw_mode: bool, bind_mode: bool) -> Stri
 		# still sends it -- the map's own view toggle allows for the same.
 		PACK_USE_KEY, KEY_O:
 			return &"use"
-		PACK_DROP_KEY:
+		# > too: a layout saved before d-pad down became the satchel still
+		# sends it, and inside the pack it has always meant drop.
+		PACK_DROP_KEY, KEY_GREATER:
 			return &"drop"
 		PACK_THROW_KEY:
 			return &"throw"
@@ -324,6 +326,8 @@ func _ready() -> void:
 	inventory.merge_requested.connect(_merge_item)
 	inventory.throw_requested.connect(_on_throw_chosen)
 	inventory.bind_requested.connect(_on_bind_chosen)
+	inventory.satchel_use_requested.connect(_on_satchel_use)
+	inventory.satchel_drop_requested.connect(_on_satchel_drop)
 	menu.resume_requested.connect(_close_menu)
 	menu.pad_requested.connect(_open_pad_setup)
 	legend.portrait_requested.connect(_show_portrait)
@@ -823,6 +827,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 					_on_throw_chosen(on)
 				elif inventory.bind_mode:
 					_on_bind_chosen(on)
+				elif inventory.satchel_mode:
+					_on_satchel_use(on)
 				else:
 					_use_item(on)
 			return
@@ -834,6 +840,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				_refresh()
 				return
 
+		# The satchel's chooser on a pad: use, set down, or close.
+		if _synthetic and inventory.satchel_mode:
+			var picked_row := inventory.hovered()
+			match pad_pack_action(key, false, false):
+				&"close":
+					_close_inventory()
+				&"use":
+					if picked_row >= 0:
+						_on_satchel_use(picked_row)
+				&"drop":
+					if picked_row >= 0:
+						_on_satchel_drop(picked_row)
+			return
 		# A PAD IS NEVER A LETTER HERE. Everything below this line reads keys as
 		# item letters, so a controller press must not reach it. See
 		# pad_pack_action for the bug this closes.
@@ -854,6 +873,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 							&"throw": _on_throw_chosen(on)
 			return
 
+		if inventory.satchel_mode:
+			if key == KEY_ESCAPE or key == KEY_S or key == KEY_I:
+				_close_inventory()
+			else:
+				var pick: int = inventory.letter_to_index(key)
+				if pick >= 0:
+					_on_satchel_use(pick)
+			return
 		if inventory.throw_mode:
 			if key == KEY_ESCAPE or key == KEY_F:
 				_close_inventory()
@@ -887,6 +914,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 	if key == KEY_I:
 		_open_inventory()
+		return
+	if key == KEY_S:
+		_open_satchel()
 		return
 
 	if _aiming:
@@ -1495,6 +1525,32 @@ func _on_cell_right_clicked(cell: Vector2i) -> void:
 	# mistaken for click-to-travel.
 	if state.player_fire(cell):
 		_refresh()
+	else:
+		_refresh()
+
+## `s`, or d-pad down: the satchel's chooser, worn or in the pack.
+func _open_satchel() -> void:
+	if state == null or state.game_over:
+		return
+	if state._the_satchel() == null:
+		state.msg_log.add("You have no satchel.", Color(0.7, 0.6, 0.4))
+		_refresh()
+		return
+	_end_look()
+	inventory.open_for_satchel()
+	_refresh()
+
+## A use from the satchel costs a turn and CLOSES the chooser, so the map
+## shows the heal (the design's whole reason). A refusal keeps it open.
+func _on_satchel_use(index: int) -> void:
+	if state.player_use_from_satchel(index):
+		_close_inventory()
+	else:
+		_refresh()
+
+func _on_satchel_drop(index: int) -> void:
+	if state.player_drop_from_satchel(index):
+		_close_inventory()
 	else:
 		_refresh()
 

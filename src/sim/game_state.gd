@@ -1347,6 +1347,7 @@ func build_level() -> void:
 		_populate_cave(region)
 	_place_vault_contents(gen)
 	_place_first_gem()
+	_place_the_satchel()
 	_place_chest()
 	# Last, so the trader takes a cell nothing else wanted.
 	_place_trader()
@@ -2197,6 +2198,44 @@ func _open_sack() -> bool:
 		Color(0.85, 0.80, 0.60))
 	return true
 
+## The farthest room from where you woke up, and never room 0 -- where a
+## guaranteed find is laid so it reads as loot and not as a gift (see
+## _place_first_gem). The whole floor when there are no rooms.
+func _far_room() -> Rect2i:
+	var where := Rect2i(1, 1, map.width - 2, map.height - 2)
+	if room_rects.size() > 1:
+		var home := room_rects[0].get_center()
+		var best := -1
+		for i in range(1, room_rects.size()):
+			var c := room_rects[i].get_center()
+			var d := absi(c.x - home.x) + absi(c.y - home.y)
+			if d > best:
+				best = d
+				where = room_rects[i]
+	elif not room_rects.is_empty():
+		where = room_rects[0]
+	return where
+
+## THE SATCHEL BY THE CAVES (Brad, 2026-10-01). The chests may hand it over
+## earlier (after the ring and the shovel), but the caves are what it is FOR
+## -- fungus to pick, rabbits and bears to eat -- so a run that reaches the
+## first cave floor without one finds it lying there, in the far room, and
+## never sees a second. Nothing on the climb: by then the chance is spent.
+func _place_the_satchel() -> void:
+	if ascending or uniques_found.has(&"satchel"):
+		return
+	for it in player.inventory:
+		if it.is_satchel():
+			uniques_found[&"satchel"] = true
+			return
+	if not Bands.is_caves(depth) or Bands.is_caves(depth - 1):
+		return
+	var at := _open_cell_in(_far_room())
+	if at.x < 0:
+		return
+	_drop_item_at(Item.make(&"satchel"), at)
+	uniques_found[&"satchel"] = true
+
 func _place_first_gem() -> void:
 	if gem_found or ascending:
 		return
@@ -2246,19 +2285,7 @@ func _place_first_gem() -> void:
 	# reads as loot; a gem lying beside you on arrival reads as the game
 	# apologising for its own drop rates. Same item, opposite meaning -- and the
 	# placement is the whole difference.
-	var where := Rect2i(1, 1, map.width - 2, map.height - 2)
-	if room_rects.size() > 1:
-		var home := room_rects[0].get_center()
-		var best := -1
-		for i in range(1, room_rects.size()):
-			var c := room_rects[i].get_center()
-			var d := absi(c.x - home.x) + absi(c.y - home.y)
-			if d > best:
-				best = d
-				where = room_rects[i]
-	elif not room_rects.is_empty():
-		where = room_rects[0]
-	var at := _open_cell_in(where)
+	var at := _open_cell_in(_far_room())
 	if at.x < 0:
 		return
 	# Drawn from the same table as everything else rather than from a
@@ -2944,8 +2971,11 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 ##
 ## `_test_inventory_letters_dodge_the_keys` reads main.gd and fails if a key
 ## is ever handled inside the inventory block without being listed here.
-const RESERVED_LETTERS := "if"
-const LETTERS := "abcdeghjklmnopqrstuvwxyz"
+## `s` since the satchel (2026-10-01): it closes the satchel's chooser.
+const RESERVED_LETTERS := "ifs"
+## The pool, with the reserved letters left out. Old saves are re-lettered
+## on load (_relabel_unreachable_items).
+const LETTERS := "abcdeghjklmnopqrtuvwxyz"
 
 ## Adds an item to the pack with a stable letter.
 ##
@@ -5817,7 +5847,7 @@ func _adjacent_spent_brazier() -> Vector2i:
 func _use_the_square(under: int) -> bool:
 	match under:
 		Tiles.FUNGUS:
-			return _eat_fungus()
+			return _pick_fungus() if _can_pick_fungus() else _eat_fungus()
 		Tiles.RUBBLE:
 			return _knap_stones()
 		Tiles.STAIRS_DOWN:
@@ -6051,7 +6081,7 @@ func actions_here() -> Array:
 			Tiles.SHRINE:
 				out.append([KEY_G, "pray"])
 			Tiles.FUNGUS:
-				out.append([KEY_G, "eat the fungus"])
+				out.append([KEY_G, "pick the fungus" if _can_pick_fungus() else "eat the fungus"])
 			Tiles.RUBBLE:
 				# Only when there is somewhere for the stone to GO. Reported
 				# from play: the panel offered this with no sling carried, and
@@ -6213,6 +6243,19 @@ func player_pickup() -> bool:
 			return player_relight()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
+	# THE SATCHEL TAKES FOOD AND POTIONS when it is worn with room: no pack
+	# slot spent, and the heal is a key away (the forager's satchel).
+	var bag := _worn_satchel()
+	if bag != null and bag.satchel_room() > 0 and here[0].kind == Item.Kind.POTION:
+		var meal: Item = here[0]
+		ground.erase(meal)
+		meal.letter = ""
+		bag.contents.append(meal)
+		_tally_in("picked", meal.name)
+		msg_log.add("You put the %s in the satchel (%d/%d)."
+			% [meal.name, bag.contents.size(), bag.holds], Color(0.75, 0.80, 0.90))
+		_end_player_turn()
+		return true
 	if player.inventory.size() >= Entity.INVENTORY_MAX:
 		# A FULL PACK MUST NOT BLOCK THE SQUARE'S OWN USE. Found in the
 		# 2026-09-27 hunt: an item lying on the stairs, with a full pack, made
@@ -6290,6 +6333,114 @@ func _eat_fungus() -> bool:
 	_gather_lights()
 	msg_log.add("You eat the fungus. It is bitter, and the glow goes out. (+1 hp)",
 		Color(0.62, 0.85, 0.68))
+	_end_player_turn()
+	return true
+
+## THE FORAGER'S SATCHEL. The one you wear, else the first in the pack (in
+## the pack it still works, at the same cost), else null.
+func _worn_satchel() -> Item:
+	var off: Variant = player.equipped.get(Item.Slot.OFFHAND, null)
+	return off if off != null and off.is_satchel() else null
+
+func _the_satchel() -> Item:
+	var worn := _worn_satchel()
+	if worn != null:
+		return worn
+	for it in player.inventory:
+		if it.is_satchel():
+			return it
+	return null
+
+## What the satchel you would open holds, in its order.
+func satchel_items() -> Array:
+	var bag := _the_satchel()
+	return bag.contents if bag != null else []
+
+## Worn, with room for one more fungus: a slot, or a stack not yet full.
+func _can_pick_fungus() -> bool:
+	var bag := _worn_satchel()
+	if bag == null:
+		return false
+	if bag.satchel_room() > 0:
+		return true
+	for it in bag.contents:
+		if it.id == &"fungus" and it.count < Item.STACK_MAX:
+			return true
+	return false
+
+## Fungus picked where it grew goes into the worn satchel, stacked; the
+## tile is bare floor after, and its light is gone, as when it is eaten.
+func _pick_fungus() -> bool:
+	var bag := _worn_satchel()
+	var stack: Item = null
+	for it in bag.contents:
+		if it.id == &"fungus" and it.count < Item.STACK_MAX:
+			stack = it
+			break
+	if stack == null:
+		stack = Item.make(&"fungus")
+		bag.contents.append(stack)
+	else:
+		stack.count += 1
+	map.set_tile(player.x, player.y,
+		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
+		else Tiles.FLOOR)
+	_gather_lights()
+	msg_log.add("You pick the fungus. Its glow goes with it into the satchel (%d)." % stack.count,
+		Color(0.62, 0.85, 0.68))
+	_end_player_turn()
+	return true
+
+## Using something from the satchel: the item's own effect, one of a stack,
+## and a turn -- the same turn a potion from the pack costs.
+func player_use_from_satchel(index: int) -> bool:
+	if game_over:
+		return false
+	var bag := _the_satchel()
+	if bag == null or index < 0 or index >= bag.contents.size():
+		return false
+	_travel.clear()
+	var item: Item = bag.contents[index]
+	if not _apply_effect(item):
+		return false
+	if item.count > 1:
+		item.count -= 1
+	else:
+		bag.contents.remove_at(index)
+	_end_player_turn()
+	return true
+
+## Setting something down out of the satchel. Fungus TAKES ROOT where you
+## stand -- an ordinary fungus tile: light, bait and food again, with no new
+## rules -- on open floor only. Anything else is dropped as from the pack.
+func player_drop_from_satchel(index: int) -> bool:
+	if game_over:
+		return false
+	var bag := _the_satchel()
+	if bag == null or index < 0 or index >= bag.contents.size():
+		return false
+	_travel.clear()
+	var item: Item = bag.contents[index]
+	if item.id == &"fungus":
+		var under := map.get_tile(player.x, player.y)
+		if under != Tiles.FLOOR and under != Tiles.CAVE_FLOOR:
+			msg_log.add("It would not take root here.", Color(0.7, 0.6, 0.4))
+			return false
+		if item.count > 1:
+			item.count -= 1
+		else:
+			bag.contents.remove_at(index)
+		map.set_tile(player.x, player.y, Tiles.FUNGUS)
+		_gather_lights()
+		msg_log.add("You set the fungus down. It takes root, and glows.", Color(0.62, 0.85, 0.68))
+		_end_player_turn()
+		return true
+	bag.contents.remove_at(index)
+	item.letter = ""
+	item.x = player.x
+	item.y = player.y
+	ground.append(item)
+	msg_log.add("You take the %s out of the satchel and drop it." % item.name)
 	_end_player_turn()
 	return true
 

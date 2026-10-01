@@ -128,6 +128,7 @@ func _initialize() -> void:
 	_test_bones_are_loud()
 	_test_pits()
 	_test_pits_are_an_escape()
+	_test_the_foragers_satchel()
 	_test_fungus_glows()
 	_test_traps()
 	_test_vaults_load()
@@ -6621,6 +6622,141 @@ func _test_traffic() -> void:
 ## once with the same cell as FLOOR (must take it). Without the second, "it did
 ## not move onto the pit" would pass just as well for a creature that could not
 ## move at all.
+## THE FORAGER'S SATCHEL: a unique offhand bag of ten; worn, it takes the
+## food and potions you pick up and lets you pick fungus; from its chooser a
+## use costs a turn; set down, fungus takes root; in the pack it still works.
+func _test_the_foragers_satchel() -> void:
+	var gs := _arena(15, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.max_hp = 30
+	gs.player.hp = 10
+	gs.player.inventory.clear()
+	check("the satchel is a unique the chests can give", Item.uniques(3).has(&"satchel")
+		and not Item.uniques(2).has(&"satchel"))
+	var bag := Item.make(&"satchel")
+	gs.give_item(bag)
+	check("it is an offhand piece that holds ten", bag.is_satchel() and bag.slot == Item.Slot.OFFHAND
+		and bag.satchel_room() == 10 and bag.display_name() == "forager's satchel (0/10)")
+	check("in the pack, unworn, it is still the satchel you would open", gs._the_satchel() == bag
+		and gs._worn_satchel() == null)
+	var potion := Item.make(&"potion_healing")
+	potion.x = 5
+	potion.y = 4
+	gs.ground.append(potion)
+	check("precondition: unworn, a potion picked up goes to the pack",
+		gs.player_pickup() and gs.player.inventory.has(potion) and bag.contents.is_empty())
+	gs.player.inventory.erase(potion)
+	gs._toggle_equip(bag)
+	check("worn in the offhand", gs.player.is_equipped(bag) and gs._worn_satchel() == bag)
+	potion.x = 5
+	potion.y = 4
+	gs.ground.append(potion)
+	var t0 := gs.turns
+	check("worn, a potion picked up goes into it, for a turn (and must)",
+		gs.player_pickup() and bag.contents.has(potion) and not gs.player.inventory.has(potion)
+		and gs.turns == t0 + 1)
+	# Fungus is picked, not eaten, and stacks.
+	gs.map.set_tile(5, 4, Tiles.FUNGUS)
+	check("standing on fungus, worn, the box offers to pick it",
+		str(gs.actions_here()).findn("pick the fungus") >= 0, str(gs.actions_here()))
+	check("picked: the tile is bare and the satchel has a stack (and must)",
+		gs.player_pickup() and gs.map.get_tile(5, 4) == Tiles.FLOOR
+		and bag.contents.size() == 2 and bag.contents[1].id == &"fungus" and bag.contents[1].count == 1)
+	gs.map.set_tile(5, 4, Tiles.FUNGUS)
+	check("a second fungus joins the stack", gs.player_pickup() and bag.contents.size() == 2
+		and bag.contents[1].count == 2 and bag.contents[1].display_name() == "fungus x2")
+	# The chooser.
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	panel.open_for_satchel()
+	check("the chooser lists what it holds, lettered a, b",
+		panel.satchel_mode and panel._build_rows().size() == 2
+		and panel.letter_to_index(KEY_A) == 0 and panel.letter_to_index(KEY_B) == 1
+		and panel._keyboard_footer().contains("set down"))
+	var hp0 := gs.player.hp
+	var t1 := gs.turns
+	check("using the potion from it heals, spends it, and costs a turn (and must)",
+		gs.player_use_from_satchel(0) and gs.player.hp > hp0 and not bag.contents.has(potion)
+		and gs.turns == t1 + 1)
+	check("eating one fungus from the stack takes one",
+		gs.player_use_from_satchel(0) and bag.contents.size() == 1 and bag.contents[0].count == 1)
+	gs.player.hp = gs.player.max_hp
+	check("whole, the fungus is refused and kept", not gs.player_use_from_satchel(0)
+		and bag.contents.size() == 1)
+	# Set down, it takes root -- on open floor only.
+	gs.map.set_tile(5, 4, Tiles.WATER)
+	check("on water it will not take root", not gs.player_drop_from_satchel(0)
+		and bag.contents.size() == 1)
+	gs.map.set_tile(5, 4, Tiles.FLOOR)
+	check("on floor it does, and glows again (and must)", gs.player_drop_from_satchel(0)
+		and gs.map.get_tile(5, 4) == Tiles.FUNGUS and bag.contents.is_empty())
+	gs.map.set_tile(5, 4, Tiles.FLOOR)
+	# Full, the pack takes over.
+	for i in 10:
+		bag.contents.append(Item.make(&"potion_healing"))
+	var extra := Item.make(&"potion_healing")
+	extra.x = 5
+	extra.y = 4
+	gs.ground.append(extra)
+	check("full, a potion picked up goes to the pack as before",
+		gs.player_pickup() and gs.player.inventory.has(extra) and bag.contents.size() == 10
+		and bag.display_name() == "forager's satchel (10/10)")
+	check("and fungus is eaten, not picked", not gs._can_pick_fungus())
+	# Saved inside the item.
+	bag.contents[0].count = 3
+	var back := Item.from_dict(bag.to_dict())
+	check("what it holds is saved with it, stacks and all",
+		back != null and back.is_satchel() and back.contents.size() == 10
+		and back.contents[0].count == 3)
+	# The keys: s on a keyboard, d-pad down on a pad, and the pack's d-pad
+	# down still drops.
+	check("s opens it and d-pad down is bound to it",
+		int(PadConfig.DEFAULTS[JOY_BUTTON_DPAD_DOWN]) == KEY_S
+		and MainScene.pad_pack_action(KEY_S, false, false) == &"drop")
+
+	# BY THE CAVES (Brad): a run that reaches the first cave floor without one
+	# finds it lying there, in the far room; a run carrying one does not; and
+	# the floor above the caves holds no such promise.
+	var first_cave := -1
+	for d in range(2, 8):
+		if Bands.is_caves(d) and not Bands.is_caves(d - 1):
+			first_cave = d
+	check("precondition: the caves begin at a known floor", first_cave == 4, "%d" % first_cave)
+	var lying := func(g: GameState) -> Item:
+		for it in g.ground:
+			if it.is_satchel():
+				return it
+		return null
+	var above := GameState.new(777)
+	above.new_game()
+	above.depth = first_cave - 1
+	above.build_level()
+	check("the floor above the caves lays none down", lying.call(above) == null
+		and not above.uniques_found.has(&"satchel"))
+	var cave := GameState.new(777)
+	cave.new_game()
+	cave.depth = first_cave
+	cave.build_level()
+	var found: Item = lying.call(cave)
+	check("the first cave floor has one lying there (and must)", found != null
+		and cave.uniques_found.has(&"satchel"))
+	check("not in the room you woke in", found != null and not cave.room_rects.is_empty()
+		and not cave.room_rects[0].has_point(Vector2i(found.x, found.y)))
+	var carrying := GameState.new(777)
+	carrying.new_game()
+	carrying.give_item(Item.make(&"satchel"))
+	carrying.depth = first_cave
+	carrying.build_level()
+	check("a run already carrying one is not given a second", lying.call(carrying) == null
+		and carrying.uniques_found.has(&"satchel"))
+	var climbing := GameState.new(777)
+	climbing.new_game()
+	climbing.ascending = true
+	climbing.depth = first_cave
+	climbing.build_level()
+	check("nothing on the climb", lying.call(climbing) == null)
+
 ## PITS AS ESCAPE (Dwarf Fortress plan, strand 5): a fleeing creature chased
 ## in your light turns running leaps into a pit beside it, and lands on the
 ## next floor wounded, awake, hunting and vengeful; the trader has heard.
@@ -11661,7 +11797,7 @@ func _test_pack_without_letters() -> void:
 	back.pressed = true
 	fix.handle_pad(back)
 	check("Back puts the defaults back from the pad alone",
-		stale.key_for_button(JOY_BUTTON_DPAD_DOWN) == KEY_GREATER,
+		stale.key_for_button(JOY_BUTTON_DPAD_DOWN) == int(PadConfig.DEFAULTS[JOY_BUTTON_DPAD_DOWN]),
 		OS.get_keycode_string(stale.key_for_button(JOY_BUTTON_DPAD_DOWN)))
 	check("and leaves the screen open to look at", fix.visible)
 

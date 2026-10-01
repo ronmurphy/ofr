@@ -76,6 +76,15 @@ var scavenged := false
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
 var charges := 0
+## THE FORAGER'S SATCHEL (unique, 2026-10-01): how many things it holds, or
+## zero for everything that is not one. What it holds rides inside it, saved
+## with it, letterless -- the satchel's own chooser letters them when opened.
+var holds := 0
+var contents: Array = []
+## A stack. Fungus picked into the satchel stacks to STACK_MAX in one slot;
+## everything else is 1.
+var count := 1
+const STACK_MAX := 10
 ## A shovel that has raised its one body and wants a gem. Its own flag rather
 ## than a reuse of `charges`: every save written before this stored a shovel's
 ## charges as 0, and reading that as "dull" would blunt every old shovel.
@@ -193,6 +202,16 @@ const CATALOGUE := {
 	## stack would have to pick one magnitude for both.
 	&"bear_meat": {
 		"name": "haunch of bear", "app": &"meat", "kind": Kind.POTION,
+		"effect": &"heal", "magnitude": 1, "verb": "eat",
+		"min_depth": 999, "weight": 0,
+	},
+
+	## Fungus PICKED rather than eaten where it grew (the forager's satchel).
+	## Only ever made by picking, only ever carried in the satchel, where it
+	## stacks; eaten from there it heals what a growing one does, and set
+	## down it takes root again (GameState.player_drop_from_satchel).
+	&"fungus": {
+		"name": "fungus", "app": &"fungus", "kind": Kind.POTION,
 		"effect": &"heal", "magnitude": 1, "verb": "eat",
 		"min_depth": 999, "weight": 0,
 	},
@@ -398,6 +417,19 @@ const CATALOGUE := {
 		"effect": &"raise_corpse", "verb": "dig with", "unique": true,
 		"min_depth": 4, "weight": 0,
 	},
+
+	## THE FORAGER'S SATCHEL (Brad and Claude, 2026-09-29; built 2026-10-01).
+	## One pack slot that holds ten: meat, potions, and fungus picked where it
+	## grows, stacked. Worn in the OFFHAND -- a real trade against a shield --
+	## food and potions you pick up go straight in, and `s` opens it; in the
+	## pack, not worn, it still opens and its contents still work, at the same
+	## cost (Brad: his players will look for exactly that bypass). Found in a
+	## chest like every unique, after the ring and the shovel.
+	&"satchel": {
+		"name": "forager's satchel", "app": &"sack", "kind": Kind.ARMOR,
+		"slot": Slot.OFFHAND, "defense": 0, "unique": true, "holds": 10,
+		"min_depth": 3, "weight": 0,
+	},
 	&"scroll_blink": {
 		"name": "scroll of blink", "app": &"scroll", "kind": Kind.SCROLL,
 		"effect": &"blink", "magnitude": 12, "min_depth": 2, "weight": 6,
@@ -539,6 +571,7 @@ static func make(item_id: StringName) -> Item:
 	# broken rather than interesting.
 	it.ammo = it.ammo_max
 	it.throw_range = data.get("throw", 0)
+	it.holds = int(data.get("holds", 0))
 	it.base_power_bonus = it.power_bonus
 	it.base_defense_bonus = it.defense_bonus
 	return it
@@ -746,7 +779,19 @@ func display_name() -> String:
 	# been GIVEN an element", which is only ever news about a weapon.
 	if element != &"" and kind != Kind.GEM:
 		base += " (%s)" % element
+	# A stack says how many; a satchel says how full.
+	if count > 1:
+		base += " x%d" % count
+	if holds > 0:
+		base += " (%d/%d)" % [contents.size(), holds]
 	return base
+
+func is_satchel() -> bool:
+	return holds > 0
+
+## Slots left in a satchel; a stack takes one.
+func satchel_room() -> int:
+	return holds - contents.size()
 
 func is_throwable() -> bool:
 	return throw_range > 0
@@ -846,8 +891,13 @@ func bonus_text() -> String:
 ## glyph, base bonuses, reach -- is looked up again on load, so a later balance
 ## change reaches saved runs instead of being frozen into them.
 func to_dict() -> Dictionary:
+	# What a satchel holds, each as the item it is.
+	var inside := []
+	for c in contents:
+		inside.append(c.to_dict())
 	return {
 		"id": String(id), "letter": letter, "x": x, "y": y,
+		"count": count, "contents": inside,
 		"pow": power_bonus, "def": defense_bonus, "ammo": ammo,
 		# Forgings on a consumable live nowhere else. Without this a suspended
 		# run gives back plain potions, and the brazier charge that made them
@@ -904,6 +954,12 @@ static func from_dict(d: Dictionary) -> Item:
 	it.bone_name = String(d.get("bone_name", ""))
 	it.bone_level = int(d.get("bone_level", 0))
 	it.scavenged = bool(d.get("scavenged", false))
+	it.count = int(d.get("count", 1))
+	it.contents.clear()
+	for inner in d.get("contents", []):
+		var held := from_dict(inner)
+		if held != null:
+			it.contents.append(held)
 	it.bone_gear.clear()
 	for g in d.get("bone_gear", []):
 		it.bone_gear.append(String(g))

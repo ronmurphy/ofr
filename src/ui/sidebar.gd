@@ -74,11 +74,13 @@ const LINE := 21.0
 const KEYS := [
 	["arrows / hjklyubn", "move", 0, "stick"],
 	[". or 5", "wait / rest", KEY_PERIOD, ""],
-	[">", "descend", KEY_GREATER, ""],
-	["<", "ascend", KEY_LESS, ""],
+	# One row for both since the satchel took a row (2026-10-01): on a pad
+	# both are the pick-up button, which takes the stairs you stand on.
+	["> / <", "descend / ascend", KEY_GREATER, ""],
 	["x", "look", KEY_X, ""],
 	["g", "pick up", KEY_G, ""],
 	["i", "inventory", KEY_I, ""],
+	["s", "the satchel", KEY_S, ""],
 	["t", "torch", KEY_T, ""],
 	["f / right-click", "shoot", KEY_F, ""],
 	["w", "swap reach / blade", KEY_W, ""],
@@ -122,6 +124,12 @@ static func key_label(row: Array, cfg: PadConfig, on_pad: bool) -> String:
 		# the player actually has rather than printing an unreachable Q.
 		var key := KEY_Q if cfg.button_for_key(KEY_Q) >= 0 else KEY_O
 		return cfg.icon(key, true)
+	# The stairs, when no button sends > or < (d-pad down became the satchel,
+	# 2026-10-01): the pick-up button goes down or up a staircase you stand
+	# on, so that is the button to name.
+	if (int(row[2]) == KEY_GREATER or int(row[2]) == KEY_LESS) and cfg != null \
+			and cfg.button_for_key(int(row[2])) < 0 and cfg.button_for_key(KEY_G) >= 0:
+		return cfg.icon(KEY_G, true)
 	if row.size() > 3 and String(row[3]) != "":
 		return String(row[3])
 	if int(row[2]) != 0 and cfg != null:

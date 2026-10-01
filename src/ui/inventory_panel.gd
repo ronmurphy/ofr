@@ -13,6 +13,8 @@ signal drop_requested(index: int)
 signal merge_requested(index: int)
 signal throw_requested(index: int)
 signal bind_requested(index: int)
+signal satchel_use_requested(index: int)
+signal satchel_drop_requested(index: int)
 signal close_requested()
 
 ## Live bindings and which device the player last used, set by main.gd, so the
@@ -67,6 +69,11 @@ var filter: int = Filter.ALL
 ## Off-hand mode: the pack opens filtered to what can be hurled, and a choice
 ## here hands straight to the targeting cursor.
 var throw_mode := false
+## THE SATCHEL'S CHOOSER: the same panel showing what the satchel holds,
+## lettered a.. by position; a pick uses it (a turn) and the panel closes
+## behind it, so the map shows the heal. Right-click or the drop button sets
+## it down (fungus takes root).
+var satchel_mode := false
 ## Setting a gem: the pack opens filtered to the weapons that will TAKE it, and
 ## a choice here is the weapon it goes into.
 ##
@@ -114,6 +121,18 @@ func open_for_throw() -> void:
 	_hover_index = -1
 	queue_redraw()
 
+func open_for_satchel() -> void:
+	satchel_mode = true
+	throw_mode = false
+	bind_mode = false
+	visible = true
+	filter = Filter.ALL
+	_hover_index = -1
+	var held: Array = state.satchel_items() if state != null else []
+	for i in held.size():
+		held[i].letter = GameState.LETTERS[i] if i < GameState.LETTERS.length() else ""
+	queue_redraw()
+
 func open_for_bind(gem_index: int) -> void:
 	bind_mode = true
 	bind_gem = gem_index
@@ -126,6 +145,7 @@ func open_for_bind(gem_index: int) -> void:
 func open() -> void:
 	throw_mode = false
 	bind_mode = false
+	satchel_mode = false
 	bind_gem = -1
 	visible = true
 	# Reset to ALL on open. A sticky filter means reopening later and finding
@@ -138,6 +158,7 @@ func close() -> void:
 	visible = false
 	throw_mode = false
 	bind_mode = false
+	satchel_mode = false
 	bind_gem = -1
 	_hover_index = -1
 
@@ -166,8 +187,9 @@ func letter_to_index(key: int) -> int:
 	if key < KEY_A or key > KEY_Z or state == null:
 		return -1
 	var ch := String.chr(key).to_lower()
-	for i in state.player.inventory.size():
-		if state.player.inventory[i].letter == ch:
+	var list: Array = state.satchel_items() if satchel_mode else state.player.inventory
+	for i in list.size():
+		if list[i].letter == ch:
 			return i
 	return -1
 
@@ -202,6 +224,11 @@ func _sorted(entries: Array) -> Array:
 func _build_rows() -> Array:
 	var rows := []
 	if state == null:
+		return rows
+	if satchel_mode:
+		var held: Array = state.satchel_items()
+		for i in held.size():
+			rows.append({"item": held[i], "index": i})
 		return rows
 	var entries := []
 	for i in state.player.inventory.size():
@@ -240,7 +267,7 @@ func _build_rows() -> Array:
 ## The filter chips are hidden when picking something to throw, so the space
 ## they would have taken is given back.
 func _top_offset() -> float:
-	return TOP - 30.0 if throw_mode else TOP
+	return TOP - 30.0 if throw_mode or satchel_mode else TOP
 
 func _content_height() -> float:
 	var h := 0.0
@@ -287,7 +314,7 @@ func detail_rect() -> Rect2:
 func detail_item() -> Item:
 	var i := hovered()
 	if i >= 0:
-		return state.player.inventory[i]
+		return state.satchel_items()[i] if satchel_mode else state.player.inventory[i]
 	return state.player.equipped.get(Item.Slot.WEAPON, null)
 
 func _fit_detail(text: String) -> String:
@@ -427,6 +454,12 @@ func _gui_input(event: InputEvent) -> void:
 		if not _panel_rect().has_point(click.position):
 			close_requested.emit()
 		return
+	if satchel_mode:
+		if click.button_index == MOUSE_BUTTON_LEFT:
+			satchel_use_requested.emit(hit)
+		elif click.button_index == MOUSE_BUTTON_RIGHT:
+			satchel_drop_requested.emit(hit)
+		return
 	if throw_mode:
 		if click.button_index == MOUSE_BUTTON_LEFT:
 			throw_requested.emit(hit)
@@ -446,6 +479,8 @@ func _gui_input(event: InputEvent) -> void:
 
 ## The pack's footer for a keyboard and mouse.
 func _keyboard_footer() -> String:
+	if satchel_mode:
+		return "click or press its letter to use (a turn)  ·  right-click set down  ·  esc"
 	if throw_mode:
 		return "pick something to hurl  ·  click or press its letter  ·  esc cancel"
 	if bind_mode:
@@ -476,6 +511,8 @@ func footer() -> String:
 	if throw_mode:
 		return "pick something to hurl  ·  %s throw  ·  %s cancel" % [
 			ok, pad_cfg.icon(KEY_F, true)]
+	if satchel_mode:
+		return "%s use  ·  ▼ set down  ·  %s close" % [ok, out]
 	if bind_mode:
 		return "set it into which weapon?  ·  %s set  ·  %s cancel" % [ok, out]
 	var back := pad_cfg.icon(MainScene.PACK_BACK_KEY, true)
@@ -558,7 +595,7 @@ func _draw() -> void:
 
 	var asc := font.get_ascent(font_size)
 	draw_string(font_bold, p.position + Vector2(PAD, PAD + asc),
-		"THROW WHAT?" if throw_mode else "INVENTORY",
+		"THE SATCHEL" if satchel_mode else ("THROW WHAT?" if throw_mode else "INVENTORY"),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
 		Palette.AIM_OK if throw_mode else Palette.STAIRS)
 	# On the title's baseline and right-aligned, so it cannot collide with the
@@ -567,14 +604,14 @@ func _draw() -> void:
 		"%d / %d carried" % [state.player.inventory.size(), Entity.INVENTORY_MAX],
 		HORIZONTAL_ALIGNMENT_RIGHT, PANEL_W - PAD * 2.0, font_size, Palette.UI_DIM)
 
-	if not throw_mode:
+	if not throw_mode and not satchel_mode:
 		for chip in _chip_rects():
 			_draw_chip(chip)
 
 	var rows := _row_rects()
 	if rows.is_empty():
 		draw_string(font, Vector2(p.position.x + PAD, p.position.y + _top_offset() + asc),
-			"(nothing to throw)" if throw_mode else "(nothing here)", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+			"(nothing to throw)" if throw_mode else ("(the satchel is empty)" if satchel_mode else "(nothing here)"), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
 	for entry in rows:
 		if entry["row"].has("header"):
 			_draw_header(entry["rect"], entry["row"]["header"])

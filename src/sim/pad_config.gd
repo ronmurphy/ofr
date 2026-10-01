@@ -58,6 +58,7 @@ const WALK := [
 	[KEY_PERIOD, "wait / rest"],
 	[KEY_G, "pick up"],
 	[KEY_I, "inventory"],
+	[KEY_S, "the satchel"],
 	[KEY_X, "look"],
 	[KEY_F, "shoot"],
 	[KEY_W, "swap reach / blade"],
@@ -214,7 +215,10 @@ const DEFAULTS := {
 	## Still offered by the walk-through as "move up/down/left/right", so a
 	## player who wants the d-pad back can have it; they are simply not bound
 	## here any more.
-	JOY_BUTTON_DPAD_DOWN: KEY_GREATER,
+	## The satchel (2026-10-01). Down was `>`, and G already goes down a
+	## staircase you stand on, so the button was spent twice; inside the pack
+	## it still drops (pad_pack_action accepts both codes).
+	JOY_BUTTON_DPAD_DOWN: KEY_S,
 	JOY_BUTTON_DPAD_UP: KEY_Q,
 	JOY_BUTTON_DPAD_LEFT: KEY_T,
 	JOY_BUTTON_DPAD_RIGHT: KEY_P,

@@ -644,7 +644,30 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
-**The forager's satchel (unique; Brad and Claude, 2026-09-29).** Absorbs the
+**The forager's satchel -- BUILT 2026-10-01**, waiting on play. As built: a
+unique (`satchel`, min depth 3, through the chest pipe after the ring and the
+shovel -- uniques are never on a shelf; a trader price can follow if wanted),
+**and guaranteed by the caves (Brad, 2026-10-01: that is what it is FOR --
+fungus to pick, haunches to keep; found after the caves it is much less):** a
+run reaching the first cave floor (4) without one finds it lying in the far
+room, never twice, never on the climb (`_place_the_satchel`, beside the gem
+pity). Worn in the OFFHAND, holding ten. Worn, food and potions you pick up go
+straight in ("You put the haunch in the satchel (3/10)"), and G on fungus
+PICKS it into a stack of up to ten instead of eating it (the HERE box says
+"pick the fungus"); the tile goes bare and dark as when eaten. `s` on a
+keyboard and d-pad down on a pad open its chooser -- the pack panel in
+`satchel_mode`, lettered a.. by position, titled THE SATCHEL -- and a use is
+the item's own effect for a turn, after which the chooser CLOSES so the map
+shows the heal; a refusal keeps it open. Right-click or the pad's drop sets a
+thing down: fungus TAKES ROOT where you stand (open floor only) and glows
+again; anything else drops. In the pack, unworn, it opens and works the same.
+Full, the pack takes over as before. The pad's d-pad down was `>` (G already
+goes down the stairs you stand on, so the button was spent twice); inside the
+pack d-pad down still drops, and the legend names the pick-up button for the
+stairs on a pad. Saved inside the item (`contents`, `count`). NOT built:
+the cosmetic glow at your side, and throwing a fungus to root it far off
+(no fungus ever sits in the pack; it lives in the satchel). Original design:
+absorbs the
 old "fungus bag" idea. One pack slot that holds up to 10: nine meat or potions,
 and ONE stack of fungus (fungus stacks to 10; so fungus can be PICKED as well
 as eaten where it grows). Why: pack heals were invisible (the pack stays open

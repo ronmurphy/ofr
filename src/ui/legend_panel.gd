@@ -129,9 +129,9 @@ const ITEM_ROWS := [
 ## this many lines, and the suite holds it there. A row of Sidebar.KEYS that
 ## no group names lands in the second, so a new key is never lost.
 const KEY_GROUPS := [
-	["ACT", ["move", "wait / rest", "descend", "ascend", "pick up", "shoot", "throw",
+	["ACT", ["move", "wait / rest", "descend / ascend", "pick up", "shoot", "throw",
 		"swap reach / blade", "torch", "close a door", "pray at a shrine",
-		"ally: heel / loose", "inventory", "look"]],
+		"ally: heel / loose", "inventory", "the satchel", "look"]],
 	["VIEW AND SYSTEM", ["letters / symbols / pictures", "classic / 3D / overhead",
 		"turn 3D camera", "still / simple / full", "the map", "sound", "music",
 		"screenshot", "menu", "travel"]],
