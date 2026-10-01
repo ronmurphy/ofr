@@ -79,7 +79,15 @@ var bind_mode := false
 var bind_gem := -1
 var _hover_index := -1
 
-const PANEL_W := 620.0
+## THE DETAIL PANE (the UI review, 2026-10-01): the list keeps its 576 px
+## and a pane to its right says what the thing under the cursor IS and how it
+## compares with what you have on -- "power 11 -> 8 (-3)", "frees the shield
+## hand" -- so a swap is a decision made in the pack rather than discovered
+## in a fight. Every line is fitted to DETAIL_W by measurement; the test runs
+## the whole catalogue through it.
+const LIST_W := 576.0
+const DETAIL_W := 280.0
+const PANEL_W := PAD * 3.0 + LIST_W + DETAIL_W
 const PAD := 22.0
 const ROW_H := 23.0
 const HEAD_H := 30.0
@@ -253,7 +261,7 @@ func _row_rects() -> Array:
 	var y := p.position.y + _top_offset()
 	for r in _build_rows():
 		var h: float = HEAD_H if r.has("header") else ROW_H
-		out.append({"row": r, "rect": Rect2(p.position.x + PAD, y, PANEL_W - PAD * 2.0, h)})
+		out.append({"row": r, "rect": Rect2(p.position.x + PAD, y, LIST_W, h)})
 		y += h
 	return out
 
@@ -268,6 +276,126 @@ func _chip_rects() -> Array:
 			"rect": Rect2(x, p.position.y + PAD + 32.0, w, 25.0)})
 		x += w + CHIP_GAP
 	return out
+
+## The pane's box: right of the list, from the first row to the footer.
+func detail_rect() -> Rect2:
+	var p := _panel_rect()
+	return Rect2(Vector2(p.position.x + PAD * 2.0 + LIST_W, p.position.y + _top_offset()),
+		Vector2(DETAIL_W, p.size.y - _top_offset() - BOTTOM))
+
+## What the pane describes: the highlighted row, else what is in your hand.
+func detail_item() -> Item:
+	var i := hovered()
+	if i >= 0:
+		return state.player.inventory[i]
+	return state.player.equipped.get(Item.Slot.WEAPON, null)
+
+func _fit_detail(text: String) -> String:
+	if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= DETAIL_W:
+		return text
+	var out := text
+	while out.length() > 1 and font.get_string_size(out + "..",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > DETAIL_W:
+		out = out.substr(0, out.length() - 1)
+	return out + ".."
+
+## "power  11 -> 8 (-3)", tinted by whether the change is for the better.
+func _delta_line(label: String, old: int, new: int) -> Dictionary:
+	var tint: Color = Palette.UI_DIM
+	if new > old:
+		tint = Palette.HP_GOOD
+	elif new < old:
+		tint = Palette.HP_BAD
+	return {"text": "%s  %d -> %d (%+d)" % [label, old, new, new - old], "colour": tint}
+
+## The pane's lines as {text, colour, bold}: the name, its facts, then how it
+## stands against what is worn in the same place.
+func detail_lines(item: Item) -> Array:
+	var out := []
+	out.append({"text": _fit_detail(item.display_name()), "colour": Palette.STAIRS, "bold": true})
+	# bonus_text() already says reach, and reach is what takes both hands
+	# (Item.is_two_handed), so the hands are said only in the comparison.
+	var facts := item.bonus_text()
+	if facts != "":
+		out.append({"text": _fit_detail(facts), "colour": Palette.UI_TEXT})
+	if item.uses_ammo():
+		out.append({"text": "%d of %d arrows" % [item.ammo, item.ammo_max],
+			"colour": Palette.UI_TEXT if item.ammo > 0 else Palette.HP_BAD})
+	if item.element != &"" and item.kind != Item.Kind.GEM:
+		out.append({"text": "%s set into it" % item.element, "colour": Palette.MAGIC})
+	if item.transforms():
+		out.append({"text": ("%d turns as a rat" % item.charges) if item.charges > 0
+			else "cold: a gem at the embers", "colour": Palette.UI_TEXT})
+	if item.dulls():
+		out.append({"text": ("dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
+			- item.laid_to_rest)) if item.dull else "sharp: one raise",
+			"colour": Palette.UI_TEXT})
+	match item.effect:
+		&"heal":
+			out.append({"text": "restores %d hp" % item.effective_magnitude(), "colour": Palette.HP_GOOD})
+		&"light":
+			out.append({"text": "reveals, or relights a fire", "colour": Palette.UI_TEXT})
+		&"blink":
+			out.append({"text": "somewhere else, within %d" % item.magnitude, "colour": Palette.UI_TEXT})
+		&"summon":
+			out.append({"text": "calls a bone ally to you", "colour": Palette.UI_TEXT})
+		&"raise_corpse":
+			out.append({"text": "raises what you just killed", "colour": Palette.UI_TEXT})
+		&"open_sack":
+			out.append({"text": "open it to see what is in it", "colour": Palette.UI_TEXT})
+	if item.is_equipment() and item.don_turns > 1:
+		out.append({"text": "%d turns to get into" % item.don_turns, "colour": Palette.UI_DIM})
+	if not item.is_equipment():
+		return out
+	var worn: Variant = state.player.equipped.get(item.slot, null)
+	if worn == null or worn == item:
+		return out
+	out.append({"text": "", "colour": Palette.UI_DIM})
+	out.append({"text": _fit_detail("against the %s" % worn.display_name()),
+		"colour": Palette.UI_DIM, "bold": true})
+	if item.slot == Item.Slot.WEAPON or worn.power_bonus != 0 or item.power_bonus != 0:
+		out.append(_delta_line("power", worn.power_bonus, item.power_bonus))
+	if item.slot != Item.Slot.WEAPON or worn.defense_bonus != 0 or item.defense_bonus != 0:
+		out.append(_delta_line("defense", worn.defense_bonus, item.defense_bonus))
+	if worn.range_bonus != item.range_bonus:
+		out.append({"text": "reach  %d -> %d" % [worn.range_bonus, item.range_bonus],
+			"colour": Palette.HP_GOOD if item.range_bonus > worn.range_bonus else Palette.HP_BAD})
+	if worn.is_two_handed() and not item.is_two_handed():
+		out.append({"text": "frees the shield hand", "colour": Palette.HP_GOOD})
+	elif item.is_two_handed() and not worn.is_two_handed():
+		out.append({"text": "needs both hands", "colour": Palette.HP_BAD})
+	if worn.uses_ammo() and not item.uses_ammo():
+		out.append({"text": "no arrows needed", "colour": Palette.HP_GOOD})
+	elif item.uses_ammo() and not worn.uses_ammo():
+		out.append({"text": "needs arrows", "colour": Palette.HP_BAD})
+	if item.don_turns != worn.don_turns:
+		out.append({"text": "%d turns to change" % item.don_turns, "colour": Palette.UI_DIM})
+	return out
+
+func _draw_detail() -> void:
+	var r := detail_rect()
+	# A hairline between the list and the pane.
+	draw_line(Vector2(r.position.x - PAD * 0.5, r.position.y),
+		Vector2(r.position.x - PAD * 0.5, r.end.y), Palette.UI_FRAME, 1.0)
+	var asc := font.get_ascent(font_size)
+	var y := r.position.y + asc + 2.0
+	var item := detail_item()
+	draw_string(font_bold, Vector2(r.position.x, y),
+		"UNDER THE CURSOR" if hovered() >= 0 else "IN HAND",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
+	y += ROW_H
+	if item == null:
+		draw_string(font, Vector2(r.position.x, y), "nothing",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
+		return
+	for line in detail_lines(item):
+		if y > r.end.y:
+			break
+		if String(line["text"]) != "":
+			draw_string(font_bold if bool(line.get("bold", false)) else font,
+				Vector2(r.position.x, y), String(line["text"]),
+				HORIZONTAL_ALIGNMENT_LEFT, DETAIL_W, font_size, line["colour"])
+		y += ROW_H
 
 # ------------------------------------------------------------------ input ---
 
@@ -452,6 +580,7 @@ func _draw() -> void:
 			_draw_header(entry["rect"], entry["row"]["header"])
 		else:
 			_draw_row(entry["rect"], entry["row"]["item"], entry["row"]["index"])
+	_draw_detail()
 
 	# The forge line only appears where forging is possible, so it teaches the
 	# mechanic exactly when it is relevant instead of being permanent clutter.

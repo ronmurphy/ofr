@@ -1861,6 +1861,64 @@ func _test_the_ui_review() -> void:
 	check("  slow ground keeps the brazier amber", here.status_colour() == Palette.BRAZIER)
 	here.free()
 
+	# THE PACK'S DETAIL PANE: what the thing is, and how it stands against
+	# what you have on -- every line fitted, the whole catalogue run through.
+	var pgs := GameState.new(79)
+	pgs.new_game()
+	var pack := InventoryPanel.new()
+	pack.state = pgs
+	pack.size = Vector2(1600, 900)
+	pack.font = log_font
+	pack.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	pack.icon_font = load("res://assets/fonts/ofr_icons.ttf")
+	pgs.player.inventory.clear()
+	pgs.player.equipped.clear()
+	var bow := Item.make(&"war_bow")
+	bow.element = &"return"
+	var axe := Item.make(&"war_axe")
+	var plate := Item.make(&"plate_mail")
+	for it in [bow, axe, plate]:
+		pgs.give_item(it)
+	pgs.player.equipped[Item.Slot.WEAPON] = bow
+	pgs.player.equipped[Item.Slot.ARMOR] = plate
+	check("  the pane sits inside the panel, right of the list",
+		pack._panel_rect().encloses(pack.detail_rect())
+		and pack.detail_rect().position.x >= pack._panel_rect().position.x + InventoryPanel.PAD + InventoryPanel.LIST_W)
+	var overlap := false
+	for entry in pack._row_rects():
+		overlap = overlap or entry["rect"].intersects(pack.detail_rect())
+	check("  and no row runs into it", not overlap)
+	check("  with nothing highlighted it describes what is in hand", pack.detail_item() == bow)
+	pack._hover_index = pgs.player.inventory.find(axe)
+	var said := ""
+	for line in pack.detail_lines(axe):
+		said += String(line["text"]) + "|"
+	check("  the axe against the bow: the power change, the hand freed, no arrows (and must)",
+		said.contains("against the war bow") and said.contains("power  ") and said.contains("->")
+		and said.contains("frees the shield hand") and said.contains("no arrows needed"), said)
+	var pack_cut := 0
+	var pack_over := 0
+	var pack_worst := ""
+	var pack_worst_px := 0.0
+	for id in Item.CATALOGUE:
+		var it := Item.make(id)
+		if it == null:
+			continue
+		if pack._fit_detail(it.display_name()) != it.display_name():
+			pack_cut += 1
+		for line in pack.detail_lines(it):
+			var w := pack.font_bold.get_string_size(String(line["text"]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, pack.font_size).x
+			if w > pack_worst_px:
+				pack_worst_px = w
+				pack_worst = String(line["text"])
+			if w > InventoryPanel.DETAIL_W:
+				pack_over += 1
+	check("  every catalogue name fits the pane whole (%d cut)" % pack_cut, pack_cut == 0)
+	check("  and every detail line fits it (widest \"%s\" %.0f <= %.0f px, %d over)"
+		% [pack_worst, pack_worst_px, InventoryPanel.DETAIL_W, pack_over], pack_over == 0)
+	pack.free()
+
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:
 	var d = scene.diorama
