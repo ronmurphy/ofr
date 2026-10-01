@@ -95,6 +95,15 @@ Claude reviews each round. What it found, so the next job avoids it:
      own storage, invisible to the player; a file written only to be
      downloaded must be deleted afterwards.**
 
+- **2026-09-30, round 2 (five jobs): good work, nothing to fix.** Full
+  suite 2346 passed, 0 failed. Worth repeating: choosing `v` for purple after
+  finding `:` was already the vault header's separator, AND saying why in a
+  comment; keeping the cloud's colour in its transparent edge pixels so the
+  blur did not darken it. One gap: the litter fix covered the full suite's
+  tests but not the quick suite, which still leaves `scratch_view_tests_*`
+  files (job below). **Lesson: when a job says "after every run", check
+  every runner -- there are two suites and a single-test tool.**
+
 ---
 
 ## Jobs
@@ -334,3 +343,14 @@ task list only.
   whose `to` is now red; the effect expires by its life; nothing on still.
   Also check the precondition: that the crawl actually grew a square in your
   test (a body in reach, a red square beside the path, no brazier near).
+
+- [ ] **The quick suite's leftover files**
+  `tests/run_view_tests.gd` calls `GameState.use_scratch_files("view_tests")`
+  (near line 21) and never cleans up, so every quick run leaves
+  `scratch_view_tests_bestiary.txt` and `scratch_view_tests_settings.cfg` in
+  the save folder. At the END of the quick suite, after its tally is printed,
+  call `GameState.clear_scratch_files()` -- the same cleanup the full suite
+  uses (read how `tests/run_tests.gd` ends). Check: run the quick suite with
+  your `XDG_DATA_HOME`, then list `$XDG_DATA_HOME/godot/app_userdata/OFR/` --
+  no `scratch_` files left. The quick suite must still print its tally and
+  pass.

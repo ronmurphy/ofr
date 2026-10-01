@@ -76,6 +76,14 @@ var scavenged := false
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
 var charges := 0
+## A shovel that has raised its one body and wants a gem. Its own flag rather
+## than a reuse of `charges`: every save written before this stored a shovel's
+## charges as 0, and reading that as "dull" would blunt every old shovel.
+var dull := false
+## THE UNDERTAKER'S PAY (Gabe's idea, 2026-10-01): graves dug for the red's
+## dead -- claimed bodies, and the bodies of the risen -- counted on the
+## shovel. Five sharpen a dull one, the gem's other road. Saved.
+var laid_to_rest := 0
 var magnitude: int = 0
 ## How much one forging adds to `magnitude`. Zero means this cannot be worked
 ## at a brazier at all, which is how the catalogue says "not forgeable" without
@@ -767,6 +775,12 @@ func is_two_handed() -> bool:
 func transforms() -> bool:
 	return id == &"rat_ring"
 
+## The undertaker's shovel goes DULL after a raise instead of vanishing, and a
+## gem at the embers puts its edge back (Brad, 2026-09-30: the uniques must be
+## reusable). Same one-place rule as transforms().
+func dulls() -> bool:
+	return id == &"shovel"
+
 ## The one word that says WHICH of its kind this is.
 ##
 ## The sidebar draws the picture for the kind and this for the rest, so a row
@@ -848,6 +862,8 @@ func to_dict() -> Dictionary:
 		# discovered later: a suspended run must not hand back a plain sword.
 		"element": String(element),
 		"charges": charges,
+		"dull": dull,
+		"laid_to_rest": laid_to_rest,
 		# Who this bone is. Absent on every other item, and absent in every
 		# save written before allies existed -- both of which read back as
 		# "nobody", which is exactly right for a scroll and for an old save.
@@ -875,6 +891,8 @@ static func from_dict(d: Dictionary) -> Item:
 	it.magnitude = int(d.get("magnitude", it.magnitude))
 	it.element = StringName(d.get("element", String(it.element)))
 	it.charges = int(d.get("charges", it.charges))
+	it.dull = bool(d.get("dull", false))
+	it.laid_to_rest = int(d.get("laid_to_rest", 0))
 	# Saves written before launchers held ammunition come back loaded rather
 	# than empty: a resumed run should not find its bow inexplicably dry.
 	it.ammo = int(d.get("ammo", it.ammo_max))

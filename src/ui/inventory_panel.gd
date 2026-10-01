@@ -151,7 +151,8 @@ func _takes_the_gem(it: Item) -> bool:
 	if bind_gem < 0 or bind_gem >= state.player.inventory.size():
 		return false
 	var gem: Item = state.player.inventory[bind_gem]
-	return it.element == &"" and it.accepts_element(gem.element)
+	# The ring and a dull shovel take any stone as fuel (6c).
+	return (it.element == &"" and it.accepts_element(gem.element)) or state.can_feed(it)
 
 func letter_to_index(key: int) -> int:
 	if key < KEY_A or key > KEY_Z or state == null:
@@ -323,7 +324,7 @@ func _keyboard_footer() -> String:
 		var g: String = "the gem"
 		if bind_gem >= 0 and bind_gem < state.player.inventory.size():
 			g = state.player.inventory[bind_gem].display_name()
-		return "set %s into which weapon?  ·  click or press its letter  ·  esc cancel" % g
+		return "set %s into what?  ·  click or press its letter  ·  esc cancel" % g
 	if state.can_forge_here():
 		# Embers get their own line. The two costs are nothing alike -- one
 		# spends hit points you can see on the bar, the other spends quiet --
@@ -491,18 +492,34 @@ func _draw_header(r: Rect2, text: String) -> void:
 ## sword would be noise; "bind -> dagger +2" is the one the player cannot work
 ## out from the row itself.
 func _action_hint(item: Item) -> String:
+	# The uniques that wait for a gem say so (6c).
+	if item.transforms() and item.charges <= 0:
+		return "cold: a gem at the embers"
+	if item.dulls() and item.dull:
+		# Both roads back (Gabe's graves, 2026-10-01).
+		return "dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
+			- item.laid_to_rest)
 	if item.kind == Item.Kind.GEM:
-		# The host the GAME would choose (_default_host), not the weapon in
+		# The gem of thirst's own use comes first: a click drinks the body.
+		if item.element == &"leech":
+			var body := state.thirst_target()
+			if not body.is_empty():
+				return "drink the %s (+%d)" % [String(body["e"].get("name", body["app"])),
+					state._thirst_heal(body)]
+		# The host the GAME would choose (_gem_host), not the weapon in
 		# hand. This used to look only at the weapon, from when every stone
 		# went into a blade -- so a gem of the bulwark, which goes in a SHIELD,
 		# told Brad "sling +2 (fire) is already set" with the buckler sitting
 		# in his pack (2026-09-29).
-		var blade: Variant = state._default_host(item)
+		var blade: Variant = state._gem_host(item)
 		if blade == null:
 			return "needs %s" % Item.host_words(item.element)
-		if blade.element != &"":
+		var feeding: bool = state.can_feed(blade)
+		if blade.element != &"" and not feeding:
 			return "%s is already set" % blade.display_name()
 		if state._adjacent_embers().x >= 0:
+			if feeding:
+				return "feed the %s" % ("ring" if blade.transforms() else "shovel")
 			return "set into %s" % blade.display_name()
 		if state._adjacent_brazier().x >= 0:
 			return "rake the fire down first"

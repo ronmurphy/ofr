@@ -353,6 +353,16 @@ var flare_until := -1
 ## never rises again, it drops nothing (its gear dropped the first time) and
 ## the shovel will not have it. Saved.
 var fungal := false
+## Has had its second life, from either claimant: the shovel or the red. Every
+## body gets at most one (Brad, 2026-09-30). The red will not raise it again,
+## and it drops nothing when it falls -- its gear dropped the first time, so
+## anything it carries now is a copy. NOT set on a grave's bone ally, whose
+## kit is the only copy there is (see GameState._drop_loot). Saved; a save
+## from before this reads a red risen as raised.
+var raised := false
+## A bone ally the player has been told carries the red, so the warning is
+## said once. Saved.
+var red_warned := false
 ## Where a risen body may walk: the room it rose in, or a square round the
 ## spot in caves and corridors. An empty rect means free -- the gong's call.
 ## Saved.
@@ -495,7 +505,8 @@ func to_dict() -> Dictionary:
 		"facing": [facing.x, facing.y],
 		"spores": String(spores), "careful": careful,
 		"casts": casts, "flare_until": flare_until, "poisoned": poisoned,
-		"fungal": fungal, "heard": [heard.x, heard.y],
+		"fungal": fungal, "raised": raised, "red_warned": red_warned,
+		"heard": [heard.x, heard.y],
 		"leash": [leash.position.x, leash.position.y, leash.size.x, leash.size.y],
 		"patrols": patrols, "patrol_at": patrol_at,
 		"scavenges": scavenges, "shaken": shaken,
@@ -558,6 +569,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.poisoned = int(d.get("poisoned", 0))
 	e.flare_until = int(d.get("flare_until", -1))
 	e.fungal = bool(d.get("fungal", false))
+	e.raised = bool(d.get("raised", e.fungal))
+	e.red_warned = bool(d.get("red_warned", false))
 	var h: Array = d.get("heard", [-1, -1])
 	e.heard = Vector2i(int(h[0]), int(h[1]))
 	var l: Array = d.get("leash", [0, 0, 0, 0])

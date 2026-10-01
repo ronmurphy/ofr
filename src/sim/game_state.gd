@@ -515,6 +515,13 @@ const CHEST_TRAP_CHANCE := 0.75
 ## to see it coming BEFORE you are told.
 const RING_LOW := 60
 const RING_WARNING := 20
+## GEMS FEED THE UNIQUES (6c, Brad 2026-09-30). At the embers, any gem can go
+## into the ring of the rat or a dull shovel instead of a piece of gear: the
+## ring takes RING_FEED turns back, up to the RING_FULL it was found with; the
+## shovel gets its edge back for one more raise. Gems are the price: a stone
+## in the ring is one your blade never gets.
+const RING_FEED := 50
+const RING_FULL := 220
 
 const RAT_NOTICE := 0.35
 ## And on the climb, where nothing expects a rat because there are none.
@@ -1174,6 +1181,8 @@ func build_level() -> void:
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
 	_cloud_turn = -1
 	scorched = {}
+	red_from = {}
+	withering = []
 	_reload_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
@@ -2551,9 +2560,12 @@ func _settle_the_grave() -> void:
 		Color(0.70, 0.72, 0.78))
 
 func _drop_loot(victim: Entity) -> void:
-	# Risen by the red: everything it had dropped when it first died, so this
-	# is a copy. Nothing twice -- not gear, not meat, not the dragon's sack.
-	if victim.fungal:
+	# Raised once already -- by the red or by the shovel: everything it had
+	# dropped when it first died, so what it carries now is a copy. Nothing
+	# twice -- not gear, not meat, not the dragon's sack. (A grave's bone ally
+	# is not `raised`: its kit is the only copy, and the faction rule below
+	# hands it all back.)
+	if victim.raised:
 		victim.equipped.clear()
 		victim.inventory.clear()
 		return
@@ -3546,6 +3558,25 @@ func _breathe(e: Entity) -> bool:
 var fungus_rng := RandomNumberGenerator.new()
 ## Torch scorches landed so far, "x,y" -> count. One floor only.
 var scorched: Dictionary = {}
+## THE RED'S CHAINS. Each square the crawl grew, -> the square it grew from,
+## so a chain that loses its body can die back the way it came. Generated and
+## seeded red is a SOURCE: it has no entry and never withers. Saved.
+var red_from: Dictionary = {}
+## Chains dying back, each an array of squares, tip first; one square per
+## crawl tick. Saved.
+var withering: Array = []
+## BURYING (Brad, 2026-10-01): the undertaker's shovel puts a claimed body
+## under before it rises. BURY_SPADEFULS presses of G, each one LOUD -- the
+## blind risen hear it -- so beside a red room it is a race. A burial costs
+## time and noise; a raise costs a gem. A dull shovel still digs.
+const BURY_SPADEFULS := 3
+const DIG_NOISE := 6
+## THE UNDERTAKER'S PAY (Gabe, 2026-10-01 -- "why didn't we think of that?").
+## Every grave dug for the red's dead counts on the shovel; this many sharpen
+## a dull one, so a raise is paid for by a gem OR by doing the undertaker's
+## job. A sharp shovel's count waits, held at this, and sharpens it the moment
+## it dulls -- one raise banked at most, as with the gem.
+const BURIALS_TO_SHARPEN := 5
 
 func _lay_body(victim: Entity) -> void:
 	# A marked death takes its fungus with it. Purple: seeded as it falls, so
@@ -3562,15 +3593,24 @@ func _lay_body(victim: Entity) -> void:
 		"rises": turns + _hatch(victim.max_hp) if claimed else -1})
 	if red and map.get_tile(at.x, at.y) != Tiles.FUNGUS_RED and pathfinder != null:
 		_set_fungus(at, Tiles.FUNGUS_RED)
+	# Your bone ally fell in the red: say how long, and what stops it.
+	if claimed and victim.appearance == &"bone_ally":
+		msg_log.add("%s falls, and the red takes them. They will rise in %d turns."
+			% [victim.name, _hatch(victim.max_hp)], Color(0.92, 0.40, 0.40))
+		msg_log.add("Bury them with the shovel before they rise." if _has_shovel()
+			else "Burn the body before they rise.", Color(0.88, 0.62, 0.50))
 
 ## Whether the red can raise this creature: the living, and skeletons (Brad,
 ## 2026-09-30: a red-risen skeleton is more zombie than not). Not the other
 ## undead or the golem -- nothing in them for it to grow in -- and nothing that
 ## has already come back once, from the red or from a grave.
 func _can_rise(e: Entity) -> bool:
-	if e.fungal or e.risen or e.appearance == &"golem":
+	if e.raised or e.risen or e.appearance == &"golem":
 		return false
-	return not e.unliving or e.appearance == &"skeleton"
+	# A grave's bone ally is a skeleton's frame under a hero's name, so it
+	# rises like one (Brad, 2026-10-01: keep it -- and warn the player; see
+	# _warn_of_red_allies). It is the one ally that can turn on you.
+	return not e.unliving or e.appearance == &"skeleton" or e.appearance == &"bone_ally"
 
 ## Red already there, or ground it could grow on.
 func _red_can_hold(c: Vector2i) -> bool:
@@ -3654,8 +3694,10 @@ func _grow_fungus() -> void:
 			b["seeded"] = -2
 		still.append(b)
 	bodies = still
-	# Red crawls toward the dead, and the dead it holds get up.
+	# Red crawls toward the dead, and the dead it holds get up. A chain that
+	# lost its body dies back first, so a square it gives up is not regrown.
 	if turns % CRAWL_EVERY == 0:
+		_wither_red()
 		_crawl_red()
 	_raise_the_red()
 	# Trails: marked walkers leave their fungus behind, now and then.
@@ -3743,6 +3785,7 @@ func _rise_from(b: Dictionary) -> bool:
 	r.alive = true
 	r.faction = Entity.Faction.RISEN
 	r.fungal = true
+	r.raised = true
 	r.spores = &"red"
 	r.leash = _leash_at(at)
 	r.alertness = Entity.Alert.AWAKE
@@ -3907,6 +3950,7 @@ func _crawl_red() -> void:
 			b["rises"] = turns + _hatch(int(b["e"].get("max_hp", 1)))
 			if map.get_tile(at.x, at.y) != Tiles.FUNGUS_RED:
 				_set_fungus(at, Tiles.FUNGUS_RED)
+				red_from[at] = from
 			if map.is_visible(at.x, at.y):
 				msg_log.add("The red fungus reaches the %s's body."
 					% String(b["e"].get("name", b["app"])), Color(0.88, 0.45, 0.45))
@@ -3921,8 +3965,211 @@ func _crawl_red() -> void:
 			var c: Vector2i = from + s
 			if _fungus_can_grow(c):
 				_set_fungus(c, Tiles.FUNGUS_RED)
+				red_from[c] = from
 				reds.append(c)
 				break
+
+## What a square is under its fungus.
+## The chains as rows a save can hold: [x, y, from_x, from_y].
+func _red_from_rows() -> Array:
+	var rows: Array = []
+	for c in red_from:
+		var f: Vector2i = red_from[c]
+		rows.append([c.x, c.y, f.x, f.y])
+	return rows
+
+func _bare_ground(c: Vector2i) -> int:
+	return Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN \
+		else Tiles.FLOOR
+
+## A body the red could still go for, within its reach of this square.
+func _red_has_another(c: Vector2i) -> bool:
+	for b in bodies:
+		if bool(b.get("claimed", false)) or bool(b.get("still", false)):
+			continue
+		var at := Vector2i(int(b["x"]), int(b["y"]))
+		if maxi(absi(at.x - c.x), absi(at.y - c.y)) <= CRAWL_REACH and _red_can_hold(at):
+			return true
+	return false
+
+## The red has lost the body at `at` -- buried, dug up, drunk -- before it
+## rose. If another body is in reach the crawl simply turns to it (its
+## nearest-body rule needs nothing new). If not, the chain that reached this
+## one WITHERS back toward its source, a square a crawl tick (Brad,
+## 2026-10-01). A body claimed where it fell sits on its own source: nothing
+## to wither.
+func _red_loses(at: Vector2i) -> void:
+	if _red_has_another(at):
+		return
+	var chain: Array = []
+	var c := at
+	while red_from.has(c) and chain.size() <= RED_CAP:
+		chain.append(c)
+		c = red_from[c]
+	if chain.is_empty():
+		return
+	withering.append(chain)
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The red fungus draws back from where the body lay.",
+			Color(0.88, 0.45, 0.45))
+
+## One square off the tip of every withering chain. A chain stops where a
+## branch still grows out of it (another chain lives on from there) or where
+## a body has come into reach (the red turns to that instead).
+func _wither_red() -> void:
+	var still: Array = []
+	for chain in withering:
+		if chain.is_empty():
+			continue
+		var c: Vector2i = chain[0]
+		if _red_has_another(c) or red_from.values().has(c):
+			continue
+		if map.get_tile(c.x, c.y) == Tiles.FUNGUS_RED:
+			scorched.erase("%d,%d" % [c.x, c.y])
+			_set_fungus(c, _bare_ground(c))
+		red_from.erase(c)
+		chain.remove_at(0)
+		if not chain.is_empty():
+			still.append(chain)
+	withering = still
+
+## The claimed body G would bury: underfoot, then ahead, then round you
+## clockwise from your facing. Empty without a shovel in the pack.
+func bury_target() -> Dictionary:
+	if not _has_shovel():
+		return {}
+	var here := Vector2i(player.x, player.y)
+	var cells: Array[Vector2i] = [here]
+	for i in 8:
+		cells.append(here + Entity.turned(player.facing, i))
+	for c in cells:
+		for b in bodies:
+			if _buriable(b) and int(b["x"]) == c.x and int(b["y"]) == c.y:
+				return b
+	return {}
+
+## The red's dead: a body it has claimed, or one that already rose for it and
+## fell again. Other bodies are left for the rats -- digging them earns
+## nothing and only makes noise.
+func _buriable(b: Dictionary) -> bool:
+	return bool(b.get("claimed", false)) or bool(b["e"].get("fungal", false))
+
+func _shovel() -> Item:
+	for it in player.inventory:
+		if it.dulls():
+			return it
+	return null
+
+## One more grave on the shovel's count, and its edge back at five.
+func _lay_to_rest() -> void:
+	var shovel := _shovel()
+	if shovel == null:
+		return
+	shovel.laid_to_rest = mini(BURIALS_TO_SHARPEN, shovel.laid_to_rest + 1)
+	if shovel.dull and shovel.laid_to_rest >= BURIALS_TO_SHARPEN:
+		shovel.dull = false
+		shovel.laid_to_rest = 0
+		msg_log.add("Five laid to rest. The shovel's edge comes back: an undertaker's pay.",
+			Color(0.80, 0.85, 0.70))
+	else:
+		msg_log.add("(%d of %d laid to rest)" % [shovel.laid_to_rest, BURIALS_TO_SHARPEN],
+			Color(0.70, 0.72, 0.66))
+
+func _has_shovel() -> bool:
+	return _shovel() != null
+
+## A BONE ALLY CAN CATCH THE RED (Brad, 2026-10-01: keep the horror, but say
+## so). A risen's blows and red underfoot mark an ally like anything else; a
+## marked bone ally that falls is claimed and rises against you. The moment it
+## is marked, the log says so once, with what stops it.
+func _warn_of_red_allies() -> void:
+	for e in entities:
+		if not _is_red_bone_ally(e) or e.red_warned:
+			continue
+		e.red_warned = true
+		msg_log.add("The red fungus has laid claim to %s. If they fall, they will rise against you."
+			% e.name, Color(0.92, 0.40, 0.40))
+		msg_log.add("Your shovel can bury them before they rise -- if you are quick enough."
+			if _has_shovel() else
+			"Fire can burn the body before they rise -- if you are quick enough.",
+			Color(0.88, 0.62, 0.50))
+
+func _is_red_bone_ally(e: Entity) -> bool:
+	return e.alive and e.appearance == &"bone_ally" \
+		and e.faction == Entity.Faction.PLAYER and e.spores == &"red"
+
+## A spadeful over a claimed body. False, spending nothing, without one.
+func player_bury() -> bool:
+	if game_over:
+		return false
+	var b := bury_target()
+	if b.is_empty():
+		return false
+	_travel.clear()
+	var at := Vector2i(int(b["x"]), int(b["y"]))
+	var who := String(b["e"].get("name", b["app"]))
+	b["dug"] = int(b.get("dug", 0)) + 1
+	# Loud where YOU stand: that is where anything that hears it will come.
+	_make_noise(Vector2i(player.x, player.y), DIG_NOISE, &"dig")
+	if int(b["dug"]) < BURY_SPADEFULS:
+		msg_log.add("You dig at the %s's grave. The noise carries. (%d/%d)"
+			% [who, int(b["dug"]), BURY_SPADEFULS], Color(0.80, 0.72, 0.55))
+	else:
+		bodies.erase(b)
+		if bool(b.get("claimed", false)):
+			msg_log.add("You turn the last earth over the %s. The red has lost it." % who,
+				Color(0.80, 0.85, 0.70))
+			_red_loses(at)
+		else:
+			msg_log.add("You turn the last earth over the %s. It will not get up again." % who,
+				Color(0.80, 0.85, 0.70))
+		_lay_to_rest()
+	_end_player_turn()
+	return true
+
+## THE GEM OF THIRST DRINKS THE DEAD (6d, 2026-09-30). Crushed against a
+## body underfoot or beside you, it drains it and gives you THIRST_SHARE of
+## its strength: half its max hp. The body is gone -- a third claimant for the
+## dead beside the red and the shovel, and the way to deny the red a body when
+## you have no fire. At full health it is refused, unless the red has claimed
+## the body: then the denial is the point.
+const THIRST_SHARE := 2
+
+## The body the gem would drink: the richest within reach (underfoot or
+## beside you); ties go to the earliest laid. Empty for none.
+func thirst_target() -> Dictionary:
+	var best: Dictionary = {}
+	for b in bodies:
+		if maxi(absi(int(b["x"]) - player.x), absi(int(b["y"]) - player.y)) > 1:
+			continue
+		if best.is_empty() or _thirst_heal(b) > _thirst_heal(best):
+			best = b
+	return best
+
+func _thirst_heal(b: Dictionary) -> int:
+	return maxi(1, int(b["e"].get("max_hp", 2)) / THIRST_SHARE)
+
+func _drink_the_dead(gem: Item) -> bool:
+	var b := thirst_target()
+	if b.is_empty():
+		msg_log.add("There is no body here for it to drink.", Color(0.7, 0.6, 0.4))
+		return false
+	var claimed := bool(b.get("claimed", false))
+	if player.hp >= player.max_hp and not claimed:
+		msg_log.add("You are already whole.", Color(0.7, 0.6, 0.4))
+		return false
+	var at := Vector2i(int(b["x"]), int(b["y"]))
+	var who := String(b["e"].get("name", b["app"]))
+	var healed := mini(_thirst_heal(b), player.max_hp - player.hp)
+	player.hp += healed
+	if healed > 0:
+		_queue_healing_cue(healed)
+	bodies.erase(b)
+	msg_log.add("You crush the %s against the %s's body. It drinks it dry. (+%d hp)"
+		% [gem.name, who, healed], Color(0.55, 0.85, 0.55))
+	if claimed:
+		_red_loses(at)
+	return true
 
 ## Moves a creature to the nearest safe square beside it: walkable, empty,
 ## and not the wrong fungus. Stays put if there is none.
@@ -4002,8 +4249,8 @@ func _burn_fungus(c: Vector2i) -> void:
 				msg_log.add("The %s's body burns with it."
 					% String(b["e"].get("name", b["app"])), Color(0.96, 0.66, 0.36))
 	scorched.erase("%d,%d" % [c.x, c.y])
-	_set_fungus(c, Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN
-		else Tiles.FLOOR)
+	red_from.erase(c)
+	_set_fungus(c, _bare_ground(c))
 	# The views and sound deck give this a small ember burst, not forge sparks.
 	events.append({"kind": &"burn", "to": c})
 
@@ -4026,7 +4273,7 @@ func _rot_bodies() -> void:
 var recent_dead: Array = []
 
 func _remember_the_dead(victim: Entity) -> void:
-	if victim.is_player or victim.faction == Entity.Faction.PLAYER or victim.fungal:
+	if victim.is_player or victim.faction == Entity.Faction.PLAYER or victim.raised:
 		return
 	recent_dead.append({"turn": turns, "e": victim.to_dict()})
 	var still: Array = []
@@ -4077,6 +4324,13 @@ func _raise_the_recent_dead() -> bool:
 	risen.max_hp = maxi(1, risen.max_hp / 2)
 	risen.hp = risen.max_hp
 	risen.name = "risen %s" % risen.name
+	# Its one second life: the red will not take it again, and it drops
+	# nothing when it falls (its gear dropped the first time).
+	risen.raised = true
+	# Taken from the red, if the red had it: you do not dig up a friend still
+	# wearing the fungus, leaving it on the floor behind you as it walks.
+	risen.spores = &""
+	risen.poisoned = 0
 	entities.append(risen)
 	Scheduler.spend(risen, Scheduler.ACTION_COST)
 	recent_dead.erase(pick)
@@ -4086,6 +4340,8 @@ func _raise_the_recent_dead() -> bool:
 		if int(b["turn"]) == int(pick["turn"]) and int(b["x"]) == int(from.get("x", -1)) \
 				and int(b["y"]) == int(from.get("y", -1)):
 			bodies.erase(b)
+			if bool(b.get("claimed", false)):
+				_red_loses(Vector2i(int(b["x"]), int(b["y"])))
 			break
 	events.append({"kind": &"notice", "to": spot})
 	msg_log.add("You turn the earth. The %s rises, and it is yours."
@@ -4900,6 +5156,34 @@ func _default_host(gem: Item) -> Variant:
 			return it
 	return null
 
+## Would this unique take a gem now? The ring while it is short of full; the
+## shovel while it is dull. Any gem: the stone is fuel here, not an element.
+func can_feed(it: Item) -> bool:
+	if it.transforms():
+		return it.charges < RING_FULL
+	if it.dulls():
+		return it.dull
+	return false
+
+## The first unique in the pack that would take a gem, or null.
+func _feedable() -> Item:
+	for it in player.inventory:
+		if can_feed(it):
+			return it
+	return null
+
+## Where a gem goes when the player does not name a host: a piece of gear
+## that can still take it, else a unique that wants feeding, else the gear
+## anyway -- so the refusal names the real reason ("already holds a gem").
+func _gem_host(gem: Item) -> Variant:
+	var host: Variant = _default_host(gem)
+	if host != null and host.element == &"":
+		return host
+	var fed := _feedable()
+	if fed != null:
+		return fed
+	return host
+
 func player_bind(index: int, target: int = -1) -> bool:
 	if game_over or index < 0 or index >= player.inventory.size():
 		return false
@@ -4914,22 +5198,23 @@ func player_bind(index: int, target: int = -1) -> bool:
 	var blade: Variant = null
 	if target >= 0 and target < player.inventory.size():
 		blade = player.inventory[target]
-		if not blade.is_equipment():
+		if not blade.is_equipment() and not can_feed(blade):
 			return false
 	else:
-		blade = _default_host(gem)
+		blade = _gem_host(gem)
 	if blade == null:
 		msg_log.add("You have nothing in hand to set it into.",
 			Color(0.7, 0.6, 0.4))
 		return false
+	var feeding := can_feed(blade)
 	# One stone, forever. Refused rather than replaced: the whole weight of the
 	# choice is that it cannot be taken back, and overwriting would turn a
 	# commitment into a preference.
-	if blade.element != &"":
+	if not feeding and blade.element != &"":
 		msg_log.add("The %s already holds a gem. It will take no other."
 			% blade.display_name(), Color(0.7, 0.6, 0.4))
 		return false
-	if not blade.accepts_element(gem.element):
+	if not feeding and not blade.accepts_element(gem.element):
 		msg_log.add("The %s will not hold that one." % blade.display_name(),
 			Color(0.7, 0.6, 0.4))
 		return false
@@ -4964,7 +5249,6 @@ func player_bind(index: int, target: int = -1) -> bool:
 		return false
 
 	_travel.clear()
-	blade.element = gem.element
 	player.inventory.erase(gem)
 	gem.letter = ""
 	_tally("bindings")
@@ -4974,9 +5258,23 @@ func player_bind(index: int, target: int = -1) -> bool:
 	map.set_tile(hot.x, hot.y, Tiles.BRAZIER_DEAD)
 	ember_until.erase(hot)
 	_lay_the_beat()
-	msg_log.add("You set the %s into the %s. It drinks the last of the heat."
-		% [gem.name, blade.display_name()], Color(0.85, 0.88, 0.70))
-	msg_log.add("The brazier goes black. Nothing will kindle it again.",
+	if feeding and blade.transforms():
+		var had: int = blade.charges
+		blade.charges = mini(RING_FULL, blade.charges + RING_FEED)
+		msg_log.add("You press the %s into the ring. It warms on your finger. (+%d, %d/%d)"
+			% [gem.name, blade.charges - had, blade.charges, RING_FULL],
+			Color(0.85, 0.88, 0.70))
+	elif feeding:
+		blade.dull = false
+		msg_log.add("You grind the %s into the shovel's edge. It will bite again."
+			% gem.name, Color(0.85, 0.88, 0.70))
+	else:
+		blade.element = gem.element
+		msg_log.add("You set the %s into the %s. It drinks the last of the heat."
+			% [gem.name, blade.display_name()], Color(0.85, 0.88, 0.70))
+	# Not "nothing will kindle it again" -- fire relights a black brazier now
+	# (a flare, a gem of fire, a fire blade: 6b).
+	msg_log.add("The brazier goes black. Only fire will wake it now.",
 		Color(0.45, 0.42, 0.42))
 	_make_noise(hot, FORGE_NOISE, &"forge")
 	_end_player_turn()
@@ -4988,8 +5286,8 @@ func player_bind(index: int, target: int = -1) -> bool:
 func can_bind_gem(gem: Item) -> bool:
 	if gem.kind != Item.Kind.GEM:
 		return false
-	var blade: Variant = _default_host(gem)
-	if blade == null or blade.element != &"":
+	var blade: Variant = _gem_host(gem)
+	if blade == null or (blade.element != &"" and not can_feed(blade)):
 		return false
 	# True at a LIT brazier too: the click there rakes the fire down, which is
 	# a real step toward binding rather than a refusal. Marking it otherwise
@@ -5395,12 +5693,18 @@ func actions_here() -> Array:
 	if items_at(player.x, player.y).is_empty() \
 			and not map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES:
 		var fire := flare_target()
+		var grave := bury_target()
 		if fire.x >= 0:
 			out.append([KEY_G, "kindle the brazier (%d)" % flare_kindle(torch_flare)])
-		elif burn_target().x >= 0 and _can_burn():
+		elif burn_target().x >= 0 and _fire_in_hand():
 			# Taught here, because this box is where players learn the game.
-			out.append([KEY_G, "burn the fungus" if _fire_in_hand()
-				else "scorch the fungus (torch)"])
+			out.append([KEY_G, "burn the fungus"])
+		elif not grave.is_empty():
+			out.append([KEY_G, "bury the %s (shovel, loud) %d/%d" % [
+				String(grave["e"].get("name", grave["app"])),
+				int(grave.get("dug", 0)), BURY_SPADEFULS]])
+		elif burn_target().x >= 0 and _can_burn():
+			out.append([KEY_G, "scorch the fungus (torch)"])
 		elif _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
 			var f := _fire_to_give()
 			out.append([KEY_G, ("relight it with the %s (%d)" if f.kind == Item.Kind.GEM
@@ -5463,8 +5767,15 @@ func player_pickup() -> bool:
 		# this is the one neighbouring-cell act the key has.
 		if torch_flare > 0 and _adjacent_any_brazier().x >= 0:
 			return player_kindle()
-		# The wrong fungus, beside you or under you: burn it.
+		# The wrong fungus, beside you or under you: a fire blade burns it in
+		# one stroke, which beats everything below. Then a claimed body and a
+		# shovel: bury it (loud, but the whole chain dies back). Then the
+		# torch's three slow scorches.
 		var fungus := burn_target()
+		if fungus.x >= 0 and _fire_in_hand():
+			return _burn_at(fungus)
+		if not bury_target().is_empty():
+			return player_bury()
 		if fungus.x >= 0 and _can_burn():
 			return _burn_at(fungus)
 		# A cold brazier and fire to give it. After the fungus, deliberately:
@@ -5662,9 +5973,13 @@ func _burn_the_ring() -> void:
 			Color(0.75, 0.70, 0.80))
 	if ring.charges > 0:
 		return
+	# COLD, not gone (Brad, 2026-09-30: the ring became the key to the red, so
+	# it must survive to be used again). You still turn back wherever you are
+	# standing -- the horror of running dry mid-room stays -- but you keep the
+	# ring, and a gem at the embers warms it (RING_FEED).
+	ring.charges = 0
 	player.equipped.erase(Item.Slot.WEAPON)
-	player.inventory.erase(ring)
-	msg_log.add("The ring crumbles, and you are yourself again.",
+	msg_log.add("The ring goes cold on your paw, and you are yourself again.",
 		Color(0.85, 0.80, 0.90))
 	update_vision()
 
@@ -5759,6 +6074,10 @@ func player_use(index: int) -> bool:
 	# The player should not have to remember which verb a slot wants.
 	if item.is_equipment():
 		var putting_on := not player.is_equipped(item)
+		if putting_on and item.transforms() and item.charges <= 0:
+			msg_log.add("The ring is cold. A gem at the embers would warm it.",
+				Color(0.7, 0.6, 0.4))
+			return false
 		_toggle_equip(item)
 		# Time to get INTO it -- see Item.don_turns. Taking it off is one turn.
 		var took := item.don_turns if putting_on else 1
@@ -5772,8 +6091,10 @@ func player_use(index: int) -> bool:
 	# a misclick is the kind of thing that makes people stop playing.
 	if not _apply_effect(item):
 		return false
-	player.inventory.remove_at(index)
-	item.letter = ""
+	# The shovel is kept, dull, for a gem to sharpen (6c).
+	if not item.dulls():
+		player.inventory.remove_at(index)
+		item.letter = ""
 	# EVERY potion and every meal costs a turn. A "first one each turn is free"
 	# rule, after D&D's bonus action, was built and taken out again on
 	# 2026-09-24. Free in combat it makes fights easier, which Brad did not
@@ -5920,11 +6241,35 @@ func player_drop(index: int) -> bool:
 
 ## Returns false if the item declined to be used, in which case it is not spent.
 func _apply_effect(item: Item) -> bool:
+	# A gem is not drunk or read. The gem of thirst is the one used on its
+	# own -- on a body -- and the rest say where they ARE used, instead of the
+	# click doing nothing at all (it did, until 2026-10-01).
+	if item.kind == Item.Kind.GEM:
+		if item.element == &"leech":
+			return _drink_the_dead(item)
+		msg_log.add("A gem is set into your gear at a brazier's embers.",
+			Color(0.7, 0.6, 0.4))
+		return false
 	match item.effect:
 		&"summon":
 			return _summon_ally(item)
 		&"raise_corpse":
-			return _raise_the_recent_dead()
+			if item.dull:
+				msg_log.add("The shovel's edge is gone. A gem at the embers would put it back.",
+					Color(0.7, 0.6, 0.4))
+				return false
+			if not _raise_the_recent_dead():
+				return false
+			if item.dulls():
+				if item.laid_to_rest >= BURIALS_TO_SHARPEN:
+					# The graves already dug pay for this one (Gabe's rule).
+					item.laid_to_rest = 0
+					msg_log.add("The graves you dug keep the shovel's edge.",
+						Color(0.80, 0.85, 0.70))
+				else:
+					item.dull = true
+					msg_log.add("The shovel's edge is spent.", Color(0.70, 0.66, 0.58))
+			return true
 
 		&"open_sack":
 			return _open_sack()
@@ -6124,6 +6469,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	update_vision()
 	_run_world()
 	_grow_fungus()
+	_warn_of_red_allies()
 	update_vision()
 	_check_health_warning()
 
@@ -6254,6 +6600,9 @@ func to_dict() -> Dictionary:
 		"reload_said": _reload_said,
 		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
 		"scorched": scorched,
+		"red_from": _red_from_rows(),
+		"withering": withering.map(func(chain): return chain.map(
+			func(c): return [c.x, c.y])),
 		"gem_found": gem_found,
 		"rooms_found": rooms_found.keys(),
 		"player_name": player_name,
@@ -6364,6 +6713,15 @@ func apply_dict(d: Dictionary) -> bool:
 	var sc: Dictionary = d.get("scorched", {})
 	for k in sc:
 		scorched[String(k)] = int(sc[k])
+	red_from = {}
+	for row in d.get("red_from", []):
+		red_from[Vector2i(int(row[0]), int(row[1]))] = Vector2i(int(row[2]), int(row[3]))
+	withering = []
+	for chain in d.get("withering", []):
+		var squares: Array = []
+		for c in chain:
+			squares.append(Vector2i(int(c[0]), int(c[1])))
+		withering.append(squares)
 	# Derived from the map rather than saved, so a resumed run does not depend
 	# on a route written by an older version of this code.
 	_lay_the_beat()
@@ -8268,7 +8626,7 @@ func _settle_death(victim: Entity, killer: Entity) -> void:
 		# whatever the player is holding.
 		msg_log.add("You die.", Color(1.0, 0.35, 0.35))
 	else:
-		msg_log.add("The %s dies." % victim.name, Color(0.65, 0.70, 0.85))
+		msg_log.add("%s dies." % _called(victim, true), Color(0.65, 0.70, 0.85))
 		events.append({"kind": &"kill",
 			"to": Vector2i(victim.x, victim.y)})
 		# Remembered BEFORE the loot drop empties it, so what stands up
@@ -8290,6 +8648,13 @@ func _settle_death(victim: Entity, killer: Entity) -> void:
 			award_xp(victim.threat)
 			_tally_in("kills", victim.name)
 
+
+## How the log names a creature: "the goblin" -- but a hero's shade from a
+## grave goes by their own name ("Erdrick", never "The Erdrick").
+func _called(e: Entity, capital: bool) -> String:
+	if e.appearance == &"bone_ally":
+		return e.name
+	return ("The %s" if capital else "the %s") % e.name
 
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		power_override: int = -1) -> void:
@@ -8427,10 +8792,21 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		else:
 			msg_log.add("You hit the %s for %d." % [defender.name, dmg],
 				Color(0.80, 0.85, 0.70))
-	elif ranged:
-		msg_log.add("The %s shoots you for %d." % [attacker.name, dmg], Color(0.95, 0.62, 0.35))
-	else:
-		msg_log.add("The %s hits you for %d." % [attacker.name, dmg], Color(0.90, 0.45, 0.40))
+	elif defender.is_player:
+		if ranged:
+			msg_log.add("The %s shoots you for %d." % [attacker.name, dmg],
+				Color(0.95, 0.62, 0.35))
+		else:
+			msg_log.add("The %s hits you for %d." % [attacker.name, dmg],
+				Color(0.90, 0.45, 0.40))
+	elif map.is_visible(defender.x, defender.y) or map.is_visible(attacker.x, attacker.y):
+		# Somebody else's fight -- an ally's, or the risen's against the
+		# monsters. Every blow here used to read "The X hits you", whoever it
+		# hit (found 2026-10-01, when the red made such fights common). Named,
+		# and only when seen, so fights out of view do not fill the log.
+		msg_log.add("%s %s %s for %d." % [_called(attacker, true),
+			"shoots" if ranged else "hits", _called(defender, false), dmg],
+			Color(0.78, 0.74, 0.66))
 
 	# Said out loud, because the whole effect is a number that did NOT happen.
 	# Without this the stone reads as no change at all -- the same reason fire

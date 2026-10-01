@@ -180,6 +180,15 @@ strand at a time with play between:
    SKELETON keeps its eyes and sees through the ring. Real rats are never
    hunted and red never bites them (nor a ring-rat): they are its carriers.
    Its hits mark the victim red (the snowball).
+   **A bone ally can catch the red (Brad, 2026-10-01: keep it, warn the
+   player).** A risen's blows or red underfoot mark it; marked, if it falls it
+   is claimed and rises against you ("risen Erdrick"). The log says so once
+   when it is marked -- with "your shovel can bury them" or, without one,
+   "fire can burn the body" -- and again when it falls (how many turns).
+   The bone ally counts as a skeleton for rising. Shovel allies cannot rise
+   (raised once). Found with it: every blow by anyone but you was logged
+   "The X hits you", whoever it hit -- now named, and only when seen; heroes
+   die by name, not "The Erdrick". Test: _test_a_bone_ally_can_carry_the_red.
    The gong frees it. Living creatures and skeletons rise; wights, shadows,
    liches, banshees and golems do not (red grows, nothing is claimed). Its
    second death is its last: no body claimed, nothing dropped (the first death
@@ -220,7 +229,18 @@ strand at a time with play between:
    meant for the red never spends fire. A tinderbox unique (two free relights
    a floor) was considered and dropped: it would cancel the brazier clock.
    The legend's black brazier now reads "cold, until fire".
-6c. **Gems feed the uniques. DESIGNED 2026-09-30, next after 6b is played.**
+6c. **Gems feed the uniques. BUILT 2026-10-01** (Claude's pick, with burying
+   below), waiting on play. As built: at the embers a gem goes into the ring
+   (RING_FEED +50, up to RING_FULL 220) or a dull shovel, through the same
+   shortlist as gear ("set the gem into what?"); gear that can still take the
+   stone is offered first. The ring at 0 goes COLD (unequipped, kept; a cold
+   ring will not go on). The shovel goes DULL after a raise (Item.dull, saved;
+   old shovels read sharp). Entity.raised marks the one second life (shovel
+   and red; old red risen read raised); a raised creature drops nothing; a
+   grave's bone ally is NOT raised and still hands its kit back. The shovel
+   strips spores from what it raises. Clicking a gem outside its uses now
+   says where gems go. Binding's "nothing will kindle it again" corrected.
+   Test: _test_gems_feed_the_uniques. Design notes follow.
    Brad: the ring of the rat became the key to surviving the red, so it must
    be reusable; likewise the undertaker's shovel. **You and the red compete
    for the dead, and every body gets at most one second life.**
@@ -239,6 +259,22 @@ strand at a time with play between:
      their bone rule). (3) The shovel can already snatch a red-claimed body
      inside its 5-turn window (a red body rises in 8+); it should strip the
      spores, or the rescued ally wears the red outline and trails red.
+   - **BURYING -- BUILT 2026-10-01**, as below: G, BURY_SPADEFULS 3, each
+     DIG_NOISE 6 at your feet; a dull shovel digs. G's order: a fire blade
+     burns first, then the shovel buries, then the torch scorches. The crawl
+     keeps `red_from` (square -> where it grew from, saved); a lost body
+     withers its chain a square a crawl tick (`withering`, saved), tip first,
+     stopping at a branch, at a body in reach, or at the source. The shovel's
+     raise and the gem of thirst also make the red lose a body. Test:
+     _test_burying_and_the_red_withering.
+   - **THE UNDERTAKER'S PAY -- Gabe's idea, BUILT 2026-10-01.** The gem's
+     other road: every grave dug for the red's dead counts on the shovel
+     (Item.laid_to_rest, saved) -- a claimed body, OR the body of a risen
+     that fell (the shovel now buries those too; plain bodies it does not).
+     BURIALS_TO_SHARPEN 5 sharpen a dull shovel; on a sharp one the count
+     holds at 5 and keeps its edge through the next raise -- one raise banked
+     at most, as with the gem. The log counts "(3 of 5 laid to rest)"; the
+     pack's hint names both roads. Test: _test_the_undertakers_pay.
    - **BURYING (Brad, 2026-10-01): the shovel's second use.** Standing on or
      beside a body the red has CLAIMED but not yet raised, dig it under: it
      never rises. Separate from RAISING (a fresh kill, 5-turn window, an
@@ -264,7 +300,11 @@ strand at a time with play between:
    1. **Gem of the boss -> a decoy crash.** Thrown, it shatters LOUD where it
       lands. The blind risen hunt by sound, so it empties a red room's far
       wall while you take the near one; it also pulls a guard off its round.
-   2. **Gem of thirst -> drink the dead.** Crushed on a fresh body: you drain
+   2. **Gem of thirst -> drink the dead. BUILT 2026-10-01:** a plain click on
+      the gem (it needs no fire) with a body underfoot or beside you; the
+      richest body, half its max hp (THIRST_SHARE); refused at full health
+      unless the body is red-claimed. The pack's hint says "drink the X (+N)".
+      Test: _test_the_gem_of_thirst. Crushed on a fresh body: you drain
       it for hp and the body is gone -- a THIRD claimant for the dead beside
       the red and the shovel. Denies the red a body when you have no fire.
    3. **Gem of the mirror -> a shrine's true name.** Crushed at an unknown

@@ -108,6 +108,11 @@ func _initialize() -> void:
 	_test_the_miasma()
 	_test_the_red_raises_the_dead()
 	_test_fire_relights_braziers()
+	_test_gems_feed_the_uniques()
+	_test_burying_and_the_red_withering()
+	_test_the_gem_of_thirst()
+	_test_a_bone_ally_can_carry_the_red()
+	_test_the_undertakers_pay()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -1648,6 +1653,13 @@ func _test_the_miasma() -> void:
 	g._burn_fungus(purple)
 	check("and goes when the fungus burns", not g.miasma_cloud().has(purple + Vector2i(1, 1)))
 
+## Kills a creature and settles its death, as a blow would. `_settle_death`
+## alone handles what FOLLOWS a death and leaves the creature alive -- a test
+## "corpse" made with it stood up and hit the player for 7 (2026-10-01).
+func _kill(gs: GameState, victim: Entity, killer: Entity) -> void:
+	victim.take_damage(victim.hp)
+	gs._settle_death(victim, killer)
+
 ## THE RED RAISES THE DEAD (strand 4): claimed bodies rise on a timer that
 ## grows with size, held to their room until the gong; fire stops them; the
 ## second death is the last.
@@ -1683,7 +1695,7 @@ func _test_the_red_raises_the_dead() -> void:
 	kob.spores = &"red"
 	kob.inventory.append(Item.make(&"meat"))
 	g.entities = [g.player, kob]
-	g._settle_death(kob, kob)
+	_kill(g, kob, kob)
 	var at := Vector2i(o.x + 2, o.y)
 	check("a red-marked death is claimed, with red under it",
 		g.bodies.size() == 1 and bool(g.bodies[0]["claimed"])
@@ -1695,7 +1707,7 @@ func _test_the_red_raises_the_dead() -> void:
 	var wight := GameState.monster_from(_bestiary_entry("wight"), o.x - 2, o.y)
 	wight.spores = &"red"
 	g.entities = [g.player, wight]
-	g._settle_death(wight, wight)
+	_kill(g, wight, wight)
 	check("a wight's body gets red under it but is never claimed",
 		g.map.get_tile(o.x - 2, o.y) == Tiles.FUNGUS_RED
 		and not bool(g.bodies[1]["claimed"]) and bool(g.bodies[1]["still"]))
@@ -1856,7 +1868,7 @@ func _test_the_red_raises_the_dead() -> void:
 	var r_at := Vector2i(risen.x, risen.y)
 	var ground_before := g.items_at(r_at.x, r_at.y).size()
 	g.bodies = []
-	g._settle_death(risen, g.player)
+	_kill(g, risen, g.player)
 	check("a risen dies for good: its body is never claimed",
 		g.bodies.size() == 1 and not bool(g.bodies[0]["claimed"])
 		and bool(g.bodies[0]["still"]))
@@ -1868,7 +1880,7 @@ func _test_the_red_raises_the_dead() -> void:
 	g.bodies = []
 	var goner := GameState.monster_from(_bestiary_entry("goblin"), o.x - 2, o.y + 2)
 	g.entities = [g.player, goner]
-	g._settle_death(goner, goner)
+	_kill(g, goner, goner)
 	check("precondition: an unmarked body is unclaimed",
 		g.bodies.size() == 1 and not bool(g.bodies[0]["claimed"]))
 	g._set_fungus(Vector2i(o.x - 3, o.y + 2), Tiles.FUNGUS_RED)
@@ -1962,6 +1974,379 @@ func _test_fire_relights_braziers() -> void:
 	check("fungus beside you is burned before any fire is spent",
 		gs.map.get_tile(4, 4) != Tiles.FUNGUS_RED
 		and gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER_DEAD and blade.element == &"fire")
+
+## GEMS FEED THE UNIQUES (6c): the ring goes cold at 0 and the shovel dull
+## after a raise, and a gem at the embers brings either back. With the gaps
+## found designing it: one second life per body, shared by shovel and red; a
+## raised creature drops nothing; the shovel takes the red off what it raises.
+func _test_gems_feed_the_uniques() -> void:
+	var gs := _arena(14, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	# THE RING GOES COLD, NOT GONE.
+	var ring := Item.make(&"rat_ring")
+	gs.give_item(ring)
+	# Putting it on takes a turn, and a turn as a rat burns a charge.
+	ring.charges = 5
+	check("precondition: a warm ring makes you a rat",
+		gs.player_use(gs.player.inventory.find(ring)) and gs.ratted())
+	ring.charges = 1
+	gs._burn_the_ring()
+	check("at 0 the ring goes cold: you are yourself, and you keep it",
+		not gs.ratted() and gs.player.inventory.has(ring) and ring.charges == 0
+		and not gs.player.is_equipped(ring))
+	check("a cold ring will not go on",
+		not gs.player_use(gs.player.inventory.find(ring)) and not gs.ratted())
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	check("the pack says what it wants", panel._action_hint(ring).begins_with("cold"),
+		panel._action_hint(ring))
+	# FED AT THE EMBERS.
+	var br := Vector2i(6, 4)
+	gs.map.set_tile(br.x, br.y, Tiles.BRAZIER_SPENT)
+	gs.ember_until[br] = gs.turns + 10
+	var frost := Item.make(&"gem_frost")
+	gs.give_item(frost)
+	check("a gem asks for the cold ring at the embers", gs.can_bind_gem(frost)
+		and panel._action_hint(frost) == "feed the ring", panel._action_hint(frost))
+	check("a gem feeds the cold ring (and must)",
+		gs.player_bind(gs.player.inventory.find(frost))
+		and ring.charges == GameState.RING_FEED and not gs.player.inventory.has(frost))
+	check("and the embers are spent, as any setting spends them",
+		gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER_DEAD)
+	check("a warmed ring goes on again",
+		gs.player_use(gs.player.inventory.find(ring)) and gs.ratted())
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	# Up to full, and no further; a full ring takes nothing.
+	ring.charges = GameState.RING_FULL - 10
+	gs.map.set_tile(br.x, br.y, Tiles.BRAZIER_SPENT)
+	gs.ember_until[br] = gs.turns + 10
+	var crag := Item.make(&"gem_crag")
+	gs.give_item(crag)
+	gs.player_bind(gs.player.inventory.find(crag), gs.player.inventory.find(ring))
+	check("feeding stops at the ring's full", ring.charges == GameState.RING_FULL)
+	check("a full ring takes no gem", not gs.can_feed(ring))
+	# Gear that can still take the stone comes first; a set one gives way.
+	ring.charges = 0
+	var dagger := Item.make(&"dagger")
+	gs.give_item(dagger)
+	gs.player.equipped[Item.Slot.WEAPON] = dagger
+	var fire := Item.make(&"gem_fire")
+	gs.give_item(fire)
+	check("an unset blade in hand is asked first", gs._gem_host(fire) == dagger)
+	dagger.element = &"frost"
+	check("a set blade gives way to the cold ring", gs._gem_host(fire) == ring)
+
+	# THE SHOVEL GOES DULL, NOT GONE -- and what it raises is clean.
+	var dig := _arena(30, 14)
+	dig.player.x = 6
+	dig.player.y = 7
+	var shovel := Item.make(&"shovel")
+	dig.give_item(shovel)
+	var kob := _spawn(dig, "kobold", 7, 7)
+	kob.spores = &"red"
+	_kill(dig, kob, dig.player)
+	check("precondition: a red kill lies claimed",
+		dig.bodies.size() == 1 and bool(dig.bodies[0]["claimed"]))
+	check("the shovel raises it (and must)",
+		dig.player_use(dig.player.inventory.find(shovel)))
+	var ally: Entity = null
+	for e in dig.entities:
+		if e.faction == Entity.Faction.PLAYER and not e.is_player:
+			ally = e
+	check("an ally stands there, and the claimed body is gone",
+		ally != null and dig.bodies.is_empty())
+	if ally != null:
+		check("taken from the red: no spores on it", ally.spores == &"")
+		check("one second life: the red will never raise it", ally.raised
+			and not dig._can_rise(ally))
+		var at := Vector2i(ally.x, ally.y)
+		var before := dig.items_at(at.x, at.y).size()
+		ally.equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+		dig._drop_loot(ally)
+		check("and it drops nothing when it falls (its gear dropped already)",
+			dig.items_at(at.x, at.y).size() == before)
+	# Precondition for that: an ally NOT raised (a grave's bone ally) hands
+	# back what it carries -- that kit is the only copy.
+	var bone := _spawn(dig, "goblin", 10, 7)
+	bone.faction = Entity.Faction.PLAYER
+	bone.equipped[Item.Slot.WEAPON] = Item.make(&"short_sword")
+	dig._drop_loot(bone)
+	check("a bone ally still hands its kit back (and must)",
+		dig.items_at(10, 7).size() > 0)
+	check("the shovel is kept, and dull", dig.player.inventory.has(shovel) and shovel.dull)
+	var gob := _spawn(dig, "goblin", 5, 7)
+	_kill(dig, gob, dig.player)
+	var crowd := dig.entities.size()
+	check("a dull shovel raises nothing, and is not lost for trying",
+		not dig.player_use(dig.player.inventory.find(shovel))
+		and dig.entities.size() == crowd and dig.player.inventory.has(shovel))
+	var hearth := Vector2i(6, 8)
+	dig.map.set_tile(hearth.x, hearth.y, Tiles.BRAZIER_SPENT)
+	dig.ember_until[hearth] = dig.turns + 10
+	var whet := Item.make(&"gem_crag")
+	dig.give_item(whet)
+	check("a gem at the embers sharpens it",
+		dig.player_bind(dig.player.inventory.find(whet), dig.player.inventory.find(shovel))
+		and not shovel.dull)
+	# Old saves.
+	check("a shovel saved before dullness existed is sharp",
+		not Item.from_dict({"id": "shovel", "charges": 0}).dull)
+	var old := kob.to_dict()
+	old.erase("raised")
+	old["fungal"] = true
+	check("a red risen saved before `raised` existed reads as raised",
+		Entity.from_dict(old).raised)
+
+## BURYING (Brad, 2026-10-01): the shovel puts a claimed body under before it
+## rises, loudly, and the red's chain withers back to its source.
+func _test_burying_and_the_red_withering() -> void:
+	var gs := _arena(24, 12)
+	gs.player.x = 10
+	gs.player.y = 6
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.bodies = []
+	gs.torch_lit = true
+	var source := Vector2i(4, 6)
+	gs._set_fungus(source, Tiles.FUNGUS_RED)
+	var gob := _spawn(gs, "goblin", 9, 6)
+	_kill(gs, gob, gob)
+	for i in 6:
+		gs._crawl_red()
+	check("precondition: the crawl claimed the body and kept its chain",
+		gs.bodies.size() == 1 and bool(gs.bodies[0]["claimed"])
+		and gs.red_from.size() == 5 and gs.red_from.get(Vector2i(9, 6)) == Vector2i(8, 6),
+		str(gs.red_from))
+	check("no shovel, nothing to bury", gs.bury_target().is_empty())
+	var shovel := Item.make(&"shovel")
+	shovel.dull = true
+	gs.give_item(shovel)
+	check("even a dull shovel offers the claimed body beside you",
+		not gs.bury_target().is_empty())
+	var offered := ""
+	for a in gs.actions_here():
+		offered += String(a[1]) + "|"
+	check("and the box says so", offered.contains("bury the goblin"), offered)
+	gs.events.clear()
+	gs.player_pickup()
+	check("G digs rather than scorching with the torch",
+		gs.bodies.size() == 1 and int(gs.bodies[0].get("dug", 0)) == 1
+		and gs.map.get_tile(9, 6) == Tiles.FUNGUS_RED and not gs.scorched.has("9,6"))
+	var dug_loud := false
+	for ev in gs.events:
+		if ev.get("kind") == &"noise" and ev.get("cause") == &"dig":
+			dug_loud = true
+	check("and it is loud", dug_loud)
+	gs.player_pickup()
+	gs.player_pickup()
+	check("three spadefuls and it is under", gs.bodies.is_empty())
+	# Withering: tip first, back to the source, which stays.
+	gs._wither_red()
+	check("the chain dies back from the tip",
+		gs.map.get_tile(9, 6) != Tiles.FUNGUS_RED and gs.map.get_tile(5, 6) == Tiles.FUNGUS_RED)
+	for i in 6:
+		gs._wither_red()
+	var gone := true
+	for x in range(5, 10):
+		if gs.map.get_tile(x, 6) == Tiles.FUNGUS_RED:
+			gone = false
+	check("all the way back", gone and gs.withering.is_empty() and gs.red_from.is_empty())
+	check("but the source it grew from stays", gs.map.get_tile(source.x, source.y) == Tiles.FUNGUS_RED)
+	# Another body in reach: the red turns to it instead of withering.
+	gs.red_from = {Vector2i(5, 6): source}
+	gs._red_loses(Vector2i(5, 6))
+	check("precondition: with nothing else to take, it withers", gs.withering.size() == 1)
+	gs.withering = []
+	gs.bodies = [{"x": 7, "y": 6, "app": "rat", "turn": gs.turns, "corrupted": false,
+		"e": {"name": "giant rat"}, "seeded": -1, "claimed": false}]
+	gs._red_loses(Vector2i(5, 6))
+	check("with another body in reach, it does not", gs.withering.is_empty())
+	# Saved.
+	gs.withering = [[Vector2i(5, 6)]]
+	var back := GameState.new(1)
+	back.apply_dict(JSON.parse_string(JSON.stringify(gs.to_dict())))
+	check("the chains and the withering survive a save",
+		back.red_from.get(Vector2i(5, 6)) == source
+		and back.withering.size() == 1 and back.withering[0][0] == Vector2i(5, 6))
+	# A fire blade burns before the shovel digs: one stroke beats three.
+	gs.bodies = []
+	gs.red_from = {}
+	var kob := _spawn(gs, "kobold", 9, 6)
+	kob.spores = &"red"
+	_kill(gs, kob, kob)
+	var blade := Item.make(&"short_sword")
+	blade.element = &"fire"
+	gs.give_item(blade)
+	gs.player.equipped[Item.Slot.WEAPON] = blade
+	check("precondition: a claimed body beside you, and a shovel",
+		not gs.bury_target().is_empty())
+	gs.player_pickup()
+	check("fire in hand: G burns it, body and all", gs.bodies.is_empty()
+		and gs.map.get_tile(9, 6) != Tiles.FUNGUS_RED)
+
+## THE GEM OF THIRST (6d): crushed on a body, it drinks it for you.
+func _test_the_gem_of_thirst() -> void:
+	var gs := _arena(14, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.bodies = []
+	var gem := Item.make(&"gem_leech")
+	gs.give_item(gem)
+	gs.player.hp = gs.player.max_hp - 500
+	check("no body: refused, and the gem is kept",
+		not gs.player_use(gs.player.inventory.find(gem)) and gs.player.inventory.has(gem))
+	var troll := _spawn(gs, "cave troll", 6, 4)
+	_kill(gs, troll, troll)
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	check("the pack offers the drink", panel._action_hint(gem).begins_with("drink the cave troll"),
+		panel._action_hint(gem))
+	var hp := gs.player.hp
+	check("crushed beside a body, it drinks it (and must)",
+		gs.player_use(gs.player.inventory.find(gem))
+		and gs.player.hp == hp + maxi(1, troll.max_hp / GameState.THIRST_SHARE))
+	check("the body and the gem are gone", gs.bodies.is_empty()
+		and not gs.player.inventory.has(gem))
+	# Whole: refused for a plain body, allowed for a claimed one -- denying the
+	# red is the point.
+	gs.player.hp = gs.player.max_hp
+	var gem2 := Item.make(&"gem_leech")
+	gs.give_item(gem2)
+	var kob := _spawn(gs, "kobold", 4, 4)
+	_kill(gs, kob, kob)
+	check("whole, a plain body is not worth the gem",
+		not gs.player_use(gs.player.inventory.find(gem2)) and gs.bodies.size() == 1)
+	gs.bodies = []
+	var red_kob := _spawn(gs, "kobold", 4, 5)
+	red_kob.spores = &"red"
+	_kill(gs, red_kob, red_kob)
+	check("precondition: that one is claimed", bool(gs.bodies[0]["claimed"]))
+	check("whole, a claimed body is still drunk: the red loses it",
+		gs.player_use(gs.player.inventory.find(gem2)) and gs.bodies.is_empty())
+	# Any other gem, clicked, says where gems go instead of doing nothing.
+	var frost := Item.make(&"gem_frost")
+	gs.give_item(frost)
+	check("another gem is not used up by a click",
+		not gs.player_use(gs.player.inventory.find(frost)) and gs.player.inventory.has(frost))
+
+## A BONE ALLY CAN CATCH THE RED (Brad, 2026-10-01): a risen's blows mark it;
+## if it falls marked, it rises against you -- and the log says so, with what
+## stops it.
+func _test_a_bone_ally_can_carry_the_red() -> void:
+	var gs := _arena(20, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.bodies = []
+	var bone := Item.make(&"bone")
+	bone.bone_name = "Erdrick"
+	bone.bone_level = 6
+	check("precondition: the bone raises an ally", gs._summon_ally(bone))
+	var ally: Entity = null
+	for e in gs.entities:
+		if e.appearance == &"bone_ally":
+			ally = e
+	check("and it is the bone ally", ally != null)
+	if ally == null:
+		return
+	var said := func() -> String:
+		var all := ""
+		for line in gs.msg_log.entries:
+			all += str(line) + "|"
+		return all
+	gs._warn_of_red_allies()
+	check("an unmarked ally draws no warning", not said.call().contains("laid claim"))
+	# A risen's blow marks it.
+	var zombie := _spawn(gs, "kobold", ally.x + 1, ally.y)
+	zombie.fungal = true
+	zombie.faction = Entity.Faction.RISEN
+	gs._attack(zombie, ally)
+	check("a risen's blow marks the ally red", ally.spores == &"red")
+	check("and the log says who it hit -- not \"hits you\"",
+		said.call().contains("The kobold hits Erdrick for")
+		and not said.call().contains("hits you"), said.call())
+	gs._warn_of_red_allies()
+	check("and the log says so, with what stops it (no shovel: fire)",
+		said.call().contains("laid claim to Erdrick")
+		and said.call().contains("Fire can burn the body"), said.call())
+	var before: int = gs.msg_log.entries.size()
+	gs._warn_of_red_allies()
+	check("once", gs.msg_log.entries.size() == before)
+	check("the warning is kept with a save", Entity.from_dict(ally.to_dict()).red_warned)
+	# It falls: claimed, and told how long and what to do.
+	gs.give_item(Item.make(&"shovel"))
+	gs.entities.erase(zombie)
+	_kill(gs, ally, ally)
+	check("a marked bone ally falls claimed",
+		gs.bodies.size() == 1 and bool(gs.bodies[0]["claimed"]))
+	check("a hero dies by name, not \"The Erdrick\"",
+		said.call().contains("Erdrick dies.") and not said.call().contains("The Erdrick"),
+		said.call())
+	check("the log says when it rises, and to bury it",
+		said.call().contains("Erdrick falls, and the red takes them")
+		and said.call().contains("Bury them with the shovel"), said.call())
+	# Left alone, it rises against you.
+	gs.turns = int(gs.bodies[0]["rises"])
+	gs._raise_the_red()
+	var turned: Entity = null
+	for e in gs.entities:
+		if e.faction == Entity.Faction.RISEN and e.name == "risen Erdrick":
+			turned = e
+	check("left alone, Erdrick rises against you",
+		turned != null and turned.hostile_to(gs.player))
+
+## THE UNDERTAKER'S PAY (Gabe, 2026-10-01): graves dug for the red's dead --
+## claimed bodies and fallen risen -- count on the shovel; five sharpen it.
+func _test_the_undertakers_pay() -> void:
+	var gs := _arena(16, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.bodies = []
+	var shovel := Item.make(&"shovel")
+	shovel.dull = true
+	gs.give_item(shovel)
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	check("the pack names both roads back",
+		panel._action_hint(shovel) == "dull: a gem, or 5 more graves", panel._action_hint(shovel))
+	# An ordinary body earns nothing: there is nothing to bury it for.
+	gs.bodies = [{"x": 6, "y": 4, "app": "goblin", "turn": gs.turns, "corrupted": false,
+		"e": {"name": "goblin"}, "seeded": -1, "claimed": false}]
+	check("a plain body is not offered for burial", gs.bury_target().is_empty())
+	# Five fallen risen beside you, buried one after another.
+	for i in GameState.BURIALS_TO_SHARPEN:
+		gs.bodies = [{"x": 6, "y": 4, "app": "kobold", "turn": gs.turns, "corrupted": false,
+			"e": {"name": "risen kobold", "fungal": true}, "seeded": -1, "claimed": false,
+			"still": true}]
+		check("precondition: a fallen risen is offered for burial (%d)" % (i + 1),
+			not gs.bury_target().is_empty())
+		for spade in GameState.BURY_SPADEFULS:
+			gs.player_pickup()
+		check("and buried (%d)" % (i + 1), gs.bodies.is_empty())
+		if i < GameState.BURIALS_TO_SHARPEN - 1:
+			check("still dull, counting (%d)" % (i + 1),
+				shovel.dull and shovel.laid_to_rest == i + 1)
+	check("five graves sharpen the shovel (and must)",
+		not shovel.dull and shovel.laid_to_rest == 0)
+	# Sharp, the count waits at five -- and pays for the next raise at once.
+	shovel.laid_to_rest = GameState.BURIALS_TO_SHARPEN - 1
+	gs.bodies = [{"x": 6, "y": 4, "app": "kobold", "turn": gs.turns, "corrupted": false,
+		"e": {"name": "risen kobold", "fungal": true}, "seeded": -1, "claimed": false}]
+	for spade in GameState.BURY_SPADEFULS:
+		gs.player_pickup()
+	check("a sharp shovel's count holds at five", not shovel.dull
+		and shovel.laid_to_rest == GameState.BURIALS_TO_SHARPEN)
+	var kob := _spawn(gs, "kobold", 4, 4)
+	_kill(gs, kob, gs.player)
+	check("precondition: the shovel raises", gs.player_use(gs.player.inventory.find(shovel)))
+	check("and the banked graves keep its edge", not shovel.dull and shovel.laid_to_rest == 0)
+	check("the count survives a save",
+		Item.from_dict({"id": "shovel", "laid_to_rest": 3}).laid_to_rest == 3)
 
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.
@@ -12966,7 +13351,8 @@ func _test_the_bone_ally() -> void:
 			and int((packed["recent_dead"] as Array).size()) == 1)
 
 	check("digging raises it", dig.player_use(dig.player.inventory.find(shovel)))
-	check("and spends the shovel", not dig.player.inventory.has(shovel))
+	check("and keeps the shovel, dull (6c: a gem sharpens it)",
+		dig.player.inventory.has(shovel) and shovel.dull)
 	var raised: Entity = null
 	for e in dig.entities:
 		if e.faction == Entity.Faction.PLAYER and not e.is_player:
