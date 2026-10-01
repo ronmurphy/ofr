@@ -295,6 +295,12 @@ var meal: int = 0
 ## mindless things should not.
 var flee_below: float = 0.0
 var fleeing: bool = false
+## Turns running it has fled in the player's light and sight (strand 5): at
+## GameState.CHASED_TURNS a pit beside it is an escape, not a hole.
+var chased := 0
+## It leapt into a pit to get away and landed a floor down, wounded and
+## angry: a point of power and half again the experience, for the floor.
+var vengeful := false
 
 ## Hit points recovered each turn. A regenerating monster cannot be chipped
 ## down and then escaped from -- you either commit to the kill or you have
@@ -509,6 +515,7 @@ func to_dict() -> Dictionary:
 		"spores": String(spores), "careful": careful,
 		"casts": casts, "flare_until": flare_until, "poisoned": poisoned,
 		"fungal": fungal, "raised": raised, "red_warned": red_warned,
+		"chased": chased, "vengeful": vengeful,
 		"heard": [heard.x, heard.y],
 		"leash": [leash.position.x, leash.position.y, leash.size.x, leash.size.y],
 		"patrols": patrols, "patrol_at": patrol_at,
@@ -573,6 +580,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.flare_until = int(d.get("flare_until", -1))
 	e.fungal = bool(d.get("fungal", false))
 	e.raised = bool(d.get("raised", e.fungal))
+	e.chased = int(d.get("chased", 0))
+	e.vengeful = bool(d.get("vengeful", false))
 	e.red_warned = bool(d.get("red_warned", false))
 	var h: Array = d.get("heard", [-1, -1])
 	e.heard = Vector2i(int(h[0]), int(h[1]))

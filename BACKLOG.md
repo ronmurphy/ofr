@@ -210,13 +210,23 @@ strand at a time with play between:
    Ringing it frees the risen to answer the call, like everything else in
    earshot. Shrine colours are shuffled per run, so "which colour was the
    gong?" becomes knowledge that can save or end a run.
-5. **Pits as escape.** A fleeing monster lit by the player's torch several
-   turns running is being chased; then a pit is an escape, not a no-go. It
-   lands on the next floor wounded by the fall, awake, hunting, with a
-   revenge bonus for the floor and more XP. Carried down on a "fell from
-   above" list like following allies; saved with the run. Messages: "The
-   kobold leaps into the pit!"; the trader: "Something fell in from above."
-   Also cures fleeing monsters dying in room corners.
+5. **Pits as escape. BUILT 2026-10-01**, waiting on play. As built: a fleeing
+   creature counts the turns it runs in your SIGHT and your LIGHT
+   (`Entity.chased`; the light at its cell above CHASE_LIGHT 0.25 -- measured
+   above the doused torch's glow of 0.13-0.18 and inside a lit torch's reach,
+   0.27 six cells out; dark or unseen resets it). At CHASED_TURNS 3 a pit
+   beside it is an escape: "The cave bear leaps into the pit!" The fall costs
+   it HALF OF WHAT IT HAS LEFT and never kills it (it was near death to be
+   fleeing, and a fall that finished it would make the escape a lie) -- no
+   roll, so seeds stay reproducible. It goes down vengeful: "vengeful cave
+   bear", +REVENGE_POWER 1, threat x REVENGE_XP 1.5 (so more XP), on the
+   `fallen` list saved with the run, and lands on the next floor at the open
+   square farthest from you (chosen, not rolled), awake and hunting with your
+   arrival square as its last sight of you. The trader's greeting on that
+   floor adds "Something fell in from above..." (`something_fell`). Nothing
+   that flies leaps. Original design: a fleeing monster lit by the player's
+   torch several turns running is being chased; then a pit is an escape, not
+   a no-go. Also cures fleeing monsters dying in room corners.
 6. **Fire.** Flame weapons and the flare ignite fungus (a flare of light, the
    food lost), bones and wooden doors; the answer to red fungus.
 6b. **Fire relights a cold brazier. BUILT 2026-09-30**, waiting on play.

@@ -548,7 +548,7 @@ func _maybe_talk(evts: Array) -> void:
 		# Trading starts where the talking ends -- see _on_talk_finished.
 		_trade_after_talk = true
 		if TraderTalk.intro_seen():
-			talk.open(who, TraderTalk.greeting(state.effective_depth() == 1))
+			talk.open(who, TraderTalk.greeting(state.effective_depth() == 1, state.something_fell))
 		else:
 			TraderTalk.mark_intro_seen()
 			talk.open(who, TraderTalk.intro())

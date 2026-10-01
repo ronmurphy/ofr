@@ -127,6 +127,7 @@ func _initialize() -> void:
 	_test_difficult_ground()
 	_test_bones_are_loud()
 	_test_pits()
+	_test_pits_are_an_escape()
 	_test_fungus_glows()
 	_test_traps()
 	_test_vaults_load()
@@ -6620,6 +6621,89 @@ func _test_traffic() -> void:
 ## once with the same cell as FLOOR (must take it). Without the second, "it did
 ## not move onto the pit" would pass just as well for a creature that could not
 ## move at all.
+## PITS AS ESCAPE (Dwarf Fortress plan, strand 5): a fleeing creature chased
+## in your light turns running leaps into a pit beside it, and lands on the
+## next floor wounded, awake, hunting and vengeful; the trader has heard.
+func _test_pits_are_an_escape() -> void:
+	# A corridor: the bear can only run east, and the pit is where the
+	# corridor would have cornered it -- the case the strand exists for.
+	var gs := _arena(21, 3)
+	gs.player.x = 5
+	gs.player.y = 1
+	gs.torch_lit = true
+	gs.map.set_tile(9, 1, Tiles.PIT)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	var bear := _spawn(gs, "cave bear", 7, 1)
+	bear.hp = 4
+	var bear_power := bear.power
+	var bear_threat := bear.threat
+	gs._gather_lights()
+	gs.update_vision()
+	check("precondition: the bear is in your light and your sight",
+		gs.map.is_visible(bear.x, bear.y)
+		and gs.light_map.get_light(bear.x, bear.y).get_luminance() >= GameState.CHASE_LIGHT)
+	gs._take_ai_turn(bear)
+	check("it breaks, and the chase is counted", bear.fleeing and bear.chased == 1
+		and gs.entities.has(bear), "chased %d" % bear.chased)
+	for i in 4:
+		if not gs.entities.has(bear):
+			break
+		gs._take_ai_turn(bear)
+	var said := ""
+	for line in gs.msg_log.entries:
+		said += str(line) + "|"
+	check("chased three turns in the light, it leaps into the pit (and must)",
+		not gs.entities.has(bear) and gs.fallen.size() == 1, "chased %d, fallen %d" % [bear.chased, gs.fallen.size()])
+	check("and the log says so", said.contains("leaps into the pit"), said)
+	var d: Dictionary = gs.fallen[0] if not gs.fallen.is_empty() else {}
+	check("it goes down with half what it had, vengeful, stronger, worth more",
+		int(d.get("hp", 0)) == 2 and bool(d.get("vengeful", false))
+		and String(d.get("name", "")) == "vengeful cave bear"
+		and int(d.get("power", 0)) == bear_power + GameState.REVENGE_POWER
+		and int(d.get("threat", 0)) > bear_threat, str(d.get("name", "")))
+	var saved := GameState.new(1)
+	saved.new_game()
+	check("the fall is saved with the run", saved.apply_dict(gs.to_dict()) and saved.fallen.size() == 1)
+	gs.depth += 1
+	gs.build_level()
+	var landed: Entity = null
+	for e in gs.entities:
+		if e.name == "vengeful cave bear":
+			landed = e
+	check("it lands on the next floor, awake, hunting you, and not at your feet",
+		landed != null and landed.alive and landed.blocks
+		and landed.alertness == Entity.Alert.AWAKE
+		and landed.last_seen == Vector2i(gs.player.x, gs.player.y)
+		and Los.steps(landed.x, landed.y, gs.player.x, gs.player.y) > 5)
+	check("the list is spent, and the trader has heard",
+		gs.fallen.is_empty() and gs.something_fell
+		and str(TraderTalk.greeting(false, true)).findn("fell in from above") >= 0)
+	check("and says nothing of the kind otherwise",
+		str(TraderTalk.greeting(false, false)).findn("fell in") < 0)
+	gs.depth += 1
+	gs.build_level()
+	check("the floor after starts clean", not gs.something_fell)
+
+	# In the dark it is only running: the count never starts, and no leap.
+	var ds := _arena(21, 3)
+	ds.player.x = 5
+	ds.player.y = 1
+	ds.torch_lit = false
+	ds.map.set_tile(9, 1, Tiles.PIT)
+	ds.pathfinder = Pathfinder.new(ds.map)
+	var dark_bear := _spawn(ds, "cave bear", 7, 1)
+	dark_bear.hp = 4
+	ds._gather_lights()
+	ds.update_vision()
+	check("precondition: unlit", ds.light_map.get_light(dark_bear.x, dark_bear.y).get_luminance()
+		< GameState.CHASE_LIGHT)
+	for i in 5:
+		if ds.entities.has(dark_bear):
+			ds._take_ai_turn(dark_bear)
+	check("in the dark it runs and never leaps",
+		ds.entities.has(dark_bear) and ds.fallen.is_empty() and dark_bear.chased == 0,
+		"chased %d" % dark_bear.chased)
+
 func _test_creatures_keep_out_of_pits() -> void:
 	var gs := GameState.new(4040)
 	gs.new_game()

@@ -90,11 +90,17 @@ const TALLY := {
 ## be reminded who this is, not told the whole thing again. On FLOOR ONE the
 ## tally is said again (Brad's call): it is the first counter of the run, and
 ## the one whose prices are all 1.
-static func greeting(first_floor := false) -> Array:
+static func greeting(first_floor := false, fell_from_above := false) -> Array:
 	var out := [
 		{"text": "You are still going.\n\nGood. Tell me how it is down there.",
 		 "art": TRADER_ART},
 	]
+	# Something leapt into a pit on the floor above to get away from the
+	# player (strand 5): the trader heard it land, and says so -- the one
+	# warning the player gets before it finds them.
+	if fell_from_above:
+		out.append({"text": "Something fell in from above, a while before you came. It did not land well, and it is angry.\n\nMind yourself.",
+			"art": TRADER_ART})
 	if first_floor:
 		out.append(TALLY)
 	out.append({"text": "Show me what you are carrying.\n\nI will take anything that is not the amulet, and you can have anything on my shelf that you can pay for.",

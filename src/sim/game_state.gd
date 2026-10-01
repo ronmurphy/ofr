@@ -815,6 +815,24 @@ var ember_until: Dictionary = {}
 ## Saved, like the embers.
 var barred: Dictionary = {}
 const BAR_HOLDS := 10
+## PITS AS ESCAPE (Dwarf Fortress plan, strand 5). A fleeing creature chased
+## -- fleeing in your light and your sight CHASED_TURNS turns running -- leaps
+## into a pit beside it rather than die in a corner. The fall costs it half
+## of what it has left and never kills it (it was near death to be fleeing;
+## a fall that finished it would make the escape a lie), and it lands on the
+## next floor awake, hunting, and vengeful: a point of power and half again
+## the experience. Carried down on this list, saved with the run, like the
+## allies that follow you.
+var fallen: Array = []
+const CHASED_TURNS := 3
+## Above the doused torch's glow (0.18 beside you, 0.13 two cells out) and
+## inside a lit one's reach (0.27 six cells out): measured, 2026-10-01.
+const CHASE_LIGHT := 0.25
+const REVENGE_POWER := 1
+const REVENGE_XP := 1.5
+## Whether something landed on this floor from above -- the trader has heard.
+var something_fell := false
+
 ## THE FROZEN ROOMS (gem of frost, 6d; Brad's design): [region, until-turn]
 ## for each room, vault or cave a gem has shattered in. Sound made inside
 ## carries nowhere until the turn comes. What stood in it when it broke is
@@ -1356,6 +1374,7 @@ func build_level() -> void:
 		ally.x = spot.x
 		ally.y = spot.y
 		entities.append(ally)
+	_land_the_fallen()
 
 	_keep_the_fire_clean()
 	pathfinder = Pathfinder.new(map)
@@ -7033,6 +7052,7 @@ func to_dict() -> Dictionary:
 		"grave_risen": grave_risen,
 		"recent_dead": recent_dead,
 		"bodies": bodies,
+		"fallen": fallen, "fell": something_fell,
 		"reload_rng": [str(reload_rng.seed), str(reload_rng.state)],
 		"reload_said": _reload_said,
 		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
@@ -7152,6 +7172,8 @@ func apply_dict(d: Dictionary) -> bool:
 	grave_risen = d.get("grave_risen", false)
 	recent_dead = d.get("recent_dead", [])
 	bodies = d.get("bodies", [])
+	fallen = d.get("fallen", [])
+	something_fell = bool(d.get("fell", false))
 	var rrng: Array = d.get("reload_rng", [])
 	if rrng.size() == 2:
 		reload_rng.seed = str(rrng[0]).to_int()
@@ -7557,6 +7579,15 @@ func _take_ai_turn(actor: Entity) -> int:
 		return _last_move_cost
 
 	if actor.fleeing:
+		# CHASED: fleeing in your light and your sight, turns running. Dark,
+		# or out of sight, and the count starts again.
+		if map.is_visible(actor.x, actor.y) \
+				and light_map.get_light(actor.x, actor.y).get_luminance() >= CHASE_LIGHT:
+			actor.chased += 1
+		else:
+			actor.chased = 0
+		if actor.chased >= CHASED_TURNS and _leap_into_a_pit(actor, foe):
+			return _last_move_cost
 		_ai_flee(actor, foe)
 		return _last_move_cost
 
@@ -8079,6 +8110,7 @@ func _update_morale(actor: Entity) -> void:
 		msg_log.add("The %s turns to flee!" % actor.name, Color(0.78, 0.82, 0.58))
 	elif actor.fleeing and frac > breaks_at + 0.25:
 		actor.fleeing = false
+		actor.chased = 0
 
 func _ai_hunter(actor: Entity, foe: Entity) -> void:
 	if actor.is_adjacent(foe):
@@ -8328,6 +8360,86 @@ func _allies_near(actor: Entity, radius: int) -> int:
 		if Los.steps(actor.x, actor.y, e.x, e.y) <= radius:
 			n += 1
 	return n
+
+## The pit beside a chased creature is its way out (strand 5). The one
+## farthest from what is chasing it; nothing that flies needs one. True if
+## it went, and the turn with it.
+func _leap_into_a_pit(actor: Entity, foe: Entity) -> bool:
+	if actor.flying:
+		return false
+	var hole := Vector2i(-1, -1)
+	var best := -1
+	for i in 8:
+		var d := Entity.turned(Vector2i(0, -1), i)
+		var c := Vector2i(actor.x + d.x, actor.y + d.y)
+		if not map.in_bounds(c.x, c.y) or map.get_tile(c.x, c.y) != Tiles.PIT \
+				or entity_at(c.x, c.y) != null:
+			continue
+		var away := Los.steps(c.x, c.y, foe.x, foe.y)
+		if away > best:
+			best = away
+			hole = c
+	if hole.x < 0:
+		return false
+	if map.is_visible(actor.x, actor.y) or map.is_visible(hole.x, hole.y):
+		msg_log.add("The %s leaps into the pit!" % actor.name, Color(0.85, 0.75, 0.62))
+	events.append({"kind": &"notice", "to": hole})
+	# Half of what it has left, never the last of it: it lands WOUNDED.
+	actor.hp = maxi(1, actor.hp - actor.hp / 2)
+	actor.fleeing = false
+	actor.chased = 0
+	actor.alertness = Entity.Alert.AWAKE
+	actor.lost_turns = 0
+	if not actor.vengeful:
+		actor.vengeful = true
+		actor.power += REVENGE_POWER
+		actor.threat = ceili(actor.threat * REVENGE_XP)
+		actor.name = "vengeful %s" % actor.name
+	actor.x = hole.x
+	actor.y = hole.y
+	fallen.append(actor.to_dict())
+	entities.erase(actor)
+	_last_move_cost = Scheduler.ACTION_COST
+	return true
+
+## What leapt into a pit on the floor above lands here: somewhere far from
+## you, awake, and already hunting -- it knows who it is looking for.
+func _land_the_fallen() -> void:
+	something_fell = false
+	for d in fallen:
+		var e := Entity.from_dict(d)
+		if e == null:
+			continue
+		var spot := _far_landing()
+		if spot.x < 0:
+			continue
+		e.x = spot.x
+		e.y = spot.y
+		e.alive = true
+		e.blocks = true
+		e.alertness = Entity.Alert.AWAKE
+		e.last_seen = Vector2i(player.x, player.y)
+		e.lost_turns = 0
+		e.fleeing = false
+		e.chased = 0
+		entities.append(e)
+		something_fell = true
+	fallen.clear()
+
+## The open square farthest from the player with nothing on it. Chosen, not
+## rolled: a draw here would move every later roll of the floor by one.
+func _far_landing() -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := -1
+	for y in map.height:
+		for x in map.width:
+			if not _can_rest_on(x, y) or entity_at(x, y) != null:
+				continue
+			var d := Los.steps(x, y, player.x, player.y)
+			if d > best_d:
+				best_d = d
+				best = Vector2i(x, y)
+	return best
 
 func _ai_flee(actor: Entity, foe: Entity) -> void:
 	if _step_away(actor, foe):
