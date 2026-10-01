@@ -586,6 +586,9 @@ Run placeholder, ending with the leader saying the home is not open yet.
 off visible bad air. One tile crossed = 3 damage over 9 steps; three tiles = 1
 per step. Cured by eating fungus **or** rabbit meat once clear of it — the
 fungus poisons you and the fungus cures you.
+**SUPERSEDED (2026-09-30):** the miasma as built (strand 3) has no cure --
+the poison lingers 3 turns. The rabbit haunch's healing role moved to the
+NPC adventurers: a haunch takes the RED out of a marked adventurer.
 - Render as a **background wash**, not a glyph, in both views; billowing only on
   "full". The fungus keeps its glow — the glow invites, the cloud warns.
 - A cell state like `brazier_charge`, not a tile type.
@@ -740,3 +743,33 @@ never revisited when it shipped. Two habits:
 
 1. **Grep before believing a "not built" line.** Four were wrong.
 2. **When something ships, move it to the Built table in the same session.**
+
+**NPC adventurers, and friends for the Legends party (Brad, 2026-09-30,
+from Dwarf Fortress's visitors from other fortresses).** Designed, not
+scheduled: it belongs with the Legends design (after 6c and 6d).
+- Other adventurers wander the dungeon. **Neutral to the player and the
+  trader** (the trader is the template: Faction.NEUTRAL, first of its kind).
+- **Hunted or not, by what they have done:** an adventurer who has done
+  nothing aggressive to the monsters is looked for by nothing. One who has
+  may be hunted -- so you sometimes find one in trouble.
+- **They want something:** a specific gem, a weapon or armour type. Hand it
+  over and you have made a FRIEND. Another sink for gems and gear, and a
+  reason for the trader's 3-for-1.
+- **Or they need rescuing:** "on your way back through here, can you help me
+  escape?" -- you escort them on THAT floor only (the climb passes the depths
+  a second time, which is where "on your way back" pays off). Up one floor
+  they leave: "Thanks, I was stuck there -- I'll make it back on my own," and
+  go quickly for the stairs, faster than you can follow, dodging monsters and
+  traps.
+- **Friends are kept in legends.json** as whole heroes, as runs already are
+  (player-owned file, redirected by use_scratch_files -- CLAUDE.md rule).
+- **The Legends party:** your retired hero plus two friends. More than two:
+  you pick. None: two are generated.
+- **"Can you heal me?" (Brad):** an adventurer with the red outline asks for
+  help -- give them a **haunch of rabbit** and it takes the red out of them
+  (their spores cleared), and they are a friend. Rabbits already eat fungus;
+  their meat as the cure fits the food chain (bear -> rabbit -> fungus).
+- Crossovers to consider (Claude): a red-marked adventurer is a friend on a
+  timer -- help them, or burn the body before it rises; a friend shares what
+  they have seen (the stairs, which colour was the gong), tying in the
+  trader-gossip idea.
