@@ -55,6 +55,7 @@ func _initialize() -> void:
 	_test_the_camera_reads_reported_axes()
 	await _test_the_title_screen()
 	_test_the_playtest_fixes()
+	_test_the_ui_review()
 	await _test_davids_music()
 	_test_reach_is_drawn()
 	_test_bodies_look_the_same_in_both_views()
@@ -1653,6 +1654,284 @@ func _test_the_playtest_fixes() -> void:
 	check("  and both sit on the bottom line",
 		absf(side.menu_button_rect().get_center().y - side.help_line_rect().get_center().y) < 6.0)
 	side.free()
+
+## THE UI REVIEW (2026-10-01), built on Brad's one condition: nothing may
+## overflow or wrap by accident, so every new element is laid out by
+## measurement and these checks run the real strings against the real width.
+func _test_the_ui_review() -> void:
+	print("-- the UI review")
+	var side := Sidebar.new()
+	side.size = Vector2(256, 720)
+	side.font = Sidebar.ui_font()
+	side.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	var limit: float = side.size.x - Sidebar.PAD * 2.0
+
+	# CHIPS. The layout is a pure function: what fits a row stays on it.
+	check("  three chips of 100 into 228 go two and one",
+		Sidebar.chip_rows([100.0, 100.0, 100.0], 228.0) == [[0, 1], [2]])
+	check("  a chip wider than the row gets a row of its own",
+		Sidebar.chip_rows([300.0, 50.0], 228.0) == [[0], [1]])
+	check("  no chips, no rows", Sidebar.chip_rows([], 228.0).is_empty())
+	var gs := GameState.new(77)
+	gs.new_game()
+	side.state = gs
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FLOOR)
+	gs.torch_lit = true
+	gs.torch_flare = 0
+	gs.player.poisoned = 0
+	var words := func(chips: Array) -> String:
+		var out := ""
+		for c in chips:
+			out += String(c["text"]) + "|"
+		return out
+	check("  lit, firm and well: two chips", words.call(side.condition_chips()) == "lit|firm|",
+		words.call(side.condition_chips()))
+	check("  the torch chip leads with the brazier's flame",
+		String(side.condition_chips()[0]["glyph"]) != "" and String(side.condition_chips()[1]["glyph"]) == "")
+	gs.player.poisoned = 2
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FUNGUS_RED)
+	check("  poison and the ground you stand on join it",
+		words.call(side.condition_chips()) == "lit|firm|poisoned · 2|on red|",
+		words.call(side.condition_chips()))
+	gs.torch_lit = false
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.MUD)
+	check("  doused, and sinking: the ground's own picture and the cost",
+		words.call(side.condition_chips()).begins_with("doused|x2.0|")
+		and String(side.condition_chips()[1]["glyph"]) != "",
+		words.call(side.condition_chips()))
+	gs.torch_flare = 100
+	check("  a flare says how long it has", words.call(side.condition_chips()).begins_with("flare 100|"))
+	# MEASURED: every footing, every torch state, poisoned, on red -- each
+	# chip fits the panel on its own, and together they take two rows at most.
+	var worst_rows := 0
+	var worst_chip := 0.0
+	var worst_text := ""
+	var slow_tiles: Array = []
+	for t in Tiles.DATA:
+		if Tiles.footing_word(int(t)) != "":
+			slow_tiles.append(int(t))
+	check("  precondition: there is slow ground to measure", slow_tiles.size() >= 4)
+	for ground in slow_tiles + [Tiles.FUNGUS_RED, Tiles.FUNGUS_PURPLE, Tiles.FLOOR]:
+		for torch in [[true, 0], [false, 0], [true, 100]]:
+			gs.torch_lit = torch[0]
+			gs.torch_flare = torch[1]
+			gs.player.poisoned = 3
+			gs.map.set_tile(gs.player.x, gs.player.y, ground)
+			var widths: Array = []
+			for c in side.condition_chips():
+				var w := side.chip_width(c)
+				widths.append(w)
+				if w > worst_chip:
+					worst_chip = w
+					worst_text = String(c["text"])
+			worst_rows = maxi(worst_rows, Sidebar.chip_rows(widths, limit).size())
+	check("  the widest chip fits the panel (\"%s\" %.0f <= %.0f px)" % [worst_text, worst_chip, limit],
+		worst_chip <= limit)
+	check("  and the fullest set takes two rows at most (%d)" % worst_rows, worst_rows <= 2)
+	gs.player.poisoned = 0
+	gs.torch_flare = 0
+	gs.torch_lit = true
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FLOOR)
+
+	# IN SIGHT. Nearest first, the marker from the map, risen counted.
+	var by_name := func(name: String) -> Dictionary:
+		for e in GameState.BESTIARY:
+			if e["name"] == name:
+				return e
+		return {}
+	gs.entities = [gs.player]
+	var far := GameState.monster_from(by_name.call("goblin"), gs.player.x + 6, gs.player.y)
+	far.alertness = Entity.Alert.AWAKE
+	var near := GameState.monster_from(by_name.call("kobold"), gs.player.x + 2, gs.player.y)
+	near.alertness = Entity.Alert.ASLEEP
+	var dead := GameState.monster_from(by_name.call("cave troll"), gs.player.x + 4, gs.player.y)
+	dead.faction = Entity.Faction.RISEN
+	dead.fungal = true
+	dead.spores = &"red"
+	dead.name = "risen cave troll"
+	for e in [far, near, dead]:
+		gs.entities.append(e)
+	gs.map.set_all_visible()
+	side.hovered = Vector2i(-1, -1)
+	check("  with nothing under the cursor, the look block has no subject", not side.cursor_has_subject())
+	var rows := side.sight_rows()
+	check("  three in sight, nearest first",
+		rows.size() == 3 and rows[0]["name"] == "kobold" and rows[1]["name"] == "risen cave troll"
+		and rows[2]["name"] == "goblin", str(rows.map(func(r): return r["name"])))
+	check("  a sleeper wears its z, a hunter a !, the risen its red ring",
+		String(rows[0]["mark"]).begins_with("z") and rows[2]["mark"] == "!"
+		and rows[1]["ring"] == Palette.FUNGUS_RED and bool(rows[1]["risen"]),
+		"%s %s" % [rows[0]["mark"], rows[2]["mark"]])
+	check("  and the header counts them", side.sight_summary(rows) == "3 hostile · 1 risen",
+		side.sight_summary(rows))
+	check("  nothing in sight says so", side.sight_summary([]) == "nothing")
+	side.hovered = Vector2i(gs.player.x, gs.player.y)
+	check("  the cursor over something wins back the look block", side.cursor_has_subject())
+	side.look_mode = true
+	side.hovered = Vector2i(-1, -1)
+	check("  so does the look cursor", side.cursor_has_subject())
+	side.look_mode = false
+	# MEASURED: every name in the bestiary, plain, corrupted and risen, fits
+	# beside the ring and the widest marker -- and every PLAIN name fits whole.
+	var reserve: float = Sidebar.RING_W + side.font.get_string_size("zzZ",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, side.font_size).x + Sidebar.GAP
+	var cut := 0
+	var over := 0
+	for e in GameState.BESTIARY:
+		for prefix in ["", "corrupted ", "risen "]:
+			var name: String = prefix + String(e["name"])
+			var shown := side._fit(name, reserve)
+			var w := side.font.get_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT, -1, side.font_size).x
+			if w > limit - reserve:
+				over += 1
+			if prefix == "" and shown != name:
+				cut += 1
+	check("  no fitted name runs into the marker (%d over)" % over, over == 0)
+	check("  every plain monster name fits whole (%d cut)" % cut, cut == 0)
+
+	# THE ALLY'S RED LINE: two lines, each inside the panel beside the ring.
+	var mate := GameState.monster_from(by_name.call("skeleton"), gs.player.x + 1, gs.player.y + 1)
+	mate.faction = Entity.Faction.PLAYER
+	mate.appearance = &"bone_ally"
+	mate.name = "Erdrick"
+	mate.spores = &"red"
+	gs.player.inventory.clear()
+	var lines := side.ally_red_lines(mate)
+	check("  without a shovel, fire is the answer", String(lines[1]).begins_with("burn"))
+	gs.give_item(Item.make(&"shovel"))
+	lines = side.ally_red_lines(mate)
+	check("  with one, the shovel", String(lines[1]).begins_with("bury"))
+	var widest_line := 0.0
+	for shovel in [true, false]:
+		if not shovel:
+			gs.player.inventory.clear()
+		for line in side.ally_red_lines(mate):
+			widest_line = maxf(widest_line, side.font.get_string_size(String(line),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, side.chip_font_size()).x)
+	check("  both lines fit beside the ring (%.0f <= %.0f px)" % [widest_line, limit - Sidebar.RING_W],
+		widest_line <= limit - Sidebar.RING_W)
+
+	# THE MINIMAP'S LEGEND sits under the map, above the help line, and takes
+	# a row or two by the chips' rule; the map still clears the panel.
+	side.state = gs
+	side.show_minimap = true
+	var legend_rows: int = side.legend_rows().size()
+	check("  the legend takes two rows at most (%d)" % legend_rows, legend_rows >= 1 and legend_rows <= 2)
+	var mr := side.minimap_rect()
+	check("  the minimap leaves room for the legend above the help line",
+		mr.end.y + Sidebar.LEGEND_H * legend_rows + 8.0 <= side.help_line_rect().position.y + 0.01
+		and mr.position.x >= Sidebar.PAD and mr.end.x <= side.size.x - Sidebar.PAD)
+	# THE HELP BUTTON: framed to its label, inside the click area it had.
+	for loud in [true, false]:
+		side.help_loud = loud
+		var hb := side.help_button_rect()
+		check("  the help button sits inside its click area (%s)" % ("loud" if loud else "quiet"),
+			side.help_line_rect().encloses(hb) and hb.size.x >= PadGlyphs.width(side.help_text(),
+				side.font_bold if loud else side.font, side.font_size))
+	side.help_loud = false
+	side.state = null
+	side.free()
+
+	# THE LOG: a rule in the line's colour, a wash under a danger, and the
+	# widest real line still fits past the rule.
+	check("  a hit on you is a danger; a notice is not; plain text is not",
+		MessageView.is_danger(Color(0.90, 0.45, 0.40)) and MessageView.is_danger(Color(1.0, 0.35, 0.35))
+		and MessageView.is_danger(Color(0.92, 0.40, 0.40))
+		and not MessageView.is_danger(Color(0.98, 0.78, 0.35))
+		and not MessageView.is_danger(Color(0.78, 0.78, 0.72)))
+	var log_font: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var long_line := "The red fungus has laid claim to Brandywine. If they fall, they will rise against you."
+	var log_w := log_font.get_string_size(long_line, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var log_room := 964.0 - MessageView.text_x() - MessageView.PAD
+	check("  the widest warning fits past the rule (%.0f <= %.0f px)" % [log_w, log_room],
+		log_w <= log_room)
+
+	# THE HERE BOX: keycaps inside the key column, the status in its colour.
+	var hgs := GameState.new(78)
+	hgs.new_game()
+	var here := HerePanel.new()
+	here.state = hgs
+	here.font = log_font
+	here.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	var widest_cap := 0.0
+	var widest_key := ""
+	for b in [JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_LEFT_SHOULDER,
+			JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_BACK, JOY_BUTTON_START]:
+		var label := PadConfig.button_name(b)
+		var w := here.keycap_rect(40.0, label).size.x
+		if w > widest_cap:
+			widest_cap = w
+			widest_key = label
+	check("  the widest keycap fits the key column (\"%s\" %.0f <= %.0f px)"
+		% [widest_key, widest_cap, HerePanel.KEY_COL], widest_cap <= HerePanel.KEY_COL)
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.FLOOR)
+	hgs.player.poisoned = 2
+	check("  poisoned, the status chip is purple", here.status_colour() == Palette.FUNGUS_PURPLE)
+	hgs.player.poisoned = 0
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.FUNGUS_RED)
+	check("  on red fungus, red", here.status_colour() == Palette.FUNGUS_RED
+		and here.status_line().begins_with("red fungus"), here.status_line())
+	hgs.map.set_tile(hgs.player.x, hgs.player.y, Tiles.MUD)
+	check("  slow ground keeps the brazier amber", here.status_colour() == Palette.BRAZIER)
+	here.free()
+
+	# THE PACK'S DETAIL PANE: what the thing is, and how it stands against
+	# what you have on -- every line fitted, the whole catalogue run through.
+	var pgs := GameState.new(79)
+	pgs.new_game()
+	var pack := InventoryPanel.new()
+	pack.state = pgs
+	pack.size = Vector2(1600, 900)
+	pack.font = log_font
+	pack.font_bold = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+	pack.icon_font = load("res://assets/fonts/ofr_icons.ttf")
+	pgs.player.inventory.clear()
+	pgs.player.equipped.clear()
+	var bow := Item.make(&"war_bow")
+	bow.element = &"return"
+	var axe := Item.make(&"war_axe")
+	var plate := Item.make(&"plate_mail")
+	for it in [bow, axe, plate]:
+		pgs.give_item(it)
+	pgs.player.equipped[Item.Slot.WEAPON] = bow
+	pgs.player.equipped[Item.Slot.ARMOR] = plate
+	check("  the pane sits inside the panel, right of the list",
+		pack._panel_rect().encloses(pack.detail_rect())
+		and pack.detail_rect().position.x >= pack._panel_rect().position.x + InventoryPanel.PAD + InventoryPanel.LIST_W)
+	var overlap := false
+	for entry in pack._row_rects():
+		overlap = overlap or entry["rect"].intersects(pack.detail_rect())
+	check("  and no row runs into it", not overlap)
+	check("  with nothing highlighted it describes what is in hand", pack.detail_item() == bow)
+	pack._hover_index = pgs.player.inventory.find(axe)
+	var said := ""
+	for line in pack.detail_lines(axe):
+		said += String(line["text"]) + "|"
+	check("  the axe against the bow: the power change, the hand freed, no arrows (and must)",
+		said.contains("against the war bow") and said.contains("power  ") and said.contains("->")
+		and said.contains("frees the shield hand") and said.contains("no arrows needed"), said)
+	var pack_cut := 0
+	var pack_over := 0
+	var pack_worst := ""
+	var pack_worst_px := 0.0
+	for id in Item.CATALOGUE:
+		var it := Item.make(id)
+		if it == null:
+			continue
+		if pack._fit_detail(it.display_name()) != it.display_name():
+			pack_cut += 1
+		for line in pack.detail_lines(it):
+			var w := pack.font_bold.get_string_size(String(line["text"]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, pack.font_size).x
+			if w > pack_worst_px:
+				pack_worst_px = w
+				pack_worst = String(line["text"])
+			if w > InventoryPanel.DETAIL_W:
+				pack_over += 1
+	check("  every catalogue name fits the pane whole (%d cut)" % pack_cut, pack_cut == 0)
+	check("  and every detail line fits it (widest \"%s\" %.0f <= %.0f px, %d over)"
+		% [pack_worst, pack_worst_px, InventoryPanel.DETAIL_W, pack_over], pack_over == 0)
+	pack.free()
 
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:

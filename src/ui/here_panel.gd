@@ -38,6 +38,37 @@ const LINE := 24.0
 ## The key column. Wide enough for the longest button name the pad table holds,
 ## measured rather than guessed: "D-pad down" at 17pt.
 const KEY_COL := 132.0
+## KEYCAPS (the UI review, 2026-10-01): the key column drawn as a key -- a
+## small cap round the letter, the chord or the pad button's picture -- so
+## the two devices read alike and "g" stops looking like a word in a sentence.
+## The cap is sized to its label and the test holds the widest button name
+## inside KEY_COL with its padding on.
+const KEY_PAD := 6.0
+const KEY_H := 20.0
+const KEY_FILL := Color("181924")
+const KEY_EDGE := Color("5a5866")
+
+## The cap behind a key label whose baseline is at `y`.
+func keycap_rect(y: float, label: String) -> Rect2:
+	var w := PadGlyphs.width(label, font, font_size) + KEY_PAD * 2.0
+	return Rect2(Vector2(PAD, y - KEY_H + 5.0), Vector2(w, KEY_H))
+
+func _draw_keycap(y: float, label: String, colour: Color) -> void:
+	var r := keycap_rect(y, label)
+	draw_rect(r, KEY_FILL, true)
+	draw_rect(r, KEY_EDGE, false, 1.0)
+	# The lower edge drawn twice: a key has a bottom.
+	draw_line(r.position + Vector2(0.0, r.size.y), r.end, KEY_EDGE, 2.0)
+	PadGlyphs.draw(self, Vector2(PAD + KEY_PAD, y), label, font, font_size, colour)
+
+## The status line's colour: what is hurting you, in its own colour.
+func status_colour() -> Color:
+	var line := status_line()
+	if line.begins_with("poisoned") or line.begins_with("purple"):
+		return Palette.FUNGUS_PURPLE
+	if line.begins_with("red"):
+		return Palette.FUNGUS_RED
+	return Palette.BRAZIER
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -113,19 +144,29 @@ func _draw() -> void:
 	# a fresh Legion player learned the game from. In the header line, which
 	# has room to spare: the box fits four rows and a row here would push "?
 	# every key" off the bottom.
+	# As a chip beside the title, in the colour of what is wrong, so it reads
+	# as a state rather than a sentence that happens to be up there.
 	var status := status_line()
 	if status != "":
-		draw_string(font, Vector2(PAD + KEY_COL, y), status,
-			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2.0 - KEY_COL,
-			font_size - 2, Palette.BRAZIER)
+		var colour := status_colour()
+		var title_w := font_bold.get_string_size("HERE", HORIZONTAL_ALIGNMENT_LEFT, -1,
+			font_size - 4).x
+		var x := PAD + title_w + 12.0
+		var room := size.x - PAD - x
+		var w := minf(font.get_string_size(status, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			font_size - 2).x + 12.0, room)
+		var r := Rect2(Vector2(x, y - KEY_H + 5.0), Vector2(w, KEY_H))
+		draw_rect(r, Color(colour, 0.10), true)
+		draw_rect(r, Color(colour, 0.85), false, 1.0)
+		draw_string(font, Vector2(x + 6.0, y - 1.0), status,
+			HORIZONTAL_ALIGNMENT_LEFT, w - 12.0, font_size - 2, colour)
 	y += LINE
 
 	for row in rows():
 		# Through PadGlyphs, because on a pad this column is a PICTURE of the
 		# button drawn from its own font -- see pad_glyphs.gd for why that must
 		# not be left to the text font's fallbacks.
-		PadGlyphs.draw(self, Vector2(PAD, y), String(row[0]), font, font_size,
-			Palette.STAIRS)
+		_draw_keycap(y, String(row[0]), Palette.STAIRS)
 		draw_string(font, Vector2(PAD + KEY_COL, y), String(row[1]),
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2.0 - KEY_COL,
 			font_size, Palette.UI_TEXT)

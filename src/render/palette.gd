@@ -152,7 +152,11 @@ const MEMORY_DIM    := 0.62
 
 const PLAYER        := Color("f2e9d8")
 const UI_TEXT       := Color("c7c2b4")
-const UI_DIM        := Color("6d6a60")
+## Lifted from 6d6a60 (the UI review, 2026-10-01): on UI_PANEL_BG that was
+## 3.5:1, under the 4.5:1 small text needs to be read; this is 5.1:1 and
+## still reads as dim beside UI_TEXT. One constant: every dim label, hint and
+## count in the game lifts with it.
+const UI_DIM        := Color("8a867a")
 const UI_FRAME      := Color("42404a")
 const UI_PANEL_BG   := Color("101118")
 ## On the trader's shelf, what the PLAYER sold it -- apart from the trader's own

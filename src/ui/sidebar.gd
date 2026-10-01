@@ -201,6 +201,211 @@ func _process(_delta: float) -> void:
 ## Breathing room between a row's left text and its right-aligned number.
 const GAP := 8.0
 
+## CONDITION CHIPS (the UI review, 2026-10-01). One row of everything that is
+## true of you right now -- the torch, your footing, poison, the ground you
+## stand on -- each a word and a number in the colour the game already uses
+## for it, where the footing and torch rows used to be. Laid out by
+## MEASUREMENT: a chip that will not fit the row drops to the next, and the
+## layout is a pure function the tests run against every real string, so no
+## combination of states can run through the frame (Brad's one condition on
+## the review: nothing may overflow or wrap by accident).
+const CHIP_PAD := 6.0
+const CHIP_GAP := 6.0
+const CHIP_H := 18.0
+const CHIP_ROW := 23.0
+
+## The chips as {glyph, text, colour}, in a fixed order so the row reads the
+## same from turn to turn: the torch, your footing, what is hurting you.
+##
+## PICTURES WHERE THEY ARE SHORTER (Brad): the torch chip leads with the
+## brazier's flame and the footing chip with the ground's own glyph -- the
+## same picture that is under your feet on the map -- so "torch doused" and
+## "scrambling x1.3" are a flame, a word, a stone and a number. Measured, the
+## words alone put doused + scrambling + poisoned on a third row.
+func condition_chips() -> Array:
+	var out := []
+	var fire := _tile_glyph(Tiles.BRAZIER)
+	if state.torch_flare > 0:
+		out.append({"glyph": fire, "text": "flare %d" % state.torch_flare, "colour": Palette.AMULET})
+	elif state.torch_lit:
+		out.append({"glyph": fire, "text": "lit", "colour": Palette.BRAZIER})
+	else:
+		# Doused is the unusual, dangerous state, so it is the one that is tinted.
+		out.append({"glyph": fire, "text": "doused", "colour": Palette.SLEEP})
+	var ground := state.map.get_tile(state.player.x, state.player.y)
+	var pace := Tiles.move_cost(ground)
+	var word := Tiles.footing_word(ground)
+	if pace > 1.0 and word != "":
+		out.append({"glyph": _tile_glyph(ground), "text": footing_chip(pace),
+			"colour": Palette.BRAZIER})
+	else:
+		out.append({"glyph": "", "text": "firm", "colour": Palette.UI_DIM})
+	if state.player.poisoned > 0:
+		out.append({"glyph": "", "text": "poisoned · %d" % state.player.poisoned,
+			"colour": Palette.FUNGUS_PURPLE})
+	if ground == Tiles.FUNGUS_RED:
+		# "on red", not "on red fungus": the colour says fungus, and the three
+		# extra syllables were what pushed flare + poison + this onto a third row.
+		out.append({"glyph": "", "text": "on red", "colour": Palette.FUNGUS_RED})
+	elif ground == Tiles.FUNGUS_PURPLE:
+		out.append({"glyph": "", "text": "on purple", "colour": Palette.FUNGUS_PURPLE})
+	return out
+
+## "x1.4": the footing as a chip. The ground's picture says which ground.
+static func footing_chip(pace: float) -> String:
+	return "x%.1f" % pace
+
+## The theme's picture for a tile, so the chip follows the view mode like the
+## gear rows do: an icon in pictures, a letter in letters.
+func _tile_glyph(t: int) -> String:
+	return String(RenderTheme.active().appearance(Tiles.appearance_id(t)).get("ch", "?"))
+
+func chip_font_size() -> int:
+	return font_size - 2
+
+## A chip's picture, measured in the face that will draw it.
+func _chip_glyph_width(glyph: String) -> float:
+	if glyph == "":
+		return 0.0
+	var gs := GlyphTheme.draw_size(glyph, chip_font_size())
+	return _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x + 4.0
+
+func chip_width(c: Dictionary) -> float:
+	return _chip_glyph_width(String(c.get("glyph", ""))) + font.get_string_size(
+		String(c["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, chip_font_size()).x + CHIP_PAD * 2.0
+
+## Which chips go on which row, as lists of indices into `widths`: a chip
+## that will not fit beside the ones before it starts a new row. A chip wider
+## than the whole row gets a row to itself and is clipped by its caller's
+## fit; nothing is ever drawn past `limit`.
+static func chip_rows(widths: Array, limit: float) -> Array:
+	var rows: Array = []
+	var row: Array = []
+	var x := 0.0
+	for i in widths.size():
+		var w: float = widths[i]
+		var need := w if row.is_empty() else x + CHIP_GAP + w
+		if not row.is_empty() and need > limit:
+			rows.append(row)
+			row = []
+			x = 0.0
+			need = w
+		row.append(i)
+		x = need
+	if not row.is_empty():
+		rows.append(row)
+	return rows
+
+## One chip at `x`, its text baseline at `y`. Returns the width it took.
+func _draw_chip(x: float, y: float, c: Dictionary) -> float:
+	var fs := chip_font_size()
+	var colour: Color = c["colour"]
+	var glyph := String(c.get("glyph", ""))
+	var w := minf(chip_width(c), size.x - PAD - x)
+	var r := Rect2(Vector2(x, y - CHIP_H + 4.0), Vector2(w, CHIP_H))
+	draw_rect(r, Color(colour, 0.10), true)
+	draw_rect(r, Color(colour, 0.85), false, 1.0)
+	var tx := x + CHIP_PAD
+	if glyph != "":
+		var gs := GlyphTheme.draw_size(glyph, fs)
+		draw_string(_face_for(glyph), Vector2(tx, y - 1.0 + (fs - gs) * 0.35), glyph,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, gs, colour)
+		tx += _chip_glyph_width(glyph)
+	draw_string(font, Vector2(tx, y - 1.0), String(c["text"]),
+		HORIZONTAL_ALIGNMENT_LEFT, x + w - CHIP_PAD - tx, fs, colour)
+	return w
+
+## The chips, rows and all. Returns the height taken.
+func _draw_chips(y: float) -> float:
+	var chips := condition_chips()
+	var widths: Array = []
+	for c in chips:
+		widths.append(chip_width(c))
+	var rows := chip_rows(widths, size.x - PAD * 2.0)
+	var top := y
+	for row in rows:
+		var x := PAD
+		for i in row:
+			x += _draw_chip(x, y, chips[i]) + CHIP_GAP
+		y += CHIP_ROW
+	return y - top
+
+## IN SIGHT (the UI review). Everything hostile you can see, nearest first,
+## with the spore ring and the marker the map already draws over it -- listed,
+## so the room can be read without hovering each thing in it. It takes the
+## look block's place while nothing is under the cursor; the cursor still
+## wins the moment it is over something.
+const SIGHT_ROWS := 5
+
+func sight_rows() -> Array:
+	var seen := state.visible_monsters()
+	var keyed: Array = []
+	for i in seen.size():
+		var e: Entity = seen[i]
+		keyed.append([Los.steps(state.player.x, state.player.y, e.x, e.y), i, e])
+	# Nearest first; ties by list order, which is stable across a save.
+	keyed.sort_custom(func(a, b):
+		return a[0] < b[0] if a[0] != b[0] else a[1] < b[1])
+	var out := []
+	for k in keyed:
+		var e: Entity = k[2]
+		var mark := CreatureMarks.awareness(e)
+		if mark.is_empty() and e.alertness == Entity.Alert.AWAKE:
+			# Hunting has no persistent marker on the map (an unmarked thing
+			# is one you work out yourself); in a list it needs one.
+			mark = {"text": "!", "colour": Palette.ALERT}
+		out.append({"name": e.name, "ring": CreatureMarks.spore_colour(e),
+			"mark": String(mark.get("text", "")),
+			"mark_colour": mark.get("colour", Palette.UI_DIM),
+			"risen": e.faction == Entity.Faction.RISEN, "e": e})
+	return out
+
+## "2 hostile · 1 risen", for the header's right side.
+func sight_summary(rows: Array) -> String:
+	var risen := 0
+	for r in rows:
+		if bool(r["risen"]):
+			risen += 1
+	if rows.is_empty():
+		return "nothing"
+	var text := "%d hostile" % rows.size()
+	if risen > 0:
+		text += " · %d risen" % risen
+	return text
+
+## Whether the look block has a subject: something explored under the cursor,
+## or a cursor of its own (look, aim).
+func cursor_has_subject() -> bool:
+	if aiming or look_mode or state == null or state.map == null:
+		return true
+	var m := state.map
+	return m.in_bounds(hovered.x, hovered.y) and m.is_explored(hovered.x, hovered.y)
+
+const RING_R := 4.5
+const RING_W := 16.0
+
+## A spore ring, or a dim one for an unmarked creature.
+func _draw_ring(x: float, y: float, colour: Color) -> void:
+	var c := colour if colour.a > 0.0 else Palette.UI_FRAME
+	draw_arc(Vector2(x + RING_R, y - font_size * 0.36), RING_R, 0.0, TAU, 16, c, 2.0)
+
+## One IN SIGHT row: ring, name fitted round the marker, marker right.
+func _draw_sight_row(y: float, row: Dictionary) -> void:
+	var mark := String(row["mark"])
+	var reserve := 0.0
+	if mark != "":
+		reserve = font.get_string_size(mark, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + GAP
+	_draw_ring(PAD, y, row["ring"])
+	var tint: Color = Palette.FUNGUS_RED if bool(row["risen"]) else Palette.UI_TEXT
+	var e: Entity = row["e"]
+	if e.corrupted:
+		tint = Palette.CORRUPTED
+	draw_string(font, Vector2(PAD + RING_W, y), _fit(String(row["name"]), RING_W + reserve),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
+	if mark != "":
+		draw_string(font, Vector2(PAD, y), mark, HORIZONTAL_ALIGNMENT_RIGHT,
+			size.x - PAD * 2.0, font_size, row["mark_colour"])
+
 ## The name above the HP bar. Dashes while one is still being chosen.
 func shown_name() -> String:
 	if naming:
@@ -356,39 +561,11 @@ func _draw() -> void:
 	# the whole row (no label: the picture says what it is about). Firm ground
 	# keeps the quiet labelled row. Status effects join this line later; the
 	# miasma is the next one.
-	var ground := state.map.get_tile(state.player.x, state.player.y)
-	var pace := Tiles.move_cost(ground)
-	var word := Tiles.footing_word(ground)
-	if state.player.poisoned > 0:
-		# Poison first: it is the status that is costing you hit points.
-		draw_string(font, Vector2(PAD, y), "status", HORIZONTAL_ALIGNMENT_LEFT, -1,
-			font_size, Palette.UI_DIM)
-		draw_string(font, Vector2(PAD, y), "poisoned · %d" % state.player.poisoned,
-			HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, Palette.FUNGUS_PURPLE)
-	elif pace > 1.0 and word != "":
-		var glyph := String(RenderTheme.active().appearance(
-			Tiles.appearance_id(ground)).get("ch", "~"))
-		var gs := GlyphTheme.draw_size(glyph, font_size)
-		var gw := _face_for(glyph).get_string_size(glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x
-		draw_string(_face_for(glyph), Vector2(PAD, y + (font_size - gs) * 0.35), glyph,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, gs, Palette.BRAZIER)
-		draw_string(font, Vector2(PAD + gw + 6.0, y), _fit(status_words(word, pace), gw + 6.0),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.BRAZIER)
-	else:
-		_stat_row(y, "footing", "firm", false)
-	y += LINE
-
-	# Doused is the unusual, dangerous state, so it is the one that is tinted.
-	var torch_text := "lit" if state.torch_lit else "doused"
-	var torch_tint := Palette.UI_TEXT if state.torch_lit else Palette.SLEEP
-	if state.torch_flare > 0:
-		torch_text = "FLARED %d" % state.torch_flare
-		torch_tint = Palette.AMULET
-	draw_string(font, Vector2(PAD, y), "torch",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
-	draw_string(font, Vector2(PAD, y), torch_text,
-		HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2.0, font_size, torch_tint)
-	y += LINE
+	# What is true of you right now, as chips: the torch, the footing, poison,
+	# the ground. These were two labelled rows and a status line that took
+	# turns replacing each other; now every state that holds is on screen.
+	y += 2.0
+	y += _draw_chips(y)
 
 	# THE ROAD, while its stone is worn: what exploring this floor has earned.
 	# Shown at +0 too (dimmed), so a player who has just arrived can see there
@@ -455,18 +632,44 @@ func _draw() -> void:
 				Palette.ALLY if mate.wound() == Entity.Wound.WHOLE
 				else Palette.BLOODIED)
 			y += LINE
+			# The red has this one: it rises against you if it falls (the
+			# log said so once; this stays while it is true). Two short lines
+			# at chip size, because one does not fit beside the ring.
+			if mate.spores == &"red":
+				for line in ally_red_lines(mate):
+					_draw_ring(PAD, y, Palette.FUNGUS_RED)
+					draw_string(font, Vector2(PAD + RING_W, y), String(line),
+						HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2.0 - RING_W,
+						chip_font_size(), Palette.FUNGUS_RED)
+					y += LINE * 0.85
 	y += LINE * 0.7
 
 	# Look panel. Retitled in look mode so it is obvious the keys are now
 	# driving a cursor rather than the player.
-	if aiming:
-		_line(font_bold, y, "SHOOTING AT", Palette.AIM_OK)
-	elif look_mode:
-		_line(font_bold, y, "LOOKING AT", Palette.CURSOR)
+	if not cursor_has_subject():
+		var rows := sight_rows()
+		_line(font_bold, y, "IN SIGHT", Palette.UI_DIM)
+		var summary := sight_summary(rows)
+		draw_string(font, Vector2(PAD, y), summary, HORIZONTAL_ALIGNMENT_RIGHT,
+			size.x - PAD * 2.0, chip_font_size(),
+			Palette.FUNGUS_RED if summary.contains("risen") else Palette.UI_DIM)
+		y += LINE
+		for i in mini(rows.size(), SIGHT_ROWS):
+			_draw_sight_row(y, rows[i])
+			y += LINE
+		if rows.size() > SIGHT_ROWS:
+			_line(font, y, "+%d more" % (rows.size() - SIGHT_ROWS), Palette.UI_DIM)
+			y += LINE
+		_look_bottom = y - LINE * 0.6
 	else:
-		_line(font_bold, y, "UNDER CURSOR", Palette.UI_DIM)
-	y += LINE
-	for entry in _describe():
+		if aiming:
+			_line(font_bold, y, "SHOOTING AT", Palette.AIM_OK)
+		elif look_mode:
+			_line(font_bold, y, "LOOKING AT", Palette.CURSOR)
+		else:
+			_line(font_bold, y, "UNDER CURSOR", Palette.UI_DIM)
+		y += LINE
+	for entry in (_describe() if cursor_has_subject() else []):
 		# A line is either words, or a picture and words. Gear and loot get the
 		# picture; creatures, terrain and epitaphs stay text.
 		#
@@ -506,10 +709,17 @@ func _draw() -> void:
 	if pad_cfg != null:
 		how = pad_cfg.icon(KEY_QUESTION, pad_input)
 	# Loud until the legend has been found once: bold and gold on floors 1-2.
+	# Drawn as a button like the menu's (the UI review): it has been clickable
+	# since the 2026-09-26 playtest, and now it looks it.
 	var help_colour: Color = Palette.STAIRS if help_loud else Palette.UI_DIM
 	if _hover_button == "help":
 		help_colour = Color.WHITE
-	PadGlyphs.draw(self, Vector2(PAD, y), help_text(),
+	var hb := help_button_rect()
+	draw_rect(hb, Color(Palette.CURSOR, 0.16) if _hover_button == "help"
+		else Palette.UI_PANEL_BG, true)
+	draw_rect(hb, Palette.UI_TEXT if _hover_button == "help" else Palette.UI_FRAME,
+		false, 1.0)
+	PadGlyphs.draw(self, Vector2(PAD + 7.0, y), help_text(),
 		font_bold if help_loud else font, font_size, help_colour)
 
 	# The menu button, on the same line, right-aligned (Brad: one line, to
@@ -532,12 +742,58 @@ static func help_is_loud(gs: GameState) -> bool:
 	return gs != null and not gs.ascending and gs.depth <= 2 \
 		and not LegendPanel.seen_ever()
 
-## Where the minimap goes: centred, its bottom just above the help line.
+## THE MINIMAP'S LEGEND (the UI review): a line under the map naming its
+## marks -- stairs, shrine, the wrong fungus, you -- as a square of the mark's
+## own colour and a word, laid out by the chips' measured rule. The map cannot
+## grow (96 squares at 2 px is already the panel's width), so this is what
+## "a minimap you can read" costs: one line.
+const LEGEND_H := 18.0
+const LEGEND_SQ := 7.0
+
+func legend_items() -> Array:
+	return [
+		{"text": "you", "colour": MapPanel.MARK_PLAYER},
+		{"text": "stairs", "colour": MapPanel.MARK_STAIRS},
+		{"text": "shrine", "colour": MapPanel.MARK_SHRINE},
+		{"text": "red", "colour": MapPanel._terrain_colour(Tiles.FUNGUS_RED)},
+		{"text": "purple", "colour": MapPanel._terrain_colour(Tiles.FUNGUS_PURPLE)},
+	]
+
+func legend_font_size() -> int:
+	return font_size - 4
+
+func legend_width(item: Dictionary) -> float:
+	return LEGEND_SQ + 4.0 + font.get_string_size(String(item["text"]),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, legend_font_size()).x
+
+## The legend's rows, by the same measured rule as the chips.
+func legend_rows() -> Array:
+	var widths: Array = []
+	for item in legend_items():
+		widths.append(legend_width(item))
+	return chip_rows(widths, size.x - PAD * 2.0)
+
+func _draw_legend(y: float) -> void:
+	var items := legend_items()
+	var fs := legend_font_size()
+	for row in legend_rows():
+		var x := PAD
+		for i in row:
+			var item: Dictionary = items[i]
+			draw_rect(Rect2(Vector2(x, y - LEGEND_SQ), Vector2(LEGEND_SQ, LEGEND_SQ)),
+				item["colour"], true)
+			draw_string(font, Vector2(x + LEGEND_SQ + 4.0, y), String(item["text"]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Palette.UI_DIM)
+			x += legend_width(item) + CHIP_GAP
+		y += LEGEND_H
+
+## Where the minimap goes: centred, its bottom just above the legend, which
+## sits just above the help line.
 func minimap_rect() -> Rect2:
 	if state == null or state.map == null:
 		return Rect2()
 	var s := Vector2(state.map.width * MINI_CELL, state.map.height * MINI_CELL)
-	var bottom := help_line_rect().position.y - 8.0
+	var bottom := help_line_rect().position.y - 8.0 - LEGEND_H * legend_rows().size()
 	return Rect2(Vector2(floorf((size.x - s.x) * 0.5), bottom - s.y), s)
 
 ## Whether the minimap is drawn this frame: wanted, and with room to spare.
@@ -570,6 +826,7 @@ func _draw_minimap() -> void:
 	var centre := r.position + (Vector2(state.player.x, state.player.y) + Vector2(0.5, 0.5)) * MINI_CELL
 	draw_line(centre, centre + Vector2(state.player.facing).normalized() * 7.0,
 		MapPanel.MARK_PLAYER, 1.5)
+	_draw_legend(r.end.y + 4.0 + LEGEND_H * 0.8)
 
 ## The part of the HP bar a heal just filled: from the old edge to the new.
 ## Both edges measured from the bar's left end (PAD). The first version took
@@ -581,6 +838,12 @@ static func restored_rect(old_hp: int, old_max: int, frac: float, bar_w: float,
 	var start_x := PAD + bar_w * old_frac
 	var end_x := PAD + bar_w * frac
 	return Rect2(Vector2(start_x, y), Vector2(maxf(0.0, end_x - start_x), 10.0))
+
+## The two lines under a red-marked ally, each short enough for the panel
+## beside a ring: what is wrong, and what to do about it.
+func ally_red_lines(mate: Entity) -> Array:
+	return ["carries the red",
+		"bury them if they fall" if state._has_shovel() else "burn the body if they fall"]
 
 ## "wading · slowed x1.4". Separate so the tests can read what the row says.
 static func status_words(word: String, pace: float) -> String:
@@ -611,6 +874,14 @@ func menu_button_rect() -> Rect2:
 	var baseline := size.y - PAD - LINE
 	var h := LINE + 2.0
 	return Rect2(size.x - PAD - w, baseline - h + 6.0, w, h)
+
+## The help button's frame: sized to its label, inside the help line, which
+## stays the (wider) click area.
+func help_button_rect() -> Rect2:
+	var face: Font = font_bold if help_loud else font
+	var w := (PadGlyphs.width(help_text(), face, font_size) if face != null else 90.0) + 14.0
+	var line := help_line_rect()
+	return Rect2(line.position, Vector2(minf(w, line.size.x), line.size.y))
 
 ## The rest of the line, left of the button.
 func help_line_rect() -> Rect2:

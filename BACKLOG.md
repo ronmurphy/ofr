@@ -902,3 +902,20 @@ residents left books behind as help articles.
   **And he LEARNS from them (Brad):** every help book sold to him adds its
   tips to what he says, as his own -- he did read it. Kept across runs with
   the journal, so the trader grows wiser the more you have given him.
+
+**The UI review -- BUILT on branch `ui-review` (2026-10-01), Brad to play,
+review and merge.** The canvas: https://claude.ai/artifact/NHoE8HfUWP4QZrPiGH4Aae
+Brad's one condition: nothing may overflow or wrap by accident -- so every
+new element is laid out by measurement and the quick suite runs the real
+strings against the real widths (every bestiary name, every footing x torch
+x poison combination, the whole item catalogue, the widest pad button).
+Built, one commit each: sidebar condition chips (the brazier's flame and the
+ground's own glyph where words were too long -- Brad: symbols shorten), the
+IN SIGHT list in the look block's place, the marked ally's two lines; the
+log's coloured rule and danger wash; HERE keycaps and the status chip; the
+minimap legend and the help button; the shorter 3D hint; the pack's detail
+pane with the comparison against what is worn; UI_DIM lifted to 5.1:1.
+Two departures from the canvas, both deliberate: the minimap cannot grow (96
+squares at 2 px is the panel's width) so it gained a legend instead; an
+ally's hp stays a NUMBER, not a bar -- sidebar.gd's own comment argues a bar
+means "this refills" and an ally never heals.
