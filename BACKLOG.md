@@ -773,3 +773,67 @@ scheduled: it belongs with the Legends design (after 6c and 6d).
   timer -- help them, or burn the body before it rises; a friend shares what
   they have seen (the stairs, which colour was the gong), tying in the
   trader-gossip idea.
+
+**Night-of-2026-09-30 ideas (Brad + Claude, after a Copilot review). Ideas
+for Brad's call, not scheduled; play the built strands first.**
+- **Predation -- live the food chain.** Today "bear -> rabbit -> fungus" is
+  only what the PLAYER gets: bears and rabbits are on one side and ignore
+  each other. Make a bear that sees a rabbit chase and eat it; rabbits flee
+  bears as they flee you. A cave then has a life of its own when you arrive
+  (a bear busy with prey is not busy with you; lure one onto rabbits). The
+  loop closes through the red: the rabbit's body draws rats or red, rises; a
+  bear that chased through red is marked and rises when it dies. **OPEN
+  (Brad):** bears eating rabbits means less cave meat, and caves are sparse
+  on purpose (CLAUDE.md) -- tension or too harsh? (Rabbits are already spore
+  carriers: prey at one end of the chain, spreaders at the other.)
+- **Blood trails with three readers.** Wounded creatures (and you) leave a
+  short-lived trail. YOU read it (something hurt went that way); SCAVENGERS
+  follow it (rats drawn off, or onto you if you bleed); **THE RED follows it**
+  -- today it crawls only toward bodies within 8; with blood it tracks the
+  wounded before they die. Your own wounds near red draw it a map to you.
+- **Purple's job: the counterweight to the red** (Brad: purple is
+  under-used; it does little damage, the red is the threat). (1) Its cloud is
+  FOG: blocks sight and muffles sound -- cover from the blind risen, at the
+  price of the poison. (2) Red cannot grow in purple air: a natural
+  firebreak. (3) Plant it from the satchel: purple in a doorway seals the red
+  in. Lure risen into it: they rise at half hp, and it already poisons them.
+  The ring-rat is NOT immune to purple (the truce is red-only) -- keep it so,
+  or a ring-rat in fog is unheard, unseen and unharmed.
+- **Brewing at a brazier (needs the satchel).** Base decides the kind,
+  fungus decides the subject; costs brazier charge like a merge:
+      healing potion + green  = lasting regeneration
+      healing potion + purple = miasma resistance (Brad)
+      healing potion + red    = BLOODLESS: red cannot bite you, and you leave
+                                no blood trail (not hidden from risen ears --
+                                that is the ring's job) (Brad)
+      meat + green  = bait for animals (feeds predation)
+      meat + purple = poisoned bait
+      meat + red    = bait for the risen (Brad's bait; red smells blood)
+
+**Books and libraries: game hints as lore (Gabe and David, 2026-10-01;
+Brad's library).** Idea, not scheduled -- after 6c, 6d and the rest already
+queued. The trader knows a lot but not everything; the dungeon's former
+residents left books behind as help articles.
+- A **library vault on the first floor of every band:** 1, 4, 7, and on the
+  climb 11, 14, 17 (Brad). Several books per library.
+- **The caves (4, 14): not a library** -- a masonry room in a cavern "reads
+  as a mistake" (CLAUDE.md, the second reason caves get few vaults). An
+  ABANDONED CAMP instead: bedroll, dead lantern, a few books by a cold fire --
+  whoever wrote them did not make it.
+- On the climb, 11/14/17 are the band floors you leave each band through
+  (the reverse of the descent) -- fine, but a deliberate choice.
+- Each book teaches ONE system in a resident's voice (the red, the ring,
+  relighting, the embers, terrain costs) -- the HERE box's teaching as notes.
+  PLAYTESTS 2026-09-26: fresh players could not find `?` and could not see
+  terrain cost; this reaches them where they explore.
+- **A journal, kept ACROSS RUNS (Brad, decided):** read books are kept and
+  can be reread from the menu. Two kinds: HELP books (the systems) and LORE
+  TOMES (the dungeon's history and story). No single run finds them all --
+  the full story takes several plays. Cheap story: the text does the heavy
+  lifting, with no large graphics or cutscenes (some can still come later).
+  A player-owned file -- its own, or in legends.json -- with a static path
+  that use_scratch_files() redirects, from its first commit.
+- **The trader buys books** -- he likes to read; a read book still sells.
+  **And he LEARNS from them (Brad):** every help book sold to him adds its
+  tips to what he says, as his own -- he did read it. Kept across runs with
+  the journal, so the trader grows wiser the more you have given him.
