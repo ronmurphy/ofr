@@ -239,6 +239,19 @@ strand at a time with play between:
      their bone rule). (3) The shovel can already snatch a red-claimed body
      inside its 5-turn window (a red body rises in 8+); it should strip the
      spores, or the rescued ally wears the red outline and trails red.
+   - **BURYING (Brad, 2026-10-01): the shovel's second use.** Standing on or
+     beside a body the red has CLAIMED but not yet raised, dig it under: it
+     never rises. Separate from RAISING (a fresh kill, 5-turn window, an
+     ally, costs a gem in 6c). Claude's suggestion: digging takes a few turns
+     and is LOUD -- the blind risen hear it -- so burying near a red room is a
+     race, and costs time and noise rather than a gem. OPEN: a fresh red kill
+     is both raisable and buriable -- the HERE box offers both.
+     **The red's response:** if another body is within reach it turns to it
+     (the crawl's nearest-body rule already does this). If not, it WITHERS:
+     each crawl tick the chain's tip dies back one square toward its source.
+     Needs each crawl-grown red square to remember the square it grew from
+     (saved), so the withering retraces the real chain; seeded or generated
+     red is a source and never withers.
    - Gems then have three sinks: weapons, the ring, the shovel. Brad says gems
      are plentiful (he traded 3-for-1 twice); if the uniques sit idle in play,
      tune gem supply, not the cost.
