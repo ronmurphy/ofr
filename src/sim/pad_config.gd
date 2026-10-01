@@ -70,7 +70,7 @@ const WALK := [
 	##
 	## `<` is still in this list and still works on a keyboard -- it is simply
 	## no longer worth a button, which is different from being removed.
-	[KEY_Q, "3D / classic view"],
+	[KEY_Q, "cycle the view"],
 	[KEY_ESCAPE, "menu"],
 
 	## THE D-PAD'S NEW JOB, and the reason it has one.

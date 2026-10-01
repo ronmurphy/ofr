@@ -967,3 +967,27 @@ The pictures stay; the surfaces and the light change. Built:
   the screen locked (--rendering-method gl_compatibility | forward_plus).
 Not done, by choice: creatures stay icon billboards; no new texture files
 (the relief is procedural); no SDFGI (a setting later, if wanted).
+
+**The overhead view -- BUILT (2026-10-01), uncommitted, Brad to play.** His
+ask: "a view that is still the 3D diorama, but the camera sits top-down, we
+keep the same directional camera movement... we are just swapping the 3D
+view's camera." Built as a third view on Q, which now CYCLES classic -> 3D ->
+3D overhead -> classic (one button reaches all three on a pad; d-pad up is
+the same key). Saved as [view] overhead beside diorama/follow, so you come
+back to the view you left; the title's "view" row shows which.
+- CAMERA_PITCH_OVERHEAD_DEG 80: nearly straight down, a sliver of every
+  wall's lit face left showing so a room still reads as a place. Same rig,
+  same yaw, same turn keys and follow camera; _place_camera sets the pitch
+  in the RIG'S frame (look_at aims at the WORLD origin, and the rig has
+  moved by the time the view changes -- the first render was black).
+- Cards from above: a billboard at this pitch lies all but flat, so each is
+  CENTRED on its cell like a classic glyph, and hung above WALL_HEIGHT
+  (overhead_lift): a wall in the cell in front rises towards the camera
+  and over the near part of this cell on screen, and would cut a card on
+  the floor off. The lift is straight up, so turning the camera does not
+  move the items placed at the last rebuild; what the lift does to the
+  picture is taken back in the label's pixel offset. Marks sit half a card
+  up. Measured in the quick suite: every card within 0.01 px of its cell.
+- The strip names the view and what Q gives next; the keys list, the pad
+  layout and the legend say "classic / 3D / overhead".
+- screenshot_look.gd now takes an overhead shot after the angled one.

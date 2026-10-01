@@ -352,7 +352,7 @@ func _ready() -> void:
 	# application is not. Ask before it happens, and write the slot when the
 	# page goes away regardless.
 	RenderTheme.load_settings()
-	_select_map_view(RenderTheme.diorama_enabled())
+	_apply_view_setting()
 	Effects.load_settings()
 	# The setting has to take effect at launch and not only when the key is
 	# pressed, or a player who chose "full" last session opens the game with
@@ -951,8 +951,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# default d-pad-up binding. Older saved pad layouts still send O here; the
 	# overview remains one page away through the legend.
 	if key == KEY_Q or (_synthetic and key == KEY_O):
-		state.msg_log.add(RenderTheme.toggle_diorama(), Color(0.70, 0.74, 0.80))
-		_select_map_view(RenderTheme.diorama_enabled())
+		state.msg_log.add(RenderTheme.cycle_view(), Color(0.70, 0.74, 0.80))
+		_apply_view_setting()
 		_refresh()
 		return
 	if _map_view == diorama and (key == KEY_BRACKETLEFT or key == KEY_BRACKETRIGHT):
@@ -1187,8 +1187,8 @@ func _on_title_chosen(id: StringName) -> void:
 		&"exit":
 			get_tree().quit()
 		&"3d":
-			RenderTheme.toggle_diorama()
-			_select_map_view(RenderTheme.diorama_enabled())
+			RenderTheme.cycle_view()
+			_apply_view_setting()
 		&"effects":
 			Effects.cycle()
 			_map_view.apply_effects_mode()
@@ -1220,7 +1220,7 @@ func _back_to_title_if_waiting() -> void:
 ## What a settings row on the title currently reads.
 func _setting_value(id: StringName) -> String:
 	match id:
-		&"3d": return "3D" if RenderTheme.diorama_enabled() else "classic"
+		&"3d": return RenderTheme.view_name()
 		&"effects": return String(Effects.MODE_NAMES[Effects.mode()])
 		&"sound": return "off" if sound.muted else "on"
 		&"music": return "on" if sound.music_on else "off"
@@ -1367,6 +1367,11 @@ func _bind_state(s: GameState) -> void:
 ## Shows one map renderer while both keep the same simulation state. Panels and
 ## gameplay input stay shared; only the map presentation and its mouse picking
 ## switch.
+## The saved view, applied: which renderer, and the 3D camera's pitch.
+func _apply_view_setting() -> void:
+	diorama.set_overhead(RenderTheme.overhead_enabled())
+	_select_map_view(RenderTheme.diorama_enabled())
+
 func _select_map_view(use_diorama: bool) -> void:
 	_map_view = diorama if use_diorama else grid
 	grid.visible = not use_diorama

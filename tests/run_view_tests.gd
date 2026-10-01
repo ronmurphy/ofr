@@ -1369,13 +1369,29 @@ func _test_new_players_start_in_3d() -> void:
 	check("  with no settings at all: the 3D view",
 		RenderTheme.diorama_enabled())
 	check("  and the camera follows", RenderTheme.camera_follows())
+	check("  and not from overhead", not RenderTheme.overhead_enabled()
+		and RenderTheme.view_name() == "3D")
+	# Q cycles the three views (Brad, 2026-10-01), and each is remembered.
+	var seen := []
+	for i in 3:
+		seen.append(RenderTheme.cycle_view())
+	check("  Q cycles 3D, overhead, classic and round: %s" % str(seen),
+		seen == ["View: 3D overhead.", "View: classic.", "View: 3D."]
+		and RenderTheme.diorama_enabled() and not RenderTheme.overhead_enabled())
+	RenderTheme.cycle_view()
+	RenderTheme.load_settings()
+	check("  the overhead view is remembered", RenderTheme.overhead_enabled()
+		and RenderTheme.view_name() == "3D overhead")
 	var cfg := ConfigFile.new()
 	cfg.set_value("view", "diorama", false)
+	cfg.set_value("view", "overhead", true)
 	cfg.set_value("view", "follow", false)
 	cfg.save(path)
 	RenderTheme.load_settings()
 	check("  a player who chose classic and a fixed camera keeps them",
 		not RenderTheme.diorama_enabled() and not RenderTheme.camera_follows())
+	check("  and overhead means nothing to classic", not RenderTheme.overhead_enabled()
+		and RenderTheme.view_name() == "classic")
 	DirAccess.remove_absolute(path)
 	if had:
 		var f := FileAccess.open(path, FileAccess.WRITE)
@@ -2301,6 +2317,73 @@ func _test_3d_extras(scene: Control) -> void:
 		d.rotate_view(-1))
 	check("turning the camera snaps at once on still", turned["snapped"])
 
+## The overhead view (Brad, 2026-10-01): the same scene from nearly straight
+## down, every card centred on its cell like a classic glyph and hung above
+## the walls, so nothing on the floor cuts it off.
+func _test_the_overhead_view(scene: Control) -> void:
+	print("-- the overhead view")
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	gs.map.set_all_visible()
+	# A second card beside the player, a different shape and with a mark.
+	var beside := Vector2i(gs.player.x + 1, gs.player.y)
+	var was: int = gs.map.get_tile(beside.x, beside.y)
+	gs.map.set_tile(beside.x, beside.y, Tiles.FLOOR)
+	var rat := GameState.monster_from(GameState.BESTIARY[0], beside.x, beside.y)
+	gs.entities.append(rat)
+	d.set_overhead(true)
+	d._rebuild_world()
+	d.settle_motion()
+	d._update_dynamic()
+	var cam: Camera3D = d._camera
+	var pitch := deg_to_rad(DioramaView.CAMERA_PITCH_OVERHEAD_DEG)
+	check("  the camera looks down at %d degrees" % DioramaView.CAMERA_PITCH_OVERHEAD_DEG,
+		is_equal_approx(cam.global_transform.basis.z.y, sin(pitch)))
+	check("  the strip says so, and that Q gives classic",
+		d.hint_text().begins_with("3D overhead") and d.hint_text().contains("Q / d-pad up: classic"),
+		d.hint_text())
+	var up := cam.global_transform.basis.y
+	var cards := 0
+	var centred := true
+	var hung := true
+	var worst := 0.0
+	for e in d._creatures:
+		var label: Label3D = d._creatures[e]["label"]
+		var glyph := DioramaView._glyph(label.text)
+		var em := label.pixel_size * float(label.font_size)
+		# Where the drawing is, from the label's own metrics: bottom alignment
+		# puts the line's bottom on the position and the offset moves it.
+		var bottom: Vector3 = label.position + up * ((label.offset.y
+			+ (GlyphMetrics.DESCENT + float(glyph[2])) * float(label.font_size)) * label.pixel_size)
+		var centre := bottom + up * (float(glyph[4] - glyph[2]) * em * 0.5)
+		var feet: Vector3 = d._floor_at(Vector2(e.x, e.y))
+		var off := cam.unproject_position(centre).distance_to(cam.unproject_position(feet))
+		worst = maxf(worst, off)
+		centred = centred and off < 1.5
+		hung = hung and bottom.y > DioramaView.WALL_HEIGHT
+		cards += 1
+	check("  every card is drawn over its own cell (%d cards, worst %.2f px off)" % [cards, worst],
+		cards > 0 and centred)
+	check("  and hangs above the walls, so nothing in front cuts it off", cards > 0 and hung)
+	var mark: Label3D = d._creatures[rat].get("mark")
+	check("  a creature's mark sits over its card, not over the next cell's",
+		mark != null and cam.unproject_position(mark.position).y
+			< cam.unproject_position(d._floor_at(Vector2(beside))).y
+		and absf(cam.unproject_position(mark.position).x
+			- cam.unproject_position(d._floor_at(Vector2(beside))).x) < 1.0
+		and cam.unproject_position(mark.position).distance_to(
+			cam.unproject_position(d._floor_at(Vector2(beside)))) < d._pixels_per_unit() * 0.5)
+	gs.entities.erase(rat)
+	gs.map.set_tile(beside.x, beside.y, was)
+	d.set_overhead(false)
+	d._rebuild_world()
+	d.settle_motion()
+	d._update_dynamic()
+	var player: Label3D = d._creatures[gs.player]["label"]
+	check("  and back in the 3D view the camera and the cards come down",
+		is_equal_approx(cam.global_transform.basis.z.y, sin(deg_to_rad(DioramaView.CAMERA_PITCH_DEG)))
+		and player.position.y < 0.5 and d.hint_text().begins_with("3D  "), d.hint_text())
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -2688,6 +2771,7 @@ func _test_both_views_share_one_moment() -> void:
 		levels == {Effects.Mode.NONE: 0, Effects.Mode.TIMERS: 1, Effects.Mode.SHADERS: 2},
 		str(levels))
 	await _test_3d_extras(scene)
+	_test_the_overhead_view(scene)
 	_test_the_3d_look(scene)
 	scene.queue_free()
 	await process_frame

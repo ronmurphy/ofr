@@ -36,6 +36,13 @@ const CAMERA_YAW := PI / 4.0
 const TURN_STEP := PI / 4.0
 const VIEWS := 8
 const CAMERA_PITCH_DEG := 32.0
+## The overhead view's pitch (Brad, 2026-10-01): nearly straight down, with
+## a sliver of every wall's lit face left showing, so a room still reads as
+## a place and not only as a map. The cards are billboards, so from here
+## they lie all but flat, like the classic view's glyphs -- see _overhead_lift.
+const CAMERA_PITCH_OVERHEAD_DEG := 80.0
+## How far above the top of a wall an overhead card hangs -- see overhead_lift.
+const OVERHEAD_CLEAR := 0.05
 const CAMERA_DISTANCE := 25.0
 ## Grid steps a key can map to: the four along the grid lines, and the four
 ## diagonals, for the diagonal keys.
@@ -45,8 +52,9 @@ const TURN_TIME := 0.18
 ## Short (the UI review, 2026-10-01): the strip over the map used to spell
 ## out every key, every turn. It now says which view this is and how to leave
 ## it; the keys are one press away under ?, and the HERE box teaches the rest.
-const FOLLOW_HINT := "3D · camera follows you     Q / d-pad up: classic     ? keys"
-const DIORAMA_HINT := "3D     [ / ] or right stick: turn     Q / d-pad up: classic     ? keys"
+## The two blanks are this view's name and the next one Q gives (hint_text).
+const FOLLOW_HINT := "%s · camera follows you     Q / d-pad up: %s     ? keys"
+const DIORAMA_HINT := "%s     [ / ] or right stick: turn     Q / d-pad up: %s     ? keys"
 const SURFACE_SHADER: Shader = preload("res://src/render/shaders/diorama_surface.gdshader")
 const POST_SHADER: Shader = preload("res://src/render/shaders/diorama_post.gdshader")
 
@@ -158,6 +166,9 @@ var _focus := Vector2.ZERO
 var _focus_ready := false
 var _rotation := CAMERA_YAW
 var _rotation_target := CAMERA_YAW
+## The overhead view: the same scene, the camera pitched down. Set through
+## set_overhead, which moves the camera.
+var overhead := false
 var _rotation_t := TURN_TIME
 ## Which of the eight views, 0..7. Even views are diamonds, odd views are
 ## straight on (see TURN_STEP).
@@ -397,11 +408,9 @@ func _build_viewport() -> void:
 	_camera = Camera3D.new()
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	_camera.size = CAMERA_SIZE
-	var pitch := deg_to_rad(CAMERA_PITCH_DEG)
-	_camera.position = Vector3(0.0, sin(pitch), cos(pitch)) * CAMERA_DISTANCE
 	_camera.current = true
 	_camera_rig.add_child(_camera)
-	_camera.look_at(Vector3.ZERO, Vector3.UP)
+	_place_camera()
 
 	var icon_font: FontFile = load("res://assets/fonts/ofr_icons.ttf").duplicate()
 	icon_font.fallbacks = [load("res://assets/fonts/JetBrainsMono-Regular.ttf")]
@@ -410,7 +419,7 @@ func _build_viewport() -> void:
 
 func _build_hint() -> void:
 	_hint = Label.new()
-	_hint.text = DIORAMA_HINT
+	_hint.text = hint_text()
 	_hint.position = Vector2(10, 8)
 	_hint.add_theme_font_override("font", load("res://assets/fonts/JetBrainsMono-Regular.ttf"))
 	_hint.add_theme_font_size_override("font_size", 14)
@@ -619,8 +628,41 @@ func face(step: Vector2i) -> void:
 
 ## The hint line, for whichever controls are live.
 func set_follow_hint(on: bool) -> void:
+	_follow_hint = on
 	if _hint != null:
-		_hint.text = FOLLOW_HINT if on else DIORAMA_HINT
+		_hint.text = hint_text()
+
+var _follow_hint := false
+
+## The strip's words: which view this is, and which one Q gives next.
+func hint_text() -> String:
+	var text := FOLLOW_HINT if _follow_hint else DIORAMA_HINT
+	return text % (["3D overhead", "classic"] if overhead else ["3D", "overhead"])
+
+## The camera's pitch for this view, in degrees.
+func camera_pitch_deg() -> float:
+	return CAMERA_PITCH_OVERHEAD_DEG if overhead else CAMERA_PITCH_DEG
+
+## Puts the camera on its rig at the view's pitch, looking at the rig's
+## centre. The rig's yaw is the turning camera and is untouched.
+func _place_camera() -> void:
+	if _camera == null:
+		return
+	var pitch := deg_to_rad(camera_pitch_deg())
+	var at := Vector3(0.0, sin(pitch), cos(pitch)) * CAMERA_DISTANCE
+	# In the rig's own frame -- look_at would aim at the WORLD origin, and
+	# the rig has usually moved by the time the view changes.
+	_camera.transform = Transform3D(Basis.looking_at(-at, Vector3.UP), at)
+
+## Overhead or not. Moves the camera; nothing in the world changes.
+func set_overhead(on: bool) -> void:
+	if overhead == on:
+		return
+	overhead = on
+	_place_camera()
+	if _hint != null:
+		_hint.text = hint_text()
+	_mark_dirty()
 
 func rotate_view(direction: int) -> void:
 	var turn := signi(direction)
@@ -1641,6 +1683,17 @@ func _add_billboard(ch: String, color: Color, feet: Vector3, box: Vector2,
 		float(glyph[0]) * 0.5 - (float(glyph[1]) + float(glyph[3])) * 0.5,
 		-(GlyphMetrics.DESCENT + float(glyph[2]))) * float(label.font_size)
 	label.position = feet
+	if overhead:
+		# Seen from above the card is centred on its cell, as a classic glyph
+		# is, and hangs above the walls (overhead_lift). The lift shows on
+		# screen as a slide up the screen of lift * cos(pitch), which the
+		# offset takes back, in pixels -- so the card is drawn exactly over
+		# its cell whichever way the camera has turned.
+		var ink_h := _ink(glyph).y
+		var lift := overhead_lift(ink_h * em)
+		label.offset.y -= (ink_h * 0.5 + lift * cos(deg_to_rad(CAMERA_PITCH_OVERHEAD_DEG)) / em) \
+			* float(label.font_size)
+		label.position = feet + Vector3.UP * lift
 	# Walls in front hide what stands behind them; creatures and items get a
 	# silhouette for that part (see _add_silhouette). `on_top` is for effects,
 	# which are drawn over everything.
@@ -1692,6 +1745,19 @@ static func lean_pull(tall: float) -> float:
 	var pitch := deg_to_rad(CAMERA_PITCH_DEG)
 	return maxf(0.0, (tall * sin(pitch) - 0.45) / cos(pitch))
 
+## How high an overhead card `tall` cells high hangs over its cell.
+##
+## From this pitch a billboard lies within ten degrees of flat, its near edge
+## a little below its centre. A wall in the cell in front rises towards the
+## camera and, on screen, over the near part of this cell; a card on the
+## floor would be cut off by it. So every card hangs with its lowest edge
+## above WALL_HEIGHT: nothing on this floor can be in front of it, and a
+## glyph is as legible as in the classic view. The lift is straight up, so
+## it does not change as the camera turns; what it does to the picture is
+## taken back in _add_billboard.
+static func overhead_lift(tall: float) -> float:
+	return WALL_HEIGHT + OVERHEAD_CLEAR + tall * 0.5 * cos(deg_to_rad(CAMERA_PITCH_OVERHEAD_DEG))
+
 ## Everything that moves between rebuilds: creatures gliding through a step,
 ## the markers travelling over their heads, and the effects in flight. Every
 ## frame, and cheap -- a few nodes, never the world.
@@ -1719,7 +1785,9 @@ func _update_dynamic() -> void:
 	for e in _creatures:
 		var nodes: Dictionary = _creatures[e]
 		var feet := _floor_at(_drawn_cell(e))
-		var stand := feet + toward_camera * lean_pull(float(nodes["tall"]))
+		var tall := float(nodes["tall"])
+		var stand := feet + (Vector3.UP * overhead_lift(tall) if overhead
+			else toward_camera * lean_pull(tall))
 		(nodes["label"] as Label3D).position = stand
 		(nodes["shape"] as Label3D).position = stand
 		var mark: Label3D = nodes.get("mark")
@@ -1730,7 +1798,9 @@ func _update_dynamic() -> void:
 		if mark.visible:
 			mark.text = said["text"]
 			mark.modulate = said["colour"]
-			mark.position = feet + up * (float(nodes["tall"]) + 0.08)
+			# Over the head: the card stands on its feet, or from overhead
+			# is centred on them, half its height each way.
+			mark.position = feet + up * (float(nodes["tall"]) * (0.5 if overhead else 1.0) + 0.08)
 	_draw_fx()
 
 ## Where a creature is drawn: its glide, and for the trader on "full", their

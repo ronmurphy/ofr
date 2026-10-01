@@ -76,5 +76,9 @@ func _run() -> void:
 		scene.diorama._environment.glow_enabled = false
 		tag = "_noglow"
 	await _shot("look_%s%s.png" % [tier, tag])
+	# And the same scene from overhead.
+	scene.diorama.set_overhead(true)
+	scene._refresh()
+	await _shot("look_%s%s_overhead.png" % [tier, tag])
 	GameState.clear_scratch_files()
 	quit()

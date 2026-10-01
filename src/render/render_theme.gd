@@ -78,6 +78,35 @@ static func mode() -> int:
 static func diorama_enabled() -> bool:
 	return _diorama
 
+## THE OVERHEAD VIEW (Brad, 2026-10-01): the 3D view with its camera pitched
+## nearly straight down -- a modern 3D version of the classic overhead. The
+## same renderer, the same turning camera, the same keys; only the pitch.
+## Saved with the rest of the view, so you come back to the view you left.
+static var _overhead := false
+
+static func overhead_enabled() -> bool:
+	return _diorama and _overhead
+
+## Q cycles the three views -- classic, 3D, 3D overhead -- rather than
+## toggling two, so a pad reaches all three with the one button it has.
+## Returns what to tell the player.
+static func cycle_view() -> String:
+	if not _diorama:
+		_diorama = true
+		_overhead = false
+	elif not _overhead:
+		_overhead = true
+	else:
+		_diorama = false
+		_overhead = false
+	_save()
+	return "View: %s." % view_name()
+
+static func view_name() -> String:
+	if not _diorama:
+		return "classic"
+	return "3D overhead" if _overhead else "3D"
+
 ## Gabe's follow camera (2026-09-28): in the 3D view the camera stays behind
 ## the player and the keys become forward/back/turn. Off by default.
 ## On by default too, after Gabe, David and Steph -- the most motion-sensitive
@@ -91,11 +120,6 @@ static func toggle_follow() -> String:
 	_follow = not _follow
 	_save()
 	return "Camera: %s." % ("follows you" if _follow else "fixed")
-
-static func toggle_diorama() -> String:
-	_diorama = not _diorama
-	_save()
-	return "View: %s." % ("3D" if _diorama else "classic")
 
 ## How many modes this build offers.
 ##
@@ -149,6 +173,7 @@ static func load_settings() -> void:
 		return
 	_mode = posmod(int(cfg.get_value("view", "mode", Mode.ICONS)), mode_count())
 	_diorama = bool(cfg.get_value("view", "diorama", true))
+	_overhead = bool(cfg.get_value("view", "overhead", false))
 	_follow = bool(cfg.get_value("view", "follow", true))
 	# Set directly rather than through set_cell_size(), which would write the
 	# file back out during the load that is reading it.
@@ -160,6 +185,7 @@ static func _save() -> void:
 	cfg.load(GameState.SETTINGS_PATH)
 	cfg.set_value("view", "mode", _mode)
 	cfg.set_value("view", "diorama", _diorama)
+	cfg.set_value("view", "overhead", _overhead)
 	cfg.set_value("view", "follow", _follow)
 	cfg.set_value("view", "cell", _cell)
 	cfg.save(GameState.SETTINGS_PATH)
