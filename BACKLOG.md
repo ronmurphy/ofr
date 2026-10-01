@@ -919,3 +919,24 @@ Two departures from the canvas, both deliberate: the minimap cannot grow (96
 squares at 2 px is the panel's width) so it gained a legend instead; an
 ally's hp stays a NUMBER, not a bar -- sidebar.gd's own comment argues a bar
 means "this refills" and an ally never heals.
+
+**The screens review -- BUILT on branch `screens-review` (2026-10-01), Brad
+to play, review and merge.** The canvas:
+https://claude.ai/artifact/MapNxUKQ8Hq1NFV2GajU4N
+Same rule as the UI review: every new string measured in the quick suite.
+- A shared `Keycap` (src/ui/keycap.gd) draws a key as a key through
+  PadGlyphs; the HERE box, legend, pause menu and controller screen use it.
+- Legend: ground trimmed to what has something to say (floor, walls, rock,
+  pillars, stalagmite out; purple and red fungus IN -- the list had never
+  listed them); marks gain the spore rings, the risen and the corrupted;
+  carry gains gems, the ring, the shovel and food; unknown shrines "not yet
+  learned"; keys in two groups as caps, keyboard-only keys dim on a pad;
+  ONE movement diagram that cycles vi / numpad / arrows (Brad's idea), held
+  on "still". The panel is proven to fit the window -- it was one line over.
+- Pause menu: who and where beside the title; caps on a keyboard; on a pad
+  no letters, the first row chosen, a pick/back hint line (panel +18px).
+- Controller: one "move: left stick" row while the moves are unbound; caps
+  with the button's picture and name; dashed "not bound"; cap footers
+  (panel +12px; the overflow guard's footer sum follows).
+Not done, by choice: WASD is not a movement layout (w swaps weapons), so
+the cycle is three layouts, not four.
