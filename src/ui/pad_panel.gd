@@ -48,7 +48,9 @@ static func font_size_default() -> int:
 ## both ways, the torch and praying -- at 10 rows in the taller column.
 ## 460 leaves about 25px of slack; the next addition will fail here again, and
 ## should.
-const PANEL := Vector2(820.0, 460.0)
+## 472 on 2026-10-01 (the screens review): the two footers became rows of
+## keycaps, which stand 20px tall, and the second one ran 2px past 460.
+const PANEL := Vector2(820.0, 472.0)
 const COL_GAP := 44.0
 
 ## Rows in the left column. The right column takes the remainder, so an odd
@@ -59,6 +61,11 @@ static func left_rows() -> int:
 ## footer 39px past its own edge, and the height guard sitting above it said
 ## nothing because a guard on one axis says nothing about the other.
 const KEY_FOOTER := "backspace  back     r  defaults     l  log this pad     esc  done"
+## The same footer as caps: [key, what it does]. KEY_FOOTER above is what the
+## suite measures and the words these are drawn from, so the two cannot
+## disagree without a test noticing.
+const KEY_FOOT := [["backspace", "back"], ["r", "defaults"], ["l", "log this pad"],
+	["esc", "done"]]
 
 ## Built from the LIVE binding rather than written out, so it cannot claim a
 ## button that does not do that any more.
@@ -68,8 +75,64 @@ static func pad_footer() -> String:
 		PadConfig.button_name(JOY_BUTTON_BACK),
 		PadConfig.button_name(JOY_BUTTON_START)]
 
+## The pad's footer as caps: the button's picture and its name in each.
+static func pad_foot() -> Array:
+	return [[button_cap(JOY_BUTTON_Y), "rebind"], [button_cap(JOY_BUTTON_BACK), "defaults"],
+		[button_cap(JOY_BUTTON_START), "done"]]
+
+## A button as a cap's label: its picture, then its name, so the cap reads
+## on a pad that has no pictures in this font too.
+static func button_cap(index: int) -> String:
+	var name := PadConfig.button_name(index)
+	if PadConfig.BUTTON_GLYPHS.has(index):
+		return "%s %s" % [String.chr(int(PadConfig.BUTTON_GLYPHS[index])), name]
+	return name
+
 const PAD := 26.0
 const ROW_H := 30.0
+
+## The rows as drawn: {label, said, cap, dashed, tint}. Not WALK itself, for
+## one reason (the screens review): the four move rows read as four unbound
+## actions, "move up  --", when the stick moves you. While nothing is bound to
+## them and nobody is rebinding, they are ONE row, "move", with the stick in
+## its cap. Walking through a rebind shows all four, as the walk asks them.
+func display_rows() -> Array:
+	var out: Array = []
+	var moves_bound := false
+	for i in 4:
+		if cfg != null and cfg.button_for_key(int(PadConfig.WALK[i][0])) >= 0:
+			moves_bound = true
+	var collapse := not _listening and not moves_bound
+	for i in PadConfig.WALK.size():
+		var row: Array = PadConfig.WALK[i]
+		if collapse and i < 4:
+			if i == 0:
+				out.append({"label": "move", "said": "%s left stick" % String.chr(PadConfig.STICK_GLYPH),
+					"cap": true, "dashed": false, "tint": Color(0.60, 0.72, 0.60)})
+			continue
+		var state := row_state(i)
+		var live := state == &"live"
+		var tint := Color(0.95, 0.82, 0.45) if live else Color(0.78, 0.76, 0.80)
+		if state == &"done":
+			tint = Color(0.60, 0.72, 0.60)
+		elif state == &"lost":
+			tint = LOST_TINT
+		var has := cfg.button_for_key(int(row[0])) if cfg != null else -1
+		var said := "--"
+		var cap := false
+		var dashed := false
+		if live:
+			said = "press a button"
+		elif has >= 0:
+			said = button_cap(has)
+			cap = true
+		elif state == &"lost":
+			said = "not bound"
+			cap = true
+			dashed = true
+		out.append({"label": String(row[1]), "said": said, "cap": cap, "dashed": dashed,
+			"tint": tint})
+	return out
 
 var cfg: PadConfig
 var _at := 0
@@ -275,38 +338,34 @@ func _draw() -> void:
 	# order matches the order the walk-through asks in. Filling across would
 	# put "move up" and "move down" side by side and the eye would follow the
 	# wrong one.
-	var split := left_rows()
+	var rows := display_rows()
+	var split := int(ceil(rows.size() / 2.0))
 	var col_w := (PANEL.x - PAD * 2.0 - COL_GAP) * 0.5
 	var top := y
-	for i in PadConfig.WALK.size():
-		var row: Array = PadConfig.WALK[i]
+	for i in rows.size():
+		var row: Dictionary = rows[i]
 		var col := 0 if i < split else 1
 		var col_x: float = at.x + PAD + float(col) * (col_w + COL_GAP)
 		var row_y: float = top + float(i - (split if col == 1 else 0)) * ROW_H
-
-		var state := row_state(i)
-		var live := state == &"live"
-		var tint := Color(0.95, 0.82, 0.45) if live else Color(0.78, 0.76, 0.80)
-		if state == &"done":
-			tint = Color(0.60, 0.72, 0.60)
-		elif state == &"lost":
-			tint = LOST_TINT
-		draw_string(font, Vector2(col_x, row_y), String(row[1]),
+		var tint: Color = row["tint"]
+		draw_string(font, Vector2(col_x, row_y), String(row["label"]),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
-		var said := "press a button" if live else "--"
-		var has := cfg.button_for_key(int(row[0])) if cfg != null else -1
-		if not live and has >= 0:
-			said = PadConfig.button_name(has)
-		elif state == &"lost":
-			said = "unbound"
 		# Right-aligned within its own column rather than the panel, or the
-		# left column's bindings would sit in the right column's labels.
-		draw_string(font, Vector2(col_x, row_y), said,
-			HORIZONTAL_ALIGNMENT_RIGHT, col_w, font_size, tint)
+		# left column's bindings would sit in the right column's labels. A
+		# binding is a cap; "not bound" a dashed one; the rest plain words.
+		var said := String(row["said"])
+		if bool(row["cap"]):
+			var w := Keycap.width(said, font, font_size)
+			Keycap.draw(self, Vector2(col_x + col_w - w, row_y), said, font, font_size,
+				tint, bool(row["dashed"]))
+		else:
+			draw_string(font, Vector2(col_x, row_y), said,
+				HORIZONTAL_ALIGNMENT_RIGHT, col_w, font_size, tint)
 
-	y = top + float(split) * ROW_H + 6.0
-	draw_string(font, Vector2(at.x + PAD, y), KEY_FOOTER,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Color(0.58, 0.56, 0.62))
+	# The footers sit under the LONGEST possible column, not the drawn one,
+	# so collapsing the move rows never moves them about.
+	y = top + float(left_rows()) * ROW_H + 6.0
+	_draw_foot(Vector2(at.x + PAD, y), KEY_FOOT, Color(0.58, 0.56, 0.62))
 
 	# The pad's own way out, said in the pad's own words.
 	#
@@ -320,5 +379,23 @@ func _draw() -> void:
 	# Hidden mid-walk-through because it is not true then: every button binds
 	# while listening, including these two.
 	if not _listening:
-		draw_string(font, Vector2(at.x + PAD, y + 20.0), pad_footer(),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Color(0.55, 0.62, 0.72))
+		_draw_foot(Vector2(at.x + PAD, y + 24.0), pad_foot(), Color(0.55, 0.62, 0.72))
+
+## A footer of caps and what each does, left to right.
+func _draw_foot(pos: Vector2, foot: Array, tint: Color) -> void:
+	var x := pos.x
+	var fs := font_size - 4
+	for pair in foot:
+		x += Keycap.draw(self, Vector2(x, pos.y), String(pair[0]), font, fs, tint) + 6.0
+		draw_string(font, Vector2(x, pos.y), String(pair[1]), HORIZONTAL_ALIGNMENT_LEFT,
+			-1, fs, tint)
+		x += font.get_string_size(String(pair[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 18.0
+
+## The width a footer takes, for the suite.
+func foot_width(foot: Array) -> float:
+	var x := 0.0
+	var fs := font_size - 4
+	for pair in foot:
+		x += Keycap.width(String(pair[0]), font, fs) + 6.0
+		x += font.get_string_size(String(pair[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 18.0
+	return x - 18.0

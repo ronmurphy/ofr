@@ -7524,9 +7524,11 @@ func _test_panels_do_not_overflow() -> void:
 	# the row count. An odd number of bindings leaves the extra on the left.
 	# +20 for the pad footer, which is drawn under the keyboard one whenever
 	# the panel is not mid-walk-through.
+	# +24 for the pad footer, a row of caps drawn 24px under the keyboard one,
+	# and +5 for a cap's reach below its baseline (Keycap.H - 15).
 	var pad_bottom: float = PadPanel.PAD + PadPanel.font_size_default() \
 		+ 2.0 * PadPanel.ROW_H + PadPanel.left_rows() * PadPanel.ROW_H + 6.0 \
-		+ 20.0
+		+ 24.0 + 5.0
 	var pad_room: float = PadPanel.PANEL.y - PadPanel.PAD
 	check("controller rows fit the panel (%d rows in %d columns)"
 		% [PadConfig.WALK.size(), 2],

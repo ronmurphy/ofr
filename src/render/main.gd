@@ -466,6 +466,7 @@ func _process(delta: float) -> void:
 	sidebar.help_loud = Sidebar.help_is_loud(state)
 	sidebar.show_minimap = _map_view == diorama
 	legend.pad_input = _pad_input
+	menu.pad_input = _pad_input
 	trade.pad_input = _pad_input
 	talk.pad_input = _pad_input
 	name_entry.pad_input = _pad_input
@@ -1343,6 +1344,7 @@ func _bind_state(s: GameState) -> void:
 	# So the contextual block can name BUTTONS on a handheld, not letters.
 	sidebar.pad_cfg = pad.cfg
 	legend.pad_cfg = pad.cfg
+	menu.pad_cfg = pad.cfg
 	inventory.pad_cfg = pad.cfg
 	here.state = s
 	trade.state = s

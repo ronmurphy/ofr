@@ -2047,6 +2047,99 @@ func _test_the_screens_review() -> void:
 		legend.wanted_height() <= 852.0)
 	legend.free()
 
+	# THE PAUSE MENU: who and where beside the title, caps on a keyboard, a
+	# chosen row and a hint line on a pad -- all measured.
+	var menu := MenuPanel.new()
+	menu.font = face
+	menu.font_bold = bold
+	menu.size = Vector2(1600, 900)
+	var mgs := GameState.new(81)
+	mgs.new_game()
+	mgs.player_name = "Brandybuck12"
+	mgs.depth = 10
+	mgs.ascending = true
+	mgs.player.level = 20
+	menu.state = mgs
+	var mfs := MenuPanel.font_size_default()
+	var title_w := bold.get_string_size("PAUSED", HORIZONTAL_ALIGNMENT_LEFT, -1, mfs).x
+	var where_room: float = MenuPanel.PANEL.x - MenuPanel.PAD * 2.0 - title_w - 12.0
+	var where_w := face.get_string_size(menu.whereabouts(), HORIZONTAL_ALIGNMENT_LEFT, -1, mfs - 4).x
+	check("  a long name's whereabouts fit beside the title (\"%s\" %.0f <= %.0f px)"
+		% [menu.whereabouts(), where_w, where_room], where_w <= where_room
+		and menu.whereabouts().contains("depth 10 UP") and menu.whereabouts().contains("level 20"))
+	mgs.won = true
+	check("  an escaped run says so", menu.whereabouts().ends_with("escaped"))
+	mgs.won = false
+	check("  the help row is 'help: every key'",
+		MenuPanel.OPTIONS_DESKTOP[1][1] == "help: every key" and MenuPanel.OPTIONS_WEB[1][1] == "help: every key")
+	menu.pad_input = false
+	menu.open()
+	check("  on a keyboard the rows keep their letters and nothing is chosen",
+		menu.row_prefix(0) == "c" and menu._hover == -1)
+	menu.pad_input = true
+	menu.pad_cfg = PadConfig.new()
+	menu.open()
+	check("  on a pad the letters go and the first row is chosen",
+		menu.row_prefix(0) == "" and menu._hover == 0)
+	var hint_w := PadGlyphs.width(menu.pad_hint(), face, mfs - 4)
+	check("  the pad's hint names pick and back, and fits (%.0f <= %.0f px)"
+		% [hint_w, MenuPanel.PANEL.x - MenuPanel.PAD * 2.0],
+		menu.pad_hint().contains("pick") and menu.pad_hint().contains("back")
+		and hint_w <= MenuPanel.PANEL.x - MenuPanel.PAD * 2.0)
+	var widest_opt := 0.0
+	for options in [MenuPanel.OPTIONS_DESKTOP, MenuPanel.OPTIONS_WEB]:
+		for row in options:
+			widest_opt = maxf(widest_opt, Keycap.width(String(row[0]), face, mfs - 2) + MenuPanel.TEXT_X
+				+ face.get_string_size(String(row[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, mfs).x)
+	check("  every row with its cap fits the panel (%.0f <= %.0f px)"
+		% [widest_opt, MenuPanel.PANEL.x - MenuPanel.PAD * 2.0],
+		widest_opt <= MenuPanel.PANEL.x - MenuPanel.PAD * 2.0)
+	menu.free()
+
+	# THE CONTROLLER SCREEN: one move row while the stick does the moving,
+	# caps for bindings, a dashed cap for a lost one, footers that fit.
+	var pad := PadPanel.new()
+	pad.font = face
+	pad.font_bold = bold
+	pad.size = Vector2(1600, 900)
+	var cfg := PadConfig.new()
+	pad.open(cfg)
+	var rows := pad.display_rows()
+	check("  with nothing bound to the moves, they are one row: the stick",
+		rows.size() == PadConfig.WALK.size() - 3 and rows[0]["label"] == "move"
+		and String(rows[0]["said"]).ends_with("left stick") and bool(rows[0]["cap"]), str(rows.size()))
+	var caps := 0
+	for r in rows:
+		if bool(r["cap"]):
+			caps += 1
+	check("  every bound action is a cap (%d of %d)" % [caps, rows.size()], caps >= rows.size() - 2)
+	pad._listening = true
+	check("  mid-rebind the walk shows all four move rows again",
+		pad.display_rows().size() == PadConfig.WALK.size())
+	pad._listening = false
+	var pfs := PadPanel.font_size_default()
+	var col_w := (PadPanel.PANEL.x - PadPanel.PAD * 2.0 - PadPanel.COL_GAP) * 0.5
+	var widest_pair := 0.0
+	var widest_cap := 0.0
+	for b in PadConfig.BUTTON_GLYPHS:
+		widest_cap = maxf(widest_cap, Keycap.width(PadPanel.button_cap(int(b)), face, pfs))
+	widest_cap = maxf(widest_cap, Keycap.width("not bound", face, pfs))
+	for row in PadConfig.WALK:
+		widest_pair = maxf(widest_pair, face.get_string_size(String(row[1]),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, pfs).x + 8.0 + widest_cap)
+	check("  the widest label beside the widest cap fits a column (%.0f <= %.0f px)"
+		% [widest_pair, col_w], widest_pair <= col_w)
+	var pad_wide: float = PadPanel.PANEL.x - PadPanel.PAD * 2.0
+	for foot in [PadPanel.KEY_FOOT, PadPanel.pad_foot()]:
+		var fw := pad.foot_width(foot)
+		check("  a footer of caps fits the panel (%.0f <= %.0f px)" % [fw, pad_wide], fw <= pad_wide)
+	var words := ""
+	for pair in PadPanel.KEY_FOOT:
+		words += "%s  %s     " % [pair[0], pair[1]]
+	check("  the caps footer says what the measured string says",
+		words.strip_edges() == PadPanel.KEY_FOOTER)
+	pad.free()
+
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:
 	var d = scene.diorama

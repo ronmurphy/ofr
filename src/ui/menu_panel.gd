@@ -26,6 +26,12 @@ static func font_size_default() -> int:
 	return 17
 
 var state: GameState
+## Which device is in the player's hands, set by main.gd as for the sidebar.
+## On a pad the letters mean nothing, so the rows drop them, the highlight
+## starts on the first row, and a line under the rows names the two buttons
+## that pick and leave (the screens review, 2026-10-01).
+var pad_cfg: PadConfig = null
+var pad_input := false
 
 ## Grown a row for the controller option, and another for text size.
 ##
@@ -34,13 +40,17 @@ var state: GameState
 ## claimed that it did -- a comment asserting a measurement that was never
 ## taken. _test_panels_do_not_overflow now asserts the rows fit too, so this is
 ## the one place the height is stated and the claim is true again.
-const PANEL := Vector2(460.0, 386.0)
+## 404: 386 plus the pad's hint line under the rows (the screens review).
+const PANEL := Vector2(460.0, 404.0)
+## Where the rows' text starts: past a keycap on a keyboard, and the same
+## place on a pad, so the two layouts line up.
+const TEXT_X := 40.0
 const PAD := 26.0
 const ROW_H := 34.0
 
 const OPTIONS_DESKTOP := [
 	["c", "continue", "resume"],
-	["h", "help -- every key", "help"],
+	["h", "help: every key", "help"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
 	["m", "open the morgue folder", "morgue"],
@@ -53,7 +63,7 @@ const OPTIONS_DESKTOP := [
 ## the same thing, for someone who wants to be told it worked.
 const OPTIONS_WEB := [
 	["c", "continue", "resume"],
-	["h", "help -- every key", "help"],
+	["h", "help: every key", "help"],
 	["g", "controller", "pad"],
 	["t", "text size", "text"],
 	["m", "download the morgue", "morgue"],
@@ -83,8 +93,33 @@ func _ready() -> void:
 
 func open() -> void:
 	visible = true
-	_hover = -1
+	# A pad has no letters to press, so it opens with a row already chosen.
+	_hover = 0 if pad_input else -1
 	queue_redraw()
+
+## The letter a row prints before its name: none on a pad.
+func row_prefix(i: int) -> String:
+	if pad_input or i < 0 or i >= OPTIONS.size():
+		return ""
+	return String(OPTIONS[i][0])
+
+## Who you are and where, on the title's line: the thing a player coming back
+## to a suspended run wants to know before anything else.
+func whereabouts() -> String:
+	if state == null:
+		return ""
+	var name := state.player_name if state.player_name != "" else "OFR"
+	if state.won:
+		return "%s \u00b7 escaped" % name
+	return "%s \u00b7 depth %d%s \u00b7 level %d" % [name, state.depth,
+		" UP" if state.ascending else "", state.player.level]
+
+## The pad's way round the menu, in its own pictures: pick, and back.
+func pad_hint() -> String:
+	if pad_cfg == null:
+		return ""
+	return "%s pick     %s back" % [pad_cfg.icon(KEY_PERIOD, true),
+		pad_cfg.icon(KEY_ESCAPE, true)]
 
 func close() -> void:
 	visible = false
@@ -188,6 +223,12 @@ func _draw() -> void:
 	var asc := font.get_ascent(font_size)
 	draw_string(font_bold, p.position + Vector2(PAD, PAD + asc), "PAUSED",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.STAIRS)
+	# Right of the title, in the room the title leaves.
+	var title_w := font_bold.get_string_size("PAUSED", HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size).x
+	draw_string(font, p.position + Vector2(PAD + title_w + 12.0, PAD + asc), whereabouts(),
+		HORIZONTAL_ALIGNMENT_RIGHT, PANEL.x - PAD * 2.0 - title_w - 12.0, font_size - 4,
+		Palette.UI_DIM)
 	var note := NOTE_WEB if Platform.is_web() else NOTE_DESKTOP
 	draw_string(font, p.position + Vector2(PAD, PAD + 26.0 + asc), note,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)
@@ -220,8 +261,21 @@ func _draw() -> void:
 		if i == _hover:
 			draw_rect(r, Color(Palette.CURSOR, 0.13), true)
 		var base := r.position + Vector2(0, font.get_ascent(font_size) + 6.0)
-		draw_string(font, base, "%s)" % OPTIONS[i][0],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_DIM)
-		draw_string(font, base + Vector2(36.0, 0.0), OPTIONS[i][1],
+		# A keycap on a keyboard; on a pad, a mark on the chosen row instead.
+		var prefix := row_prefix(i)
+		if prefix != "":
+			Keycap.draw(self, base, prefix, font, font_size - 2, Palette.STAIRS)
+		elif i == _hover:
+			draw_string(font, base, "\u203a", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
+				Palette.CURSOR)
+		# Abandoning is the one row that ends a run: it wears a warning.
+		var tint: Color = Palette.UI_TEXT
+		if String(OPTIONS[i][2]) == "new":
+			tint = Color("e08a8a")
+		draw_string(font, base + Vector2(TEXT_X, 0.0), OPTIONS[i][1],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
-			Color.WHITE if i == _hover else Palette.UI_TEXT)
+			Color.WHITE if i == _hover else tint)
+	# Under the rows, on a pad: how to pick and how to leave.
+	if pad_input and pad_cfg != null:
+		PadGlyphs.draw(self, p.position + Vector2(PAD, PANEL.y - PAD - 20.0), pad_hint(),
+			font, font_size - 4, Palette.UI_DIM)
