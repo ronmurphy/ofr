@@ -940,3 +940,30 @@ Same rule as the UI review: every new string measured in the quick suite.
   (panel +12px; the overflow guard's footer sum follows).
 Not done, by choice: WASD is not a movement layout (w swaps weapons), so
 the cycle is three layouts, not four.
+
+**The 3D look -- BUILT on branch `look-3d` (2026-10-01), Brad to play on
+both tiers and merge.** The canvas: https://claude.ai/artifact/ShcuL5rvjdoAoBCPcE61Pm
+The pictures stay; the surfaces and the light change. Built:
+- The surface shader is LIT now: the sim's light map goes out as emission at
+  MAP_WEIGHT (what is seen, remembered, and how far light reaches stays the
+  sim's), and engine lights add direction, masked by `seen` in light() so a
+  remembered wall is never lit by a fire out of sight. Relief: the pattern's
+  swell, pits and joints tilt the normal, so grooves catch the light.
+- OmniLight3D on the sim's own sources (the torch follows the drawn player;
+  braziers, fungi), nearest first, LIGHT_CAP 8 on the web (Compatibility
+  lights a mesh with 8 and every wall is one mesh), SHADOW_CAP 4 shadows.
+- Dark at the foot of every wall: baked gradient strips (one MultiMesh).
+- Embers off the nearest lit braziers (CPUParticles3D), not on "still".
+- The last pass: vignette and grain on a ColorRect reading the screen
+  (hint_screen_texture -- a ColorRect's own TEXTURE is a white pixel, which
+  the first version painted the whole view with).
+- Brad's two tiers from one project: project.godot runs Forward+ on a PC,
+  Compatibility on the web and mobile, with fallback_to_opengl3; the view
+  decides `rich` from the renderer actually running (and never headless).
+  Rich adds: glow (Compatibility's glow lifted the whole backdrop to grey --
+  measured -- so the web keeps its halo quads), SSAO, soft shadows, a
+  FogVolume per purple fungus for a volumetric miasma over the flat quad.
+- tools/probes/screenshot_look.gd renders the room on either renderer with
+  the screen locked (--rendering-method gl_compatibility | forward_plus).
+Not done, by choice: creatures stay icon billboards; no new texture files
+(the relief is procedural); no SDFGI (a setting later, if wanted).

@@ -48,6 +48,29 @@ const TURN_TIME := 0.18
 const FOLLOW_HINT := "3D · camera follows you     Q / d-pad up: classic     ? keys"
 const DIORAMA_HINT := "3D     [ / ] or right stick: turn     Q / d-pad up: classic     ? keys"
 const SURFACE_SHADER: Shader = preload("res://src/render/shaders/diorama_surface.gdshader")
+const POST_SHADER: Shader = preload("res://src/render/shaders/diorama_post.gdshader")
+
+## THE 3D LOOK (2026-10-01, from the canvas). The sim's light list becomes
+## real OmniLight3Ds so faces brighten toward the fire and blocks cast
+## shadows; the surface shader keeps the light map as emission at MAP_WEIGHT
+## and masks the lights by what is seen. The Compatibility renderer (the web)
+## lights at most LIGHT_CAP per mesh, and every wall on the floor is one
+## mesh, so the nearest LIGHT_CAP sources to the player get a light, the
+## nearest SHADOW_CAP of those a shadow. Forward+ (a PC, Brad's two tiers)
+## has no such cap and gets the extras in _apply_tier.
+const LIGHT_CAP := 8
+const SHADOW_CAP := 4
+const MAP_WEIGHT := 0.55
+const LIGHT_ENERGY := 1.4
+## How far a sim radius reaches as an engine light: a little past it, so the
+## directional light fades out before the sim's reach ends.
+const RANGE_PER_CELL := 1.15
+## A dark strip along the foot of every wall, the way corners catch no light.
+## Baked, because screen-space occlusion is not in the Compatibility renderer.
+const AO_DEPTH := 0.32
+const AO_ALPHA := 0.55
+## Embers off every lit brazier in view, on "simple" and "full".
+const EMBERS_PER_BRAZIER := 14
 const ASCII_GROUND_TILES := [
 	Tiles.FLOOR, Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
 	Tiles.CAVE_FLOOR, Tiles.RUBBLE, Tiles.WATER, Tiles.MUD, Tiles.BONES,
@@ -108,6 +131,20 @@ var _light_tex: ImageTexture
 var _viewport: SubViewport
 ## Kept so a rebuild can give the backdrop this floor's colour by region.
 var _environment: Environment
+## The engine lights this rebuild placed, and what each was placed for.
+var _lights: Array[OmniLight3D] = []
+var _torch_light: OmniLight3D = null
+## The occlusion strips, counted for the suite.
+var ao_count := 0
+var ember_count := 0
+## True on Forward+ (a PC): screen-space occlusion, volumetric miasma, soft
+## shadows. Decided from the renderer actually running, so a PC that fell
+## back to OpenGL gets the web look rather than a broken one.
+var rich := false
+var _post: ColorRect = null
+var _post_material: ShaderMaterial = null
+var _ao_material: StandardMaterial3D = null
+var _ao_quad: PlaneMesh = null
 var _camera: Camera3D
 var _camera_rig: Node3D
 var _scene_root: Node3D
@@ -223,17 +260,37 @@ func _build_viewport() -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	container.add_child(_viewport)
 	_viewport.own_world_3d = true
+	# The last pass: a vignette and a little grain over the finished frame.
+	_post = ColorRect.new()
+	_post.name = "Post"
+	_post.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_post.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_post_material = ShaderMaterial.new()
+	_post_material.shader = POST_SHADER
+	_post.material = _post_material
+	container.add_child(_post)
 
-	# No ambient light and no SSAO: every surface is unshaded and lit by the
-	# light-map texture, so neither would change a pixel -- SSAO would only
-	# cost a full-screen pass.
 	_environment = Environment.new()
 	_environment.background_mode = Environment.BG_COLOR
 	_environment.background_color = Palette.BG
 	_environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# A whisper of ambient, so the engine lights have something to lift from;
+	# the light map's emission carries the rest of the dark.
+	_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_environment.ambient_light_color = Color(0.5, 0.55, 0.7)
+	_environment.ambient_light_energy = 0.08
+	# Glow: fungus, embers and the pools of magic bleed a little light. On
+	# the Compatibility renderer its bloom lifted the whole backdrop to grey
+	# (measured with the probe, 2026-10-01), so it is a PC-tier feature --
+	# _apply_tier decides -- and the web keeps the halo quads it draws anyway.
+	_environment.glow_enabled = false
+	_environment.glow_intensity = 0.55
+	_environment.glow_bloom = 0.08
+	_environment.glow_hdr_threshold = 0.95
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = _environment
 	_viewport.add_child(world_environment)
+	_apply_tier()
 
 	_scene_root = Node3D.new()
 	_scene_root.name = "Map"
@@ -314,6 +371,25 @@ func _build_viewport() -> void:
 	_mote_mesh.radial_segments = 8
 	_mote_mesh.rings = 4
 	_mote_material = _fx_material.duplicate()
+	# The occlusion strip: a quad fading from dark at the wall to nothing a
+	# third of a cell out.
+	var ao_fall := Gradient.new()
+	ao_fall.set_color(0, Color(0, 0, 0, AO_ALPHA))
+	ao_fall.set_color(1, Color(0, 0, 0, 0))
+	var ao_tex := GradientTexture2D.new()
+	ao_tex.gradient = ao_fall
+	ao_tex.fill = GradientTexture2D.FILL_LINEAR
+	ao_tex.fill_from = Vector2(0.0, 0.5)
+	ao_tex.fill_to = Vector2(1.0, 0.5)
+	ao_tex.width = 32
+	ao_tex.height = 4
+	_ao_quad = PlaneMesh.new()
+	_ao_quad.size = Vector2(AO_DEPTH, CELL)
+	_ao_material = StandardMaterial3D.new()
+	_ao_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ao_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ao_material.albedo_texture = ao_tex
+	_ao_material.render_priority = PRIORITY_FEATURE - 2
 
 	_camera_rig = Node3D.new()
 	_camera_rig.name = "CameraRig"
@@ -787,6 +863,9 @@ func _rebuild_world() -> void:
 	_build_cell_light()
 	light.upload(state, memory)
 	_add_multimeshes(batches)
+	_add_lights()
+	_add_occlusion()
+	_add_embers()
 	_add_dots()
 	_add_miasma()
 	_add_bodies()
@@ -892,6 +971,157 @@ func _add_multimeshes(batches: Dictionary) -> void:
 	_leaf_mesh.size = Vector3(0.78, 1.12, 0.12)
 	_leaf_material = _surface_material(2)
 
+## THE ENGINE LIGHTS. The torch and the sim's static sources, nearest first,
+## as OmniLight3Ds -- up to LIGHT_CAP, because the Compatibility renderer
+## lights one mesh with that many and every wall is one mesh. The nearest
+## SHADOW_CAP cast shadows. Only sources in view: a remembered brazier lights
+## nothing (the shader masks that too, belt and braces).
+func _add_lights() -> void:
+	_lights.clear()
+	_torch_light = null
+	var map := state.map
+	var sources: Array = []
+	for src in state.static_lights:
+		if map.is_visible(src.x, src.y):
+			sources.append(src)
+	var here := Vector2(state.player.x, state.player.y)
+	sources.sort_custom(func(a, b):
+		return here.distance_squared_to(Vector2(a.x, a.y)) < here.distance_squared_to(Vector2(b.x, b.y)))
+	var cap := LIGHT_CAP if not rich else 32
+	var placed: Array = []
+	if state.player.light != null and state.torch_lit:
+		placed.append(state.player.light)
+	for src in sources:
+		if placed.size() >= cap:
+			break
+		placed.append(src)
+	for i in placed.size():
+		var src: LightSource = placed[i]
+		var l := OmniLight3D.new()
+		l.name = "Light%d" % i
+		l.light_color = src.color
+		l.light_energy = LIGHT_ENERGY * src.intensity
+		l.omni_range = float(src.radius) * RANGE_PER_CELL
+		l.omni_attenuation = 1.4
+		l.shadow_enabled = i < SHADOW_CAP
+		if rich:
+			l.light_size = 0.35
+			l.shadow_blur = 1.5
+		# A hand's height over the floor: a torch held, a brazier's bowl.
+		l.position = Vector3(src.x + 0.5, 0.9 if src == state.player.light else 0.6, src.y + 0.5)
+		_scene_root.add_child(l)
+		_lights.append(l)
+		if src == state.player.light:
+			_torch_light = l
+
+## The dark at the foot of every wall: one strip per floor cell edge that
+## meets something solid, laid on the floor and fading out from the wall.
+func _add_occlusion() -> void:
+	ao_count = 0
+	var map := state.map
+	var strips: Array = []
+	for y in range(map.height):
+		for x in range(map.width):
+			if not map.is_visible(x, y) and not map.is_explored(x, y):
+				continue
+			var t := map.get_tile(x, y)
+			if not Tiles.is_walkable(t) or t == Tiles.DOOR_OPEN:
+				continue
+			for d in AXES:
+				var nx := x + d.x
+				var ny := y + d.y
+				if not map.in_bounds(nx, ny):
+					continue
+				var nt := map.get_tile(nx, ny)
+				if nt == Tiles.WALL or nt == Tiles.ROCK or nt == Tiles.DOOR_CLOSED:
+					strips.append([x, y, d])
+	if strips.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = _ao_quad
+	mm.instance_count = strips.size()
+	for i in strips.size():
+		var x: int = strips[i][0]
+		var y: int = strips[i][1]
+		var d: Vector2i = strips[i][2]
+		# The quad's gradient runs along its local x from dark to clear; turn
+		# it so the dark edge lies against the wall.
+		var angle := atan2(float(d.y), float(d.x))
+		var basis := Basis(Vector3.UP, -angle)
+		var centre := Vector3(x + 0.5 + d.x * (0.5 - AO_DEPTH * 0.5), SHADOW_Y + 0.004,
+			y + 0.5 + d.y * (0.5 - AO_DEPTH * 0.5))
+		mm.set_instance_transform(i, Transform3D(basis, centre))
+	ao_count = strips.size()
+	var node := MultiMeshInstance3D.new()
+	node.name = "Occlusion"
+	node.multimesh = mm
+	node.material_override = _ao_material
+	_scene_root.add_child(node)
+
+## Embers rising off the lit braziers you can see, on simple and full.
+func _add_embers() -> void:
+	ember_count = 0
+	if not Effects.any():
+		return
+	var map := state.map
+	var here := Vector2(state.player.x, state.player.y)
+	var braziers: Array = []
+	for y in range(map.height):
+		for x in range(map.width):
+			if map.get_tile(x, y) == Tiles.BRAZIER and map.is_visible(x, y):
+				braziers.append(Vector2i(x, y))
+	braziers.sort_custom(func(a, b):
+		return here.distance_squared_to(Vector2(a)) < here.distance_squared_to(Vector2(b)))
+	for i in mini(braziers.size(), 6):
+		var c: Vector2i = braziers[i]
+		var p := CPUParticles3D.new()
+		p.name = "Embers%d" % i
+		p.amount = EMBERS_PER_BRAZIER
+		p.lifetime = 1.6
+		p.preprocess = 1.0
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		p.emission_sphere_radius = 0.12
+		p.direction = Vector3.UP
+		p.spread = 18.0
+		p.initial_velocity_min = 0.5
+		p.initial_velocity_max = 1.1
+		p.gravity = Vector3(0.0, 0.25, 0.0)
+		p.scale_amount_min = 0.025
+		p.scale_amount_max = 0.05
+		p.color = Color(1.0, 0.62, 0.22)
+		p.mesh = _mote_mesh
+		var mat := _fx_material.duplicate()
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.5, 0.15)
+		mat.emission_energy_multiplier = 2.0
+		p.material_override = mat
+		p.position = Vector3(c.x + 0.5, 0.55, c.y + 0.5)
+		_scene_root.add_child(p)
+		ember_count += p.amount
+
+## What the renderer running can do beyond the web's (Brad's two tiers): on
+## Forward+ the environment gains screen-space occlusion and volumetric fog
+## for the miasma, and the lights soft edges. Decided once, from the
+## renderer in use rather than the platform, so a fallback to OpenGL on a
+## PC gets the web look rather than settings that do nothing.
+func _apply_tier() -> void:
+	# Headless reports the project's configured method while drawing
+	# nothing, so the suite would read a PC it is not running on.
+	rich = RenderingServer.get_current_rendering_method() == "forward_plus" \
+		and DisplayServer.get_name() != "headless"
+	if _environment == null:
+		return
+	_environment.glow_enabled = rich
+	_environment.glow_intensity = 0.35
+	_environment.glow_hdr_threshold = 1.1
+	_environment.ssao_enabled = rich
+	_environment.ssao_radius = 0.8
+	_environment.ssao_intensity = 1.6
+	_environment.volumetric_fog_enabled = rich
+	_environment.volumetric_fog_density = 0.0
+	_environment.volumetric_fog_length = 48.0
+
 ## A surface material for this rebuild's world: the light, memory, light-that-
 ## moves and clock, as every mesh in it is drawn with. Kept in
 ## _surface_materials so the clock reaches it each frame.
@@ -912,6 +1142,8 @@ func _surface_material(surface_style: int) -> ShaderMaterial:
 	material.set_shader_parameter("motion", _motion_level())
 	material.set_shader_parameter("t",
 		anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0)
+	material.set_shader_parameter("map_weight", MAP_WEIGHT)
+	material.set_shader_parameter("linear_light", rich)
 	_surface_materials.append(material)
 	return material
 
@@ -1145,6 +1377,26 @@ func _add_miasma() -> void:
 	if miasma_count == 0:
 		_miasma_image = null
 		return
+	if rich:
+		# On Forward+ the cloud is real fog the torch shines through: one
+		# FogVolume over each purple fungus, reaching its eight neighbours.
+		# The flat quad still goes down beneath it, so the cloud's EDGE stays
+		# the cell edge the sim poisons by.
+		var fog_mat := FogMaterial.new()
+		fog_mat.density = 0.8
+		fog_mat.albedo = Color(Palette.MIASMA.r, Palette.MIASMA.g, Palette.MIASMA.b)
+		fog_mat.emission = Color(Palette.MIASMA.r, Palette.MIASMA.g, Palette.MIASMA.b) * 0.12
+		fog_mat.edge_fade = 0.45
+		for y in range(map.height):
+			for x in range(map.width):
+				if map.get_tile(x, y) != Tiles.FUNGUS_PURPLE or not map_visible(Vector2i(x, y)):
+					continue
+				var fog := FogVolume.new()
+				fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+				fog.size = Vector3(2.4, 0.8, 2.4)
+				fog.material = fog_mat
+				fog.position = Vector3(x + 0.5, 0.5, y + 0.5)
+				_scene_root.add_child(fog)
 	_miasma_texture = ImageTexture.create_from_image(_miasma_image)
 	_miasma_material = StandardMaterial3D.new()
 	_miasma_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1457,6 +1709,13 @@ func _update_dynamic() -> void:
 		(p[0] as Label3D).modulate = Color(colour, 1.0).clamp()
 	var up := _camera.global_transform.basis.y
 	var toward_camera := _camera.global_transform.basis.z
+	# The torch goes where you are drawn, mid-glide included.
+	if _torch_light != null:
+		var at := _floor_at(_drawn_cell(state.player))
+		_torch_light.position = Vector3(at.x, 0.9, at.z)
+	if _post_material != null and Effects.any():
+		_post_material.set_shader_parameter("seed",
+			fmod(Time.get_ticks_msec() / 1000.0, 997.0) * 13.0)
 	for e in _creatures:
 		var nodes: Dictionary = _creatures[e]
 		var feet := _floor_at(_drawn_cell(e))

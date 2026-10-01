@@ -2140,6 +2140,89 @@ func _test_the_screens_review() -> void:
 		words.strip_edges() == PadPanel.KEY_FOOTER)
 	pad.free()
 
+## THE 3D LOOK (2026-10-01): the sim's lights become engine lights, capped
+## for the web; the dark at a wall's foot is laid down; embers rise; the
+## post pass is there; the look stays information-first.
+func _test_the_3d_look(scene: Control) -> void:
+	print("-- the 3D look")
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	gs.torch_lit = true
+	# Vision first (it makes the torch and the light map), THEN everything
+	# in view: the other order recomputes sight and hides the braziers again.
+	gs._gather_lights()
+	gs.update_vision()
+	gs.map.set_all_visible()
+	var was_mode := Effects.mode()
+	Effects.set_mode(Effects.Mode.TIMERS)
+	d._rebuild_world()
+	check("  headless is the web tier: not rich", not d.rich)
+	var in_view := 0
+	for src in gs.static_lights:
+		if gs.map.is_visible(src.x, src.y):
+			in_view += 1
+	check("  precondition: this floor has light sources in view (%d)" % in_view, in_view >= 2)
+	check("  the lights are capped for the web (%d <= %d)" % [d._lights.size(), DioramaView.LIGHT_CAP],
+		d._lights.size() <= DioramaView.LIGHT_CAP and d._lights.size() >= 2)
+	check("  the torch is one of them, over the player",
+		d._torch_light != null and d._torch_light.position.distance_to(
+			Vector3(gs.player.x + 0.5, 0.9, gs.player.y + 0.5)) < 0.01)
+	var shadows := 0
+	var bad := false
+	for l in d._lights:
+		if l.shadow_enabled:
+			shadows += 1
+		if l.omni_range <= 0.0 or l.light_energy <= 0.0:
+			bad = true
+	check("  the nearest %d cast shadows, no more" % DioramaView.SHADOW_CAP,
+		shadows == mini(DioramaView.SHADOW_CAP, d._lights.size()) and not bad)
+	# The nearest sources come first: no placed light is farther than an
+	# unplaced visible one.
+	var here := Vector2(gs.player.x, gs.player.y)
+	var farthest_placed := 0.0
+	for l in d._lights:
+		if l != d._torch_light:
+			farthest_placed = maxf(farthest_placed,
+				here.distance_to(Vector2(l.position.x - 0.5, l.position.z - 0.5)))
+	var nearest_unplaced := INF
+	for src in gs.static_lights:
+		if not gs.map.is_visible(src.x, src.y):
+			continue
+		var taken := false
+		for l in d._lights:
+			if is_equal_approx(l.position.x, src.x + 0.5) and is_equal_approx(l.position.z, src.y + 0.5):
+				taken = true
+		if not taken:
+			nearest_unplaced = minf(nearest_unplaced, here.distance_to(Vector2(src.x, src.y)))
+	check("  and they are the nearest ones", farthest_placed <= nearest_unplaced + 0.001,
+		"%.1f placed vs %.1f unplaced" % [farthest_placed, nearest_unplaced])
+	gs.torch_lit = false
+	d._rebuild_world()
+	check("  a torch doused places no torch light", d._torch_light == null)
+	gs.torch_lit = true
+	d._rebuild_world()
+	check("  the dark at the foot of the walls is laid (%d strips)" % d.ao_count, d.ao_count > 0)
+	var braziers := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.BRAZIER:
+				braziers += 1
+	check("  embers rise off the braziers in view (%d from %d)" % [d.ember_count, braziers],
+		(d.ember_count > 0) == (braziers > 0))
+	Effects.set_mode(Effects.Mode.NONE)
+	d._rebuild_world()
+	check("  on still, no embers", d.ember_count == 0)
+	Effects.set_mode(was_mode)
+	d._rebuild_world()
+	check("  glow follows the tier (off on the web), and the post pass is over the frame",
+		d._environment.glow_enabled == d.rich and d._post != null and d._post.material != null)
+	check("  the surface shader still carries the light map at MAP_WEIGHT",
+		not d._surface_materials.is_empty()
+		and is_equal_approx(float(d._surface_materials[0].get_shader_parameter("map_weight")), DioramaView.MAP_WEIGHT))
+	check("  the lights are sized from the sim's reach",
+		d._torch_light != null and gs.player.light != null and is_equal_approx(d._torch_light.omni_range,
+			float(gs.player.light.radius) * DioramaView.RANGE_PER_CELL))
+
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:
 	var d = scene.diorama
@@ -2605,5 +2688,6 @@ func _test_both_views_share_one_moment() -> void:
 		levels == {Effects.Mode.NONE: 0, Effects.Mode.TIMERS: 1, Effects.Mode.SHADERS: 2},
 		str(levels))
 	await _test_3d_extras(scene)
+	_test_the_3d_look(scene)
 	scene.queue_free()
 	await process_frame

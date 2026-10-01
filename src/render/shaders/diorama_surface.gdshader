@@ -1,10 +1,15 @@
 shader_type spatial;
-// ONE LIGHT. The simulation's own light map is the only light in the 3D view:
-// it arrives as a texture, one texel per map cell, and is blended smoothly
-// between cells. No engine lights, so nothing here lights the dungeon a second
-// time, remembered ground keeps the classic view's memory colour instead of
-// falling to black, and there is no per-mesh light limit to run into.
-render_mode unshaded;
+// TWO LIGHTS, ONE TRUTH (the 3D look, 2026-10-01). The simulation's light map
+// still decides everything that is INFORMATION: whether a cell is seen, how it
+// is remembered, and the colour and reach of its light. It arrives as a
+// texture, one texel per map cell, blended smoothly between cells, and goes
+// out as EMISSION at `map_weight` -- so a lit floor reads lit with no engine
+// light near it. Engine lights (OmniLight3D, placed by DioramaView on the
+// SAME sources: the torch, the braziers, the fungi) add what a texel cannot:
+// a direction. Faces brighten toward the fire, grooves and pits catch it,
+// blocks cast shadows. Their contribution is masked by `seen` in light(), so
+// a remembered wall is never lit by a fire you cannot see.
+render_mode diffuse_lambert, specular_schlick_ggx;
 
 // The maths of moving light, shared with the classic view's block_anim.
 #include "res://src/render/shaders/breathe.gdshaderinc"
@@ -38,10 +43,27 @@ uniform sampler2D cell_extra : hint_default_black, filter_nearest, repeat_disabl
 // (and water catches the light and fungus glitters).
 uniform float t = 0.0;
 uniform int motion = 0;
+// How much of a seen cell's brightness the light map supplies as emission;
+// the engine lights supply the rest, with direction. 1.0 is the old look.
+uniform float map_weight = 0.55;
+// How much the engine lights add, and how deep the surface relief reads.
+uniform float light_weight = 1.0;
+uniform float relief = 1.0;
+// The palette is sRGB, and so is the light map. The Compatibility renderer
+// draws in sRGB and shows them as they are; Forward+ works in linear and
+// converts its output for the display, which lifted every mid-tone -- dark
+// stone far from any fire came out light grey (the first PC render,
+// 2026-10-01). On a linear renderer the view sets this and the colours are
+// taken to linear first, so both tiers show the same stone.
+uniform bool linear_light = false;
 
 varying vec3 world_position;
 varying vec3 world_normal;
 varying vec4 instance_tint;
+// Written in fragment(), read in light(): 1 in view, 0 remembered; and how
+// glossy this surface is (water shines, stone does not).
+varying float seen_v;
+varying float gloss_v;
 
 float hash31(vec3 p) {
 	p = fract(p * 0.1031);
@@ -91,6 +113,22 @@ void vertex() {
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize(mat3(MODEL_MATRIX) * NORMAL);
 	instance_tint = INSTANCE_CUSTOM;
+}
+
+// The surface's height, for its relief: the broad swell of the stone, small
+// pits, and on a floor a groove along every cell edge, so the joint the
+// pattern draws is also a groove the light falls into.
+float relief_height(vec3 p, int style, bool top) {
+	float h = value_noise(p * 2.2) * 0.5 + value_noise(p * 22.0) * 0.18;
+	if (style == 0 && top) {
+		vec2 edge = min(fract(p.xz), vec2(1.0) - fract(p.xz));
+		h -= (1.0 - smoothstep(0.02, 0.06, min(edge.x, edge.y))) * 0.35;
+	} else if (style == 1) {
+		vec2 bu = vec2(p.x + p.z, p.y) * vec2(2.0, 3.0);
+		vec2 be = min(fract(bu), vec2(1.0) - fract(bu));
+		h -= (1.0 - smoothstep(0.03, 0.08, min(be.x, be.y))) * 0.4;
+	}
+	return h;
 }
 
 void fragment() {
@@ -238,9 +276,48 @@ void fragment() {
 		* memory_strength * (1.0 - faded);
 	// A landmark (the stairs) arrives already in its remembered colour.
 	remembered = mix(remembered, surface, step(instance_tint.a, 0.75));
-	// Without engine lights every face of a box would be the same brightness
-	// and blocks would lose their shape. A fixed shade per face keeps it:
-	// tops brightest, then the faces along one axis, then the other.
+	// A fixed shade per face keeps a block's shape where no engine light
+	// reaches: tops brightest, then the faces along one axis, then the other.
 	float face = world_normal.y > 0.5 ? 1.0 : (abs(world_normal.z) > 0.5 ? 0.82 : 0.68);
-	ALBEDO = mix(remembered, lit, seen) * face;
+	// Information goes out as emission: the light map's colour on a seen
+	// cell (at map_weight, the lights supply the rest), the memory colour on
+	// a remembered one. The albedo is what the engine lights have to work
+	// with, and it is zero where nothing is seen.
+	vec3 emit = mix(remembered, lit * map_weight, seen) * face;
+	vec3 albedo = surface * face * seen;
+	if (linear_light) {
+		emit = pow(max(emit, vec3(0.0)), vec3(2.2));
+		albedo = pow(max(albedo, vec3(0.0)), vec3(2.2));
+	}
+	EMISSION = emit;
+	ALBEDO = albedo;
+	seen_v = seen;
+	gloss_v = (surface_style == 6 && world_normal.y > 0.78) ? 1.0 : 0.0;
+	ROUGHNESS = surface_style == 6 ? 0.15 : 0.95;
+	SPECULAR = surface_style == 6 ? 0.5 : 0.1;
+	// Relief: tilt the normal by the height's slope along the face's own two
+	// axes, so the light that reaches a face finds grooves and pits in it.
+	if (relief > 0.0 && surface_style != 6 && surface_style != 10) {
+		bool top = world_normal.y > 0.78;
+		vec3 ta = top ? vec3(1.0, 0.0, 0.0) : (abs(world_normal.x) > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0));
+		vec3 tb = top ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+		float e = 0.015;
+		float h0 = relief_height(world_position, surface_style, top);
+		float ha = relief_height(world_position + ta * e, surface_style, top);
+		float hb = relief_height(world_position + tb * e, surface_style, top);
+		vec3 bent = normalize(world_normal - (ta * (ha - h0) + tb * (hb - h0)) * (relief * 6.0));
+		NORMAL = normalize((VIEW_MATRIX * vec4(bent, 0.0)).xyz);
+	}
+}
+
+// Each engine light, masked by whether the cell is in view: Lambert on the
+// relief normal, and a glossy highlight on water only.
+void light() {
+	float n_dot_l = max(dot(NORMAL, LIGHT), 0.0);
+	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * ATTENUATION * n_dot_l * light_weight * seen_v;
+	if (gloss_v > 0.0) {
+		vec3 h = normalize(LIGHT + VIEW);
+		float spec = pow(max(dot(NORMAL, h), 0.0), 48.0);
+		SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * spec * 0.6 * seen_v;
+	}
 }
