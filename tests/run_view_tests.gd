@@ -1338,6 +1338,20 @@ func _test_the_gem_hint_asks_the_right_host() -> void:
 	var worn := panel._action_hint(bulwark)
 	check("  and with the buckler worn, it no longer names the sling or a shield",
 		not worn.contains("sling") and not worn.begins_with("needs a shield"), worn)
+	# A gem of fire beside a cold brazier: the pack points at G -- but only
+	# when the gem is what G would spend; a fire blade in hand goes first.
+	var cold := Vector2i(gs.player.x + 1, gs.player.y)
+	var was_tile := gs.map.get_tile(cold.x, cold.y)
+	gs.map.set_tile(cold.x, cold.y, Tiles.BRAZIER_DEAD)
+	check("  with the fire sling in hand, the blade relights first, so the gem's hint stands",
+		panel._action_hint(fire).ends_with("is already set"), panel._action_hint(fire))
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	check("  with no fire blade in hand, the gem's hint points at G (and must)",
+		panel._action_hint(fire) == "g: relight the brazier (15)", panel._action_hint(fire))
+	gs.map.set_tile(cold.x, cold.y, was_tile)
+	check("  and away from a cold brazier it does not",
+		not panel._action_hint(fire).contains("relight"), panel._action_hint(fire))
+	gs.player.equipped[Item.Slot.WEAPON] = sling
 	panel.free()
 
 ## New players start in 3D with the follow camera (Brad, 2026-09-28); anyone

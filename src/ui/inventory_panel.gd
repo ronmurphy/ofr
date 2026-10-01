@@ -503,6 +503,15 @@ func _action_hint(item: Item) -> String:
 		# A gem with a use of its own, here and now, says so first (6d).
 		if item.element == &"reflect" and state.mirror_target() >= 0:
 			return "name the shrine"
+		# A gem of fire beside a cold brazier relights it -- through G, not the
+		# pack, which is why the pack has to say so (Brad, 2026-10-01: he stood
+		# by the brazier with the gem and the pack said only "already set").
+		# Only when the gem is what G would spend: a fire blade in hand goes
+		# first, and the HERE box names that.
+		if item.element == &"fire" and state._adjacent_cold_brazier().x >= 0 \
+				and state._fire_to_give() == item:
+			var g := pad_cfg.icon(KEY_G, true) if pad_input and pad_cfg != null else "g"
+			return "%s: relight the brazier (%d)" % [g, GameState.GEM_KINDLE]
 		if item.element == &"leech":
 			var body := state.thirst_target()
 			if not body.is_empty():

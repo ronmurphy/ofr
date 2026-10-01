@@ -5771,8 +5771,12 @@ func actions_here() -> Array:
 			out.append([KEY_G, "scorch the fungus (torch)"])
 		elif _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
 			var f := _fire_to_give()
-			out.append([KEY_G, ("relight it with the %s (%d)" if f.kind == Item.Kind.GEM
-				else "relight it with the %s's fire (%d)") % [f.name, _relight_charge(f)]])
+			# "relight with", not "relight it with": the HERE box holds 42
+			# characters of action, and "relight it with the short sword's
+			# fire (10)" was 43 (Brad, 2026-10-01). The width test now runs
+			# every fire-capable weapon's name through this line.
+			out.append([KEY_G, ("relight with the %s (%d)" if f.kind == Item.Kind.GEM
+				else "relight with the %s's fire (%d)") % [f.name, _relight_charge(f)]])
 	return out
 
 ## Which wrong fungus G would burn: the one AHEAD (your facing -- the follow

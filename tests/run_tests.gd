@@ -1935,7 +1935,7 @@ func _test_fire_relights_braziers() -> void:
 	# A gem of fire: crushed in, a big fire.
 	var gem := Item.make(&"gem_fire")
 	gs.give_item(gem)
-	check("the box offers the gem", offers.call().contains("relight it with the gem of fire (15)"),
+	check("the box offers the gem", offers.call().contains("relight with the gem of fire (15)"),
 		offers.call())
 	check("a gem of fire relights a black brazier (and must)", gs.player_pickup()
 		and gs.map.get_tile(br.x, br.y) == Tiles.BRAZIER
@@ -10141,6 +10141,41 @@ func _test_the_sidebar_says_what_is_here() -> void:
 				widest_px = w
 				widest = String(row[1])
 		gs.ground.erase(long_item)
+	# The relight offers name the weapon or the gem, and "relight it with the
+	# short sword's fire (10)" came out one character past the box (Brad,
+	# 2026-10-01). Every weapon in the catalogue, as a fire blade in hand
+	# beside a cold brazier, and the gem of fire from the pack.
+	gs.map.set_tile(6, 5, Tiles.BRAZIER_DEAD)
+	var relights := 0
+	for id in Item.CATALOGUE:
+		var blade := Item.make(id)
+		if blade == null or blade.slot != Item.Slot.WEAPON or blade.transforms():
+			continue
+		blade.element = &"fire"
+		gs.player.equipped[Item.Slot.WEAPON] = blade
+		for row in bar.rows():
+			var text := String(row[1])
+			if not text.begins_with("relight"):
+				continue
+			relights += 1
+			var w := face.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+			if w > widest_px:
+				widest_px = w
+				widest = text
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	var fire_gem := Item.make(&"gem_fire")
+	gs.give_item(fire_gem)
+	for row in bar.rows():
+		var text := String(row[1])
+		if text.begins_with("relight"):
+			relights += 1
+			var w := face.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+			if w > widest_px:
+				widest_px = w
+				widest = text
+	gs.player.inventory.erase(fire_gem)
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	check("precondition: the relight offers were measured (%d)" % relights, relights >= 5)
 	check("the widest line fits the panel (\"%s\" %.0f <= %.0f px)"
 		% [widest, widest_px, room], widest_px <= room)
 
