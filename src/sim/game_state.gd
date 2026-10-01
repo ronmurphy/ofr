@@ -808,6 +808,25 @@ var brazier_charge: Dictionary = {}
 ## Cell -> the turn its embers go cold. Only ever holds cells that are
 ## BRAZIER_SPENT right now; a relight or an ember forge drops the entry.
 var ember_until: Dictionary = {}
+## THE BARRED DOORS (gem of the bulwark, 6d): cell -> how many heaves the bar
+## has left. A door is barred for as long as nothing wants through it badly
+## enough: each creature that tries and cannot open it spends its turn and
+## takes one off this, loudly, so a pack breaks in faster than a straggler.
+## Saved, like the embers.
+var barred: Dictionary = {}
+const BAR_HOLDS := 10
+## THE FROZEN ROOMS (gem of frost, 6d; Brad's design): [region, until-turn]
+## for each room, vault or cave a gem has shattered in. Sound made inside
+## carries nowhere until the turn comes. What stood in it when it broke is
+## frozen on the creature itself (Entity.frozen), for as many turns.
+var frozen_rooms: Array = []
+const FREEZE_MIN := 3
+const FREEZE_MAX := 12
+## The brazier the gem of returning marked this floor, or (-1, -1).
+var recall_mark := Vector2i(-1, -1)
+## The gem of the road: the route to the stairs is on the map this floor.
+var road_shown := false
+var _road_cache: Dictionary = {}
 var stairs: Vector2i
 ## Cave regions carved on this level, kept so tests and later features can
 ## reason about them.
@@ -1282,6 +1301,11 @@ func build_level() -> void:
 			break
 	brazier_charge.clear()
 	ember_until.clear()
+	barred.clear()
+	frozen_rooms.clear()
+	recall_mark = Vector2i(-1, -1)
+	road_shown = false
+	_road_cache.clear()
 	grave_at.clear()
 	grave_risen = false
 	risen_grave = Vector2i(-1, -1)
@@ -3262,6 +3286,9 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 	# The gem of the boss wants no target: it is thrown AT A PLACE.
 	if item.kind == Item.Kind.GEM and item.element == &"bash":
 		return _throw_the_boss(index, cell)
+	# So does the gem of frost: the room it shatters in.
+	if item.kind == Item.Kind.GEM and item.element == &"frost":
+		return _freeze_the_room(index, cell)
 
 	var target := entity_at(cell.x, cell.y)
 	if target == null or target.is_player:
@@ -3355,6 +3382,260 @@ func _show_the_shrine(gem: Item) -> bool:
 	msg_log.add("You hold the %s to the shrine. It shows itself: the %s."
 		% [gem.name, Shrines.NAMES[kind]], shrine_hue(kind))
 	return true
+
+## THE GEM OF THE CRAG FILLS A PIT (6d). Crushed over a pit beside you, stone
+## pours in and sets: the hole is floor. A path where there was none, and --
+## when strand 5 teaches monsters to flee down them -- a bolt-hole closed.
+## The pit you face first, if you face one; else the first found.
+func crag_target() -> Vector2i:
+	var ahead := Vector2i(player.x, player.y) + player.facing
+	if map.in_bounds(ahead.x, ahead.y) and map.get_tile(ahead.x, ahead.y) == Tiles.PIT:
+		return ahead
+	for i in 8:
+		var d := Entity.turned(Vector2i(0, -1), i)
+		var c := Vector2i(player.x + d.x, player.y + d.y)
+		if map.in_bounds(c.x, c.y) and map.get_tile(c.x, c.y) == Tiles.PIT:
+			return c
+	return Vector2i(-1, -1)
+
+func _fill_the_pit(gem: Item) -> bool:
+	var at := crag_target()
+	if at.x < 0:
+		msg_log.add("There is no pit beside you to fill.", Color(0.7, 0.6, 0.4))
+		return false
+	map.set_tile(at.x, at.y,
+		Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN else Tiles.FLOOR)
+	# Pits are solid to the pathfinder (never routed through); floor is not.
+	pathfinder.set_solid(at.x, at.y, false)
+	events.append({"kind": &"notice", "to": at})
+	msg_log.add("You crush the %s over the pit. Stone pours in and sets: the floor is whole."
+		% gem.name, Color(0.80, 0.78, 0.70))
+	return true
+
+## THE GEM OF THE BULWARK BARS A DOOR (6d). Crushed against a door beside
+## you -- open or shut, with nothing standing in it -- stone grows across it:
+## a shut door nothing that OPENS doors can open. A bear still takes it off
+## its hinges (_through_the_door), enough heaving breaks the bar
+## (_pound_the_door, BAR_HOLDS), and your own hand lifts it (_unbar). Shuts a
+## chase behind you, for a while, and loudly tells you how long.
+func bulwark_target() -> Vector2i:
+	var found := Vector2i(-1, -1)
+	for i in 8:
+		var d := Entity.turned(Vector2i(0, -1), i)
+		var c := Vector2i(player.x + d.x, player.y + d.y)
+		if not map.in_bounds(c.x, c.y):
+			continue
+		var t := map.get_tile(c.x, c.y)
+		if t != Tiles.DOOR_OPEN and t != Tiles.DOOR_CLOSED:
+			continue
+		if entity_at(c.x, c.y) != null or not items_at(c.x, c.y).is_empty():
+			continue
+		if found.x < 0 or c == Vector2i(player.x, player.y) + player.facing:
+			found = c
+	return found
+
+func _bar_the_door(gem: Item) -> bool:
+	var at := bulwark_target()
+	if at.x < 0:
+		var any_door := false
+		for i in 8:
+			var d := Entity.turned(Vector2i(0, -1), i)
+			var c := Vector2i(player.x + d.x, player.y + d.y)
+			if map.in_bounds(c.x, c.y) and (map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN
+					or map.get_tile(c.x, c.y) == Tiles.DOOR_CLOSED):
+				any_door = true
+		msg_log.add("The doorway is not clear." if any_door
+			else "There is no door beside you to bar.", Color(0.7, 0.6, 0.4))
+		return false
+	map.set_tile(at.x, at.y, Tiles.DOOR_BARRED)
+	barred[at] = BAR_HOLDS
+	events.append({"kind": &"notice", "to": at})
+	msg_log.add("You crush the %s against the door. Stone grows across it: barred, to all but a bear."
+		% gem.name, Color(0.80, 0.78, 0.70))
+	return true
+
+## You lift the bar. The door is open and the bar is spent -- a gem's worth,
+## so it is your choice to make.
+func _unbar(at: Vector2i) -> void:
+	map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+	barred.erase(at)
+	pathfinder.set_solid(at.x, at.y, false)
+	_work_the_door(at, "You lift the bar and pull the door open.")
+
+## Something that opens doors, at one it cannot: it heaves, loudly, and the
+## bar loses one. At nothing left the door bangs open. The turn is spent.
+func _pound_the_door(actor: Entity, at: Vector2i) -> bool:
+	var left := int(barred.get(at, BAR_HOLDS)) - 1
+	_make_noise(at, DOOR_NOISE, &"door")
+	if left <= 0:
+		map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+		barred.erase(at)
+		if map.is_visible(at.x, at.y):
+			msg_log.add("The bar gives. The %s bangs the door open." % actor.name,
+				Color(0.92, 0.66, 0.45))
+		else:
+			msg_log.add("Somewhere, a bar splinters and a door bangs open.",
+				Color(0.78, 0.70, 0.60))
+		return true
+	barred[at] = left
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The %s heaves at the barred door. It holds." % actor.name,
+			Color(0.78, 0.74, 0.66))
+	else:
+		msg_log.add("Something pounds at a barred door.", Color(0.78, 0.70, 0.60))
+	return true
+
+## THE GEM OF FROST FREEZES THE ROOM (6d, Brad's design). Thrown into a room
+## or cave, it shatters and the cold takes the place: everything standing in
+## it is frozen -- it neither acts nor hears, and can be hit without hitting
+## back -- and no sound made inside carries, for the room's longer side less
+## one per door (his rule (a); FREEZE_MIN..FREEZE_MAX). A 10x10 room with two
+## doors gives 8: "if the math is right, a near miss" -- enough to cross a
+## small room past its risen, not enough to dawdle. You are never frozen by
+## your own stone; your ally is, if it stood there.
+func _freeze_the_room(index: int, cell: Vector2i) -> bool:
+	var gem: Item = player.inventory[index]
+	_travel.clear()
+	player.inventory.remove_at(index)
+	gem.letter = ""
+	var region := _region_at(cell)
+	var held := clampi(maxi(region.size.x, region.size.y) - _doors_of(region),
+		FREEZE_MIN, FREEZE_MAX)
+	frozen_rooms.append([region, turns + held])
+	var caught := 0
+	for e in entities:
+		if e.is_player or not e.alive or not region.has_point(Vector2i(e.x, e.y)):
+			continue
+		e.frozen = held
+		caught += 1
+	events.append({"kind": &"notice", "to": cell})
+	msg_log.add("You hurl the %s. It shatters, and the cold takes the room: %d thing%s frozen, no sound carrying, for %d turns."
+		% [gem.name, caught, "" if caught == 1 else "s", held], Color(0.70, 0.85, 0.95))
+	_end_player_turn()
+	return true
+
+## The room, vault or cave a cell is in; failing all three, a patch of
+## corridor round it.
+func _region_at(cell: Vector2i) -> Rect2i:
+	for room in room_rects:
+		if room.has_point(cell):
+			return room
+	for vr in vault_rects:
+		if vr.has_point(cell):
+			return vr
+	for cave in cave_regions:
+		if cave.has_point(cell):
+			return cave
+	return Rect2i(cell - Vector2i(2, 2), Vector2i(5, 5))
+
+## The doors in the ring of wall round a region.
+func _doors_of(region: Rect2i) -> int:
+	var count := 0
+	var ring := region.grow(1)
+	for y in range(ring.position.y, ring.end.y):
+		for x in range(ring.position.x, ring.end.x):
+			if region.has_point(Vector2i(x, y)) or not map.in_bounds(x, y):
+				continue
+			var t := map.get_tile(x, y)
+			if t == Tiles.DOOR_OPEN or t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_BARRED:
+				count += 1
+	return count
+
+## Whether a frozen room still swallows sound made at this cell.
+func _muffled(at: Vector2i) -> bool:
+	for fr in frozen_rooms:
+		if turns < int(fr[1]) and (fr[0] as Rect2i).has_point(at):
+			return true
+	return false
+
+## Rooms whose cold has run out are forgotten, each turn.
+func _thaw_rooms() -> void:
+	frozen_rooms = frozen_rooms.filter(func(fr): return turns < int(fr[1]))
+
+## THE GEM OF RETURNING RECALLS YOU (6d). Crushed beside a brazier -- lit,
+## spent or cold; a fire is a landmark -- it marks it. A second, crushed
+## anywhere on the floor, steps you back beside the mark. Two gems for one
+## escape keeps it rare; the mark is this floor's only (the dungeon is one-way).
+## What the gem would do now: &"mark", &"return", &"here" (beside the mark
+## already) or &"" (nothing).
+func return_target() -> StringName:
+	if recall_mark.x >= 0:
+		if maxi(absi(player.x - recall_mark.x), absi(player.y - recall_mark.y)) <= 1:
+			return &"here"
+		return &"return"
+	if _adjacent_any_brazier().x >= 0:
+		return &"mark"
+	return &""
+
+func _recall(gem: Item) -> bool:
+	match return_target():
+		&"mark":
+			recall_mark = _adjacent_any_brazier()
+			events.append({"kind": &"notice", "to": recall_mark})
+			msg_log.add("You crush the %s at the brazier. The fire will remember you: a second stone, crushed anywhere, brings you back here."
+				% gem.name, Color(0.80, 0.85, 0.70))
+			return true
+		&"return":
+			var spot := _recall_spot(recall_mark)
+			if spot.x < 0:
+				msg_log.add("There is no room by the fire to return to.", Color(0.7, 0.6, 0.4))
+				return false
+			var from := Vector2i(player.x, player.y)
+			player.x = spot.x
+			player.y = spot.y
+			events.append({"kind": &"blink", "from": from, "to": spot})
+			msg_log.add("You crush the %s. The floor folds under you, and you stand at the fire again."
+				% gem.name, Color(0.75, 0.70, 0.95))
+			recall_mark = Vector2i(-1, -1)
+			return true
+		&"here":
+			msg_log.add("You are at the fire already.", Color(0.7, 0.6, 0.4))
+			return false
+	msg_log.add("Crush it beside a brazier first: the fire remembers you, and a second stone brings you back.",
+		Color(0.7, 0.6, 0.4))
+	return false
+
+## The nearest square beside the mark you can stand on: walkable, nothing
+## avoided, and nothing already standing there (_nearest_restable does not
+## ask the last, and arriving inside a kobold is not an escape).
+func _recall_spot(mark: Vector2i) -> Vector2i:
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var c := mark + Vector2i(dx, dy)
+				if map.in_bounds(c.x, c.y) and _can_rest_on(c.x, c.y) 						and entity_at(c.x, c.y) == null:
+					return c
+	return Vector2i(-1, -1)
+
+## THE GEM OF THE ROAD SHOWS THE WAY OUT (6d). Crushed anywhere, the route
+## from you to the stairs is drawn on the map for the rest of the floor, and
+## the stairs with it, seen or not -- the route-choosing play the red brought
+## on, answered by the one gem you have to explore to find.
+func _show_the_road(gem: Item) -> bool:
+	if road_shown:
+		msg_log.add("The way out is already shown.", Color(0.7, 0.6, 0.4))
+		return false
+	road_shown = true
+	_road_cache.clear()
+	map.explored[map.idx(stairs.x, stairs.y)] = 1
+	events.append({"kind": &"notice", "to": stairs})
+	msg_log.add("You crush the %s. A line of light runs out along the floor, away towards the stairs."
+		% gem.name, Color(0.95, 0.90, 0.60))
+	return true
+
+## The route the road shows: from you to the stairs over the plain grid,
+## worked out again only when the turn or your square has changed. Empty
+## until the gem is crushed.
+func road_route() -> Array:
+	if not road_shown:
+		return []
+	var key := [turns, player.x, player.y]
+	if _road_cache.get("key", null) != key:
+		_road_cache["key"] = key
+		_road_cache["route"] = Array(pathfinder.path(Vector2i(player.x, player.y), stairs))
+	return _road_cache["route"]
 
 ## What a queued mouse-walk refuses to keep walking past.
 ##
@@ -3486,6 +3767,9 @@ func player_move(dx: int, dy: int) -> bool:
 		map.set_tile(nx, ny, Tiles.DOOR_OPEN)
 		pathfinder.set_solid(nx, ny, false)
 		_work_the_door(Vector2i(nx, ny), "You pull the door open.")
+		return true
+	if map.get_tile(nx, ny) == Tiles.DOOR_BARRED and not ratted():
+		_unbar(Vector2i(nx, ny))
 		return true
 
 	if not can_step(player.x, player.y, nx, ny):
@@ -3847,6 +4131,12 @@ func _rise_from(b: Dictionary) -> bool:
 	r.x = at.x
 	r.y = at.y
 	r.alive = true
+	# The record was taken AFTER it died, and dying drops `blocks` with
+	# `alive` (Entity.take_damage) -- so without this a risen thing is walked
+	# through, by you and by everything else, and nothing can bump it
+	# (entity_at skips what does not block). Brad fought a risen young dragon
+	# he kept walking through, 2026-10-01.
+	r.blocks = true
 	r.faction = Entity.Faction.RISEN
 	r.fungal = true
 	r.raised = true
@@ -3858,6 +4148,7 @@ func _rise_from(b: Dictionary) -> bool:
 	r.shaken = 0
 	r.poisoned = 0
 	r.chilled = 0
+	r.frozen = 0
 	r.regen = 0
 	r.careful = false
 	r.max_hp = maxi(1, r.max_hp / 2)
@@ -4378,6 +4669,7 @@ func _raise_the_recent_dead() -> bool:
 	risen.x = spot.x
 	risen.y = spot.y
 	risen.alive = true
+	risen.blocks = true  # dropped with `alive` when it died; see _rise_from
 	risen.faction = Entity.Faction.PLAYER
 	risen.ai = &"ally"
 	risen.stance = Entity.Stance.LOOSE
@@ -4749,19 +5041,26 @@ func _spring_trap(x: int, y: int) -> void:
 func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void:
 	if radius <= 0:
 		return
+	# Made in a frozen room, it carries nowhere (the gem of frost).
+	if _muffled(at):
+		return
 	# Emitted whether or not anything was actually roused. What the player
 	# needs to know is that they were LOUD; whether the room happened to be
 	# empty is a separate fact, and the message log already carries it.
 	events.append({"kind": &"noise", "to": at, "radius": radius, "cause": cause})
 	# The blind dead turn to it -- if it is in their room, or at its edge.
 	for e in entities:
-		if e.alive and e.faction == Entity.Faction.RISEN \
+		if e.alive and e.frozen == 0 and e.faction == Entity.Faction.RISEN \
 				and Los.steps(e.x, e.y, at.x, at.y) <= radius \
 				and (not e.leash.has_area() or e.leash.grow(1).has_point(at)):
 			e.heard = at
 	var roused := 0
 	for e in entities:
 		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
+			continue
+		# A frozen thing hears nothing, and is not left holding what it did
+		# not hear when it thaws.
+		if e.frozen > 0:
 			continue
 		e.alertness = Entity.Alert.AWAKE
 		e.last_seen = at
@@ -5777,7 +6076,49 @@ func actions_here() -> Array:
 			# every fire-capable weapon's name through this line.
 			out.append([KEY_G, ("relight with the %s (%d)" if f.kind == Item.Kind.GEM
 				else "relight with the %s's fire (%d)") % [f.name, _relight_charge(f)]])
+	# A GEM THAT WOULD WORK HERE says so, by the pack key (Brad, 2026-10-01:
+	# he had to open the pack to find that the crag and the bulwark had a use
+	# where he stood). One row at most, and only while the box has room: it
+	# holds four rows with "every key", and this is the offer the pack repeats.
+	if out.size() < 3:
+		for gem in player.inventory:
+			if gem.kind != Item.Kind.GEM:
+				continue
+			var said := gem_use_here(gem)
+			if said != "":
+				out.append([KEY_I, said])
+				break
 	return out
+
+## What a carried gem would do from this square, in the HERE box's words, or
+## "" when it has no use here. The gems thrown or used anywhere (boss, frost,
+## the road) are not "here" and say nothing; fire is the relight offer above.
+## The pack's hint for the same gem (InventoryPanel._action_hint) ends with
+## the same words, so the box and the pack agree.
+func gem_use_here(gem: Item) -> String:
+	match gem.element:
+		&"crag":
+			if crag_target().x >= 0:
+				return "crag: fill the pit"
+		&"block":
+			if bulwark_target().x >= 0:
+				return "bulwark: bar the door"
+		&"return":
+			match return_target():
+				&"mark": return "returning: mark the fire"
+				&"return": return "returning: back to the fire"
+		&"reflect":
+			if mirror_target() >= 0:
+				return "mirror: name the shrine"
+		&"leech":
+			var body := thirst_target()
+			if not body.is_empty() \
+					and (player.hp < player.max_hp or bool(body.get("claimed", false))):
+				# "drink the", not "drink the": the box holds about 42
+				# characters and "risen kobold slinger" is the longest body.
+				return "thirst: drink %s (+%d)" % [String(body["e"].get("name", body["app"])),
+					_thirst_heal(body)]
+	return ""
 
 ## Which wrong fungus G would burn: the one AHEAD (your facing -- the follow
 ## camera's gift to this), else the one you stand on, else the nearest beside
@@ -6317,6 +6658,18 @@ func _apply_effect(item: Item) -> bool:
 			return _drink_the_dead(item)
 		if item.element == &"reflect":
 			return _show_the_shrine(item)
+		if item.element == &"crag":
+			return _fill_the_pit(item)
+		if item.element == &"block":
+			return _bar_the_door(item)
+		if item.element == &"return":
+			return _recall(item)
+		if item.element == &"travel":
+			return _show_the_road(item)
+		if item.element == &"frost":
+			msg_log.add("The gem of frost is thrown: it freezes the room it lands in.",
+				Color(0.7, 0.6, 0.4))
+			return false
 		msg_log.add("A gem is set into your gear at a brazier's embers."
 			+ (" The gem of the boss can also be thrown." if item.element == &"bash" else ""),
 			Color(0.7, 0.6, 0.4))
@@ -6463,6 +6816,9 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 		pathfinder.set_solid(next.x, next.y, false)
 		_work_the_door(next, "You pull the door open.")
 		return true
+	if map.get_tile(next.x, next.y) == Tiles.DOOR_BARRED and not ratted():
+		_unbar(next)
+		return true
 	_travel.remove_at(0)
 	if watched:
 		_travel.clear()
@@ -6478,6 +6834,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
 	_tick_returning()
+	_thaw_rooms()
 	_rot_bodies()
 	# The cost was already being computed and thrown away. Difficult ground has
 	# always charged the world for the time it takes; this is the first thing
@@ -6634,6 +6991,14 @@ func to_dict() -> Dictionary:
 	for cell in spires:
 		var row: Array = spires[cell]
 		stone["%d,%d" % [cell.x, cell.y]] = [int(row[0]), int(row[1])]
+	var bars := {}
+	for cell in barred:
+		bars["%d,%d" % [cell.x, cell.y]] = int(barred[cell])
+	var frozen := []
+	for fr in frozen_rooms:
+		var fr_rect: Rect2i = fr[0]
+		frozen.append([fr_rect.position.x, fr_rect.position.y, fr_rect.size.x, fr_rect.size.y,
+			int(fr[1])])
 	var caves := []
 	for r in cave_regions:
 		caves.append([r.position.x, r.position.y, r.size.x, r.size.y])
@@ -6661,7 +7026,8 @@ func to_dict() -> Dictionary:
 		"material": Marshalls.raw_to_base64(map.material),
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
-		"braziers": charges, "embers": embers, "spires": stone,
+		"braziers": charges, "embers": embers, "spires": stone, "barred": bars,
+		"frozen": frozen, "recall": [recall_mark.x, recall_mark.y], "road": road_shown,
 		"caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
 		"grave_risen": grave_risen,
@@ -6761,6 +7127,21 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			ember_until[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(embers[key])
+	barred.clear()
+	var bars: Dictionary = d.get("barred", {})
+	for key in bars:
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			barred[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(bars[key])
+	frozen_rooms.clear()
+	for row in d.get("frozen", []):
+		if row.size() == 5:
+			frozen_rooms.append([Rect2i(int(row[0]), int(row[1]), int(row[2]), int(row[3])),
+				int(row[4])])
+	var rm: Array = d.get("recall", [-1, -1])
+	recall_mark = Vector2i(int(rm[0]), int(rm[1])) if rm.size() == 2 else Vector2i(-1, -1)
+	road_shown = bool(d.get("road", false))
+	_road_cache.clear()
 
 	shrine_at.clear()
 	var saved_shrines: Dictionary = d.get("shrines", {})
@@ -7056,6 +7437,12 @@ func _run_world() -> void:
 ## slows the player, which is the whole reason mud can be used as a shield.
 func _take_ai_turn(actor: Entity) -> int:
 	if not actor.alive or game_over:
+		return Scheduler.ACTION_COST
+	# Frozen (the gem of frost): it stands there, the turn spent, one turn
+	# nearer the thaw. Before the risen and everything else, because it is
+	# true of all of them.
+	if actor.frozen > 0:
+		actor.frozen -= 1
 		return Scheduler.ACTION_COST
 
 	# A neutral takes no turn at all.
@@ -7964,14 +8351,19 @@ const DOOR_SHOULDER_COST := 3
 ## `player_close_door` or here that lets it -- which is why the open door you
 ## find behind you tells you something came through.
 func _through_the_door(actor: Entity, at: Vector2i) -> bool:
-	if map.get_tile(at.x, at.y) != Tiles.DOOR_CLOSED:
+	var tile := map.get_tile(at.x, at.y)
+	if tile != Tiles.DOOR_CLOSED and tile != Tiles.DOOR_BARRED:
 		return false
 	var style := actor.door_style()
 	if style == Entity.Door.SQUEEZES:
 		# Under it, and no slower for it. Brad has watched rabbits do this.
+		# A bar is above the gap, so under a barred one too.
 		return false
 	_last_move_cost = Scheduler.ACTION_COST
 	if style != Entity.Door.SHOULDERS:
+		# Hands cannot lift a bar from the wrong side: they heave at it.
+		if tile == Tiles.DOOR_BARRED:
+			return _pound_the_door(actor, at)
 		map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
 		if map.is_visible(at.x, at.y):
 			msg_log.add("The %s pulls the door open." % actor.name,
@@ -7996,6 +8388,7 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 	map.set_tile(at.x, at.y,
 		Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN
 		else Tiles.FLOOR)
+	barred.erase(at)  # a bar is no more to a bear than the door was
 	pathfinder.set_solid(at.x, at.y, false)
 	if map.is_visible(at.x, at.y):
 		msg_log.add("The %s takes the door off its hinges." % actor.name,

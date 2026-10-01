@@ -866,7 +866,8 @@ func _rebuild_world() -> void:
 				continue
 			var solid := tile == Tiles.WALL or tile == Tiles.ROCK \
 				or tile == Tiles.PILLAR or tile == Tiles.STALAGMITE \
-				or tile == Tiles.DOOR_CLOSED or tile == Tiles.CHEST
+				or tile == Tiles.DOOR_CLOSED or tile == Tiles.DOOR_BARRED \
+				or tile == Tiles.CHEST
 			var ground_kind := _ground_surface_kind(tile)
 			var kind := ground_kind
 			var height := WALL_HEIGHT
@@ -890,7 +891,8 @@ func _rebuild_world() -> void:
 				var base_transform := Transform3D(Basis.IDENTITY,
 					Vector3(x + 0.5, -0.035, y + 0.5))
 				_add_batch(batches, ground_kind, base_transform, color)
-			var is_door := tile == Tiles.DOOR_CLOSED or tile == Tiles.DOOR_OPEN
+			var is_door := tile == Tiles.DOOR_CLOSED or tile == Tiles.DOOR_OPEN \
+				or tile == Tiles.DOOR_BARRED
 			if not is_door:
 				_add_batch(batches, kind, transform, color)
 			if is_door:
@@ -968,6 +970,12 @@ func _add_multimeshes(batches: Dictionary) -> void:
 				leaf.size = Vector3(0.78, 1.12, 0.12)
 				mesh = leaf
 				surface_style = 2
+			# The bulwark's bar: a beam of stone across the shut leaf.
+			"door_bar":
+				var bar := BoxMesh.new()
+				bar.size = Vector3(0.92, 0.14, 0.24)
+				mesh = bar
+				surface_style = 1
 			"chest":
 				var chest := BoxMesh.new()
 				chest.size = Vector3(CELL * 0.72, 0.65, CELL * 0.72)
@@ -1075,7 +1083,8 @@ func _add_occlusion() -> void:
 				if not map.in_bounds(nx, ny):
 					continue
 				var nt := map.get_tile(nx, ny)
-				if nt == Tiles.WALL or nt == Tiles.ROCK or nt == Tiles.DOOR_CLOSED:
+				if nt == Tiles.WALL or nt == Tiles.ROCK or nt == Tiles.DOOR_CLOSED \
+						or nt == Tiles.DOOR_BARRED:
 					strips.append([x, y, d])
 	if strips.is_empty():
 		return
@@ -1348,6 +1357,13 @@ func _add_door(batches: Dictionary, x: int, y: int, tile: int,
 		leaf_at.y = 0.56
 	else:
 		leaf_at = center + Vector3(0.0, 0.56, 0.0)
+	if tile == Tiles.DOOR_BARRED:
+		# The leaf in the door's own wood; the tile's colour is the stone's.
+		_add_batch(batches, "door_leaf", Transform3D(leaf_basis, leaf_at),
+			_surface_color(Tiles.DOOR_CLOSED, x, y, visible))
+		_add_batch(batches, "door_bar", Transform3D(basis, center + Vector3(0.0, 0.62, 0.0)),
+			color)
+		return
 	_add_batch(batches, "door_leaf", Transform3D(leaf_basis, leaf_at), color)
 
 ## Which floor mesh and pattern a tile's ground uses. A table rather than a

@@ -243,6 +243,8 @@ const CATALOGUE := {
 	&"gem_frost": {
 		"name": "gem of frost", "app": &"gem", "kind": Kind.GEM,
 		"element": &"frost", "min_depth": 2, "weight": 0,
+		## Thrown, it freezes the room it shatters in (6d, Brad's design).
+		"throw": 8,
 	},
 	&"gem_leech": {
 		"name": "gem of thirst", "app": &"gem", "kind": Kind.GEM,

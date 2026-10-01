@@ -110,6 +110,18 @@ static func draw_marks(canvas: CanvasItem, gs: GameState, at: Vector2, cell: flo
 	var w := gs.map.width
 	var h := gs.map.height
 	var r: float = maxf(cell, least)
+	# The way out (gem of the road): the route to the stairs as a line of the
+	# stairs' own colour, and the stairs at its end whether or not you have
+	# seen them. Under the landmarks, so a brazier on the way still shows.
+	var route: Array = gs.road_route()
+	if not route.is_empty():
+		var dot: float = maxf(cell * 0.6, least * 0.5)
+		for c in route:
+			canvas.draw_rect(Rect2(at + Vector2(c.x * cell, c.y * cell)
+				- Vector2(dot - cell, dot - cell) * 0.5, Vector2(dot, dot)),
+				Color(MARK_STAIRS, 0.75), true)
+		canvas.draw_rect(Rect2(at + Vector2(gs.stairs.x * cell, gs.stairs.y * cell)
+			- Vector2(r - cell, r - cell) * 0.5, Vector2(r, r)), MARK_STAIRS, true)
 	for y in h:
 		for x in w:
 			if not gs.map.is_explored(x, y):
@@ -133,7 +145,7 @@ static func draw_marks(canvas: CanvasItem, gs: GameState, at: Vector2, cell: flo
 static func _terrain_colour(t: int) -> Color:
 	if t == Tiles.WALL or t == Tiles.ROCK:
 		return Color(0.20, 0.20, 0.24)
-	if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+	if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN or t == Tiles.DOOR_BARRED:
 		return Color(0.55, 0.42, 0.28)
 	if t == Tiles.WATER:
 		return Color(0.16, 0.26, 0.36)

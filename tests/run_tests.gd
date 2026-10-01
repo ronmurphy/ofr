@@ -1755,6 +1755,21 @@ func _test_the_red_raises_the_dead() -> void:
 	var back := Entity.from_dict(risen.to_dict())
 	check("and all of that is saved",
 		back.fungal and back.leash == room and back.faction == Entity.Faction.RISEN)
+	# It STANDS THERE. Dying drops `blocks` with `alive`, and the body's record
+	# is taken after; the first risen were walked through, by the player and
+	# by everything else, and could not be bumped (Brad, 2026-10-01).
+	check("precondition: the cell beside it is open and the risen is where it rose",
+		g.entity_at(at.x, at.y) == risen and g.entity_at(at.x - 1, at.y) == null)
+	g.player.x = at.x - 1
+	g.player.y = at.y
+	# Enough hp to take the blow: a risen kobold has 3, and a hit is 1 at least.
+	risen.max_hp = 30
+	risen.hp = 30
+	var acted := g.player_move(1, 0)
+	check("it blocks: walking into it is a bump that lands, not a step through it",
+		acted and g.player.x == at.x - 1 and risen.alive and risen.hp < 30
+		and g.entity_at(at.x, at.y) == risen,
+		"player at %d (cell %d), risen hp 30 -> %d" % [g.player.x, at.x, risen.hp])
 
 	# It walks the red unharmed.
 	var hp_before := risen.hp
@@ -2422,6 +2437,232 @@ func _test_gems_in_the_world() -> void:
 	check("the gem is spent; the shrine is not",
 		not ms.player.inventory.has(mirror) and ms.map.get_tile(here.x, here.y) == Tiles.SHRINE
 		and ms.shrine_at.has(here))
+
+	# THE CRAG: stone into a pit beside you.
+	var cs := _arena(12, 9)
+	cs.player.x = 5
+	cs.player.y = 4
+	cs.player.inventory.clear()
+	var crag := Item.make(&"gem_crag")
+	cs.give_item(crag)
+	check("with no pit beside you the crag is refused and kept",
+		not cs.player_use(cs.player.inventory.find(crag)) and cs.player.inventory.has(crag)
+		and cs.crag_target().x < 0)
+	var hole := Vector2i(6, 4)
+	cs.map.set_tile(hole.x, hole.y, Tiles.PIT)
+	cs.pathfinder.refresh(cs.map)
+	check("precondition: a pit is never routed to",
+		cs.pathfinder.path(Vector2i(5, 4), hole).is_empty() and cs.crag_target() == hole)
+	var cp := InventoryPanel.new()
+	cp.state = cs
+	check("the pack offers to fill it", cp._action_hint(crag) == "fill the pit", cp._action_hint(crag))
+	var ct := cs.turns
+	check("used, the pit is floor (and must)",
+		cs.player_use(cs.player.inventory.find(crag))
+		and Tiles.is_open_floor(cs.map.get_tile(hole.x, hole.y)) and cs.turns == ct + 1)
+	check("the gem is spent and the way is open",
+		not cs.player.inventory.has(crag) and not cs.pathfinder.path(Vector2i(5, 4), hole).is_empty())
+
+	# THE BULWARK: a barred door.
+	check("the barred door is appended after every older tile (saves hold ints)",
+		Tiles.DOOR_BARRED > Tiles.FUNGUS_RED and Tiles.is_walkable(Tiles.DOOR_BARRED)
+		and not Tiles.is_transparent(Tiles.DOOR_BARRED))
+	var bs := _arena(14, 9)
+	bs.player.x = 5
+	bs.player.y = 4
+	bs.player.inventory.clear()
+	var bulwark := Item.make(&"gem_bulwark")
+	bs.give_item(bulwark)
+	check("with no door beside you the bulwark is refused and kept",
+		not bs.player_use(bs.player.inventory.find(bulwark)) and bs.player.inventory.has(bulwark)
+		and bs.bulwark_target().x < 0)
+	for y in range(1, 8):
+		bs.map.set_tile(6, y, Tiles.WALL)
+	var door := Vector2i(6, 4)
+	bs.map.set_tile(door.x, door.y, Tiles.DOOR_OPEN)
+	bs.pathfinder.refresh(bs.map)
+	var kob := _spawn(bs, "kobold", door.x, door.y)
+	check("a doorway with something standing in it cannot be barred",
+		not bs.player_use(bs.player.inventory.find(bulwark)) and bs.player.inventory.has(bulwark))
+	kob.x = 9
+	kob.y = 4
+	var bp := InventoryPanel.new()
+	bp.state = bs
+	check("the pack offers to bar it", bp._action_hint(bulwark) == "bar the door",
+		bp._action_hint(bulwark))
+	var bt := bs.turns
+	check("used, the door is barred (and must)",
+		bs.player_use(bs.player.inventory.find(bulwark))
+		and bs.map.get_tile(door.x, door.y) == Tiles.DOOR_BARRED
+		and int(bs.barred.get(door, 0)) == GameState.BAR_HOLDS and bs.turns == bt + 1
+		and not bs.player.inventory.has(bulwark))
+	# A kobold opens doors; against the bar it heaves, and the bar counts.
+	kob.patrols = true
+	kob.heavy = false
+	check("precondition: a kobold opens doors", kob.door_style() == Entity.Door.OPENS)
+	kob.x = 7
+	kob.y = 4
+	check("it heaves at the bar and the door holds",
+		bs._through_the_door(kob, door) and bs.map.get_tile(door.x, door.y) == Tiles.DOOR_BARRED
+		and int(bs.barred[door]) == GameState.BAR_HOLDS - 1)
+	for i in GameState.BAR_HOLDS - 1:
+		bs._through_the_door(kob, door)
+	check("after BAR_HOLDS heaves the bar gives and the door is open",
+		bs.map.get_tile(door.x, door.y) == Tiles.DOOR_OPEN and not bs.barred.has(door))
+	# Barred again: a bear takes it off its hinges, bar and all.
+	bs.map.set_tile(door.x, door.y, Tiles.DOOR_BARRED)
+	bs.barred[door] = GameState.BAR_HOLDS
+	kob.heavy = true
+	check("precondition: heavy shoulders doors", kob.door_style() == Entity.Door.SHOULDERS)
+	check("a bear goes through it: the door is gone",
+		bs._through_the_door(kob, door) and Tiles.is_open_floor(bs.map.get_tile(door.x, door.y))
+		and not bs.barred.has(door))
+	# Barred again: you lift the bar yourself, and it is spent.
+	bs.map.set_tile(door.x, door.y, Tiles.DOOR_BARRED)
+	bs.barred[door] = 3
+	kob.x = 11
+	check("walking into it, you lift the bar and the door opens",
+		bs.player_move(1, 0) and bs.map.get_tile(door.x, door.y) == Tiles.DOOR_OPEN
+		and not bs.barred.has(door) and bs.player.x == 5)
+	# Barred, saved and restored.
+	bs.map.set_tile(door.x, door.y, Tiles.DOOR_BARRED)
+	bs.barred[door] = 3
+	var saved := GameState.new(1)
+	saved.new_game()
+	check("the bar is saved with the floor",
+		saved.apply_dict(bs.to_dict()) and saved.map.get_tile(door.x, door.y) == Tiles.DOOR_BARRED
+		and int(saved.barred.get(door, 0)) == 3)
+
+	# THE ROAD: the way out, on the map.
+	var rs := _arena(20, 10)
+	rs.player.x = 3
+	rs.player.y = 5
+	rs.player.inventory.clear()
+	rs.stairs = Vector2i(17, 5)
+	rs.map.set_tile(17, 5, Tiles.STAIRS_DOWN)
+	rs.map.explored.fill(0)
+	var road := Item.make(&"gem_travel")
+	rs.give_item(road)
+	var rp := InventoryPanel.new()
+	rp.state = rs
+	check("the pack offers the way out", rp._action_hint(road) == "show the way out",
+		rp._action_hint(road))
+	check("precondition: no route is shown and the stairs are unseen",
+		rs.road_route().is_empty() and not rs.map.is_explored(17, 5))
+	check("used, the route to the stairs is shown, stairs and all (and must)",
+		rs.player_use(rs.player.inventory.find(road)) and rs.road_shown
+		and not rs.road_route().is_empty() and rs.road_route()[-1] == rs.stairs
+		and rs.map.is_explored(17, 5) and not rs.player.inventory.has(road))
+	var road2 := Item.make(&"gem_travel")
+	rs.give_item(road2)
+	check("a second is refused and kept", not rs.player_use(rs.player.inventory.find(road2))
+		and rs.player.inventory.has(road2) and rp._action_hint(road2) != "show the way out")
+	var rsaved := GameState.new(1)
+	rsaved.new_game()
+	check("the road is saved", rsaved.apply_dict(rs.to_dict()) and rsaved.road_shown)
+	rs.depth += 1
+	rs.build_level()
+	check("a new floor starts without it", not rs.road_shown and rs.road_route().is_empty())
+
+	# RETURNING: a fire marked, and the step back to it.
+	var ts := _arena(20, 10)
+	ts.player.x = 3
+	ts.player.y = 5
+	ts.player.inventory.clear()
+	var back1 := Item.make(&"gem_return")
+	ts.give_item(back1)
+	check("with no fire beside you and no mark, returning is refused and kept",
+		not ts.player_use(ts.player.inventory.find(back1)) and ts.player.inventory.has(back1)
+		and ts.return_target() == &"")
+	ts.map.set_tile(4, 5, Tiles.BRAZIER)
+	var tp := InventoryPanel.new()
+	tp.state = ts
+	check("beside a brazier the pack offers to mark it",
+		tp._action_hint(back1) == "mark this brazier", tp._action_hint(back1))
+	check("used, the fire is marked (and must)",
+		ts.player_use(ts.player.inventory.find(back1)) and ts.recall_mark == Vector2i(4, 5)
+		and not ts.player.inventory.has(back1))
+	var back2 := Item.make(&"gem_return")
+	ts.give_item(back2)
+	check("beside the mark a second is refused: you are there already",
+		not ts.player_use(ts.player.inventory.find(back2)) and ts.player.inventory.has(back2)
+		and tp._action_hint(back2) != "return to the fire")
+	ts.player.x = 15
+	ts.player.y = 7
+	check("far from it the pack offers the way back",
+		tp._action_hint(back2) == "return to the fire", tp._action_hint(back2))
+	var tt := ts.turns
+	check("used, you stand by the fire again and the mark is spent",
+		ts.player_use(ts.player.inventory.find(back2))
+		and maxi(absi(ts.player.x - 4), absi(ts.player.y - 5)) == 1
+		and ts.recall_mark.x < 0 and ts.turns == tt + 1 and not ts.player.inventory.has(back2),
+		"player at %d,%d" % [ts.player.x, ts.player.y])
+	ts.recall_mark = Vector2i(4, 5)
+	var tsaved := GameState.new(1)
+	tsaved.new_game()
+	check("the mark is saved", tsaved.apply_dict(ts.to_dict()) and tsaved.recall_mark == Vector2i(4, 5))
+
+	# FROST: the frozen room.
+	var fs := _arena(22, 12)
+	fs.player.x = 3
+	fs.player.y = 6
+	fs.player.inventory.clear()
+	# The room is the left part of the arena, two doors in its east wall.
+	var cold_room := Rect2i(1, 1, 12, 10)
+	fs.room_rects = [cold_room]
+	fs.vault_rects = []
+	fs.map.set_tile(13, 6, Tiles.DOOR_OPEN)
+	fs.map.set_tile(13, 3, Tiles.DOOR_CLOSED)
+	var frost := Item.make(&"gem_frost")
+	fs.give_item(frost)
+	check("the gem of frost can be thrown", frost.is_throwable() and fs.throwables().has(frost))
+	check("from the pack it only says so",
+		not fs.player_use(fs.player.inventory.find(frost)) and fs.player.inventory.has(frost))
+	var inside := _spawn(fs, "kobold", 8, 6)
+	var cold_risen := _spawn(fs, "kobold", 11, 4)
+	cold_risen.faction = Entity.Faction.RISEN
+	cold_risen.fungal = true
+	var cold_ally := _spawn(fs, "kobold", 4, 7)
+	cold_ally.faction = Entity.Faction.PLAYER
+	var outside := _spawn(fs, "goblin", 17, 6)
+	outside.alertness = Entity.Alert.ASLEEP
+	var ft := fs.turns
+	check("thrown into the room, it freezes what stands in it, not you, not outside (and must)",
+		fs.player_throw(fs.player.inventory.find(frost), Vector2i(7, 6))
+		and inside.frozen >= 9 and cold_risen.frozen >= 9 and cold_ally.frozen >= 9
+		and fs.player.frozen == 0 and outside.frozen == 0 and fs.turns == ft + 1
+		and not fs.player.inventory.has(frost),
+		"frozen %d %d %d / %d" % [inside.frozen, cold_risen.frozen, cold_ally.frozen, outside.frozen])
+	check("for the room's longer side less its doors (12 - 2)",
+		fs.frozen_rooms.size() == 1 and fs.frozen_rooms[0][0] == cold_room
+		and int(fs.frozen_rooms[0][1]) == ft + 10, str(fs.frozen_rooms))
+	check("a frozen thing wears the cold and its count over its head",
+		CreatureMarks.awareness(inside)["text"].begins_with("✶"))
+	var stood := Vector2i(inside.x, inside.y)
+	var left := inside.frozen
+	fs._take_ai_turn(inside)
+	check("it stands where it is and thaws by one",
+		Vector2i(inside.x, inside.y) == stood and inside.frozen == left - 1)
+	outside.alertness = Entity.Alert.ASLEEP
+	fs._make_noise(Vector2i(5, 6), 20, &"crash")
+	check("noise made in the frozen room carries nowhere",
+		outside.alertness == Entity.Alert.ASLEEP and cold_risen.heard != Vector2i(5, 6))
+	fs._make_noise(Vector2i(17, 8), 20, &"crash")
+	check("outside it sound carries -- but not to the frozen",
+		outside.alertness == Entity.Alert.AWAKE and cold_risen.heard != Vector2i(17, 8))
+	fs.turns = ft + 10
+	fs._thaw_rooms()
+	check("when its turns are up the room's silence ends", fs.frozen_rooms.is_empty())
+	fs.frozen_rooms = [[cold_room, fs.turns + 5]]
+	inside.frozen = 4
+	var fsaved := GameState.new(1)
+	fsaved.new_game()
+	var kept_cold := false
+	if fsaved.apply_dict(fs.to_dict()):
+		for e in fsaved.entities:
+			kept_cold = kept_cold or e.frozen == 4
+	check("the cold is saved, room and creature",
+		kept_cold and fsaved.frozen_rooms.size() == 1 and fsaved.frozen_rooms[0][0] == cold_room)
 	var second := Item.make(&"gem_mirror")
 	ms.give_item(second)
 	check("a known shrine takes no second mirror",
@@ -2984,12 +3225,18 @@ func _test_bodies_lie_and_rot() -> void:
 		if not e.is_player and e.alive and e.hostile_to(dig.player):
 			fresh = e
 			break
-	fresh.hp = 0
-	fresh.alive = false
-	dig._settle_death(fresh, dig.player)
+	# Killed the real way: take_damage drops `blocks` with `alive`, which is
+	# what the raise has to undo (see _rise_from).
+	_kill(dig, fresh, dig.player)
 	check("a fresh kill lies there to dig (the premise)", dig.bodies.size() == 1)
 	var raised := dig._raise_the_recent_dead()
 	check("raising it takes the body off the floor", raised and dig.bodies.is_empty())
+	var dug: Entity = null
+	for e in dig.entities:
+		if e.name.begins_with("risen ") and e.faction == Entity.Faction.PLAYER:
+			dug = e
+	check("and what the shovel raises stands in its cell, not under everyone's feet",
+		dug != null and dug.alive and dig.entity_at(dug.x, dug.y) == dug)
 
 	dig._settle_death(fresh, dig.player)
 	dig.depth += 1
@@ -10185,6 +10432,77 @@ func _test_the_sidebar_says_what_is_here() -> void:
 	gs.player.inventory.erase(fire_gem)
 	gs.map.set_tile(6, 5, Tiles.FLOOR)
 	check("precondition: the relight offers were measured (%d)" % relights, relights >= 5)
+
+	# A GEM WITH A USE HERE IS OFFERED BY THE PACK KEY (Brad, 2026-10-01: he had
+	# to open the pack to find the crag and the bulwark had one), in words the
+	# pack repeats, that fit, and only while the box has room for a row.
+	gs.map.set_tile(5, 5, Tiles.FLOOR)
+	var crag_gem := Item.make(&"gem_crag")
+	gs.give_item(crag_gem)
+	check("a crag gem with no pit beside you is not offered",
+		str(gs.actions_here()).findn("crag") < 0, str(gs.actions_here()))
+	gs.map.set_tile(6, 5, Tiles.PIT)
+	var crag_rows := gs.actions_here()
+	check("beside a pit the crag is offered, by the pack key",
+		crag_rows.size() == 1 and int(crag_rows[0][0]) == KEY_I
+		and String(crag_rows[0][1]) == "crag: fill the pit", str(crag_rows))
+	var pack := InventoryPanel.new()
+	pack.state = gs
+	check("and in the pack's own words",
+		String(crag_rows[0][1]).ends_with(pack._action_hint(crag_gem)), pack._action_hint(crag_gem))
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	gs.player.inventory.erase(crag_gem)
+	# The widest gem line is the drink, named after the body: every creature
+	# the bestiary can leave lying there, risen.
+	var thirst_gem := Item.make(&"gem_leech")
+	gs.give_item(thirst_gem)
+	gs.player.hp = 1
+	var drinks := 0
+	for e in GameState.BESTIARY:
+		var m := GameState.monster_from(e, 6, 5)
+		m.name = "risen " + m.name
+		gs.bodies = [{"x": 6, "y": 5, "app": String(m.appearance), "turn": gs.turns,
+			"corrupted": false, "e": m.to_dict(), "seeded": -1, "claimed": false,
+			"still": false, "rises": -1}]
+		for row in bar.rows():
+			var text := String(row[1])
+			if not text.begins_with("thirst"):
+				continue
+			drinks += 1
+			var w := face.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
+			if w > widest_px:
+				widest_px = w
+				widest = text
+	gs.bodies = []
+	gs.player.inventory.erase(thirst_gem)
+	check("precondition: the drink offers were measured (%d)" % drinks,
+		drinks >= GameState.BESTIARY.size())
+	# The fullest the box gets: hurt beside a lit brazier (warm), a cold one
+	# beside you with a gem of fire in the pack (relight), and a gem with a
+	# use here -- three rows, and "every key" makes four, which is what the box
+	# holds. A second gem with a use adds nothing: one gem row at most.
+	gs.map.set_tile(4, 5, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(4, 5)] = 10
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_DEAD)
+	gs.give_item(fire_gem)
+	gs.give_item(crag_gem)
+	gs.map.set_tile(6, 5, Tiles.PIT)
+	var crowded := gs.actions_here()
+	check("warm, relight and a gem's use: three rows, the box's whole room",
+		crowded.size() == 3 and str(crowded).findn("warm") >= 0
+		and str(crowded).findn("relight") >= 0 and str(crowded).findn("crag") >= 0, str(crowded))
+	var bulwark_gem := Item.make(&"gem_bulwark")
+	gs.give_item(bulwark_gem)
+	gs.map.set_tile(5, 4, Tiles.DOOR_OPEN)
+	check("precondition: the second gem has a use here too", gs.bulwark_target().x >= 0)
+	check("and still three rows: one gem speaks for the pack", gs.actions_here().size() == 3,
+		str(gs.actions_here()))
+	gs.player.hp = gs.player.max_hp
+	for g in [fire_gem, crag_gem, bulwark_gem]:
+		gs.player.inventory.erase(g)
+	gs.brazier_charge.erase(Vector2i(4, 5))
+	for c in [Vector2i(4, 5), Vector2i(6, 4), Vector2i(6, 5), Vector2i(5, 5), Vector2i(5, 4)]:
+		gs.map.set_tile(c.x, c.y, Tiles.FLOOR)
 	check("the widest line fits the panel (\"%s\" %.0f <= %.0f px)"
 		% [widest, widest_px, room], widest_px <= room)
 

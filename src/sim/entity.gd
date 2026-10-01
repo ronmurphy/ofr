@@ -261,6 +261,9 @@ var unliving := false
 ## Turns of frost left on it. Slows its movement, not its attacks -- a chilled
 ## thing still swings as hard, it just cannot close or flee as fast.
 var chilled := 0
+## Turns frozen solid (the gem of frost's room): it neither acts nor hears
+## until this runs out, and can be hit without hitting back.
+var frozen := 0
 
 ## A low-tier creature the climb has made worse. Cosmetically a colour, but the
 ## flag is what the renderer and the bestiary key on -- and what stops a
@@ -492,7 +495,7 @@ func to_dict() -> Dictionary:
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
-		"chilled": chilled,
+		"chilled": chilled, "frozen": frozen,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
@@ -614,6 +617,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	for w in d.get("weak_to", []):
 		e.weak_to.append(StringName(w))
 	e.chilled = int(d.get("chilled", 0))
+	e.frozen = int(d.get("frozen", 0))
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

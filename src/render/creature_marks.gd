@@ -21,6 +21,11 @@ static func spore_colour(e: Entity) -> Color:
 	return Color(0, 0, 0, 0)
 
 static func awareness(e: Entity) -> Dictionary:
+	# Frozen solid (the gem of frost), with the turns it has left: nothing
+	# else it was is true while it stands there, and the count is the whole
+	# play -- cross the room before it runs out.
+	if e.frozen > 0:
+		return {"text": "✶%d" % e.frozen, "colour": Palette.FROZEN}
 	# Unaware AND actually asleep. A patrolling guard has not noticed you
 	# either, but it is walking -- drawing "z" over something mid-stride would
 	# be the marker telling a plain lie, and the marker is how a player decides

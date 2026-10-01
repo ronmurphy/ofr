@@ -322,7 +322,19 @@ strand at a time with play between:
       _test_gems_in_the_world. Crushed at an unknown
       shrine, it names it. Shrine colours are shuffled per run, so it answers
       "which colour was the gong?" -- the one that frees the risen.
-   4. **Gem of frost -> THE FROZEN ROOM (Brad's design).** Thrown into a room
+   4. **Gem of frost -> THE FROZEN ROOM (Brad's design). BUILT 2026-10-01**
+      with his rule (a): thrown (throw 8, like the boss), it freezes everything
+      standing in the room, vault or cave it lands in (a 5x5 patch of
+      corridor otherwise) for the region's longer side less one per door in
+      its wall ring, FREEZE_MIN 3 .. FREEZE_MAX 12 (caves are huge). Frozen
+      is on the creature (`Entity.frozen`, saved): it stands there, its turn
+      spent, hears nothing and keeps nothing it did not hear; the mark over
+      its head is the count. The ROOM is silent (`frozen_rooms`, saved):
+      `_make_noise` inside it carries nowhere. You are never frozen by your
+      own stone; an ally standing there is. From the pack it only says it is
+      thrown. Not yet: a cold look on the floor itself (both renderers),
+      and rule (b) -- a door shut behind you ending it. Original design:
+      thrown into a room
       or cave, it freezes everything in it for a number of turns, and SOUND IS
       MUFFLED there meanwhile -- so a player may cross a small room past its
       risen. Always a close call: a 10x10 room gives about 8 turns. **OPEN --
@@ -345,14 +357,45 @@ strand at a time with play between:
       frost weapons. **OPEN -- choose at build time: the wet freeze INSTEAD of
       the frozen room, or both** (e.g. the room freeze for everything, water
       making it last longer or hit harder).
-   5. **Gem of the crag -> fill a pit.** Stone into the hole: it becomes
-      floor. Closes a fleeing monster's escape (strand 5) or makes a path.
-   6. **Gem of returning -> recall.** Crushed at a brazier it marks it; a
-      second crushed anywhere steps you back. Two gems: an escape kept rare.
-   7. **Gem of the bulwark -> a barricaded door.** Monsters cannot open it for
-      a while; bears still smash it. Shuts a chase behind you.
-   8. **Gem of the road -> the way out.** Shows the route to the stairs on the
-      minimap -- the route-choosing play the red brought on.
+   5. **Gem of the crag -> fill a pit. BUILT 2026-10-01.** Crushed over a pit
+      beside you (the one you face first): stone pours in and sets, the hole
+      is floor and the pathfinder routes through it. The pack offers "fill
+      the pit" when one is there. Closes a fleeing monster's escape once
+      strand 5 teaches them to use one.
+   6. **Gem of returning -> recall. BUILT 2026-10-01.** Crushed beside any
+      brazier (lit, spent or cold -- a fire is a landmark) it marks it
+      (`recall_mark`, saved, this floor only); a second crushed anywhere
+      steps you to the nearest free square beside the mark and spends it.
+      Refused beside the mark ("you are at the fire already") and with no
+      fire and no mark. The pack says "mark this brazier" / "return to the
+      fire". Not yet: the marked brazier drawn as marked on the map.
+   7. **Gem of the bulwark -> a barricaded door. BUILT 2026-10-01.** Crushed
+      against a door beside you (open or shut, nothing standing in it): a new
+      tile, `DOOR_BARRED`, appended to the enum, drawn as the door in stone's
+      colour (a stone beam across the leaf in 3D), a landmark the memory keeps,
+      in the legend ("holds all but a bear"). "For a while" is measured in
+      HEAVES, not turns: anything that OPENS doors spends its turn heaving,
+      loudly (DOOR_NOISE), and the bar loses one of `BAR_HOLDS` (10) -- so a
+      pack breaks in faster than a straggler and you hear how long you have.
+      A bear takes it off its hinges as it does any door; rats go under it;
+      you walk into it to lift the bar (spent). Saved with the embers.
+   **The HERE box says when a carried gem would work where you stand (Brad,
+   2026-10-01, after playing the crag and the bulwark from the pack):** one
+   row by the pack key -- "crag: fill the pit", "bulwark: bar the door",
+   "returning: mark the fire" / "back to the fire", "mirror: name the
+   shrine", "thirst: drink <body> (+n)" -- in the pack hint's own words, one
+   gem row at most, and only while the box has room (it holds four rows with
+   "every key"; warm + relight + a gem is the fullest it gets). The gems
+   thrown or used anywhere (boss, frost, road) are not "here" and stay in
+   the pack's hints. `gem_use_here`, measured in the HERE width test over
+   every bestiary body.
+   8. **Gem of the road -> the way out. BUILT 2026-10-01.** Crushed anywhere:
+      the route from you to the stairs (`road_route`, the plain grid, cached
+      per turn) is drawn on the minimap and THE FLOOR SO FAR as a dotted line
+      in the stairs' colour, with the stairs at its end seen or not (the
+      stairs cell is marked explored, so the main map remembers them too).
+      For the rest of the floor (`road_shown`, saved); a second is refused.
+      Not yet: the line on the main map itself.
 Further strands from the same brainstorm, all welcome (Brad: "all of your
 ideas are really good"): blood trails that scavengers follow; watchable
 hunting; frost freezing water to ice; rubble cracked by force (gems); alarm-

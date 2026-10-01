@@ -40,3 +40,6 @@ patches/*
 assets/tilesets/*
 assets/audio/*
 tools/screencaps/*
+# The friend's 1920px sprite-sheet originals (13 MB): kept beside the
+# 128px set the game would ship, never committed.
+assets/spritesheets/originals/

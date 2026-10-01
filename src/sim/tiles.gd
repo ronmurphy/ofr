@@ -41,6 +41,11 @@ enum {
 	## can be eaten, standing on either hurts, and fire burns both.
 	FUNGUS_PURPLE,
 	FUNGUS_RED,
+	## A door the gem of the bulwark has barred (6d, 2026-10-01): shut, and
+	## nothing that opens doors can open it -- only a bear's shoulder, enough
+	## heaving (GameState.BAR_HOLDS), or your own hand lifting the bar.
+	## Appended, like everything after CHEST.
+	DOOR_BARRED,
 }
 
 ## walk  = an actor may stand here
@@ -80,6 +85,9 @@ const DATA := {
 	FUNGUS:      {"id": &"fungus",      "walk": true,  "clear": true},
 	FUNGUS_PURPLE: {"id": &"purple_fungus", "walk": true, "clear": true},
 	FUNGUS_RED:    {"id": &"red_fungus",    "walk": true, "clear": true},
+	# Walkable like a shut door -- walking into it is how you open it -- and
+	# as opaque as one.
+	DOOR_BARRED:   {"id": &"door_barred",   "walk": true, "clear": false},
 	# Walkable on purpose: falling in is always a choice, never an accident.
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.

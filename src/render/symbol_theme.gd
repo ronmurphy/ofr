@@ -28,6 +28,9 @@ const OVERRIDES := {
 	# which "+" and "'" never did.
 	&"door_closed": {"ch": "■"},
 	&"door_open":   {"ch": "□"},
+	# The shut door again: the stone's colour says barred, as in the other modes
+	# (the barred square, U+25A3, is not in the font the map ships with).
+	&"door_barred": {"ch": "■"},
 
 	# Direction, rather than two characters that only differ by which way a
 	# wedge points if you look closely.

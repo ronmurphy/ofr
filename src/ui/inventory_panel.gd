@@ -632,6 +632,16 @@ func _action_hint(item: Item) -> String:
 		# A gem with a use of its own, here and now, says so first (6d).
 		if item.element == &"reflect" and state.mirror_target() >= 0:
 			return "name the shrine"
+		if item.element == &"crag" and state.crag_target().x >= 0:
+			return "fill the pit"
+		if item.element == &"block" and state.bulwark_target().x >= 0:
+			return "bar the door"
+		if item.element == &"return":
+			match state.return_target():
+				&"mark": return "mark this brazier"
+				&"return": return "return to the fire"
+		if item.element == &"travel" and not state.road_shown:
+			return "show the way out"
 		# A gem of fire beside a cold brazier relights it -- through G, not the
 		# pack, which is why the pack has to say so (Brad, 2026-10-01: he stood
 		# by the brazier with the gem and the pack said only "already set").

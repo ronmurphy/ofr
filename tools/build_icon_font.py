@@ -20,6 +20,11 @@ font already shipped, without rebuilding the font:
 
     python3 tools/build_icon_font.py --metrics
 
+And to rewrite only tools/icon_names.json (the Nerd Font name of every icon
+the themes use, for tools/art_reference.gd):
+
+    python3 tools/build_icon_font.py --names
+
 Requires fonttools:  pip install fonttools
 """
 import pathlib
@@ -226,7 +231,33 @@ def _current_spares():
     return {c for c in TTFont(OUT).getBestCmap() if c >= 0xE000 and c not in named}
 
 
+## The source font names its glyphs (md-door_closed, fa-monument, cod-person);
+## the subset does not. tools/art_reference.gd shows an artist which icon each
+## picture is, so every codepoint a theme (or the sidebar) names is looked up
+## here and written beside its name. Rerun when an icon is added.
+NAMES = ROOT / "tools" / "icon_names.json"
+
+
+def write_names():
+    import json
+    from fontTools.ttLib import TTFont
+    cmap = TTFont(SOURCE).getBestCmap()
+    cps = set()
+    for path in (GLYPH_THEME, SIDEBAR):
+        cps |= codepoints_in(path)
+    names = {"U+%X" % cp: cmap.get(cp, "") for cp in sorted(cps) if cp >= 0xE000}
+    NAMES.write_text(json.dumps(names, indent=1) + "\n")
+    missing = [k for k, v in names.items() if not v]
+    print("wrote %s: %d icons named%s" % (NAMES.relative_to(ROOT), len(names),
+        ", UNNAMED: %s" % missing if missing else ""))
+    return 1 if missing else 0
+
+
 if __name__ == "__main__":
     if "--metrics" in sys.argv[1:]:
         raise SystemExit(write_metrics())
-    raise SystemExit(main())
+    if "--names" in sys.argv[1:]:
+        raise SystemExit(write_names())
+    code = main()
+    write_names()
+    raise SystemExit(code)

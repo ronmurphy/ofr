@@ -143,6 +143,7 @@ const OVERRIDES := {
 	&"stairs_up":     0xF12BD,
 	&"door_closed":   0xF081B,
 	&"door_open":     0xF081C,
+	&"door_barred":   0xF081B,  # the shut door, in stone's colour
 	# A wave, not a droplet. A droplet is a picture of water; a wave is a
 	# picture of water DOING something, and it gives a shader an edge to move.
 	&"water":         0xEF30,    # fa-water
