@@ -37,6 +37,11 @@ func _ready() -> void:
 	# The dungeon backdrop shows through wherever the hall is not.
 	_viewport.transparent_bg = true
 	_environment.background_mode = Environment.BG_CLEAR_COLOR
+	# No last pass here. It reads the screen behind its rectangle, and on the
+	# title that screen is the GAME's view underneath, which it painted over
+	# the hall and the backdrop (Brad's first look at the 3D branch,
+	# 2026-10-01). A vignette belongs on the game, not on the menu's scenery.
+	_post.visible = false
 	state = TitleHall.hall_state()
 	sync_motion()
 
