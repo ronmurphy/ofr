@@ -56,6 +56,7 @@ func _initialize() -> void:
 	await _test_the_title_screen()
 	_test_the_playtest_fixes()
 	_test_the_ui_review()
+	_test_the_screens_review()
 	await _test_davids_music()
 	_test_reach_is_drawn()
 	_test_bodies_look_the_same_in_both_views()
@@ -1932,6 +1933,119 @@ func _test_the_ui_review() -> void:
 	check("  and every detail line fits it (widest \"%s\" %.0f <= %.0f px, %d over)"
 		% [pack_worst, pack_worst_px, InventoryPanel.DETAIL_W, pack_over], pack_over == 0)
 	pack.free()
+
+## THE SCREENS REVIEW (2026-10-01): the legend, the pause menu and the
+## controller screen, every new string measured against its real width.
+func _test_the_screens_review() -> void:
+	print("-- the screens review")
+	var face: Font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var bold: Font = load("res://assets/fonts/JetBrainsMono-Bold.ttf")
+
+	# THE LEGEND.
+	var legend := LegendPanel.new()
+	legend.font = face
+	legend.font_bold = bold
+	legend.icon_font = load("res://assets/fonts/ofr_icons.ttf")
+	var gs := GameState.new(80)
+	gs.new_game()
+	legend.state = gs
+	legend.size = Vector2(1600, 900)
+	var col: float = (1600.0 - 48.0 - LegendPanel.PAD * 2.0) / 4.0
+	var fs := LegendPanel.font_size_default()
+	check("  'arrows / hjklyubn' is two caps",
+		LegendPanel.cap_labels("arrows / hjklyubn") == ["arrows", "hjklyubn"])
+	check("  '. or 5' is two, 'm  - +' three, 'f (no bow)' one, '[ / ] / right stick' three",
+		LegendPanel.cap_labels(". or 5") == [".", "5"]
+		and LegendPanel.cap_labels("m  - +") == ["m", "-", "+"]
+		and LegendPanel.cap_labels("f (no bow)") == ["f (no bow)"]
+		and LegendPanel.cap_labels("[ / ] / right stick") == ["[", "]", "right stick"],
+		str(LegendPanel.cap_labels("m  - +")))
+	check("  the ground list knows the wrong fungi and leaves the obvious out",
+		LegendPanel.TERRAIN_ORDER.has(Tiles.FUNGUS_RED) and LegendPanel.TERRAIN_ORDER.has(Tiles.FUNGUS_PURPLE)
+		and not LegendPanel.TERRAIN_ORDER.has(Tiles.FLOOR) and not LegendPanel.TERRAIN_ORDER.has(Tiles.WALL))
+	# MEASURED: every ground and item note beside its name, the second lines,
+	# the two notes, inside the column.
+	var room: float = col - LegendPanel.NAME_X - 12.0
+	var worst := ""
+	var worst_px := 0.0
+	var pairs: Array = []
+	for tile in LegendPanel.TERRAIN_ORDER:
+		pairs.append([String(Tiles.appearance_id(tile)).replace("_", " "),
+			String(LegendPanel.NOTES.get(tile, ""))])
+	for row in LegendPanel.ITEM_ROWS:
+		pairs.append([String(row[1]), String(row[2])])
+		if String(row[3]) != "":
+			pairs.append(["", String(row[3])])
+	pairs.append(["", LegendPanel.LEFT_OUT])
+	for pair in pairs:
+		var wpx := face.get_string_size(String(pair[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		if String(pair[1]) != "":
+			wpx += (8.0 if String(pair[0]) != "" else 0.0) \
+				+ face.get_string_size(String(pair[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs - 2).x
+		if wpx > worst_px:
+			worst_px = wpx
+			worst = "%s / %s" % [pair[0], pair[1]]
+	check("  every ground and item note fits beside its name (widest \"%s\" %.0f <= %.0f px)"
+		% [worst, worst_px, room], worst_px <= room)
+	check("  the pick-up row says what the key does",
+		LegendPanel.PICK_UP_ROW.begins_with("pick up") and LegendPanel.PICK_UP_ROW.contains("burn"))
+	# KEYS: every row of the table, once, in a group; measured as caps plus
+	# action, on a keyboard and on a pad.
+	legend.pad_input = false
+	var actions: Array = []
+	for r in legend.key_rows():
+		actions.append(String(r["action"]))
+	var once := actions.size() == Sidebar.KEYS.size()
+	for row in Sidebar.KEYS:
+		var want := LegendPanel.PICK_UP_ROW if String(row[1]) == "pick up" else String(row[1])
+		once = once and actions.count(want) == 1
+	check("  every key row appears once, in a group (%d)" % actions.size(), once, str(actions))
+	var keys_room: float = col - LegendPanel.GLYPH_X - 12.0
+	for on_pad in [false, true]:
+		legend.pad_input = on_pad
+		legend.pad_cfg = PadConfig.new() if on_pad else null
+		var widest := 0.0
+		var widest_row := ""
+		for r in legend.key_rows():
+			var wpx := Keycap.row_width(r["caps"], face, fs - 1) + 8.0 \
+				+ face.get_string_size(String(r["action"]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs - 1).x
+			if wpx > widest:
+				widest = wpx
+				widest_row = String(r["action"])
+		check("  on a %s every key row fits its column (widest \"%s\" %.0f <= %.0f px)"
+			% ["pad" if on_pad else "keyboard", widest_row, widest, keys_room], widest <= keys_room)
+	var kb_only := 0
+	var move_row := {}
+	for r in legend.key_rows():
+		if bool(r["keyboard_only"]):
+			kb_only += 1
+		if String(r["action"]) == "move":
+			move_row = r
+	check("  on a pad the keyboard-only keys are marked (%d)" % kb_only, kb_only >= 3)
+	check("  and move is the stick, never keyboard-only",
+		not move_row.is_empty() and not bool(move_row["keyboard_only"]))
+	legend.pad_input = false
+	legend.pad_cfg = null
+	# THE DIAGRAM THAT TAKES TURNS.
+	var same := LegendPanel.MOVE_LAYOUTS.size() == 3
+	var art_w := 0.0
+	for layout in LegendPanel.MOVE_LAYOUTS:
+		same = same and (layout["art"] as Array).size() == 5
+		for line in layout["art"]:
+			art_w = maxf(art_w, face.get_string_size(String(line), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+		art_w = maxf(art_w, face.get_string_size(String(layout["note"]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	check("  three layouts of five lines, each fitting the column (%.0f <= %.0f px)" % [art_w, keys_room],
+		same and art_w <= keys_room)
+	var was_mode := Effects.mode()
+	Effects.set_mode(Effects.Mode.NONE)
+	check("  on still the diagram holds its first layout", legend.layout_index() == 0)
+	Effects.set_mode(Effects.Mode.TIMERS)
+	check("  with motion on, it shows one of the three",
+		legend.layout_index() >= 0 and legend.layout_index() < 3)
+	Effects.set_mode(was_mode)
+	check("  the legend still fits the window (%.0f <= %.0f px)" % [legend.wanted_height(), 852.0],
+		legend.wanted_height() <= 852.0)
+	legend.free()
 
 ## The 3D view's own extras, on the scene the shared-moment test built.
 func _test_3d_extras(scene: Control) -> void:

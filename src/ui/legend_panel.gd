@@ -63,33 +63,82 @@ const DRAWN := {
 	&"pit": "●", &"stalagmite": "▲",
 }
 
-## The order they are worth reading in, rather than enum order.
+## The order they are worth reading in, rather than enum order -- and only
+## what has something to say (the screens review, 2026-10-01). Floor, cave
+## floor, wall, rock, pillar and stalagmite are what they look like; the two
+## wrong fungi, which this list had never heard of, are the tiles a player
+## most needs told about.
 const TERRAIN_ORDER := [
-	Tiles.FLOOR, Tiles.CAVE_FLOOR, Tiles.WALL, Tiles.ROCK, Tiles.PILLAR,
-	Tiles.STALAGMITE, Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN, Tiles.WATER,
-	Tiles.MUD, Tiles.RUBBLE, Tiles.BONES, Tiles.FUNGUS, Tiles.BRAZIER,
-	Tiles.BRAZIER_SPENT, Tiles.BRAZIER_DEAD, Tiles.SHRINE, Tiles.TRAP, Tiles.PIT,
-	Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
+	Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN, Tiles.WATER, Tiles.MUD, Tiles.RUBBLE,
+	Tiles.BONES, Tiles.FUNGUS, Tiles.FUNGUS_PURPLE, Tiles.FUNGUS_RED,
+	Tiles.BRAZIER, Tiles.BRAZIER_SPENT, Tiles.BRAZIER_DEAD, Tiles.SHRINE,
+	Tiles.TRAP, Tiles.PIT, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
 ]
+const LEFT_OUT := "floor, walls, pillars: as they look"
 
 ## Short notes for the things whose behaviour is invisible. Only where the
-## glyph and the name genuinely do not tell you.
+## glyph and the name genuinely do not tell you. Every one is measured beside
+## its name by the suite.
 const NOTES := {
+	Tiles.DOOR_CLOSED: "loud to open",
 	Tiles.MUD: "slow; worst for heavy things",
 	Tiles.WATER: "slow to wade",
-	Tiles.RUBBLE: "slightly slow",
+	Tiles.RUBBLE: "slightly slow; knaps sling stones",
 	Tiles.BONES: "LOUD; crumbles once crossed",
-	Tiles.FUNGUS: "glows faintly",
+	Tiles.FUNGUS: "glows faintly; eat it",
+	Tiles.FUNGUS_PURPLE: "its air poisons: 1 hp a turn",
+	Tiles.FUNGUS_RED: "claims the dead; burn or bury",
 	Tiles.BRAZIER: "rest at it, or forge",
-	# Named, not explained. What a spent brazier is still good for is the one
-	# thing in this list worth finding out by standing next to one. The black
-	# one said "cold for good" until fire could relight it (a flare, a gem of
-	# fire, a fire blade -- 2026-09-30); now it says only what wakes it.
+	Tiles.BRAZIER_SPENT: "its embers set a gem",
+	# The black one said "cold for good" until fire could relight it (a flare,
+	# a gem of fire, a fire blade -- 2026-09-30); now it says only what wakes it.
 	Tiles.BRAZIER_DEAD: "cold, until fire",
+	Tiles.SHRINE: "its colour: pray, or the mirror",
 	Tiles.TRAP: "springs once",
 	Tiles.PIT: "drops you a floor",
 	Tiles.TRAP + 1000: "",
 }
+
+## WHAT YOU CAN CARRY, as rows of [appearance, name, note, second line]. The
+## note sits on the row where it fits; a long one for a long name goes on a
+## dim second line (the two uniques). Gems, the uniques and food were missing
+## until the screens review: every new system of the fortnight ran on things
+## this panel did not list.
+const ITEM_ROWS := [
+	[&"potion", "potions", "", ""],
+	[&"scroll", "scrolls", "", ""],
+	[&"meat", "meat and haunches", "food", ""],
+	[&"gem", "gems", "set at embers; or used in the world", ""],
+	[&"weapon", "swords and daggers", "", ""],
+	# These two earn their own rows because they now have their own
+	# pictures, and a picture nothing explains is worse than a shared
+	# one. What they are FOR is the damage type, so the row says it.
+	[&"mace", "maces -- blunt", "", ""],
+	[&"axe", "axes -- heavy slash", "", ""],
+	[&"launcher", "slings and bows", "", ""],
+	[&"armour", "armour", "", ""],
+	[&"shield", "shields, not with a bow", "", ""],
+	[&"ring", "the ring of the rat", "", "a rat, until it goes cold; a gem warms it"],
+	[&"shovel", "the undertaker's shovel", "", "raises your last kill; buries the red's dead"],
+	[&"amulet", "the Amulet of the Deep", "", ""],
+]
+
+## THE KEYS, IN GROUPS (the screens review): what you do, and what you see
+## and set. Two groups rather than five -- the column has room for exactly
+## this many lines, and the suite holds it there. A row of Sidebar.KEYS that
+## no group names lands in the second, so a new key is never lost.
+const KEY_GROUPS := [
+	["ACT", ["move", "wait / rest", "descend", "ascend", "pick up", "shoot", "throw",
+		"swap reach / blade", "torch", "close a door", "pray at a shrine",
+		"ally: heel / loose", "inventory", "look"]],
+	["VIEW AND SYSTEM", ["letters / symbols / pictures", "classic / 3D view",
+		"turn 3D camera", "still / simple / full", "the map", "sound", "music",
+		"screenshot", "menu", "travel"]],
+]
+## The pick-up row's action, as the key really behaves: g does what the
+## square offers. Said on the row rather than under it -- the column has
+## exactly one line to spare, and the suite holds it there.
+const PICK_UP_ROW := "pick up / eat / burn / bury"
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -244,16 +293,27 @@ func _draw() -> void:
 
 ## Line counts, so the panel can be sized before anything is drawn.
 func _terrain_lines() -> int:
-	return 1 + TERRAIN_ORDER.size()
+	return 1 + TERRAIN_ORDER.size() + 1
 
 func _creature_lines() -> int:
-	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4
+	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4 + 4
 
 func _item_lines() -> int:
-	return 1 + 9 + 1 + 1 + Shrines.COUNT
+	var n := 1 + 1 + 1 + Shrines.COUNT
+	for row in ITEM_ROWS:
+		n += 2 if String(row[3]) != "" else 1
+	return n
 
 func _control_lines() -> int:
-	return 1 + MOVE_ART.size() + 2 + 1 + 1 + Sidebar.KEYS.size()
+	# The movement block, a gap, the KEYS heading, a heading per group, every
+	# key, and the page marker.
+	return 1 + move_lines() + 1 + 1 + KEY_GROUPS.size() + Sidebar.KEYS.size() + 1
+
+## What the panel wants to be, for the suite: it must fit the window.
+func wanted_height() -> float:
+	var tallest := maxi(maxi(_terrain_lines(), _creature_lines()),
+		maxi(_item_lines(), _control_lines()))
+	return PAD * 2.0 + 34.0 + float(tallest) * LINE + 10.0
 
 func _heading(x: float, y: float, text: String) -> float:
 	draw_string(font_bold, Vector2(x, y + font.get_ascent(font_size)), text,
@@ -262,7 +322,8 @@ func _heading(x: float, y: float, text: String) -> float:
 
 ## One row: glyph, name, and an optional dim note on the right.
 func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
-		name: String, note: String = "", second: String = "") -> float:
+		name: String, note: String = "", second: String = "",
+		name_tint: Color = Palette.UI_TEXT) -> float:
 	var base := y + font.get_ascent(font_size)
 	# A creature the climb has got hold of, shown BESIDE its ordinary self
 	# rather than as a row of its own. One row per creature keeps the roster
@@ -280,7 +341,7 @@ func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 	draw_string(gf, Vector2(x + GLYPH_X, base + (font_size - gs) * 0.35), glyph,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, gs, tint)
 	draw_string(font, Vector2(x + NAME_X, base), name,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Palette.UI_TEXT)
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, name_tint)
 	if note != "":
 		draw_string(font, Vector2(x + NAME_X, base), note,
 			HORIZONTAL_ALIGNMENT_RIGHT, w - NAME_X - 12.0, font_size - 2,
@@ -296,13 +357,38 @@ func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 ## which reads as though the two are the same thing.
 ##
 ## A picture says in one glance what that line failed to say at all.
-const MOVE_ART := [
-	" y k u     7 8 9",
-	"  \\|/       \\|/",
-	" h-@-l     4-@-6",
-	"  /|\\       /|\\",
-	" b j n     1 2 3",
+## ONE DIAGRAM THAT TAKES TURNS (Brad, 2026-10-01). The vi keys, the number
+## pad and the arrows each had their own picture, side by side, taking room;
+## now one box shows each in turn, a few seconds apiece. The arrows get the
+## sentence this block exists to deliver. On "still" nothing cycles: the
+## first layout stays, and the arrows' warning is in its note.
+const MOVE_LAYOUTS := [
+	{"name": "the vi keys", "art": [" y k u", "  \\|/", " h-@-l", "  /|\\", " b j n"],
+		"note": "eight directions; arrows give four"},
+	{"name": "the number pad", "art": [" 7 8 9", "  \\|/", " 4-@-6", "  /|\\", " 1 2 3"],
+		"note": "eight directions"},
+	{"name": "the arrow keys", "art": ["   ^", "   |", " <-@->", "   |", "   v"],
+		"note": "four directions, not eight"},
 ]
+const MOVE_CYCLE_S := 2.5
+
+## Which layout is up: the first, held, on still; otherwise the clock's.
+func layout_index() -> int:
+	if not Effects.any():
+		return 0
+	return int(Time.get_ticks_msec() / (MOVE_CYCLE_S * 1000.0)) % MOVE_LAYOUTS.size()
+
+## The movement block's height in lines: on a pad two sentences, on a
+## keyboard the picture and its note.
+func move_lines() -> int:
+	if pad_input:
+		return 2
+	return MOVE_LAYOUTS[0]["art"].size() + 1
+
+func _process(_delta: float) -> void:
+	# Only the cycling needs a redraw; a still panel costs nothing.
+	if visible and not pad_input and Effects.any() and MOVE_LAYOUTS.size() > 1:
+		queue_redraw()
 
 ## A line of the movement diagram: monospace art, with no glyph/name split.
 func _art(x: float, y: float, text: String, tint: Color) -> float:
@@ -310,25 +396,98 @@ func _art(x: float, y: float, text: String, tint: Color) -> float:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
 	return y + LINE
 
+## A key's written form as cap labels: "arrows / hjklyubn" is two caps,
+## ". or 5" two, "m  - +" three, "f (no bow)" one. A pad's picture is one.
+static func cap_labels(label: String) -> Array:
+	var out: Array = []
+	for part in label.split(" / "):
+		for piece in String(part).split(" or "):
+			var tokens: PackedStringArray = String(piece).split(" ", false)
+			var all_short := tokens.size() > 1
+			for t in tokens:
+				if String(t).length() != 1:
+					all_short = false
+			if all_short:
+				for t in tokens:
+					out.append(String(t))
+			elif String(piece).strip_edges() != "":
+				out.append(String(piece).strip_edges())
+	return out
+
+## The key rows in group order: {group, caps, action, keyboard_only}.
+## `keyboard_only` is a pad player looking at a key their pad has no button
+## for -- drawn dim, so the list says which is which.
+func key_rows() -> Array:
+	var out: Array = []
+	var placed := {}
+	for g in KEY_GROUPS:
+		for action in g[1]:
+			for row in Sidebar.KEYS:
+				if String(row[1]) == String(action) and not placed.has(String(row[1])):
+					out.append(_key_row(String(g[0]), row))
+					placed[String(row[1])] = true
+	# Anything the groups did not name: the last group, never dropped.
+	for row in Sidebar.KEYS:
+		if not placed.has(String(row[1])):
+			out.append(_key_row(String(KEY_GROUPS[-1][0]), row))
+			placed[String(row[1])] = true
+	return out
+
+func _key_row(group: String, row: Array) -> Dictionary:
+	var label := Sidebar.key_label(row, pad_cfg, pad_input)
+	var kb_only := false
+	if pad_input:
+		var pad_word := row.size() > 3 and String(row[3]) != ""
+		var bound := int(row[2]) != 0 and pad_cfg != null and pad_cfg.button_for_key(int(row[2])) >= 0
+		kb_only = not pad_word and not bound
+	var action := String(row[1])
+	if action == "pick up":
+		action = PICK_UP_ROW
+	return {"group": group, "caps": cap_labels(label), "action": action,
+		"keyboard_only": kb_only}
+
 func _control_column(x: float, y: float, w: float) -> void:
-	y = _heading(x, y, "MOVEMENT")
-	for line in MOVE_ART:
-		y = _art(x, y, line, Palette.UI_TEXT)
-	# The one sentence this whole column exists to deliver.
-	y = _art(x, y, "the arrow keys give you", Palette.AMULET)
-	y = _art(x, y, "four directions, not eight", Palette.AMULET)
+	var base := y + font.get_ascent(font_size)
+	if pad_input:
+		y = _heading(x, y, "MOVEMENT")
+		var stick := String.chr(PadConfig.STICK_GLYPH)
+		PadGlyphs.draw(self, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
+			stick + "  the left stick: eight directions", font, font_size, Palette.UI_TEXT)
+		y += LINE
+		y = _art(x, y, "the d-pad is four actions, below", Palette.UI_DIM)
+	else:
+		var layout: Dictionary = MOVE_LAYOUTS[layout_index()]
+		y = _heading(x, y, "MOVEMENT")
+		# Which layout is up, on the heading's own line, with the count.
+		draw_string(font, Vector2(x, base), "%s  %d/%d" % [layout["name"],
+			layout_index() + 1, MOVE_LAYOUTS.size()], HORIZONTAL_ALIGNMENT_RIGHT,
+			w - 12.0, font_size - 2, Palette.UI_DIM)
+		for line in layout["art"]:
+			y = _art(x, y, String(line), Palette.UI_TEXT)
+		# The arrows' warning is the one sentence this block exists to deliver,
+		# so it is the loud colour; the others are plain.
+		y = _art(x, y, String(layout["note"]),
+			Palette.AMULET if layout_index() == MOVE_LAYOUTS.size() - 1
+			or not Effects.any() else Palette.UI_TEXT)
 
 	y += LINE * 0.6
 	y = _heading(x, y, "KEYS")
 	# Straight from the sidebar's table, so the two can never disagree about
-	# what a key does.
-	for row in Sidebar.KEYS:
-		var base := y + font.get_ascent(font_size)
-		PadGlyphs.draw(self, Vector2(x + GLYPH_X, base),
-			Sidebar.key_label(row, pad_cfg, pad_input), font, font_size - 1,
-			Palette.UI_DIM)
-		draw_string(font, Vector2(x + GLYPH_X, base), row[1],
-			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1, Palette.UI_TEXT)
+	# what a key does -- grouped, and drawn as caps.
+	var group := ""
+	for row in key_rows():
+		if String(row["group"]) != group:
+			group = String(row["group"])
+			draw_string(font_bold, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
+				group, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 3, Palette.UI_DIM)
+			y += LINE
+		var row_base := y + font.get_ascent(font_size)
+		var dim: bool = bool(row["keyboard_only"])
+		Keycap.draw_row(self, Vector2(x + GLYPH_X, row_base), row["caps"], font,
+			font_size - 1, Palette.UI_DIM if dim else Palette.STAIRS)
+		draw_string(font, Vector2(x + GLYPH_X, row_base), String(row["action"]),
+			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1,
+			Palette.UI_DIM if dim else Palette.UI_TEXT)
 		y += LINE
 
 	# The page marker. Said on the screen rather than left to be discovered,
@@ -366,6 +525,8 @@ func _terrain_column(x: float, y: float, w: float) -> void:
 			&"stalagmite": tint = Palette.ROCK_LIGHT
 		var label := String(id).replace("_", " ")
 		y = _entry(x, y, w, glyph, tint, label, NOTES.get(tile, ""))
+	draw_string(font, Vector2(x + NAME_X, y + font.get_ascent(font_size)), LEFT_OUT,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, Palette.UI_DIM)
 
 func _creature_column(x: float, y: float, w: float) -> void:
 	# Counted by walking the SAME list the rows below are drawn from, not by
@@ -448,20 +609,31 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	y = _entry(x, y, w, "?", Palette.ALERT, "stirring", "")
 	y = _entry(x, y, w, "!", Palette.ALERT, "it has seen you", "")
 	y = _entry(x, y, w, "<<", Palette.FLEEING, "running from you", "")
+	# The spore tell, and the two kinds of creature it leads to (the screens
+	# review): the outline on a map figure, as a ring here.
+	y = _ring_entry(x, y, w, Palette.FUNGUS_PURPLE, "purple ring", "its body rots into purple")
+	y = _ring_entry(x, y, w, Palette.FUNGUS_RED, "red ring", "it rises when it falls")
+	y = _entry(x, y, w, "", Palette.UI_TEXT, "risen", "blind: it hunts by sound", "",
+		Palette.FUNGUS_RED)
+	y = _entry(x, y, w, "", Palette.UI_TEXT, "corrupted", "crossed the purple, and changed", "",
+		Palette.CORRUPTED)
+
+## A row led by a ring rather than a glyph: the spore outline, as drawn
+## round a figure on the map.
+func _ring_entry(x: float, y: float, w: float, colour: Color, name: String,
+		note: String) -> float:
+	draw_arc(Vector2(x + GLYPH_X + 7.0, y + LINE * 0.5), 5.0, 0.0, TAU, 16, colour, 2.0)
+	return _entry(x, y, w, "", colour, name, note)
 
 func _item_column(x: float, y: float, w: float) -> void:
 	y = _heading(x, y, "WHAT YOU CAN CARRY")
-	for pair in [[&"potion", "potions"], [&"scroll", "scrolls"],
-			[&"weapon", "swords and daggers"],
-			# These two earn their own rows because they now have their own
-			# pictures, and a picture nothing explains is worse than a shared
-			# one. What they are FOR is the damage type, so the row says it.
-			[&"mace", "maces -- blunt"], [&"axe", "axes -- heavy slash"],
-			[&"launcher", "slings and bows"],
-			[&"armour", "armour"], [&"shield", "shields, not with a bow"],
-			[&"amulet", "the Amulet of the Deep"]]:
-		var art := _look(pair[0])
-		y = _entry(x, y, w, art["ch"], art["fg"], pair[1], "")
+	for row in ITEM_ROWS:
+		var art := _look(row[0])
+		y = _entry(x, y, w, art["ch"], art["fg"], String(row[1]), String(row[2]))
+		if String(row[3]) != "":
+			draw_string(font, Vector2(x + NAME_X, y + font.get_ascent(font_size)),
+				String(row[3]), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, Palette.UI_DIM)
+			y += LINE
 
 	y += LINE * 0.6
 	y = _heading(x, y, "SHRINES")
@@ -476,4 +648,5 @@ func _item_column(x: float, y: float, w: float) -> void:
 		# the key list and read as though it belonged to those rows instead --
 		# and "not yet used" already says the same thing in words.
 		y = _entry(x, y, w, String(_look(&"shrine")["ch"]), state.shrine_hue(kind),
-			Shrines.NAMES[kind] if known else "not yet used")
+			Shrines.NAMES[kind] if known else "not yet learned", "", "",
+			Palette.UI_TEXT if known else Palette.UI_DIM)

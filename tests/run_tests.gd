@@ -7101,10 +7101,17 @@ func _test_button_pictures() -> void:
 				continue
 			var src := FileAccess.get_file_as_string(dir + f)
 			var asks := src.find(".icon(") >= 0 or src.find("key_label(") >= 0
-			if asks and src.find("PadGlyphs.") < 0 and f != "pad_glyphs.gd":
+			# Keycap is the second honest route: it draws every label through
+			# PadGlyphs itself (checked below), so a panel that draws its keys
+			# as caps asks for pictures and never touches the text font.
+			if asks and src.find("PadGlyphs.") < 0 and src.find("Keycap.") < 0 \
+					and f != "pad_glyphs.gd":
 				careless.append(f)
 	check("every panel that shows button pictures draws them directly",
 		careless.is_empty(), ", ".join(careless))
+	var keycap_src := FileAccess.get_file_as_string("res://src/ui/keycap.gd")
+	check("and a keycap is lettered through PadGlyphs (the premise of the route above)",
+		keycap_src.find("PadGlyphs.draw(") >= 0 and keycap_src.find("PadGlyphs.width(") >= 0)
 
 ## Inside the pack, a controller press must never select an item by letter.
 ##

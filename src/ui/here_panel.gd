@@ -38,28 +38,17 @@ const LINE := 24.0
 ## The key column. Wide enough for the longest button name the pad table holds,
 ## measured rather than guessed: "D-pad down" at 17pt.
 const KEY_COL := 132.0
-## KEYCAPS (the UI review, 2026-10-01): the key column drawn as a key -- a
-## small cap round the letter, the chord or the pad button's picture -- so
-## the two devices read alike and "g" stops looking like a word in a sentence.
-## The cap is sized to its label and the test holds the widest button name
-## inside KEY_COL with its padding on.
-const KEY_PAD := 6.0
-const KEY_H := 20.0
-const KEY_FILL := Color("181924")
-const KEY_EDGE := Color("5a5866")
+## KEYCAPS (the UI review, 2026-10-01): the key column drawn as a key, through
+## the shared Keycap, so the test can hold the widest button name inside
+## KEY_COL with its padding on.
+const KEY_H := Keycap.H
 
 ## The cap behind a key label whose baseline is at `y`.
 func keycap_rect(y: float, label: String) -> Rect2:
-	var w := PadGlyphs.width(label, font, font_size) + KEY_PAD * 2.0
-	return Rect2(Vector2(PAD, y - KEY_H + 5.0), Vector2(w, KEY_H))
+	return Keycap.rect(Vector2(PAD, y), label, font, font_size)
 
 func _draw_keycap(y: float, label: String, colour: Color) -> void:
-	var r := keycap_rect(y, label)
-	draw_rect(r, KEY_FILL, true)
-	draw_rect(r, KEY_EDGE, false, 1.0)
-	# The lower edge drawn twice: a key has a bottom.
-	draw_line(r.position + Vector2(0.0, r.size.y), r.end, KEY_EDGE, 2.0)
-	PadGlyphs.draw(self, Vector2(PAD + KEY_PAD, y), label, font, font_size, colour)
+	Keycap.draw(self, Vector2(PAD, y), label, font, font_size, colour)
 
 ## The status line's colour: what is hurting you, in its own colour.
 func status_colour() -> Color:
