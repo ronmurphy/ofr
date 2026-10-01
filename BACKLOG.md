@@ -297,7 +297,14 @@ strand at a time with play between:
    HERE box says what it will do** -- so every gem is a choice between your
    gear and the floor, and the trader's 3-for-1 gains a purpose. Suggested
    build order, the first three first (each leans only on systems that exist):
-   1. **Gem of the boss -> a decoy crash.** Thrown, it shatters LOUD where it
+   1. **Gem of the boss -> a decoy crash. BUILT 2026-10-01:** the one gem
+      that can be thrown (throw 8; the throw key's list; the aim cursor on any
+      square in reach, no target needed). It shatters at BOSS_CRASH 10 -- above
+      a wail -- so sleepers wake toward it, the blind risen hear it, AND
+      hunters that have lost sight of you take the crash as their last sight
+      of you (_make_noise alone only turns the unaware). Loud enough to rouse
+      a grave, as every loud thing is. Gone when thrown. Test:
+      _test_gems_in_the_world. Thrown, it shatters LOUD where it
       lands. The blind risen hunt by sound, so it empties a red room's far
       wall while you take the near one; it also pulls a guard off its round.
    2. **Gem of thirst -> drink the dead. BUILT 2026-10-01:** a plain click on
@@ -307,7 +314,12 @@ strand at a time with play between:
       Test: _test_the_gem_of_thirst. Crushed on a fresh body: you drain
       it for hp and the body is gone -- a THIRD claimant for the dead beside
       the red and the shovel. Denies the red a body when you have no fire.
-   3. **Gem of the mirror -> a shrine's true name.** Crushed at an unknown
+   3. **Gem of the mirror -> a shrine's true name. BUILT 2026-10-01:** a
+      plain click on the gem while STANDING on an unfamiliar shrine names it
+      (shrine_known[kind], so every shrine of that colour this run); the
+      shrine stays, unprayed. Refused and kept off a shrine or on a known
+      one; the pack's hint says "name the shrine". Test:
+      _test_gems_in_the_world. Crushed at an unknown
       shrine, it names it. Shrine colours are shuffled per run, so it answers
       "which colour was the gong?" -- the one that frees the risen.
    4. **Gem of frost -> THE FROZEN ROOM (Brad's design).** Thrown into a room

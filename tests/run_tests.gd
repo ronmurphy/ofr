@@ -113,6 +113,7 @@ func _initialize() -> void:
 	_test_the_gem_of_thirst()
 	_test_a_bone_ally_can_carry_the_red()
 	_test_the_undertakers_pay()
+	_test_gems_in_the_world()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -2347,6 +2348,85 @@ func _test_the_undertakers_pay() -> void:
 	check("and the banked graves keep its edge", not shovel.dull and shovel.laid_to_rest == 0)
 	check("the count survives a save",
 		Item.from_dict({"id": "shovel", "laid_to_rest": 3}).laid_to_rest == 3)
+
+## GEMS IN THE WORLD (6d): the boss gem thrown as a decoy crash, the mirror
+## gem naming a shrine.
+func _test_gems_in_the_world() -> void:
+	# THE BOSS: a crash where it lands.
+	var gs := _arena(26, 12)
+	gs.player.x = 4
+	gs.player.y = 6
+	gs.player.inventory.clear()
+	var boss := Item.make(&"gem_boss")
+	gs.give_item(boss)
+	check("the gem of the boss can be thrown", boss.is_throwable()
+		and gs.throwables().has(boss))
+	var dagger := Item.make(&"dagger")
+	gs.give_item(dagger)
+	var crash := Vector2i(12, 6)
+	check("precondition: an ordinary throw wants a target",
+		not gs.player_throw(gs.player.inventory.find(dagger), crash)
+		and gs.player.inventory.has(dagger))
+	# Too far: refused, and kept.
+	check("out of reach it is refused and kept",
+		not gs.player_throw(gs.player.inventory.find(boss), Vector2i(20, 6))
+		and gs.player.inventory.has(boss))
+	# A sleeper near the crash, far from you; a hunter that lost you; a free
+	# risen -- all too far from you to find you again this turn.
+	var sleeper := _spawn(gs, "kobold", 22, 8)
+	sleeper.alertness = Entity.Alert.ASLEEP
+	var hunter := _spawn(gs, "goblin", 22, 6)
+	hunter.alertness = Entity.Alert.AWAKE
+	hunter.last_seen = Vector2i(gs.player.x, gs.player.y)
+	hunter.lost_turns = 2
+	var risen := _spawn(gs, "kobold", 20, 4)
+	risen.faction = Entity.Faction.RISEN
+	risen.fungal = true
+	var turn := gs.turns
+	check("thrown at an empty square, it goes (and must)",
+		gs.player_throw(gs.player.inventory.find(boss), crash) and gs.turns == turn + 1)
+	check("the gem is gone, and nothing lies there",
+		not gs.player.inventory.has(boss) and gs.items_at(crash.x, crash.y).is_empty())
+	check("a sleeper wakes and turns to the crash",
+		sleeper.alertness == Entity.Alert.AWAKE and sleeper.last_seen == crash)
+	check("a hunter that lost you goes to the crash instead", hunter.last_seen == crash)
+	check("a risen heard it", risen.heard == crash)
+	var said := ""
+	for line in gs.msg_log.entries:
+		said += str(line) + "|"
+	check("and the log counts the fooled", said.contains("1 thing hunting you goes to the sound"),
+		said)
+
+	# THE MIRROR: a shrine shown for what it is.
+	var ms := _arena(12, 9)
+	ms.player.x = 5
+	ms.player.y = 4
+	ms.player.inventory.clear()
+	var here := Vector2i(5, 4)
+	var mirror := Item.make(&"gem_mirror")
+	ms.give_item(mirror)
+	check("off a shrine the mirror is refused and kept",
+		not ms.player_use(ms.player.inventory.find(mirror)) and ms.player.inventory.has(mirror))
+	ms.map.set_tile(here.x, here.y, Tiles.SHRINE)
+	ms.shrine_at[here] = Shrines.VIGIL
+	ms.shrine_known.clear()
+	check("precondition: the shrine is unfamiliar", ms.shrine_label(Shrines.VIGIL)
+		== "an unfamiliar shrine" and ms.mirror_target() == Shrines.VIGIL)
+	var panel := InventoryPanel.new()
+	panel.state = ms
+	check("the pack offers to name it", panel._action_hint(mirror) == "name the shrine",
+		panel._action_hint(mirror))
+	check("on it, the mirror names the shrine (and must)",
+		ms.player_use(ms.player.inventory.find(mirror)) and ms.shrine_known.has(Shrines.VIGIL)
+		and ms.shrine_label(Shrines.VIGIL) == "shrine of the vigil")
+	check("the gem is spent; the shrine is not",
+		not ms.player.inventory.has(mirror) and ms.map.get_tile(here.x, here.y) == Tiles.SHRINE
+		and ms.shrine_at.has(here))
+	var second := Item.make(&"gem_mirror")
+	ms.give_item(second)
+	check("a known shrine takes no second mirror",
+		not ms.player_use(ms.player.inventory.find(second)) and ms.player.inventory.has(second)
+		and panel._action_hint(second) != "name the shrine")
 
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.

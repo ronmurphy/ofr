@@ -500,7 +500,9 @@ func _action_hint(item: Item) -> String:
 		return "dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
 			- item.laid_to_rest)
 	if item.kind == Item.Kind.GEM:
-		# The gem of thirst's own use comes first: a click drinks the body.
+		# A gem with a use of its own, here and now, says so first (6d).
+		if item.element == &"reflect" and state.mirror_target() >= 0:
+			return "name the shrine"
 		if item.element == &"leech":
 			var body := state.thirst_target()
 			if not body.is_empty():

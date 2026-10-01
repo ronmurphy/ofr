@@ -303,6 +303,9 @@ const CATALOGUE := {
 	&"gem_boss": {
 		"name": "gem of the boss", "app": &"gem", "kind": Kind.GEM,
 		"element": &"bash", "min_depth": 4, "weight": 0,
+		## The one gem you can THROW: it shatters loud where it lands, a decoy
+		## for the blind risen and for anything hunting you (6d).
+		"throw": 8,
 	},
 
 	## THE ROAD. The first stone for body armour, and deliberately NOT one of

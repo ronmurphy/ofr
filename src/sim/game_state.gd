@@ -3259,6 +3259,9 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 		msg_log.add("You cannot reach there with the %s." % item.name,
 			Color(0.7, 0.6, 0.4))
 		return false
+	# The gem of the boss wants no target: it is thrown AT A PLACE.
+	if item.kind == Item.Kind.GEM and item.element == &"bash":
+		return _throw_the_boss(index, cell)
 
 	var target := entity_at(cell.x, cell.y)
 	if target == null or target.is_player:
@@ -3290,6 +3293,67 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 	ground.append(item)
 
 	_end_player_turn()
+	return true
+
+## THE GEM OF THE BOSS IS A DECOY (6d, 2026-09-30). Thrown at any square in
+## reach, it shatters with a crash louder than a wail: sleepers wake and turn
+## to the spot, the blind risen go to it, and anything hunting you that has
+## lost sight of you goes there instead. The gem is gone. Loud enough to
+## rouse a grave (GRAVE_ROUSING) -- a crash beside a headstone wakes what is
+## under it, as every loud thing does.
+const BOSS_CRASH := 10
+
+func _throw_the_boss(index: int, cell: Vector2i) -> bool:
+	var gem: Item = player.inventory[index]
+	_travel.clear()
+	player.inventory.remove_at(index)
+	gem.letter = ""
+	msg_log.add("You hurl the %s. It shatters with a crash that rings through the stone."
+		% gem.name, Color(0.85, 0.88, 0.68))
+	# Hunters that have lost you go to the crash. _make_noise only turns the
+	# unaware; an awake thing keeps hunting its last sight of you, and the
+	# decoy's whole use is to hand it a false one.
+	var fooled := 0
+	for e in entities:
+		if e.is_player or not e.alive or e.alertness != Entity.Alert.AWAKE \
+				or e.faction == Entity.Faction.RISEN or e.lost_turns == 0:
+			continue
+		if Los.steps(e.x, e.y, cell.x, cell.y) > BOSS_CRASH:
+			continue
+		e.last_seen = cell
+		fooled += 1
+	_make_noise(cell, BOSS_CRASH, &"crash")
+	if fooled > 0:
+		msg_log.add("%d thing%s hunting you go%s to the sound instead."
+			% [fooled, "" if fooled == 1 else "s", "es" if fooled == 1 else ""],
+			Color(0.95, 0.70, 0.40))
+	_end_player_turn()
+	return true
+
+## THE GEM OF THE MIRROR NAMES A SHRINE (6d). Held to an unfamiliar shrine
+## you stand on, it shows the shrine for what it is -- and so every shrine of
+## that colour this run. Which colour is the gong is the knowledge that frees
+## the risen or ends a run; this buys it without the prayer.
+func mirror_target() -> int:
+	var here := Vector2i(player.x, player.y)
+	if map.get_tile(here.x, here.y) != Tiles.SHRINE:
+		return -1
+	var kind := int(shrine_at.get(here, -1))
+	if kind < 0 or shrine_known.has(kind):
+		return -1
+	return kind
+
+func _show_the_shrine(gem: Item) -> bool:
+	if map.get_tile(player.x, player.y) != Tiles.SHRINE:
+		msg_log.add("The mirror shows nothing here. Stand on a shrine.", Color(0.7, 0.6, 0.4))
+		return false
+	var kind := mirror_target()
+	if kind < 0:
+		msg_log.add("You already know this one for what it is.", Color(0.7, 0.6, 0.4))
+		return false
+	shrine_known[kind] = true
+	msg_log.add("You hold the %s to the shrine. It shows itself: the %s."
+		% [gem.name, Shrines.NAMES[kind]], shrine_hue(kind))
 	return true
 
 ## What a queued mouse-walk refuses to keep walking past.
@@ -6247,7 +6311,10 @@ func _apply_effect(item: Item) -> bool:
 	if item.kind == Item.Kind.GEM:
 		if item.element == &"leech":
 			return _drink_the_dead(item)
-		msg_log.add("A gem is set into your gear at a brazier's embers.",
+		if item.element == &"reflect":
+			return _show_the_shrine(item)
+		msg_log.add("A gem is set into your gear at a brazier's embers."
+			+ (" The gem of the boss can also be thrown." if item.element == &"bash" else ""),
 			Color(0.7, 0.6, 0.4))
 		return false
 	match item.effect:
