@@ -840,6 +840,40 @@ the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
 **Rule: the minimap gives way** -- not drawn on a frame when the description
 would reach it. Information always wins.
 
+**Water washes it off (Brad, from play, 2026-10-01 night) -- designed, small,
+not built.** One rule a player can hold: *water cleanses*. Anything -- you, a
+rat, a monster -- that steps into WATER loses the red spores it carries
+(`Entity.spores` cleared: the mark's ring goes, its body will not be
+claimed), and the purple's poison ends at once for whoever wades (the three
+lingering turns, not the cloud itself -- stand beside purple in a pool and
+you breathe it again). Why it earns its place: water is slow and loud today
+and does nothing else; this makes a pool a place to RUN TO -- wash before
+you die so the red cannot have you, break the rats' carrying of spores
+across a floor -- and the red already cannot grow or crawl onto water
+(`_fungus_can_grow` is floor only), so a pool is a firebreak the player can
+read. Message: "The water takes the red off you." / "...off the rat."
+Purple-and-water will rarely coincide; it costs nothing to make the rule
+whole. Risen are dead things: wading does not wash a RISEN clean.
+Build: a hook where a creature's step lands (player_move, _step_travel, the
+monster step), a message when seen, one test. The haunch-as-cure for the
+poison still waits for brewing; this is the other, placed route.
+**The trade (Brad, same night):** washing should COST something, and the
+cost is noise -- water makes none today (`Tiles.noise_radius` is 7 for
+bones, 0 for all else; "wading" is only slow). Give wading a radius of
+about 4 (under combat's 6 and bones' 7) and the pool becomes a choice: wash
+the red off, and the blind risen hear you splashing and come. A risen in
+water washes nothing -- it is dead, the red has it. The two halves ship
+together or the wash is a free lunch.
+
+**Destructive environments (Brad, 2026-10-01 night) -- unformed, kept.** He
+has carried it three days without a shape. What exists already: bears take
+doors off hinges, fire burns fungus (bones and wooden doors designed under
+strand 6), the crag fills pits, heaving breaks a bar. The unbuilt half is
+walls and pillars that come down, which fights two things: walls are drawn
+from their neighbours in the classic view, and generation proves every
+floor completable once. To be shaped around a MOMENT first (what would the
+player be doing when a wall gives?), not a system.
+
 **Push-blocks, and ground with height.** David's Sokoban vault, revived
 2026-09-28 when Brad saw the chest on its block in the title's hall. The 3D
 view already draws heights (walls 1.35, chests 0.65) though the game beneath is
