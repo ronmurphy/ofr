@@ -1597,6 +1597,24 @@ func _suspended_state() -> GameState:
 ## THE MIASMA (strand 3): purple breathes a poison cloud over itself and its
 ## eight neighbours -- 1 hp a turn, lingering 3 turns after you leave.
 func _test_the_miasma() -> void:
+	# A rabbit is at home in the purple's air (Brad, 2026-10-01: its meat is
+	# the cure, so the cloud cannot be what kills it); a kobold is not.
+	var air := _arena(11, 7)
+	air.player.x = 2
+	air.player.y = 3
+	air.map.set_tile(7, 3, Tiles.FUNGUS_PURPLE)
+	var bunny := _spawn(air, "rabbit", 7, 2)
+	var breather := _spawn(air, "kobold", 6, 3)
+	check("precondition: both stand in the cloud", air.in_miasma(bunny.x, bunny.y)
+		and air.in_miasma(breather.x, breather.y))
+	var bunny_hp := bunny.hp
+	var breather_hp := breather.hp
+	for i in 3:
+		air._breathe(bunny)
+		air._breathe(breather)
+	check("the rabbit breathes it unharmed", bunny.hp == bunny_hp and bunny.poisoned == 0)
+	check("the kobold is poisoned and hurt (the premise)",
+		breather.hp < breather_hp and breather.poisoned > 0)
 	var g := GameState.new(9393)
 	g.new_game()
 	g.depth = 7
@@ -6714,6 +6732,28 @@ func _test_the_foragers_satchel() -> void:
 	check("s opens it and d-pad down is bound to it",
 		int(PadConfig.DEFAULTS[JOY_BUTTON_DPAD_DOWN]) == KEY_S
 		and MainScene.pad_pack_action(KEY_S, false, false) == &"drop")
+	# The pane says how to open it and what it holds (Brad, 2026-10-01).
+	var pane := InventoryPanel.new()
+	pane.state = gs
+	pane.font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	var told := ""
+	for line in pane.detail_lines(bag):
+		told += String(line["text"]) + "|"
+	check("the pack's pane names the key and lists what it holds",
+		told.contains("s: open it") and told.contains("· potion of healing x3")
+		and told.contains("and 3 more"), told)
+	pane.pad_cfg = PadConfig.new()
+	pane.pad_input = true
+	told = ""
+	for line in pane.detail_lines(bag):
+		told += String(line["text"]) + "|"
+	check("and on a pad, the button",
+		told.contains("%s: open it" % PadConfig.button_name(JOY_BUTTON_DPAD_DOWN)), told)
+	bag.contents.clear()
+	told = ""
+	for line in pane.detail_lines(bag):
+		told += String(line["text"]) + "|"
+	check("empty, it says so", told.contains("empty"), told)
 
 	# BY THE CAVES (Brad): a run that reaches the first cave floor without one
 	# finds it lying there, in the far room; a run carrying one does not; and

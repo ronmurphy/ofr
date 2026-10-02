@@ -357,6 +357,18 @@ func detail_lines(item: Item) -> Array:
 		out.append({"text": ("dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
 			- item.laid_to_rest)) if item.dull else "sharp: one raise",
 			"colour": Palette.UI_TEXT})
+	# The satchel: how to open it (the key, or the pad's button, by name --
+	# Brad, 2026-10-01: worn, nothing reminded him), and what it holds.
+	if item.is_satchel():
+		var open_with := pad_cfg.label(KEY_S, pad_input) if pad_cfg != null else "s"
+		out.append({"text": _fit_detail("%s: open it" % open_with), "colour": Palette.UI_TEXT})
+		if item.contents.is_empty():
+			out.append({"text": "empty", "colour": Palette.UI_DIM})
+		for i in mini(item.contents.size(), 7):
+			out.append({"text": _fit_detail("· " + item.contents[i].display_name()),
+				"colour": Palette.UI_TEXT})
+		if item.contents.size() > 7:
+			out.append({"text": "· and %d more" % (item.contents.size() - 7), "colour": Palette.UI_DIM})
 	match item.effect:
 		&"heal":
 			out.append({"text": "restores %d hp" % item.effective_magnitude(), "colour": Palette.HP_GOOD})

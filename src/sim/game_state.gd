@@ -3936,6 +3936,11 @@ func in_miasma(x: int, y: int) -> bool:
 ## One turn of air for a creature: the cloud poisons (or re-poisons), and the
 ## poison bites. True if it killed.
 func _breathe(e: Entity) -> bool:
+	# A rabbit lives on fungus and the purple's air does nothing to it (Brad,
+	# 2026-10-01: that is why its meat can be the cure, when brewing comes).
+	# Found in play: a rabbit asleep beside the purple was dead in four turns.
+	if e.ai == &"forager" or e.appearance == &"rabbit" or e.appearance == &"killer_rabbit":
+		return false
 	if in_miasma(e.x, e.y):
 		if e.is_player and e.poisoned == 0:
 			msg_log.add("You breathe the purple miasma. You are poisoned.",

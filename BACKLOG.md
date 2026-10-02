@@ -661,7 +661,9 @@ the item's own effect for a turn, after which the chooser CLOSES so the map
 shows the heal; a refusal keeps it open. Right-click or the pad's drop sets a
 thing down: fungus TAKES ROOT where you stand (open floor only) and glows
 again; anything else drops. In the pack, unworn, it opens and works the same.
-Full, the pack takes over as before. The pad's d-pad down was `>` (G already
+Full, the pack takes over as before. The pack's pane, on the satchel, names
+the key or the pad's button to open it and lists what it holds (Brad, from
+play: worn, nothing reminded him). The pad's d-pad down was `>` (G already
 goes down the stairs you stand on, so the button was spent twice); inside the
 pack d-pad down still drops, and the legend names the pick-up button for the
 stairs on a pad. Saved inside the item (`contents`, `count`). NOT built:
@@ -727,6 +729,11 @@ Run placeholder, ending with the leader saying the home is not open yet.
 off visible bad air. One tile crossed = 3 damage over 9 steps; three tiles = 1
 per step. Cured by eating fungus **or** rabbit meat once clear of it — the
 fungus poisons you and the fungus cures you.
+**Rabbits breathe the purple unharmed (Brad, 2026-10-01):** `_breathe` skips
+the forager and both rabbits. Found in play: a rabbit asleep beside the purple
+was dead in four turns, and a rabbit living on fungus is the reason its meat
+can be the cure when brewing comes. Every other monster in the cloud is
+poisoned as the player is (1 hp a turn, three turns, re-poisoned inside).
 **SUPERSEDED (2026-09-30):** the miasma as built (strand 3) has no cure --
 the poison lingers 3 turns. The rabbit haunch's healing role moved to the
 NPC adventurers: a haunch takes the RED out of a marked adventurer.
