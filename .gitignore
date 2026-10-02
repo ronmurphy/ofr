@@ -43,3 +43,5 @@ tools/screencaps/*
 # The friend's 1920px sprite-sheet originals (13 MB): kept beside the
 # 128px set the game would ship, never committed.
 assets/spritesheets/originals/
+# Working notes for Claude sessions, like CLAUDE.md: never in the public repo.
+ADVICE.md
