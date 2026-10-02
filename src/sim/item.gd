@@ -430,6 +430,15 @@ const CATALOGUE := {
 		"slot": Slot.OFFHAND, "defense": 0, "unique": true, "holds": 10,
 		"min_depth": 3, "weight": 0,
 	},
+
+	## THE TRAPWRIGHT'S GLASS (hidden traps, 2026-10-01): a lens for the
+	## offhand -- against a shield, or the satchel -- that makes a hidden trap
+	## half again as likely to be spotted (GameState.SPOT_GLASS).
+	&"trap_glass": {
+		"name": "the trapwright's glass", "app": &"gem", "kind": Kind.ARMOR,
+		"slot": Slot.OFFHAND, "defense": 0, "unique": true,
+		"min_depth": 2, "weight": 0,
+	},
 	&"scroll_blink": {
 		"name": "scroll of blink", "app": &"scroll", "kind": Kind.SCROLL,
 		"effect": &"blink", "magnitude": 12, "min_depth": 2, "weight": 6,

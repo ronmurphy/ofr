@@ -291,6 +291,7 @@ func _process(delta: float) -> void:
 	# Effects, when running, redraw at full rate.
 	var flicker_due := light.tick(delta)
 
+
 	if animating or flicker_due or miasma_animating:
 		queue_redraw()
 

@@ -95,7 +95,7 @@ const NOTES := {
 	# a gem of fire, a fire blade -- 2026-09-30); now it says only what wakes it.
 	Tiles.BRAZIER_DEAD: "cold, until fire",
 	Tiles.SHRINE: "its colour: pray, or the mirror",
-	Tiles.TRAP: "springs once",
+	Tiles.TRAP: "hidden until spotted; springs once",
 	Tiles.PIT: "drops you a floor",
 	Tiles.TRAP + 1000: "",
 }

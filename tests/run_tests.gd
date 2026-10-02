@@ -131,6 +131,7 @@ func _initialize() -> void:
 	_test_the_foragers_satchel()
 	_test_fungus_glows()
 	_test_traps()
+	_test_hidden_traps()
 	_test_vaults_load()
 	_test_vaults_are_placed_intact()
 	_test_every_sound_renders()
@@ -3939,6 +3940,129 @@ func _test_motion_tweening() -> void:
 	check("the dead are dropped", not grid._motion.has(mob))
 	grid.free()
 
+## HIDDEN TRAPS (the 2026-09-26 playtest): every trap starts hidden -- floor
+## to the eye and the route -- and springs underfoot; each turn you may spot
+## one in reach, likelier in torchlight; the trapwright's glass helps.
+func _test_hidden_traps() -> void:
+	# A real floor: whatever traps it laid, none shows at the start.
+	var laid: GameState = null
+	for seed in range(1, 40):
+		var g := GameState.new(seed)
+		g.new_game()
+		g.depth = 2
+		g.build_level()
+		if not g.hidden_traps.is_empty():
+			laid = g
+			break
+	check("precondition: a floor with traps was found", laid != null)
+	if laid != null:
+		var shown := 0
+		for y in laid.map.height:
+			for x in laid.map.width:
+				if laid.map.get_tile(x, y) == Tiles.TRAP:
+					shown += 1
+		check("every trap it laid is hidden, and none shows", shown == 0)
+		for c in laid.hidden_traps:
+			check("  a hidden trap's square is floor", Tiles.is_open_floor(laid.map.get_tile(c.x, c.y)))
+			break
+
+	# Beside you: floor to the route, floor to the eye.
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	gs.torch_lit = true
+	gs.map.set_tile(7, 4, Tiles.TRAP)
+	gs._hide_the_traps()
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs._gather_lights()
+	gs.update_vision()
+	check("hidden, its square is floor and a walk routes straight over it",
+		gs.map.get_tile(7, 4) == Tiles.FLOOR and gs.hidden_traps.has(Vector2i(7, 4))
+		and gs.pathfinder.path(Vector2i(5, 4), Vector2i(9, 4)).has(Vector2i(7, 4)))
+	# The chance: light, distance, the glass.
+	var lit_near := gs._spot_chance(Vector2i(7, 4))
+	gs.map.set_tile(8, 4, Tiles.FLOOR)
+	gs.hidden_traps[Vector2i(8, 4)] = true
+	var lit_far := gs._spot_chance(Vector2i(8, 4))
+	gs.torch_lit = false
+	gs._gather_lights()
+	gs.update_vision()
+	var dark_near := gs._spot_chance(Vector2i(7, 4))
+	check("in torchlight a trap two cells off is spotted about half the time a turn (%.2f)" % lit_near,
+		lit_near > 0.40 and lit_near < 0.70)
+	check("farther, less (%.2f < %.2f)" % [lit_far, lit_near], lit_far < lit_near and lit_far > 0.0)
+	check("in the dark, far less (%.2f)" % dark_near, dark_near < lit_near * 0.5 and dark_near > 0.0)
+	var glass := Item.make(&"trap_glass")
+	gs.give_item(glass)
+	gs._toggle_equip(glass)
+	check("the trapwright's glass, worn, adds half again",
+		gs._spots_traps_better()
+		and is_equal_approx(gs._spot_chance(Vector2i(7, 4)), minf(1.0, dark_near * GameState.SPOT_GLASS)))
+	gs._toggle_equip(glass)
+	gs.player.inventory.erase(glass)
+	gs.hidden_traps.erase(Vector2i(8, 4))
+	check("out of reach or out of sight, no chance at all",
+		gs._spot_chance(Vector2i(15, 4)) == 0.0)
+	# Spotted: the tile, the route, the word.
+	gs.torch_lit = true
+	gs._gather_lights()
+	gs.update_vision()
+	gs.trap_rng.seed = 12345
+	var turns_taken := 0
+	while gs.hidden_traps.has(Vector2i(7, 4)) and turns_taken < 40:
+		gs._spot_traps()
+		turns_taken += 1
+	var said := ""
+	for line in gs.msg_log.entries:
+		said += str(line) + "|"
+	check("standing in torchlight beside it, it is spotted within a few turns (%d)" % turns_taken,
+		gs.map.get_tile(7, 4) == Tiles.TRAP and not gs.hidden_traps.has(Vector2i(7, 4))
+		and turns_taken < 12)
+	check("and said, and routed round from then on", said.contains("You spot a trap")
+		and not gs.pathfinder.path(Vector2i(5, 4), Vector2i(9, 4)).has(Vector2i(7, 4)))
+
+	# Unseen underfoot, it springs -- and a walk stops there.
+	var hs := _arena(21, 9)
+	hs.player.x = 5
+	hs.player.y = 4
+	hs.player.max_hp = 200
+	hs.player.hp = 200
+	hs.map.set_tile(6, 4, Tiles.TRAP)
+	hs._hide_the_traps()
+	var hp0 := hs.player.hp
+	check("stepping onto a hidden trap springs it (and must)", hs.player_move(1, 0)
+		and hs.player.hp < hp0 and hs.player.x == 6 and not hs.hidden_traps.has(Vector2i(6, 4))
+		and hs.map.get_tile(6, 4) == Tiles.FLOOR)
+	var ws := _arena(21, 9)
+	ws.player.x = 5
+	ws.player.y = 4
+	ws.player.max_hp = 200
+	ws.player.hp = 200
+	ws.map.set_tile(7, 4, Tiles.TRAP)
+	ws._hide_the_traps()
+	ws.pathfinder = Pathfinder.new(ws.map)
+	ws._travel = [Vector2i(6, 4), Vector2i(7, 4), Vector2i(8, 4), Vector2i(9, 4)]
+	ws._step_travel(false)
+	var hp1 := ws.player.hp
+	ws._step_travel(false)
+	check("a walk springs the hidden trap under its next step and ends there",
+		ws.player.hp < hp1 and ws.player.x == 7 and ws._travel.is_empty())
+
+	# Saved: what is hidden, and the roll to come.
+	var ss := _arena(21, 9)
+	ss.map.set_tile(7, 4, Tiles.TRAP)
+	ss.map.set_tile(9, 6, Tiles.TRAP)
+	ss._hide_the_traps()
+	ss.trap_rng.seed = 99
+	var back := GameState.new(1)
+	back.new_game()
+	check("the hidden traps and their rng are saved",
+		back.apply_dict(ss.to_dict()) and back.hidden_traps.size() == 2
+		and back.hidden_traps.has(Vector2i(9, 6)) and back.trap_rng.seed == 99)
+	check("the glass is a unique the chests can give", Item.uniques(2).has(&"trap_glass"))
+
 func _test_traps() -> void:
 	check("a trap can be stepped on", Tiles.is_walkable(Tiles.TRAP))
 	check("but is never routed through", Tiles.is_avoided(Tiles.TRAP))
@@ -3986,16 +4110,20 @@ func _test_traps() -> void:
 	check("and the morgue knows what did it",
 		doomed.death_cause.contains("trap"), doomed.death_cause)
 
-	# They generate.
+	# They generate -- hidden, since 2026-10-01, so they are counted where
+	# they wait rather than on the map.
 	var seen := 0
+	var showing := 0
 	for i in 30:
 		var level := GameState.new(93000 + i)
 		level.new_game()
+		seen += level.hidden_traps.size()
 		for y in level.map.height:
 			for x in level.map.width:
 				if level.map.get_tile(x, y) == Tiles.TRAP:
-					seen += 1
+					showing += 1
 	check("levels have traps on them (%d / 30)" % seen, seen > 0)
+	check("and none of them shows at the start (%d)" % showing, showing == 0)
 
 func _test_vaults_load() -> void:
 	var library := Vault.load_all()

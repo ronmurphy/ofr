@@ -92,10 +92,11 @@ const DATA := {
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.
 	PIT:         {"id": &"pit",         "walk": true,  "clear": true},
-	# Visible on purpose. Every death in this game should be one the player
-	# could have avoided, and a hidden trap is the one thing that guarantees
-	# otherwise. You can see it, the pathfinder goes round it, so springing one
-	# is always a choice.
+	# HIDDEN until spotted (the 2026-09-26 playtest: "if I can spot a trap
+	# I'll never step on it"). A hidden trap is not this tile at all -- its
+	# square is floor, in GameState.hidden_traps -- so this is only ever a
+	# trap you have SEEN: drawn, remembered, and routed round. Spotting is
+	# likely in torchlight and unlikely in the dark, which is the point.
 	TRAP:        {"id": &"trap",        "walk": true,  "clear": true},
 	# Forged in, and finished. Not even the shrine of embers finds anything
 	# left to catch. Appended to the enum rather than filed beside its two

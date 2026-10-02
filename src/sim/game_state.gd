@@ -1216,6 +1216,7 @@ func build_level() -> void:
 	enchant_rng.seed = int(rng.seed) ^ (depth * 40503) ^ 0x5EED
 	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
+	trap_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0x7A9D
 	_cloud_turn = -1
 	scorched = {}
 	red_from = {}
@@ -1376,6 +1377,7 @@ func build_level() -> void:
 		ally.y = spot.y
 		entities.append(ally)
 	_land_the_fallen()
+	_hide_the_traps()
 
 	_keep_the_fire_clean()
 	pathfinder = Pathfinder.new(map)
@@ -3827,7 +3829,10 @@ func player_move(dx: int, dy: int) -> bool:
 	if map.get_tile(nx, ny) == Tiles.PIT:
 		return _fall_into_pit()
 
-	if map.get_tile(nx, ny) == Tiles.TRAP:
+	if map.get_tile(nx, ny) == Tiles.TRAP or hidden_traps.has(Vector2i(nx, ny)):
+		if hidden_traps.has(Vector2i(nx, ny)):
+			hidden_traps.erase(Vector2i(nx, ny))
+			msg_log.add("The floor clicks under your foot.", Color(0.92, 0.48, 0.40))
 		_spring_trap(nx, ny)
 		if not player.alive:
 			return true
@@ -3958,6 +3963,20 @@ func _breathe(e: Entity) -> bool:
 ## Its own stream: how many colour rolls a floor makes depends on how the
 ## fights go (CLAUDE.md -- anything whose draw count varies gets its own rng).
 var fungus_rng := RandomNumberGenerator.new()
+## HIDDEN TRAPS (the 2026-09-26 playtest: "if I can spot a trap I'll never
+## step on it"; built 2026-10-01). Every trap starts hidden: its square is
+## floor, routes as floor, and springs underfoot. Each turn you may SPOT one
+## within SPOT_REACH that you can see -- SPOT_DARK a turn in the dark, plus
+## SPOT_LIT times the light on its square, less a fifth per cell of distance;
+## the trapwright's glass in the offhand adds half again. Spotted, it is the
+## trap tile as before. Its own rng: how many rolls a turn makes depends on
+## the floor (CLAUDE.md). Both saved.
+var hidden_traps: Dictionary = {}
+var trap_rng := RandomNumberGenerator.new()
+const SPOT_REACH := 3
+const SPOT_DARK := 0.12
+const SPOT_LIT := 0.60
+const SPOT_GLASS := 1.5
 ## Torch scorches landed so far, "x,y" -> count. One floor only.
 var scorched: Dictionary = {}
 ## THE RED'S CHAINS. Each square the crawl grew, -> the square it grew from,
@@ -5063,6 +5082,55 @@ func _fall_into_pit() -> bool:
 		Color(0.90, 0.60, 0.45))
 	return true
 
+## Every trap the floor laid goes under: its square is floor and the trap is
+## in hidden_traps, to be spotted or sprung. After generation, before the
+## pathfinder is built from the map, so a hidden one routes as floor.
+func _hide_the_traps() -> void:
+	hidden_traps.clear()
+	for y in map.height:
+		for x in map.width:
+			if map.get_tile(x, y) != Tiles.TRAP:
+				continue
+			hidden_traps[Vector2i(x, y)] = true
+			map.set_tile(x, y, Tiles.CAVE_FLOOR if map.material_at(x, y) == Materials.CAVERN
+				else Tiles.FLOOR)
+
+## The chance, this turn, of spotting the hidden trap at `cell`: nothing out
+## of SPOT_REACH or out of sight; else the dark's floor plus the light on the
+## square, less a fifth per cell of distance, half again with the glass.
+func _spot_chance(cell: Vector2i) -> float:
+	var d := Los.steps(player.x, player.y, cell.x, cell.y)
+	if d > SPOT_REACH or not map.is_visible(cell.x, cell.y):
+		return 0.0
+	var lum := light_map.get_light(cell.x, cell.y).get_luminance()
+	var chance := (SPOT_DARK + SPOT_LIT * lum) * (1.0 - 0.2 * float(maxi(d, 1) - 1))
+	if _spots_traps_better():
+		chance *= SPOT_GLASS
+	return clampf(chance, 0.0, 1.0)
+
+## The trapwright's glass, worn in the offhand.
+func _spots_traps_better() -> bool:
+	var off: Variant = player.equipped.get(Item.Slot.OFFHAND, null)
+	return off != null and off.id == &"trap_glass"
+
+## Each turn, every hidden trap in reach and in sight gets its roll.
+func _spot_traps() -> void:
+	if hidden_traps.is_empty() or not player.alive:
+		return
+	for cell in hidden_traps.keys():
+		var chance := _spot_chance(cell)
+		if chance > 0.0 and trap_rng.randf() < chance:
+			_reveal_trap(cell)
+
+## Seen: the trap tile from now on -- drawn, remembered, routed round.
+func _reveal_trap(cell: Vector2i) -> void:
+	hidden_traps.erase(cell)
+	map.set_tile(cell.x, cell.y, Tiles.TRAP)
+	if pathfinder != null:
+		pathfinder.set_solid(cell.x, cell.y, true)
+	events.append({"kind": &"notice", "to": cell})
+	msg_log.add("You spot a trap.", Color(0.95, 0.80, 0.45))
+
 ## Springs once and is gone. A trap corridor can be cleared at a price, which
 ## makes it a toll rather than a permanent wall.
 func _spring_trap(x: int, y: int) -> void:
@@ -5874,6 +5942,13 @@ static func flare_kindle(turns_left: int) -> int:
 		if turns_left >= int(row[0]):
 			return int(row[1])
 	return 0
+
+## Cells as "x,y" strings, for the save.
+func _cells_to_strings(cells: Array) -> Array:
+	var out := []
+	for c in cells:
+		out.append("%d,%d" % [c.x, c.y])
+	return out
 
 ## Any brazier beside the player, lit, guttered or black.
 func _adjacent_any_brazier() -> Vector2i:
@@ -6994,6 +7069,19 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 	if map.get_tile(next.x, next.y) == Tiles.DOOR_BARRED and not ratted():
 		_unbar(next)
 		return true
+	# An unseen trap under the next step springs, and the walk ends there.
+	if hidden_traps.has(next):
+		_travel.clear()
+		hidden_traps.erase(next)
+		msg_log.add("The floor clicks under your foot.", Color(0.92, 0.48, 0.40))
+		_spring_trap(next.x, next.y)
+		if not player.alive:
+			return true
+		player.facing = Vector2i(signi(next.x - player.x), signi(next.y - player.y))
+		player.x = next.x
+		player.y = next.y
+		_end_player_turn(move_cost_for(player, next.x, next.y))
+		return true
 	_travel.remove_at(0)
 	if watched:
 		_travel.clear()
@@ -7010,6 +7098,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	turns += 1
 	_tick_returning()
 	_thaw_rooms()
+	_spot_traps()
 	_rot_bodies()
 	# The cost was already being computed and thrown away. Difficult ground has
 	# always charged the world for the time it takes; this is the first thing
@@ -7212,6 +7301,8 @@ func to_dict() -> Dictionary:
 		"reload_rng": [str(reload_rng.seed), str(reload_rng.state)],
 		"reload_said": _reload_said,
 		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
+		"trap_rng": [str(trap_rng.seed), str(trap_rng.state)],
+		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
 		"red_from": _red_from_rows(),
 		"withering": withering.map(func(chain): return chain.map(
@@ -7339,6 +7430,15 @@ func apply_dict(d: Dictionary) -> bool:
 	if frng.size() == 2:
 		fungus_rng.seed = str(frng[0]).to_int()
 		fungus_rng.state = str(frng[1]).to_int()
+	var traps_rng: Array = d.get("trap_rng", [])
+	if traps_rng.size() == 2:
+		trap_rng.seed = str(traps_rng[0]).to_int()
+		trap_rng.state = str(traps_rng[1]).to_int()
+	hidden_traps.clear()
+	for key in d.get("hidden_traps", []):
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			hidden_traps[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
 	scorched = {}
 	var sc: Dictionary = d.get("scorched", {})
 	for k in sc:

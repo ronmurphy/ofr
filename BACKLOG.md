@@ -763,9 +763,23 @@ dropped** — its blocker is the 24-letter inventory pool, and the fungus bag
 covers similar ground. **Dodge stays parked**: it fights
 `DAMAGE_FLOOR_FRACTION`, which exists so nothing ever whiffs.
 
-**Hidden traps.** From the playtest ("if I can spot a trap I'll never step on
-it"). You MAY spot a trap within 3 cells (a chance, likelier in torchlight — one
-more cost to dousing); a trap-finding unique for the offhand adds +50%.
+**Hidden traps -- BUILT 2026-10-01**, waiting on play. From the playtest ("if
+I can spot a trap I'll never step on it"). As built: every trap the floor lays
+starts HIDDEN (`hidden_traps`, saved) -- its square is floor to the eye, the
+memory, the minimap and the route, and it springs underfoot ("The floor
+clicks under your foot."), ending a walk there. Each turn every hidden trap
+within SPOT_REACH 3 that you can see gets a roll on its own rng: SPOT_DARK
+0.12 plus SPOT_LIT 0.60 times the light on its square, less a fifth per cell
+of distance -- in torchlight a trap two cells off is spotted about half the
+time a turn, in the dark about a fifth; the trapwright's glass (a unique for
+the OFFHAND, min depth 2, the chest pipe) adds half again. Spotted: "You spot
+a trap", the trap tile as before, routed round. Monsters do not spring them
+(it is their floor). Walking straight at a lit trap springs it about one time
+in six; in the dark most of the time -- one more cost to dousing. The legend
+says "hidden until spotted; springs once". `_spot_chance` is the tuning
+point. Original design: you MAY spot a trap within 3 cells (a chance,
+likelier in torchlight -- one more cost to dousing); a trap-finding unique
+for the offhand adds +50%.
 
 ---
 
