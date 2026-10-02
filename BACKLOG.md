@@ -663,7 +663,9 @@ thing down: fungus TAKES ROOT where you stand (open floor only) and glows
 again; anything else drops. In the pack, unworn, it opens and works the same.
 Full, the pack takes over as before. The pack's pane, on the satchel, names
 the key or the pad's button to open it and lists what it holds (Brad, from
-play: worn, nothing reminded him). The pad's d-pad down was `>` (G already
+play: worn, nothing reminded him). It hangs on a strap and takes NO HAND
+(Brad, from play: wearing it put his bow on his back): a bow or a sling and
+the satchel are carried together; a shield and a bow still are not. The pad's d-pad down was `>` (G already
 goes down the stairs you stand on, so the button was spent twice); inside the
 pack d-pad down still drops, and the legend names the pick-up button for the
 stairs on a pad. Saved inside the item (`contents`, `count`). NOT built:
@@ -755,10 +757,27 @@ in code, bypassing the threat ceiling.
 ignore you unless provoked. `Faction.NEUTRAL` is used by the trader, which is
 found by identity since 2026-09-27, so other neutrals are now safe to add.
 
-**Armour gems for the loot table.** The gem of the road is deliberately kept
-OUT of the loot table (`only_from: rubble`), so armour gems in found magic are
-still at zero; Brad wants three per slot, like weapons and shields. The hosting
-plumbing (`hosts: armour`, binding at the embers) is built. **Mule is probably
+**Armour gems -- BUILT 2026-10-01**, waiting on play: three per slot now, as
+for weapons and shields. The road (rubble only, +1 defence per 4 rooms, +3
+cap, reset per floor) stays out of found magic; **the veil** and **the
+lantern** (Brad's pick: polar opposites, neither a defence boost -- the road
+is that) are appended to the element table after it, so found magic rolls
+them on body armour, which held nothing before, and the weapons' rolls are
+untouched. The veil in armour: the light on you counts VEIL_LIGHT 0.6 of
+itself when something tries to notice you; from the pack, crushed while
+hunted: every hunter not beside you drops to suspicious, forgets its last
+sight of you and cannot notice you for VEIL_BLIND 5 turns ("vanish from the
+hunt"; refused when nothing hunts you). The lantern in armour: the torch
+reaches LANTERN_CELLS 1 further and so do their eyes (`_notice_reach`); from
+the pack, crushed: the torch flares as the scroll of light does ("flare the
+torch"; refused while flaring). Both min depth 2-3, in the gem roll. Building
+the veil found an old quirk in `_make_noise`: a SUSPICIOUS creature outside a
+noise's radius was set awake and straight back to ASLEEP with its notice
+block wiped, so any noise anywhere calmed a suspicious thing (and undid the
+veil); out-of-earshot creatures are now untouched. Original
+note: the gem of the road is deliberately kept OUT of the loot table
+(`only_from: rubble`); the hosting plumbing (`hosts: armour`, binding at the
+embers) was already built. **Mule is probably
 dropped** — its blocker is the 24-letter inventory pool, and the fungus bag
 covers similar ground. **Dodge stays parked**: it fights
 `DAMAGE_FLOOR_FRACTION`, which exists so nothing ever whiffs.

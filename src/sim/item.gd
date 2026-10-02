@@ -347,6 +347,21 @@ const CATALOGUE := {
 		"name": "gem of the road", "app": &"gem", "kind": Kind.GEM,
 		"element": &"travel", "min_depth": 2, "weight": 0,
 	},
+	## THE VEIL (Brad's pick, 2026-10-01). In armour: the light on you counts
+	## VEIL_LIGHT of itself when something tries to notice you -- stealth the
+	## ring's way without the ring's cost. From the pack: crushed, every hunter
+	## loses you at once, except what stands beside you.
+	&"gem_veil": {
+		"name": "gem of the veil", "app": &"gem", "kind": Kind.GEM,
+		"element": &"veil", "min_depth": 3, "weight": 0,
+	},
+	## THE LANTERN, the veil's opposite. In armour: your torch reaches a cell
+	## further, and you are seen from a cell further -- the honest cost. From
+	## the pack: crushed, it flares the torch as the scroll of light does.
+	&"gem_lantern": {
+		"name": "gem of the lantern", "app": &"gem", "kind": Kind.GEM,
+		"element": &"lantern", "min_depth": 2, "weight": 0,
+	},
 
 	## The first unique. It claims the WEAPON hand and gives no power, which is
 	## the whole cost: as a rat you cannot fight at all, and taking the ring
@@ -1059,6 +1074,11 @@ const ELEMENTS := {
 	&"bash":    {"gem": &"gem_boss",    "hosts": &"shield"},
 	# LAST, never inserted: the order above is load-bearing for found magic.
 	&"travel":  {"gem": &"gem_travel",  "hosts": &"armour", "only_from": &"rubble"},
+	# Armour's other two (Brad, 2026-10-01), appended after the road: found
+	# magic rolls them on body armour, which held nothing until now, and the
+	# weapons' lists are untouched by anything appended here.
+	&"veil":    {"gem": &"gem_veil",    "hosts": &"armour"},
+	&"lantern": {"gem": &"gem_lantern", "hosts": &"armour"},
 }
 
 ## The elements a generated item can roll, in table order.

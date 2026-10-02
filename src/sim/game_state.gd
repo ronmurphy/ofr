@@ -151,9 +151,81 @@ const CORRUPT_TORCH := 4
 
 ## The reach of a lit torch on this floor.
 func torch_radius() -> int:
-	if not Bands.is_caves(effective_depth()):
-		return TORCH_RADIUS
-	return CORRUPT_TORCH if Bands.is_corrupted(effective_depth()) else CAVE_TORCH
+	var base := TORCH_RADIUS
+	if Bands.is_caves(effective_depth()):
+		base = CORRUPT_TORCH if Bands.is_corrupted(effective_depth()) else CAVE_TORCH
+	# The lantern in your armour: a cell further (and seen from one further,
+	# see _notice_reach).
+	return base + (LANTERN_CELLS if _armour_element() == &"lantern" else 0)
+
+## ARMOUR GEMS (Brad, 2026-10-01): the road, the veil and the lantern. What
+## the body armour carries, or &"" bare.
+const VEIL_LIGHT := 0.6
+const LANTERN_CELLS := 1
+## Turns a hunter the veil shook off cannot notice you again: without this it
+## looked once more in the same turn and had you back in torchlight.
+const VEIL_BLIND := 5
+
+func _armour_element() -> StringName:
+	if player == null:
+		return &""
+	var worn: Variant = player.equipped.get(Item.Slot.ARMOR, null)
+	return worn.element if worn != null else &""
+
+## The light on you as the things that notice you read it: the veil in your
+## armour makes it count VEIL_LIGHT of itself.
+func _light_on_you() -> float:
+	var lum := light_map.get_light(player.x, player.y).get_luminance()
+	return lum * VEIL_LIGHT if _armour_element() == &"veil" else lum
+
+## How far this creature can notice you from: its own range, and a cell more
+## while the lantern lights you.
+func _notice_reach(actor: Entity) -> int:
+	return actor.notice_range + (LANTERN_CELLS if _armour_element() == &"lantern" else 0)
+
+## Everything awake and hunting you that could lose the thread: not what
+## stands beside you, which finds you however dark it is.
+func _hunters() -> Array:
+	var out := []
+	for e in entities:
+		if e.is_player or not e.alive or not e.hostile_to(player) \
+				or e.alertness != Entity.Alert.AWAKE or e.is_adjacent(player):
+			continue
+		out.append(e)
+	return out
+
+## THE GEM OF THE VEIL, crushed: the light slides off you and every hunter
+## loses the thread at once -- back to suspicious, with no last sight of you.
+func _vanish(gem: Item) -> bool:
+	var lost := _hunters()
+	if lost.is_empty():
+		msg_log.add("Nothing is hunting you.", Color(0.7, 0.6, 0.4))
+		return false
+	for e in lost:
+		e.alertness = Entity.Alert.SUSPICIOUS
+		e.calm_turns = 0
+		e.last_seen = Vector2i(-1, -1)
+		e.lost_turns = 0
+		e.pursue_turns = Entity.DEFAULT_PURSUIT
+		e.notice_block = VEIL_BLIND
+	events.append({"kind": &"notice", "to": Vector2i(player.x, player.y)})
+	msg_log.add("You crush the %s. The light slides off you: %d thing%s hunting you lose%s the thread."
+		% [gem.name, lost.size(), "" if lost.size() == 1 else "s", "s" if lost.size() == 1 else ""],
+		Color(0.75, 0.70, 0.95))
+	return true
+
+## THE GEM OF THE LANTERN, crushed: the torch flares, as the scroll of light
+## makes it -- far sight, and seen as far.
+func _flare_with(gem: Item) -> bool:
+	if torch_flare > 0:
+		msg_log.add("Your torch is flaring already.", Color(0.7, 0.6, 0.4))
+		return false
+	torch_flare = FLARE_TURNS
+	torch_lit = true
+	_gather_lights()
+	msg_log.add("You crush the %s into the torch. It roars white -- you can see far, and be seen as far."
+		% gem.name, Color(1.00, 0.90, 0.55))
+	return true
 
 ## Resting at a brazier. Each one holds a fixed pool, spent two points at a
 ## time, and then goes out for good.
@@ -5184,13 +5256,16 @@ func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void
 		# not hear when it thaws.
 		if e.frozen > 0:
 			continue
+		# Out of earshot, untouched. This used to wake it and put it straight
+		# back to SLEEP, which turned a suspicious thing into a sleeping one
+		# and wiped its notice block -- the veil's head start, among other
+		# things -- on any noise anywhere on the floor (found 2026-10-01).
+		if Los.steps(e.x, e.y, at.x, at.y) > radius:
+			continue
 		e.alertness = Entity.Alert.AWAKE
 		e.last_seen = at
 		e.lost_turns = 0
 		e.notice_block = 0
-		if Los.steps(e.x, e.y, at.x, at.y) > radius:
-			e.alertness = Entity.Alert.ASLEEP
-			continue
 		roused += 1
 	if roused > 0:
 		msg_log.add("The noise carries. %d things turn towards it." % roused,
@@ -6239,6 +6314,9 @@ func gem_use_here(gem: Item) -> String:
 		&"reflect":
 			if mirror_target() >= 0:
 				return "mirror: name the shrine"
+		&"veil":
+			if not _hunters().is_empty():
+				return "veil: lose every hunter"
 		&"leech":
 			var body := thirst_target()
 			if not body.is_empty() \
@@ -6783,11 +6861,15 @@ func _toggle_equip(item: Item) -> void:
 ## will think is a bug.
 func _free_the_other_hand(item: Item) -> void:
 	var displaced: Item = null
+	# The satchel hangs on a strap and takes no hand (Brad, 2026-10-01: it
+	# put his weapon on his back): a bow and the satchel are carried together.
 	if item.is_two_handed():
 		displaced = player.equipped.get(Item.Slot.OFFHAND, null)
+		if displaced != null and displaced.is_satchel():
+			displaced = null
 		if displaced != null:
 			player.equipped.erase(Item.Slot.OFFHAND)
-	elif item.slot == Item.Slot.OFFHAND:
+	elif item.slot == Item.Slot.OFFHAND and not item.is_satchel():
 		var held: Item = player.equipped.get(Item.Slot.WEAPON, null)
 		if held != null and held.is_two_handed():
 			displaced = held
@@ -6916,6 +6998,10 @@ func _apply_effect(item: Item) -> bool:
 			return _recall(item)
 		if item.element == &"travel":
 			return _show_the_road(item)
+		if item.element == &"veil":
+			return _vanish(item)
+		if item.element == &"lantern":
+			return _flare_with(item)
 		if item.element == &"frost":
 			msg_log.add("The gem of frost is thrown: it freezes the room it lands in.",
 				Color(0.7, 0.6, 0.4))
@@ -8210,7 +8296,8 @@ func _update_awareness(actor: Entity) -> void:
 ## Light dominates the roll. Carrying a torch is both how you see and how you
 ## are seen, which is the trade the whole mechanic rests on.
 func _notices_player(actor: Entity, d: int) -> bool:
-	if d > actor.notice_range:
+	var reach := _notice_reach(actor)
+	if d > reach:
 		return false
 	# Something that senses life does not need to see it, and does not care
 	# whether the torch is lit. Both of the player's ways of not being found
@@ -8232,8 +8319,8 @@ func _notices_player(actor: Entity, d: int) -> bool:
 	if d <= 1:
 		return true
 
-	var lum := light_map.get_light(player.x, player.y).get_luminance()
-	var closeness := 1.0 - float(d) / float(actor.notice_range + 1)
+	var lum := _light_on_you()
+	var closeness := 1.0 - float(d) / float(reach + 1)
 	var chance := closeness * (0.10 + 1.6 * lum)
 	if actor.alertness == Entity.Alert.SUSPICIOUS:
 		chance *= 2.0

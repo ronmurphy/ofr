@@ -691,6 +691,10 @@ func _action_hint(item: Item) -> String:
 				&"return": return "return to the fire"
 		if item.element == &"travel" and not state.road_shown:
 			return "show the way out"
+		if item.element == &"veil" and not state._hunters().is_empty():
+			return "vanish from the hunt"
+		if item.element == &"lantern" and state.torch_flare == 0:
+			return "flare the torch"
 		# A gem of fire beside a cold brazier relights it -- through G, not the
 		# pack, which is why the pack has to say so (Brad, 2026-10-01: he stood
 		# by the brazier with the gem and the pack said only "already set").

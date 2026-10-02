@@ -2684,6 +2684,91 @@ func _test_gems_in_the_world() -> void:
 			kept_cold = kept_cold or e.frozen == 4
 	check("the cold is saved, room and creature",
 		kept_cold and fsaved.frozen_rooms.size() == 1 and fsaved.frozen_rooms[0][0] == cold_room)
+
+	# THE VEIL: in armour, the light on you counts less; crushed, every hunter
+	# loses you -- but not the thing beside you.
+	check("the veil and the lantern are armour's stones, found magic's too",
+		Item.ELEMENTS[&"veil"]["hosts"] == &"armour" and Item.ELEMENTS[&"lantern"]["hosts"] == &"armour"
+		and Item.found_elements().has(&"veil") and Item.found_elements().has(&"lantern")
+		and Item.make(&"chain_mail").accepts_element(&"veil"))
+	var vs := _arena(21, 9)
+	vs.player.x = 5
+	vs.player.y = 4
+	vs.player.inventory.clear()
+	vs.torch_lit = true
+	vs._gather_lights()
+	vs.update_vision()
+	var plain := vs._light_on_you()
+	var veil_mail := Item.make(&"chain_mail")
+	veil_mail.element = &"veil"
+	vs.give_item(veil_mail)
+	vs._toggle_equip(veil_mail)
+	check("veiled, the light on you counts %.0f%% of itself (%.2f -> %.2f)"
+		% [GameState.VEIL_LIGHT * 100.0, plain, vs._light_on_you()],
+		plain > 0.0 and is_equal_approx(vs._light_on_you(), plain * GameState.VEIL_LIGHT))
+	vs._toggle_equip(veil_mail)
+	var far_hunter := _spawn(vs, "kobold", 12, 4)
+	far_hunter.last_seen = Vector2i(5, 4)
+	var near_hunter := _spawn(vs, "goblin", 6, 4)
+	near_hunter.last_seen = Vector2i(5, 4)
+	var veil := Item.make(&"gem_veil")
+	vs.give_item(veil)
+	var vp := InventoryPanel.new()
+	vp.state = vs
+	check("hunted, the pack and the HERE box offer the veil",
+		vp._action_hint(veil) == "vanish from the hunt" and vs.gem_use_here(veil) == "veil: lose every hunter",
+		vp._action_hint(veil))
+	var vt := vs.turns
+	var hunted := vs._hunters().size()
+	var veiled := vs.player_use(vs.player.inventory.find(veil))
+	check("crushed, the far hunter loses the thread; the one beside you does not (and must)",
+		veiled and far_hunter.alertness == Entity.Alert.SUSPICIOUS and far_hunter.last_seen.x < 0
+		and far_hunter.notice_block > 0 and near_hunter.alertness == Entity.Alert.AWAKE
+		and not vs.player.inventory.has(veil) and vs.turns == vt + 1,
+		"hunted %d used %s far alert %d seen %s block %d near alert %d turns %d/%d" % [hunted, veiled,
+			far_hunter.alertness, far_hunter.last_seen, far_hunter.notice_block, near_hunter.alertness,
+			vs.turns, vt + 1])
+	var quiet := _arena(11, 7)
+	quiet.player.inventory.clear()
+	var sleeper_v := _spawn(quiet, "kobold", 8, 3)
+	sleeper_v.alertness = Entity.Alert.ASLEEP
+	var veil2 := Item.make(&"gem_veil")
+	quiet.give_item(veil2)
+	check("with nothing hunting you it is refused and kept",
+		not quiet.player_use(quiet.player.inventory.find(veil2)) and quiet.player.inventory.has(veil2))
+
+	# THE LANTERN: a cell further for the torch and for the things that see
+	# you; crushed, a flare.
+	var ls := _arena(21, 9)
+	ls.player.x = 5
+	ls.player.y = 4
+	ls.player.inventory.clear()
+	var watcher := _spawn(ls, "kobold", 12, 4)
+	var reach0 := ls.torch_radius()
+	var seen0 := ls._notice_reach(watcher)
+	var lantern_mail := Item.make(&"chain_mail")
+	lantern_mail.element = &"lantern"
+	ls.give_item(lantern_mail)
+	ls._toggle_equip(lantern_mail)
+	check("the lantern in your armour: the torch reaches a cell further, and so do their eyes",
+		ls.torch_radius() == reach0 + GameState.LANTERN_CELLS
+		and ls._notice_reach(watcher) == seen0 + GameState.LANTERN_CELLS)
+	ls._toggle_equip(lantern_mail)
+	check("taken off, both are as they were", ls.torch_radius() == reach0
+		and ls._notice_reach(watcher) == seen0)
+	var lantern := Item.make(&"gem_lantern")
+	ls.give_item(lantern)
+	var lp := InventoryPanel.new()
+	lp.state = ls
+	check("the pack offers the flare", lp._action_hint(lantern) == "flare the torch", lp._action_hint(lantern))
+	check("crushed, the torch flares (and must)",
+		ls.player_use(ls.player.inventory.find(lantern)) and ls.torch_flare >= GameState.FLARE_TURNS - 1
+		and ls.torch_flare > 0 and ls.torch_lit and not ls.player.inventory.has(lantern))
+	var lantern2 := Item.make(&"gem_lantern")
+	ls.give_item(lantern2)
+	check("a second while it flares is refused and kept",
+		not ls.player_use(ls.player.inventory.find(lantern2)) and ls.player.inventory.has(lantern2)
+		and lp._action_hint(lantern2) != "flare the torch")
 	var second := Item.make(&"gem_mirror")
 	ms.give_item(second)
 	check("a known shrine takes no second mirror",
@@ -6038,16 +6123,21 @@ func _test_the_road() -> void:
 		Item.rubble_gems_at(10).size() == Item.gems_at(10).size() + 1)
 	check("  and not on floor one, where no gem exists yet",
 		Item.rubble_gems_at(1).is_empty())
-	# Found armour: with the road excluded, armour has no stone to roll at all.
+	# Found armour: the road is never rolled; the veil and the lantern are
+	# (armour's own stones, 2026-10-01), so armour can arrive enchanted now.
 	var erng := RandomNumberGenerator.new()
 	erng.seed = 77
 	var magic_armour := 0
+	var roads := 0
 	for i in 400:
 		var mail := Item._maybe_enchant(Item.make(&"chain_mail"), erng, 19)
-		if mail.element != &"":
+		if mail.element == &"travel":
+			roads += 1
+		elif mail.element != &"":
 			magic_armour += 1
-	check("no generated armour carries it (%d of 400 enchanted)" % magic_armour,
-		magic_armour == 0)
+	check("no generated armour carries the road (%d of 400)" % roads, roads == 0)
+	check("but armour now arrives with the veil or the lantern sometimes (%d of 400)" % magic_armour,
+		magic_armour > 0 and magic_armour < 400)
 	var trader_gs := GameState.new(4040)
 	trader_gs.new_game()
 	trader_gs.trader_gems = Trade.GEMS_FOR_ONE
@@ -6882,6 +6972,28 @@ func _test_the_foragers_satchel() -> void:
 	for line in pane.detail_lines(bag):
 		told += String(line["text"]) + "|"
 	check("empty, it says so", told.contains("empty"), told)
+
+	# It takes no hand (Brad, from play: wearing it put his weapon on his
+	# back): a bow and the satchel together, a shield and a bow still not.
+	var hands := _arena(9, 7)
+	hands.player.inventory.clear()
+	var bow := Item.make(&"short_bow")
+	var strap := Item.make(&"satchel")
+	var buckler := Item.make(&"buckler")
+	for it in [bow, strap, buckler]:
+		hands.give_item(it)
+	hands._toggle_equip(bow)
+	hands._toggle_equip(strap)
+	check("a bow in hand and the satchel on its strap, together",
+		hands.player.is_equipped(bow) and hands.player.is_equipped(strap))
+	hands._toggle_equip(strap)
+	hands._toggle_equip(buckler)
+	check("precondition: a shield still takes the bow's hands",
+		hands.player.is_equipped(buckler) and not hands.player.is_equipped(bow))
+	hands._toggle_equip(strap)
+	hands._toggle_equip(bow)
+	check("and a bow taken up keeps the satchel on", hands.player.is_equipped(bow)
+		and hands.player.is_equipped(strap) and not hands.player.is_equipped(buckler))
 
 	# BY THE CAVES (Brad): a run that reaches the first cave floor without one
 	# finds it lying there, in the far room; a run carrying one does not; and
