@@ -106,6 +106,7 @@ func _initialize() -> void:
 	_test_the_dark_is_fair()
 	_test_the_fungus_spreads()
 	_test_the_miasma()
+	_test_water_cleanses()
 	_test_the_red_raises_the_dead()
 	_test_fire_relights_braziers()
 	_test_gems_feed_the_uniques()
@@ -1674,6 +1675,122 @@ func _test_the_miasma() -> void:
 		and not cloud.has(purple + Vector2i(2, 0)))
 	g._burn_fungus(purple)
 	check("and goes when the fungus burns", not g.miasma_cloud().has(purple + Vector2i(1, 1)))
+
+## WATER CLEANSES (Brad, 2026-10-01): a living thing in water loses the
+## spores it carries and the purple's poison; a risen does not; and wading is
+## loud enough for the blind risen to hear, never loud enough for a grave.
+func _test_water_cleanses() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.torch_lit = false
+	for y in range(3, 10):
+		gs.map.set_tile(10, y, Tiles.WATER)
+	gs.update_vision()
+	var said := func() -> String:
+		var all := ""
+		for line in gs.msg_log.entries:
+			all += str(line["text"]) + "|"
+		return all
+
+	# A marked, poisoned rat: dry, it keeps both; in the water, it loses both,
+	# and the poison does not bite on the turn it is washed off.
+	var rat := _spawn(gs, "giant rat", 9, 6)
+	rat.alertness = Entity.Alert.ASLEEP
+	rat.take_spores(&"red")
+	rat.poisoned = 2
+	check("precondition: the rat carries the red and is poisoned",
+		rat.spores == &"red" and rat.poisoned == 2)
+	gs._grow_fungus()
+	check("on dry ground the mark stays and the poison bites",
+		rat.spores == &"red" and rat.poisoned == 1)
+	rat.x = 10
+	var rat_hp := rat.hp
+	# The torch is out for the noise checks below; the log line wants the
+	# rat in view.
+	gs.map.set_all_visible()
+	gs._grow_fungus()
+	check("in water the rat loses its spores and its poison",
+		rat.spores == &"" and rat.poisoned == 0)
+	check("and the poison did not bite that turn", rat.hp == rat_hp)
+	check("and the log says what the water took",
+		said.call().contains("takes the red off the giant rat"), said.call())
+
+	# A risen is a dead thing: the red has it, whichever way it got up.
+	var fungal := _spawn(gs, "kobold", 10, 7)
+	fungal.alertness = Entity.Alert.ASLEEP
+	fungal.faction = Entity.Faction.RISEN
+	fungal.fungal = true
+	fungal.take_spores(&"red")
+	var dug := _spawn(gs, "orc", 10, 8)
+	dug.alertness = Entity.Alert.ASLEEP
+	dug.faction = Entity.Faction.PLAYER
+	dug.risen = true
+	dug.take_spores(&"red")
+	# A bat is OVER the water, not in it.
+	var bat := _spawn(gs, "cave bat", 10, 3)
+	bat.alertness = Entity.Alert.ASLEEP
+	bat.take_spores(&"purple")
+	check("precondition: all three stand in water, marked",
+		gs.map.get_tile(fungal.x, fungal.y) == Tiles.WATER
+		and gs.map.get_tile(dug.x, dug.y) == Tiles.WATER
+		and gs.map.get_tile(bat.x, bat.y) == Tiles.WATER and bat.flying
+		and fungal.spores == &"red" and dug.spores == &"red" and bat.spores == &"purple")
+	gs._grow_fungus()
+	check("the red's risen keeps its spores in water", fungal.spores == &"red")
+	check("so does one dug from a grave", dug.spores == &"red")
+	check("and a bat over the water is not washed", bat.spores == &"purple")
+
+	# The player: wading ends the poison at once, before it bites.
+	gs.entities = [gs.player, fungal]
+	gs.player.x = 9
+	gs.player.y = 5
+	gs.player.poisoned = 2
+	var hp := gs.player.hp
+	gs.player_move(1, 0)
+	check("precondition: the player is standing in water",
+		gs.map.get_tile(gs.player.x, gs.player.y) == Tiles.WATER)
+	check("wading ends the player's poison without a last bite",
+		gs.player.poisoned == 0 and gs.player.hp == hp,
+		"poisoned %d, hp %d -> %d" % [gs.player.poisoned, hp, gs.player.hp])
+	check("and says so", said.call().contains("washes the poison off you"))
+	# The trade: the splash reaches the risen, two squares off.
+	check("the risen heard the splash", fungal.heard == Vector2i(gs.player.x, gs.player.y),
+		str(fungal.heard))
+
+	# Beside the purple, a pool keeps nothing off you: breathed again.
+	gs._set_fungus(Vector2i(11, 5), Tiles.FUNGUS_PURPLE)
+	check("precondition: the pool square is in the cloud",
+		gs.in_miasma(gs.player.x, gs.player.y))
+	gs._end_player_turn()
+	check("in a pool beside the purple you breathe it again", gs.player.poisoned > 0)
+	gs._burn_fungus(Vector2i(11, 5))
+
+	# The noise itself: loud enough to carry, under a fight and under a grave.
+	check("wading is a noise", Tiles.noise_radius(Tiles.WATER) == Tiles.WADING_NOISE
+		and Tiles.WADING_NOISE > 0)
+	check("quieter than a fight, and never a grave-raiser",
+		Tiles.WADING_NOISE < GameState.COMBAT_NOISE
+		and Tiles.WADING_NOISE < GameState.GRAVE_ROUSING)
+	var near := _spawn(gs, "orc", 10 + Tiles.WADING_NOISE, 9)
+	var far := _spawn(gs, "orc", 10 + Tiles.WADING_NOISE + 1, 9)
+	near.alertness = Entity.Alert.ASLEEP
+	far.alertness = Entity.Alert.ASLEEP
+	gs.player.x = 10
+	gs.player.y = 8
+	gs.player.poisoned = 0
+	gs.player_move(0, 1)
+	check("precondition: still wading", gs.map.get_tile(gs.player.x, gs.player.y) == Tiles.WATER
+		and gs.player.y == 9)
+	check("a sleeper at the edge of the splash wakes", near.alertness == Entity.Alert.AWAKE)
+	check("one square further sleeps on", far.alertness == Entity.Alert.ASLEEP)
+	# Dry again: a step on floor makes no noise at all.
+	var third := _spawn(gs, "orc", 9 + Tiles.WADING_NOISE, 2)
+	third.alertness = Entity.Alert.ASLEEP
+	gs.player.x = 8
+	gs.player.y = 2
+	gs.player_move(1, 0)
+	check("and a step on plain floor beside it is silent", third.alertness == Entity.Alert.ASLEEP)
 
 ## Kills a creature and settles its death, as a blow would. `_settle_death`
 ## alone handles what FOLLOWS a death and leaves the creature alive -- a test

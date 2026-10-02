@@ -4010,6 +4010,37 @@ func in_miasma(x: int, y: int) -> bool:
 				return true
 	return false
 
+## WATER CLEANSES (Brad, from play, 2026-10-01). One rule a player can hold:
+## anything LIVING that stands in water loses the spores it carries -- the
+## mark's ring goes, its body will not be claimed -- and the purple's poison
+## ends at once. The cloud itself is untouched: stand beside purple in a pool
+## and you breathe it again (this runs BEFORE `_breathe`, so that is what
+## happens). The red already cannot grow onto water (`_fungus_can_grow`), so
+## a pool is a firebreak the player can read, and now a place to RUN TO: wash
+## before you die so the red cannot have you; break a rat's carrying of
+## spores across the floor. The trade is the noise wading makes
+## (Tiles.WADING_NOISE): the blind risen hear the splash.
+##
+## A risen washes nothing. It is a dead thing and the red has it, whichever
+## way it got up (`fungal` from the red, `risen` from a grave).
+##
+## Underfoot each turn rather than on each kind of step: a swap, a knockback,
+## a fall and every walker's own step all land here, in one place.
+func _wash(e: Entity) -> void:
+	if not e.alive or e.flying or e.fungal or e.risen \
+			or map.get_tile(e.x, e.y) != Tiles.WATER:
+		return
+	if e.spores == &"" and e.poisoned == 0:
+		return
+	var had := String(e.spores)
+	e.spores = &""
+	e.poisoned = 0
+	if e.is_player:
+		msg_log.add("The water washes the poison off you.", Color(0.62, 0.78, 0.90))
+	elif map.is_visible(e.x, e.y) and had != "":
+		msg_log.add("The water takes the %s off the %s." % [had, e.name],
+			Color(0.62, 0.78, 0.90))
+
 ## One turn of air for a creature: the cloud poisons (or re-poisons), and the
 ## poison bites. True if it killed.
 func _breathe(e: Entity) -> bool:
@@ -4208,6 +4239,11 @@ func _grow_fungus() -> void:
 		if map.is_visible(at.x, at.y):
 			msg_log.add("The %s leaves %s fungus where it walks." % [e.name, String(e.spores)],
 				Color(0.78, 0.60, 0.80) if colour == Tiles.FUNGUS_PURPLE else Color(0.88, 0.45, 0.45))
+	# Water cleanses: before the air, so a pool beside the purple is breathed
+	# again the same turn.
+	for e in entities:
+		if not e.is_player:
+			_wash(e)
 	# The miasma: every creature breathes, flyers included.
 	for e in entities.duplicate():
 		if e.alive and not e.is_player and _breathe(e):
@@ -7202,6 +7238,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	_fungus_underfoot(underfoot)
 	if game_over:
 		return
+	_wash(player)
 	if _breathe(player):
 		game_over = true
 		death_cause = "poisoned by the miasma"

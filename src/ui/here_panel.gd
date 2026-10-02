@@ -92,6 +92,10 @@ func status_line() -> String:
 	var word := Tiles.footing_word(ground)
 	if word == "":
 		return ""
+	# Water is the one ground that does something FOR you, and the one that
+	# is loud: say both, since the box is where players learn the game.
+	if ground == Tiles.WATER:
+		return "%s -- slow and loud; the water washes the red off" % word
 	return "%s -- every step costs %.1f turns" % [word, Tiles.move_cost(ground)]
 
 ## The rows to draw: what applies now, and always a way to the full list.

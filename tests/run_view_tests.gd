@@ -1576,6 +1576,10 @@ func _test_the_playtest_fixes() -> void:
 	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.MUD)
 	check("  in mud it says so, with the cost",
 		here.status_line() == "sinking -- every step costs 2.0 turns", here.status_line())
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.WATER)
+	check("  in water it teaches the wash and the noise",
+		here.status_line() == "wading -- slow and loud; the water washes the red off",
+		here.status_line())
 	here.free()
 
 	# The help hint: loud on floors 1-2 until the legend is opened once, and

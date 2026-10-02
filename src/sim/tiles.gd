@@ -172,8 +172,18 @@ static func is_bad_fungus(t: int) -> bool:
 	return t == FUNGUS_PURPLE or t == FUNGUS_RED
 
 ## How far the noise of crossing this carries. Zero for anything quiet.
+##
+## Water splashes (Brad, 2026-10-01: washing the red off had to COST
+## something, and the cost is noise). WADING_NOISE sits under a fight's 6 and
+## the bones' 7: it never raises a grave, but the blind risen hear it, so a
+## pool is a choice -- wash, and what the red already has comes to the sound.
 static func noise_radius(t: int) -> int:
-	return 7 if t == BONES else 0
+	if t == BONES:
+		return 7
+	if t == WATER:
+		return WADING_NOISE
+	return 0
+const WADING_NOISE := 4
 
 static func is_luminous(t: int) -> bool:
 	return t == FUNGUS or t == FUNGUS_PURPLE or t == FUNGUS_RED

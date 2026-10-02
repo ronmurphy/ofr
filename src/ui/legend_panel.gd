@@ -83,7 +83,7 @@ const NOTES := {
 	Tiles.DOOR_CLOSED: "loud to open",
 	Tiles.DOOR_BARRED: "holds all but a bear",
 	Tiles.MUD: "slow; worst for heavy things",
-	Tiles.WATER: "slow to wade",
+	Tiles.WATER: "slow and LOUD; washes the red off",
 	Tiles.RUBBLE: "slightly slow; knaps sling stones",
 	Tiles.BONES: "LOUD; crumbles once crossed",
 	Tiles.FUNGUS: "glows faintly; eat it",

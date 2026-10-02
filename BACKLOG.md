@@ -703,6 +703,38 @@ heal mid-fight.
   the pause menu (rarely used now 3D is the default). Where it is found
   (trader? caves, where food matters most?).
 
+**Traps, second pass (Brad and Claude, 2026-10-02) -- designed, not built.**
+From play: Brad never saw a trap and never sprang one. Measured: every floor
+lays 0-3 (`mapgen.gd` ~900), in every band, caves included, and only on a
+cell open on all eight sides -- the middle of a room, never a corridor or a
+doorway -- so a player walking routes rarely crosses one. Three rules, built
+together after the counts:
+1. **Counts by band, and where.** Upper 0-2; caves NONE (a mechanism in a
+   cavern reads wrong, the same reason caves want few vaults -- a rule the
+   player can hold); fortress 2-5 with about half in DOORWAYS; floor 10 3-5.
+   Hidden traps already route as floor, so a doorway trap no longer severs
+   the level the way a visible one did (the 200-seed connectivity test).
+   Numbers are Brad's to settle.
+2. **It is their floor, all the way.** Monsters already never spring a
+   trap; now the pathfinder stops treating a FOUND trap as solid for them,
+   or a spotted doorway trap shuts every guard in its room (today a found
+   trap is a wall to monsters). Allies and risen are not the floor's own:
+   they spring traps as the player does -- the one use a found trap has
+   against the world, and a reason to disarm.
+3. **The player at a found trap.** Both halves of the 5e feel: (a) STEP
+   OVER -- crossing a found trap on purpose is a slow step (double cost),
+   no damage, the trap stays armed; (b) DISARM -- G on it, through the
+   HERE box's context actions (no new key), a turn; success removes it,
+   failure springs it for half damage. The chance is the glass's second
+   job: about 50% bare, 90% with the trapwright's glass in the offhand.
+Not yet: luring monsters into traps -- it contradicts "their floor" and
+makes every found doorway a free kill. **Brad's shape for it, eventual:**
+a DISARMED trap is kept as an item and LAID again by the player; then the
+roles reverse -- the player knows where it is, the monsters do not, and a
+monster steps on it. One rule for both sides: a trap is hidden from
+whoever did not lay it. The 24-letter inventory pool is the usual blocker
+for a new item.
+
 **The Legends intro -- the game's first cutscene.** Brad's idea, 2026-09-28,
 from the cottage built as a first try at the title screen. Build after the
 title screen has been played.
@@ -840,8 +872,15 @@ the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
 **Rule: the minimap gives way** -- not drawn on a frame when the description
 would reach it. Information always wins.
 
-**Water washes it off (Brad, from play, 2026-10-01 night) -- designed, small,
-not built.** One rule a player can hold: *water cleanses*. Anything -- you, a
+**Water washes it off (Brad, from play, 2026-10-01 night) -- BUILT
+2026-10-02**, waiting on play. As built: `GameState._wash`, run underfoot
+each turn (the player's in `_end_player_turn`, everything else's in
+`_grow_fungus`), before `_breathe` so a pool beside the purple is breathed
+again the same turn. Skips the dead (`fungal` or `risen`) and flyers.
+Wading is now a noise of `Tiles.WADING_NOISE` 4 (under a fight's 6 and the
+graves' 7) through the same `noise_radius` route as bones, so it reaches
+the risen's ears and never a headstone. The legend and the HERE box say
+both halves. Test: `_test_water_cleanses`. Original note: One rule a player can hold: *water cleanses*. Anything -- you, a
 rat, a monster -- that steps into WATER loses the red spores it carries
 (`Entity.spores` cleared: the mark's ring goes, its body will not be
 claimed), and the purple's poison ends at once for whoever wades (the three
