@@ -613,7 +613,8 @@ func _draw() -> void:
 	# On the title's baseline and right-aligned, so it cannot collide with the
 	# filter chips on the line below.
 	draw_string(font, p.position + Vector2(PAD, PAD + asc),
-		"%d / %d carried" % [state.player.inventory.size(), Entity.INVENTORY_MAX],
+		"%d / %d in the pack · %d worn" % [state.player.pack_count(), Entity.INVENTORY_MAX,
+			state.player.inventory.size() - state.player.pack_count()],
 		HORIZONTAL_ALIGNMENT_RIGHT, PANEL_W - PAD * 2.0, font_size, Palette.UI_DIM)
 
 	if not throw_mode and not satchel_mode:

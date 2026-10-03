@@ -251,6 +251,7 @@ func _initialize() -> void:
 	_test_ammunition()
 	_test_merging_spends_the_cheapest()
 	_test_inventory_letters_dodge_the_keys()
+	_test_worn_gear_is_not_in_the_pack()
 	_test_no_key_steals_an_inventory_letter()
 	_test_an_older_save_still_loads()
 	_test_fungus_is_a_mouthful()
@@ -15664,14 +15665,113 @@ func _test_offhand_and_swap() -> void:
 ## Every press shut the panel instead of drinking it, shift+i did not merge it
 ## either because the close check runs first, and there was no way to reach the
 ## item from the keyboard at all.
+## WORN GEAR IS NOT IN THE PACK (Brad, 2026-10-02): a sword, a coat and a
+## shield on you leave all twenty slots free; the pack is full at twenty
+## unworn things; taking something off needs room; a swap needs none.
+func _test_worn_gear_is_not_in_the_pack() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	var sword := Item.make(&"short_sword")
+	var coat := Item.make(&"leather_armour")
+	var shield := Item.make(&"buckler")
+	for worn in [sword, coat, shield]:
+		check_silent(worn != null and gs.give_item(worn))
+		if worn != null:
+			gs._toggle_equip(worn)
+	check_gathered("precondition: three things are worn")
+	check("precondition: all three are worn, and the pack counts none of them",
+		gs.player.is_equipped(sword) and gs.player.is_equipped(coat)
+		and gs.player.is_equipped(shield) and gs.player.pack_count() == 0
+		and gs.player.inventory.size() == 3)
+	var handed := 0
+	for i in Entity.INVENTORY_MAX:
+		if gs.give_item(Item.make(&"dagger")):
+			handed += 1
+	check("twenty more fit in the pack beside them (%d)" % handed,
+		handed == Entity.INVENTORY_MAX and gs.player.pack_count() == Entity.INVENTORY_MAX
+		and gs.player.inventory.size() == Entity.INVENTORY_MAX + Entity.WORN_SLOTS)
+	check("the twenty-first does not", not gs.give_item(Item.make(&"dagger")))
+	var blank := 0
+	var seen := {}
+	for it in gs.player.inventory:
+		if it.letter == "" or seen.has(it.letter):
+			blank += 1
+		seen[it.letter] = true
+	check("and every one of the twenty-three has its own letter", blank == 0, "%d" % blank)
+	# The HERE box and the key agree the pack is full.
+	var lying := Item.make(&"potion_healing")
+	lying.x = gs.player.x
+	lying.y = gs.player.y
+	gs.ground = [lying]
+	check("the key refuses a pickup the pack cannot take",
+		not gs.player_pickup() and gs.ground.has(lying))
+	# Taking something off needs a slot; swapping does not.
+	var turn0 := gs.turns
+	check("taking the shield off with a full pack is refused, and costs nothing",
+		not gs.player_use(gs.player.inventory.find(shield))
+		and gs.player.is_equipped(shield) and gs.turns == turn0)
+	var said: String = gs.msg_log.entries[-1]["text"]
+	check("  and says what to do (\"%s\")" % said, said.contains("Drop something"))
+	var other_blade: Item = null
+	for it in gs.player.inventory:
+		if it.id == &"dagger":
+			other_blade = it
+			break
+	check("wielding a dagger from the pack in the sword's place works",
+		gs.player_use(gs.player.inventory.find(other_blade))
+		and gs.player.is_equipped(other_blade) and not gs.player.is_equipped(sword)
+		and gs.player.pack_count() == Entity.INVENTORY_MAX)
+	# A bow from the pack swaps with the sword and sends the shield to the pack
+	# as before -- still a swap, the count unchanged.
+	var bow := Item.make(&"war_bow")
+	# The sword is in the pack now; dropping it is what makes room. Taking the
+	# worn dagger out would free nothing, which is the point of this test.
+	gs.player.inventory.erase(sword)
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	gs.player.inventory.erase(other_blade)
+	check("precondition: a slot was made for the bow", gs.give_item(bow)
+		and gs.player.pack_count() == Entity.INVENTORY_MAX)
+	check("the swap key still reaches the bow with a full pack",
+		gs.player_swap_weapon() and gs.player.is_equipped(bow)
+		and not gs.player.is_equipped(shield) and gs.player.pack_count() == Entity.INVENTORY_MAX,
+		"%d in the pack" % gs.player.pack_count())
+	check("and back to a blade, the shield comes up again",
+		gs.player_swap_weapon() and gs.player.is_equipped(shield)
+		and not gs.player.is_equipped(bow))
+	# Saved and loaded, the worn things are still worn and still not counted.
+	var back := GameState.new(1)
+	back.new_game()
+	check("a suspend keeps what is worn out of the count",
+		back.apply_dict(gs.to_dict()) and back.player.pack_count() == gs.player.pack_count()
+		and back.player.inventory.size() == gs.player.inventory.size()
+		and back.player.pack_count() < back.player.inventory.size())
+	# Fill the pack again, drop one thing, and the coat can come off.
+	while gs.give_item(Item.make(&"dagger")):
+		pass
+	check("precondition: full again, and the coat cannot come off",
+		gs.player.pack_count() == Entity.INVENTORY_MAX
+		and not gs.player_use(gs.player.inventory.find(coat)) and gs.player.is_equipped(coat))
+	var spare := -1
+	for i in gs.player.inventory.size():
+		if gs.player.inventory[i].id == &"dagger" and not gs.player.is_equipped(gs.player.inventory[i]):
+			spare = i
+			break
+	check("precondition: an unworn dagger to drop", spare >= 0 and gs.player_drop(spare))
+	check("with room made, taking the coat off works",
+		gs.player.pack_count() < Entity.INVENTORY_MAX
+		and gs.player_use(gs.player.inventory.find(coat)) and not gs.player.is_equipped(coat))
+
 func _test_inventory_letters_dodge_the_keys() -> void:
 	for i in GameState.RESERVED_LETTERS.length():
 		var ch := GameState.RESERVED_LETTERS[i]
 		check("the pool never offers \"%s\"" % ch,
 			not GameState.LETTERS.contains(ch))
-	check("and is still long enough for a full pack (%d for %d)"
-		% [GameState.LETTERS.length(), Entity.INVENTORY_MAX],
-		GameState.LETTERS.length() >= Entity.INVENTORY_MAX)
+	check("and is still long enough for a full pack and everything worn (%d for %d + %d)"
+		% [GameState.LETTERS.length(), Entity.INVENTORY_MAX, Entity.WORN_SLOTS],
+		GameState.LETTERS.length() >= Entity.INVENTORY_MAX + Entity.WORN_SLOTS)
 
 	# Fill a pack and check nothing unreachable comes out of it.
 	var gs := _arena(21, 9)

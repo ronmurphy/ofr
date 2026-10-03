@@ -761,6 +761,49 @@ reverse; the same spring and noise of 5, so a laid trap at a doorway is a
 lure as much as a wound. About an evening, most of it item plumbing and
 the save.
 
+**The pack, in three steps (Brad and Claude, 2026-10-02 night). Step 1
+BUILT; steps 2 and 3 are tomorrow's work.** Every feature lately has
+wanted an item or more of one, and the pack was the tightest resource in
+the game (Brad's 20/20 held five heals; that is what made the satchel).
+Brad's picture: a pack of twenty SLOTS, each slot a STACK, worn gear in
+its own header and out of the count; the satchel a shelf per kind. Not
+Ctrl+letter: a pad has no Ctrl, the browser takes Ctrl+W and Ctrl+R before
+the game sees them, and letters are chosen inside the open panel anyway.
+1. **Worn gear is not in the pack -- BUILT 2026-10-02**, waiting on play.
+   `Entity.pack_count()` (carried and not worn) is what INVENTORY_MAX
+   measures: `give_item`, the pickup and the HERE box's "full". Worn gear
+   stays in `inventory` with its letter, so every index, the swap key, the
+   trader, the gem binding and the save are untouched; the EQUIPPED header
+   the panel already drew is now the "worn" row Brad imagined. The title
+   line reads "N / 20 in the pack · M worn". Taking something OFF with a
+   full pack is refused ("Drop something first"); putting something else
+   on in its place is a swap and needs no room. The letter pool (23) covers
+   20 + the 3 worn slots exactly (`Entity.WORN_SLOTS`, checked by
+   `_test_inventory_letters_dodge_the_keys`). Test:
+   `_test_worn_gear_is_not_in_the_pack`.
+2. **Stacks in the pack -- designed, not built.** Like kinds stack to
+   STACK_MAX_PACK 20 in one slot, one letter: potions of one kind, scrolls
+   of one kind, arrows, stones, meat, fungus, gems of one element. A sword,
+   a coat, a unique stay one each. `Item.count` already exists (the
+   satchel's fungus and meat use it); the work is pickup (merge into a
+   stack with room), use (one off the stack; the slot stays while any
+   remain), drop (one, or ask), throw (one), the trader (sells one),
+   display ("potion of healing x3"), the save, and the satchel's hand-off
+   (it fills from stacks). The twenty is the honest limit on KINDS, which
+   is the closet Brad described: twenty shelves, and he knows which one the
+   potions are on. Hoarding becomes possible; nothing creates more drops,
+   and the caves still starve by what falls, so that is the right side to
+   err on.
+3. **The satchel as shelves -- designed, not built.** Drop the ten SLOTS
+   and say: one row per kind it takes, ten per row ("the satchel holds ten
+   of each"). No slot arithmetic between a rabbit haunch and a bear haunch.
+   Everything else as built: pick fungus, root it, drop meat, use closes
+   the chooser, offhand, takes no hand, fills straight from pickups. Its
+   capacity grows with the kinds it accepts; if it ever wants tightening,
+   lower the ten, not the rows. Nearly a rename once step 2 stacks the
+   pack: `satchel_room()` becomes "is there a row for this kind with room".
+   Order: 2 then 3, one evening each with the suite and play between.
+
 **The Legends intro -- the game's first cutscene.** Brad's idea, 2026-09-28,
 from the cottage built as a first try at the title screen. Build after the
 title screen has been played.

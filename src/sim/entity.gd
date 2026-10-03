@@ -189,6 +189,10 @@ var energy: int = 0
 ## lootable corpses later are a read of this field rather than a new system.
 var inventory: Array = []
 const INVENTORY_MAX := 20
+## The slots gear can be worn in (Item.Slot: weapon, armour, offhand). Worn
+## gear hangs on you, not in the pack, so a full pack and three worn things
+## need INVENTORY_MAX + WORN_SLOTS letters between them.
+const WORN_SLOTS := 3
 
 ## Item.Slot -> Item. Equipped things stay in `inventory` and are merely
 ## flagged here, which is how most roguelikes do it and saves inventing a
@@ -468,6 +472,18 @@ func offhand_tier(el: StringName) -> int:
 	if off == null or off.element != el:
 		return 0
 	return off.defense_bonus
+
+## WHAT THE PACK HOLDS against INVENTORY_MAX: everything carried that is not
+## worn (Brad, 2026-10-02). Worn gear stays in `inventory` -- every index,
+## letter, swap and save works as before -- it simply stops counting. Before
+## this a sword, a shield and a coat ate three of the twenty, and the pack
+## was the tightest resource in the game.
+func pack_count() -> int:
+	var n := 0
+	for it in inventory:
+		if not is_equipped(it):
+			n += 1
+	return n
 
 func is_equipped(item) -> bool:
 	for slot in equipped:

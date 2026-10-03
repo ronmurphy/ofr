@@ -3072,7 +3072,7 @@ const LETTERS := "abcdeghjklmnopqrtuvwxyz"
 ## you picked something up -- so "quaff b", typed from muscle memory, would
 ## drink the wrong thing. The letter belongs to the item, not to the row.
 func give_item(item: Item) -> bool:
-	if player.inventory.size() >= Entity.INVENTORY_MAX:
+	if player.pack_count() >= Entity.INVENTORY_MAX:
 		return false
 	var used := {}
 	for it in player.inventory:
@@ -6368,7 +6368,7 @@ func actions_here() -> Array:
 	var here := items_at(player.x, player.y)
 	# A full pack means the key does what the square is for (see
 	# player_pickup), so the offer has to say the same.
-	var full := player.inventory.size() >= Entity.INVENTORY_MAX
+	var full := player.pack_count() >= Entity.INVENTORY_MAX
 	if not here.is_empty() and not (full and here[0].id != &"arrows"
 			and here[0].kind != Item.Kind.AMULET
 			and map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES):
@@ -6567,7 +6567,7 @@ func player_pickup() -> bool:
 			% [meal.name, bag.contents.size(), bag.holds], Color(0.75, 0.80, 0.90))
 		_end_player_turn()
 		return true
-	if player.inventory.size() >= Entity.INVENTORY_MAX:
+	if player.pack_count() >= Entity.INVENTORY_MAX:
 		# A FULL PACK MUST NOT BLOCK THE SQUARE'S OWN USE. Found in the
 		# 2026-09-27 hunt: an item lying on the stairs, with a full pack, made
 		# this key refuse -- and on a pad this key is the only way down or up.
@@ -6967,6 +6967,12 @@ func player_use(index: int) -> bool:
 		if putting_on and item.transforms() and item.charges <= 0:
 			msg_log.add("The ring is cold. A gem at the embers would warm it.",
 				Color(0.7, 0.6, 0.4))
+			return false
+		# Worn gear is not in the pack, so taking it off needs a slot to put it
+		# in. Putting something else ON in its place is a swap and needs none.
+		if not putting_on and player.pack_count() >= Entity.INVENTORY_MAX:
+			msg_log.add("Your pack is full; there is nowhere to put the %s. Drop something first."
+				% item.name, Color(0.9, 0.55, 0.35))
 			return false
 		_toggle_equip(item)
 		# Time to get INTO it -- see Item.don_turns. Taking it off is one turn.
