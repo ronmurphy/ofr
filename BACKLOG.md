@@ -781,19 +781,41 @@ the game sees them, and letters are chosen inside the open panel anyway.
    20 + the 3 worn slots exactly (`Entity.WORN_SLOTS`, checked by
    `_test_inventory_letters_dodge_the_keys`). Test:
    `_test_worn_gear_is_not_in_the_pack`.
-2. **Stacks in the pack -- designed, not built.** Like kinds stack to
-   STACK_MAX_PACK 20 in one slot, one letter: potions of one kind, scrolls
-   of one kind, arrows, stones, meat, fungus, gems of one element. A sword,
-   a coat, a unique stay one each. `Item.count` already exists (the
-   satchel's fungus and meat use it); the work is pickup (merge into a
-   stack with room), use (one off the stack; the slot stays while any
-   remain), drop (one, or ask), throw (one), the trader (sells one),
-   display ("potion of healing x3"), the save, and the satchel's hand-off
-   (it fills from stacks). The twenty is the honest limit on KINDS, which
-   is the closet Brad described: twenty shelves, and he knows which one the
-   potions are on. Hoarding becomes possible; nothing creates more drops,
-   and the caves still starve by what falls, so that is the right side to
-   err on.
+2. **Stacks in the pack -- BUILT 2026-10-03**, waiting on play. As built:
+   `Item.stackable()` (potions, scrolls, gems; never gear, uniques, the
+   satchel, a hero's bones or the quiver's arrows), `stacks_with` (same id,
+   element, boosts, charges; up to `Item.PACK_STACK` 20), `absorb` (meat's
+   worth averaged in, rounded), `split_one`. `give_item` merges before it
+   counts, so a full pack still takes one more of what it holds. One leaves
+   at a time through `_spend_one`: use (the slot and letter stay while any
+   remain, so "drink, drink" works), drop ("You drop one X (x3 left)"),
+   throw (the boss and frost gems too), the trader's counter, a gem bound
+   or crushed into a brazier. The forge works a stack against itself:
+   two leave, one comes back +1 and takes the stack's place in the list
+   (`_find_duplicate` returns the stack; refused when three or more would
+   remain and no slot is free for the worked one). Pickup says "(b, x3
+   now)". Not built: dropping a whole stack at once (one per press for
+   now); the satchel still hands food over by slot (step 3). Test:
+   `_test_stacks_in_the_pack`. **Gear too, the same day (Brad, from play:
+   four daggers in four slots, one of them magic):** PLAIN gear stacks --
+   same thing, no element set or found in it (`element == ""`, which is
+   what colours it and brackets its name), the same forge level, not worn.
+   A dagger +1 stacks only with a dagger +1; anything with an element, the
+   ring, a launcher (it carries a quiver) and every unique sit alone. The
+   one you WEAR is always a single item: wielding from a stack splits one
+   off into its own slot right after the stack (`_toggle_equip`), the swap
+   key goes through the same door, and a plain dagger picked up never
+   joins the one in hand (`_stack_for` skips worn). Wielding off a stack
+   into a FULL pack is refused like taking something off (the stack stays
+   and the old piece comes in: one more, and the 23 letters are spent).
+   The forge works a dagger stack against itself exactly as it works
+   potions: the stack IS the worked one (same row, same letter) and the
+   plain ones left move down a row. Original note:
+   Like kinds stack to 20 in one slot, one letter. A unique stays one. The twenty is
+   the honest limit on KINDS, which is the closet Brad described: twenty
+   shelves, and he knows which one the potions are on. Hoarding becomes
+   possible; nothing creates more drops, and the caves still starve by what
+   falls, so that is the right side to err on.
 3. **The satchel as shelves -- designed, not built.** Drop the ten SLOTS
    and say: one row per kind it takes, ten per row ("the satchel holds ten
    of each"). No slot arithmetic between a rabbit haunch and a bear haunch.

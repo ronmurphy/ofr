@@ -252,6 +252,7 @@ func _initialize() -> void:
 	_test_merging_spends_the_cheapest()
 	_test_inventory_letters_dodge_the_keys()
 	_test_worn_gear_is_not_in_the_pack()
+	_test_stacks_in_the_pack()
 	_test_no_key_steals_an_inventory_letter()
 	_test_an_older_save_still_loads()
 	_test_fungus_is_a_mouthful()
@@ -991,10 +992,13 @@ func _test_forging() -> void:
 	var worn := _forge_arena()
 	var keep := Item.make(&"leather_armour")
 	var donor := Item.make(&"leather_armour")
-	worn.give_item(keep)
+	# The donor is worn first: a worn thing is never a stack, so the keeper
+	# arrives in its own slot (2026-10-03).
 	worn.give_item(donor)
 	worn.player.equipped[Item.Slot.ARMOR] = donor
-	check("merging a worn donor works", worn.player_merge(0))
+	worn.give_item(keep)
+	check("precondition: two slots, the worn one apart", worn.player.inventory.size() == 2)
+	check("merging a worn donor works", worn.player_merge(worn.player.inventory.find(keep)))
 	check("and it is no longer equipped", not worn.player.is_equipped(donor))
 	check("armour gains defense, not power",
 		keep.defense_bonus == keep.base_defense_bonus + 1)
@@ -6010,7 +6014,7 @@ func _test_the_trader_deals() -> void:
 	check("selling a dagger works", gs.trade_sell(gs.player.inventory.find(d1)))
 	check("  credit is 1", gs.trader_credit == 1, "%d" % gs.trader_credit)
 	check("  it goes on the shelf", gs.trader_stock.size() == stocked + 1)
-	check("  and leaves the pack", not gs.player.inventory.has(d1))
+	check("  and the stack is one lighter", d1.count == 2 and gs.player.inventory.has(d1))
 
 	# PAR: buying it straight back costs exactly what it earned.
 	var back := gs.trader_stock.size() - 1
@@ -6030,9 +6034,11 @@ func _test_the_trader_deals() -> void:
 	check("  and nothing moved", gs.trader_stock.size() == shelf
 		and gs.player.inventory.size() == pack and gs.trader_credit == 0)
 
-	# Three daggers buy it.
-	for it in [d1, d2, d3]:
-		var at := gs.player.inventory.find(it)
+	# Three daggers buy it -- one stack, sold a dagger at a time (2026-10-03).
+	check("precondition: the three daggers are one stack", d1.count == 3
+		and not gs.player.inventory.has(d2) and not gs.player.inventory.has(d3))
+	for i in 3:
+		var at := gs.player.inventory.find(d1)
 		if at >= 0:
 			gs.trade_sell(at)
 	check("three daggers make 3 credit", gs.trader_credit == 3, "%d" % gs.trader_credit)
@@ -6051,9 +6057,15 @@ func _test_the_trader_deals() -> void:
 	# What it refuses, it keeps out of the pack AND off the slate.
 	var p := Item.make(&"potion_healing")
 	gs.give_item(p)
+	# It joined the bought potion's stack; the stack is what the counter sees.
+	var pi := -1
+	for i in gs.player.inventory.size():
+		if gs.player.inventory[i].id == &"potion_healing":
+			pi = i
+	var held: int = gs.player.inventory[pi].count
 	var before := gs.trader_credit
-	check("a potion is refused", not gs.trade_sell(gs.player.inventory.find(p)))
-	check("  and stays in the pack", gs.player.inventory.has(p)
+	check("a potion is refused", pi >= 0 and not gs.trade_sell(pi))
+	check("  and stays in the pack", gs.player.inventory[pi].count == held
 		and gs.trader_credit == before)
 
 	# GEMS FOR GEMS.
@@ -8026,9 +8038,11 @@ func _test_every_draught_costs_a_turn() -> void:
 	gs.give_item(b)
 	gs.give_item(meat)
 	var t0 := gs.turns
+	check("precondition: the two potions are one stack", a.count == 2
+		and not gs.player.inventory.has(b))
 	check("a potion works", gs.player_use(gs.player.inventory.find(a)))
 	check("  and costs a turn", gs.turns == t0 + 1, "%d -> %d" % [t0, gs.turns])
-	check("so does the second", gs.player_use(gs.player.inventory.find(b))
+	check("so does the second", gs.player_use(gs.player.inventory.find(a))
 		and gs.turns == t0 + 2)
 	check("and a meal", gs.player_use(gs.player.inventory.find(meat))
 		and gs.turns == t0 + 3)
@@ -15460,7 +15474,7 @@ func _test_embers_cool_and_refuse_glass() -> void:
 	# The same coals take iron.
 	glass.give_item(Item.make(&"dagger"))
 	glass.give_item(Item.make(&"dagger"))
-	check("but they take iron", glass.player_merge(2))
+	check("but they take iron", glass.player_merge(glass.player.inventory.size() - 1))
 
 	# Cold. The clock is what stops "clear the floor, then walk back round it".
 	var cold := _forge_arena()
@@ -15665,6 +15679,207 @@ func _test_offhand_and_swap() -> void:
 ## Every press shut the panel instead of drinking it, shift+i did not merge it
 ## either because the close check runs first, and there was no way to reach the
 ## item from the keyboard at all.
+## LIKE KINDS STACK IN THE PACK (Brad, 2026-10-02; built 2026-10-03): one
+## slot, one letter, up to twenty; gear and uniques never; one leaves at a
+## time by use, drop, throw, sale and binding; a forge works two into one.
+func _test_stacks_in_the_pack() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.torch_lit = false
+	for i in 3:
+		check_silent(gs.give_item(Item.make(&"potion_healing")))
+	check_gathered("three potions are taken")
+	check("and sit in one slot, under one letter, counted as one",
+		gs.player.inventory.size() == 1 and gs.player.inventory[0].count == 3
+		and gs.player.inventory[0].letter != "" and gs.player.pack_count() == 1)
+	var pot: Item = gs.player.inventory[0]
+	check("the name says how many", pot.display_name().ends_with("x3"), pot.display_name())
+	gs.give_item(Item.make(&"scroll_light"))
+	var boosted := Item.make(&"potion_healing")
+	boosted.boosts = 1
+	gs.give_item(boosted)
+	check("a scroll and a worked potion each take their own slot",
+		gs.player.inventory.size() == 3 and pot.count == 3)
+	var fire1 := Item.make(&"gem_fire")
+	var fire2 := Item.make(&"gem_fire")
+	var frost := Item.make(&"gem_frost")
+	gs.give_item(fire1)
+	gs.give_item(fire2)
+	gs.give_item(frost)
+	check("gems of one element stack; another element does not",
+		fire1.count == 2 and gs.player.inventory.has(frost) and not gs.player.inventory.has(fire2))
+	# GEAR: plain stacks with plain; a forge level or an element sets it apart.
+	var d1 := Item.make(&"dagger")
+	var d2 := Item.make(&"dagger")
+	var worked := Item.make(&"dagger")
+	worked.upgrade()
+	var fiery := Item.make(&"dagger")
+	fiery.element = &"fire"
+	gs.give_item(d1)
+	gs.give_item(d2)
+	gs.give_item(worked)
+	gs.give_item(fiery)
+	var daggers := 0
+	for it in gs.player.inventory:
+		if it.id == &"dagger":
+			daggers += 1
+	check("plain daggers stack; a worked one and a fiery one each sit alone",
+		d1.count == 2 and not gs.player.inventory.has(d2) and daggers == 3)
+	# Wielding from the stack splits one off, into its own slot after it.
+	var d_at := gs.player.inventory.find(d1)
+	check("precondition: wielding from the stack works", gs.player_use(d_at))
+	var held: Item = gs.player.equipped.get(Item.Slot.WEAPON, null)
+	check("the one in hand is its own item, beside the stack",
+		held != null and held != d1 and held.id == &"dagger" and held.count == 1
+		and d1.count == 1 and gs.player.inventory.find(held) == d_at + 1
+		and held.letter != "" and held.letter != d1.letter)
+	gs.give_item(Item.make(&"dagger"))
+	check("a plain dagger picked up joins the stack, never the one in hand",
+		d1.count == 2 and held.count == 1)
+	var bow := Item.make(&"war_bow")
+	gs.give_item(bow)
+	gs.give_item(Item.make(&"war_bow"))
+	check("launchers carry a quiver and never stack", bow.count == 1)
+	gs.player.equipped.erase(Item.Slot.WEAPON)
+	gs.player.inventory.erase(held)
+	gs.player.inventory.erase(bow)
+	for it in gs.player.inventory.duplicate():
+		if it.id == &"war_bow":
+			gs.player.inventory.erase(it)
+	# Meat: the stack carries the average worth.
+	var lean := Item.make(&"bear_meat")
+	lean.magnitude = 5
+	var fat := Item.make(&"bear_meat")
+	fat.magnitude = 9
+	gs.give_item(lean)
+	gs.give_item(fat)
+	check("two haunches stack, and the stack is worth their average (%d)" % lean.magnitude,
+		lean.count == 2 and lean.magnitude == 7 and not gs.player.inventory.has(fat))
+
+	# Twenty is the stack; the twenty-first starts another slot.
+	for i in 17:
+		gs.give_item(Item.make(&"potion_healing"))
+	check("a stack holds twenty", pot.count == Item.PACK_STACK)
+	var before := gs.player.inventory.size()
+	gs.give_item(Item.make(&"potion_healing"))
+	check("and the twenty-first starts a new one", gs.player.inventory.size() == before + 1)
+
+	# A FULL pack still takes one more of what it holds, and nothing new.
+	# Filled with potions of ever higher forge level: each its own stack.
+	var filler := 1
+	while gs.player.pack_count() < Entity.INVENTORY_MAX:
+		var f := Item.make(&"potion_healing")
+		f.boosts = filler
+		filler += 1
+		if not gs.give_item(f):
+			break
+	check("precondition: the pack is full", gs.player.pack_count() == Entity.INVENTORY_MAX)
+	check("full, it still takes a potion onto a stack with room",
+		gs.give_item(Item.make(&"potion_healing")))
+	check("  and refuses something it has no slot for", not gs.give_item(Item.make(&"scroll_blink")))
+
+	# ONE AT A TIME. Use, drop, throw: the slot and the letter stay.
+	var letter := pot.letter
+	var at := gs.player.inventory.find(pot)
+	gs.player.max_hp = 500
+	gs.player.hp = 100
+	var n := pot.count
+	check("drinking one takes one off the stack and keeps the slot",
+		gs.player_use(at) and pot.count == n - 1 and gs.player.inventory[at] == pot
+		and pot.letter == letter and gs.player.hp > 100)
+	n = pot.count
+	var on_floor := gs.ground.size()
+	check("dropping one puts one on the floor and keeps the rest",
+		gs.player_drop(at) and pot.count == n - 1 and gs.ground.size() == on_floor + 1
+		and gs.ground[-1].id == &"potion_healing" and gs.ground[-1].count == 1
+		and gs.ground[-1].letter == "" and gs.player.inventory.has(pot))
+	var kob := _spawn(gs, "kobold", 7, 4)
+	kob.hp = 100
+	gs.torch_lit = true
+	gs._gather_lights()
+	gs.update_vision()
+	var d_stack_at := gs.player.inventory.find(d1)
+	check("precondition: the dagger stack is two, and the kobold is in reach",
+		d_stack_at >= 0 and d1.count == 2 and d1.is_throwable()
+		and gs.can_reach(Vector2i(7, 4), d1.throw_range))
+	# Throwing from the stack: one dagger flies, the other stays lettered.
+	var thrown := gs.player_throw(d_stack_at, Vector2i(7, 4))
+	check("throwing from a stack throws one",
+		thrown and d1.count == 1 and gs.player.inventory.has(d1) and d1.letter != "",
+		"thrown=%s count=%d last=%s" % [thrown, d1.count, str(gs.msg_log.entries[-1]["text"])])
+	# Picking the dropped potion back up rejoins the stack and says so.
+	var dropped_pot: Item = null
+	for it in gs.ground:
+		if it.id == &"potion_healing":
+			dropped_pot = it
+	gs.ground = [dropped_pot]
+	dropped_pot.x = gs.player.x
+	dropped_pot.y = gs.player.y
+	n = pot.count
+	gs.entities = [gs.player]
+	check("precondition: the pack is full and the stack has room",
+		gs.player.pack_count() >= Entity.INVENTORY_MAX and pot.count < Item.PACK_STACK)
+	check("picking one up again rejoins the stack", gs.player_pickup() and pot.count == n + 1
+		and gs.msg_log.entries[-1]["text"].contains("x%d now" % pot.count),
+		gs.msg_log.entries[-1]["text"])
+	# Saved and loaded, the stack is a stack.
+	var back := GameState.new(1)
+	back.new_game()
+	check("a suspend keeps the stacks", back.apply_dict(gs.to_dict())
+		and back.player.inventory.size() == gs.player.inventory.size()
+		and back.player.inventory[at].count == pot.count)
+	# A save from before stacking, or any save: the pack is folded on load,
+	# worn things left alone (Brad, resuming a run, saw three plain daggers in
+	# three rows).
+	var old := _arena(21, 9)
+	old.player.inventory.clear()
+	old.player.equipped.clear()
+	var loose: Array = []
+	for i in 3:
+		var d := Item.make(&"dagger")
+		d.letter = "abc"[i]
+		loose.append(d)
+	var wornd := Item.make(&"dagger")
+	wornd.letter = "d"
+	loose.append(wornd)
+	for i in 2:
+		var pp := Item.make(&"potion_healing")
+		pp.letter = "eg"[i]
+		loose.append(pp)
+	for it in loose:
+		old.player.inventory.append(it)
+	old.player.equipped[Item.Slot.WEAPON] = wornd
+	check("precondition: six rows written straight in, one worn",
+		old.player.inventory.size() == 6 and old.player.is_equipped(wornd))
+	var loaded := GameState.new(1)
+	loaded.new_game()
+	check("loaded, like things fold together and the worn one stays apart",
+		loaded.apply_dict(old.to_dict()) and loaded.player.inventory.size() == 3
+		and loaded.player.inventory[0].id == &"dagger" and loaded.player.inventory[0].count == 3
+		and loaded.player.inventory[0].letter == "a"
+		and loaded.player.inventory[1].count == 1 and loaded.player.is_equipped(loaded.player.inventory[1])
+		and loaded.player.inventory[2].count == 2,
+		str(loaded.player.inventory.map(func(x): return x.display_name())))
+
+	# The last one leaves the slot and frees the letter.
+	var one := _arena(21, 9)
+	one.player.inventory.clear()
+	one.player.equipped.clear()
+	one.give_item(Item.make(&"scroll_light"))
+	one.give_item(Item.make(&"scroll_light"))
+	var sc: Item = one.player.inventory[0]
+	var sc_letter := sc.letter
+	one.player_use(0)
+	check("precondition: one scroll left in the slot", sc.count == 1 and one.player.inventory.has(sc))
+	one.player_use(0)
+	check("the last of a stack leaves the slot and its letter",
+		not one.player.inventory.has(sc) and sc.letter == "" and one.player.inventory.is_empty())
+	check("and the letter is free for the next thing",
+		one.give_item(Item.make(&"dagger")) and one.player.inventory[0].letter == sc_letter)
+
 ## WORN GEAR IS NOT IN THE PACK (Brad, 2026-10-02): a sword, a coat and a
 ## shield on you leave all twenty slots free; the pack is full at twenty
 ## unworn things; taking something off needs room; a swap needs none.
@@ -15687,13 +15902,32 @@ func _test_worn_gear_is_not_in_the_pack() -> void:
 		and gs.player.is_equipped(shield) and gs.player.pack_count() == 0
 		and gs.player.inventory.size() == 3)
 	var handed := 0
-	for i in Entity.INVENTORY_MAX:
-		if gs.give_item(Item.make(&"dagger")):
+	var other_blade := Item.make(&"dagger")
+	if gs.give_item(other_blade):
+		handed += 1
+	for i in Entity.INVENTORY_MAX - 1:
+		# Each at its own forge level, so none joins another's stack.
+		var filler := Item.make(&"potion_healing")
+		filler.boosts = i + 1
+		if gs.give_item(filler):
 			handed += 1
 	check("twenty more fit in the pack beside them (%d)" % handed,
 		handed == Entity.INVENTORY_MAX and gs.player.pack_count() == Entity.INVENTORY_MAX
 		and gs.player.inventory.size() == Entity.INVENTORY_MAX + Entity.WORN_SLOTS)
-	check("the twenty-first does not", not gs.give_item(Item.make(&"dagger")))
+	var extra := Item.make(&"potion_healing")
+	extra.boosts = 99
+	check("the twenty-first does not", not gs.give_item(extra))
+	# A second plain dagger joins the first's stack even now: a stack has room.
+	check("but a plain dagger joins the one already there", gs.give_item(Item.make(&"dagger"))
+		and other_blade.count == 2)
+	# Wielding one off that stack would send the sword into a pack with no
+	# room (the stack stays): refused, like taking something off.
+	var t_before := gs.turns
+	check("wielding from a stack into a full pack is refused",
+		not gs.player_use(gs.player.inventory.find(other_blade)) and gs.player.is_equipped(sword)
+		and other_blade.count == 2 and gs.turns == t_before)
+	# Back to a single dagger for the swap below.
+	other_blade.count = 1
 	var blank := 0
 	var seen := {}
 	for it in gs.player.inventory:
@@ -15715,11 +15949,6 @@ func _test_worn_gear_is_not_in_the_pack() -> void:
 		and gs.player.is_equipped(shield) and gs.turns == turn0)
 	var said: String = gs.msg_log.entries[-1]["text"]
 	check("  and says what to do (\"%s\")" % said, said.contains("Drop something"))
-	var other_blade: Item = null
-	for it in gs.player.inventory:
-		if it.id == &"dagger":
-			other_blade = it
-			break
 	check("wielding a dagger from the pack in the sword's place works",
 		gs.player_use(gs.player.inventory.find(other_blade))
 		and gs.player.is_equipped(other_blade) and not gs.player.is_equipped(sword)
@@ -15731,7 +15960,11 @@ func _test_worn_gear_is_not_in_the_pack() -> void:
 	# worn dagger out would free nothing, which is the point of this test.
 	gs.player.inventory.erase(sword)
 	gs.player.equipped.erase(Item.Slot.WEAPON)
-	gs.player.inventory.erase(other_blade)
+	# The dagger stays as the blade to fall back on; a filler goes instead.
+	for it in gs.player.inventory:
+		if it.id == &"potion_healing":
+			gs.player.inventory.erase(it)
+			break
 	check("precondition: a slot was made for the bow", gs.give_item(bow)
 		and gs.player.pack_count() == Entity.INVENTORY_MAX)
 	check("the swap key still reaches the bow with a full pack",
@@ -15748,18 +15981,24 @@ func _test_worn_gear_is_not_in_the_pack() -> void:
 		back.apply_dict(gs.to_dict()) and back.player.pack_count() == gs.player.pack_count()
 		and back.player.inventory.size() == gs.player.inventory.size()
 		and back.player.pack_count() < back.player.inventory.size())
-	# Fill the pack again, drop one thing, and the coat can come off.
-	while gs.give_item(Item.make(&"dagger")):
-		pass
+	# Fill the pack again, drop one whole thing, and the coat can come off.
+	var level := 50
+	while gs.player.pack_count() < Entity.INVENTORY_MAX:
+		var more := Item.make(&"potion_healing")
+		more.boosts = level
+		level += 1
+		if not gs.give_item(more):
+			break
 	check("precondition: full again, and the coat cannot come off",
 		gs.player.pack_count() == Entity.INVENTORY_MAX
 		and not gs.player_use(gs.player.inventory.find(coat)) and gs.player.is_equipped(coat))
 	var spare := -1
 	for i in gs.player.inventory.size():
-		if gs.player.inventory[i].id == &"dagger" and not gs.player.is_equipped(gs.player.inventory[i]):
+		var it: Item = gs.player.inventory[i]
+		if it.count == 1 and not gs.player.is_equipped(it) and not it.is_equipment():
 			spare = i
 			break
-	check("precondition: an unworn dagger to drop", spare >= 0 and gs.player_drop(spare))
+	check("precondition: a single unworn thing to drop", spare >= 0 and gs.player_drop(spare))
 	check("with room made, taking the coat off works",
 		gs.player.pack_count() < Entity.INVENTORY_MAX
 		and gs.player_use(gs.player.inventory.find(coat)) and not gs.player.is_equipped(coat))
@@ -15773,11 +16012,14 @@ func _test_inventory_letters_dodge_the_keys() -> void:
 		% [GameState.LETTERS.length(), Entity.INVENTORY_MAX, Entity.WORN_SLOTS],
 		GameState.LETTERS.length() >= Entity.INVENTORY_MAX + Entity.WORN_SLOTS)
 
-	# Fill a pack and check nothing unreachable comes out of it.
+	# Fill a pack and check nothing unreachable comes out of it. Potions at
+	# twenty different forge levels: like things would stack under one letter.
 	var gs := _arena(21, 9)
 	var handed := 0
 	for i in Entity.INVENTORY_MAX:
-		if gs.give_item(Item.make(&"potion_healing")):
+		var filler := Item.make(&"potion_healing")
+		filler.boosts = i + 1
+		if gs.give_item(filler):
 			handed += 1
 	var bad: Array = []
 	var seen := {}
@@ -15886,8 +16128,10 @@ func _test_an_older_save_still_loads() -> void:
 	check("the current build loads it", back != null)
 	if back == null:
 		return
+	# Four slots: the two potions are one stack (2026-10-03).
 	check("with the run intact", back.depth == 9 and back.ascending
-		and back.player.level == 9 and back.player.inventory.size() == 5)
+		and back.player.level == 9 and back.player.inventory.size() == 4
+		and back.player.inventory[2].count == 2)
 	check("equipment still worn", back.player.equipped.has(Item.Slot.WEAPON)
 		and back.player.equipped.has(Item.Slot.ARMOR))
 	var letters := ""

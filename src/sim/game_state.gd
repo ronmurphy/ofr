@@ -1984,10 +1984,7 @@ func trade_sell(index: int) -> bool:
 			Color(0.85, 0.75, 0.55))
 		return false
 	road_offered = null
-	if player.is_equipped(it):
-		player.equipped.erase(it.slot)
-	player.inventory.remove_at(index)
-	it.letter = ""
+	it = _spend_one(it)
 	if Trade.is_gem(it):
 		trader_gems += 1
 		msg_log.add("The trader takes the %s. (%d of %d toward a gem of your choice)"
@@ -3071,9 +3068,31 @@ const LETTERS := "abcdeghjklmnopqrtuvwxyz"
 ## or filtered, a letter derived from screen position would change every time
 ## you picked something up -- so "quaff b", typed from muscle memory, would
 ## drink the wrong thing. The letter belongs to the item, not to the row.
+##
+## LIKE KINDS STACK (2026-10-03): a potion joining a stack of its own kind takes
+## no slot and no letter, so a full pack still takes one more of what it holds.
 func give_item(item: Item) -> bool:
+	var stack := _stack_for(item)
+	if stack != null:
+		stack.absorb(item)
+		return true
 	if player.pack_count() >= Entity.INVENTORY_MAX:
 		return false
+	item.letter = _free_letter()
+	player.inventory.append(item)
+	return true
+
+## The stack in the pack this would join, with room, or null. What you are
+## wearing is a single thing and never a stack: a plain dagger picked up
+## while one is in hand goes to its own slot.
+func _stack_for(item: Item) -> Item:
+	for it in player.inventory:
+		if it.stacks_with(item) and not player.is_equipped(it):
+			return it
+	return null
+
+## The first letter of the pool nothing in the pack is using.
+func _free_letter() -> String:
 	var used := {}
 	for it in player.inventory:
 		used[it.letter] = true
@@ -3082,10 +3101,22 @@ func give_item(item: Item) -> bool:
 	for i in LETTERS.length():
 		var ch := LETTERS[i]
 		if not used.has(ch):
-			item.letter = ch
-			break
-	player.inventory.append(item)
-	return true
+			return ch
+	return ""
+
+## Spends ONE of `it`: off the stack if it is one, out of the pack if it is the
+## last. Returns the unit spent -- the item itself when it left the pack, a
+## split copy when the stack stays -- letterless either way, for the ground or
+## the air. The one way anything leaves the pack a unit at a time.
+func _spend_one(it: Item) -> Item:
+	if it.count > 1:
+		it.count -= 1
+		return it.split_one()
+	if player.is_equipped(it):
+		player.equipped.erase(it.slot)
+	player.inventory.erase(it)
+	it.letter = ""
+	return it
 
 ## Re-letters anything a suspended run is carrying under a key that cannot be
 ## pressed.
@@ -3094,6 +3125,27 @@ func give_item(item: Item) -> bool:
 ## reach, and reloading is exactly the moment to put that right -- the run in
 ## which this was found had its last potion stuck that way. Also catches
 ## duplicates and blanks, which nothing produced but nothing prevented either.
+## A pack from before things stacked, or one written straight into the list
+## by a save, holds its daggers one to a slot (Brad, 2026-10-03, resuming a
+## run: three plain daggers in three rows). Folds like things together on
+## load, first one keeping its letter; worn gear is left as it is.
+func _stack_the_pack() -> void:
+	var kept: Array = []
+	for it in player.inventory:
+		var home: Item = null
+		if not player.is_equipped(it):
+			for k in kept:
+				if k.stacks_with(it) and not player.is_equipped(k):
+					home = k
+					break
+		if home != null:
+			home.absorb(it)
+		else:
+			kept.append(it)
+	player.inventory.clear()
+	for k in kept:
+		player.inventory.append(k)
+
 func _relabel_unreachable_items() -> void:
 	var seen := {}
 	var stuck: Array[Item] = []
@@ -3441,10 +3493,7 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 		return false
 
 	_travel.clear()
-	if player.is_equipped(item):
-		player.equipped.erase(item.slot)
-	player.inventory.remove_at(index)
-	item.letter = ""
+	item = _spend_one(item)
 
 	# Half your own strength behind it, plus whatever the thing is worth.
 	var throw_power := item.power_bonus + int(player.power / 2)
@@ -3468,10 +3517,8 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 const BOSS_CRASH := 10
 
 func _throw_the_boss(index: int, cell: Vector2i) -> bool:
-	var gem: Item = player.inventory[index]
+	var gem: Item = _spend_one(player.inventory[index])
 	_travel.clear()
-	player.inventory.remove_at(index)
-	gem.letter = ""
 	msg_log.add("You hurl the %s. It shatters with a crash that rings through the stone."
 		% gem.name, Color(0.85, 0.88, 0.68))
 	# Hunters that have lost you go to the crash. _make_noise only turns the
@@ -3631,10 +3678,8 @@ func _pound_the_door(actor: Entity, at: Vector2i) -> bool:
 ## small room past its risen, not enough to dawdle. You are never frozen by
 ## your own stone; your ally is, if it stood there.
 func _freeze_the_room(index: int, cell: Vector2i) -> bool:
-	var gem: Item = player.inventory[index]
+	var gem: Item = _spend_one(player.inventory[index])
 	_travel.clear()
-	player.inventory.remove_at(index)
-	gem.letter = ""
 	var region := _region_at(cell)
 	var held := clampi(maxi(region.size.x, region.size.y) - _doors_of(region),
 		FREEZE_MIN, FREEZE_MAX)
@@ -5796,11 +5841,30 @@ func player_merge(index: int) -> bool:
 			% donor.display_name(), Color(0.7, 0.6, 0.4))
 		return false
 
-	_travel.clear()
-	if player.is_equipped(donor):
-		player.equipped.erase(donor.slot)
-	player.inventory.erase(donor)
-	donor.letter = ""
+	# WORKED OUT OF A STACK: two leave it, one comes back better, and the
+	# better one is its own slot from then on (a +1 does not stack with the
+	# plain ones). It takes the stack's place in the list -- the thing you
+	# clicked is the thing that got better -- and the rest shuffle down one.
+	# With three or more left and no slot free there is nowhere to set the
+	# worked one apart, so the forge is refused before anything is spent.
+	if donor == item:
+		var rest := item.count - 2
+		if rest > 0 and player.pack_count() >= Entity.INVENTORY_MAX:
+			msg_log.add("Your pack is full; there is nowhere to set the rest of the %s apart." % item.name,
+				Color(0.9, 0.55, 0.35))
+			return false
+		_travel.clear()
+		# The stack itself becomes the worked one (same object, same letter,
+		# same row), and the plain ones left over move down a row.
+		if rest > 0:
+			var others := item.split_one()
+			others.count = rest
+			others.letter = _free_letter()
+			player.inventory.insert(player.inventory.find(item) + 1, others)
+		item.count = 1
+	else:
+		_travel.clear()
+		_spend_one(donor)
 
 	item.upgrade()
 	_tally("forges")
@@ -5957,8 +6021,7 @@ func player_bind(index: int, target: int = -1) -> bool:
 		return false
 
 	_travel.clear()
-	player.inventory.erase(gem)
-	gem.letter = ""
+	gem = _spend_one(gem)
 	_tally("bindings")
 	events.append({"kind": &"forge", "to": hot})
 
@@ -6039,6 +6102,9 @@ func _no_forge_reason(item: Item) -> String:
 ## a +2, while a +1 fed by another +1 becomes a +2 and costs an upgrade to do
 ## it. Same result, higher price.
 func _find_duplicate(item: Item) -> Item:
+	# Two of a kind in one slot: the stack feeds itself (see player_merge).
+	if item.count >= 2:
+		return item
 	var best: Item = null
 	for other in player.inventory:
 		if other == item or other.id != item.id:
@@ -6302,7 +6368,7 @@ func player_relight() -> bool:
 	_lay_the_beat()
 	_tally("kindled")
 	if fire.kind == Item.Kind.GEM:
-		player.inventory.erase(fire)
+		_spend_one(fire)
 		msg_log.add("You crush the %s into the %s coals. The brazier roars up. (%d)"
 			% [fire.name, coals, give], Color(1.00, 0.82, 0.45))
 	else:
@@ -6567,7 +6633,8 @@ func player_pickup() -> bool:
 			% [meal.name, bag.contents.size(), bag.holds], Color(0.75, 0.80, 0.90))
 		_end_player_turn()
 		return true
-	if player.pack_count() >= Entity.INVENTORY_MAX:
+	# A stack with room takes one more whatever the count says (2026-10-03).
+	if player.pack_count() >= Entity.INVENTORY_MAX and _stack_for(here[0]) == null:
 		# A FULL PACK MUST NOT BLOCK THE SQUARE'S OWN USE. Found in the
 		# 2026-09-27 hunt: an item lying on the stairs, with a full pack, made
 		# this key refuse -- and on a pad this key is the only way down or up.
@@ -6594,12 +6661,17 @@ func player_pickup() -> bool:
 		_seize_amulet(item)
 		return true
 	ground.erase(item)
+	var stack := _stack_for(item)
 	give_item(item)
 	# Counted here rather than in give_item, which the tests and the starting
 	# kit also go through. This is the player deciding to bend down.
 	_tally_in("picked", item.name)
-	msg_log.add("You pick up the %s (%s)." % [item.name, item.letter],
-		Color(0.75, 0.80, 0.90))
+	if stack != null:
+		msg_log.add("You pick up the %s (%s, x%d now)." % [item.name, stack.letter, stack.count],
+			Color(0.75, 0.80, 0.90))
+	else:
+		msg_log.add("You pick up the %s (%s)." % [item.name, item.letter],
+			Color(0.75, 0.80, 0.90))
 	_end_player_turn()
 	return true
 
@@ -6969,10 +7041,17 @@ func player_use(index: int) -> bool:
 				Color(0.7, 0.6, 0.4))
 			return false
 		# Worn gear is not in the pack, so taking it off needs a slot to put it
-		# in. Putting something else ON in its place is a swap and needs none.
-		if not putting_on and player.pack_count() >= Entity.INVENTORY_MAX:
+		# in. Putting something else ON in its place is a swap and needs none
+		# -- unless it comes OFF A STACK, which stays behind in the pack while
+		# the old piece comes in: that is one more, and the letters are gone.
+		var displaces: bool = player.equipped.has(item.slot) \
+			or (item.is_two_handed() and player.equipped.has(Item.Slot.OFFHAND)
+				and not player.equipped[Item.Slot.OFFHAND].is_satchel())
+		var needs_room: bool = (not putting_on) or (item.count > 1 and displaces)
+		if needs_room and player.pack_count() >= Entity.INVENTORY_MAX:
 			msg_log.add("Your pack is full; there is nowhere to put the %s. Drop something first."
-				% item.name, Color(0.9, 0.55, 0.35))
+				% (item.name if not putting_on else player.equipped[item.slot].name
+				if player.equipped.has(item.slot) else "shield"), Color(0.9, 0.55, 0.35))
 			return false
 		_toggle_equip(item)
 		# Time to get INTO it -- see Item.don_turns. Taking it off is one turn.
@@ -6987,10 +7066,10 @@ func player_use(index: int) -> bool:
 	# a misclick is the kind of thing that makes people stop playing.
 	if not _apply_effect(item):
 		return false
-	# The shovel is kept, dull, for a gem to sharpen (6c).
-	if not item.dulls():
-		player.inventory.remove_at(index)
-		item.letter = ""
+	# The shovel is kept, dull, for a gem to sharpen (6c). One off a stack;
+	# the slot and its letter stay while any remain, so "drink, drink" works.
+	if not item.dulls() and player.inventory.has(item):
+		_spend_one(item)
 	# EVERY potion and every meal costs a turn. A "first one each turn is free"
 	# rule, after D&D's bonus action, was built and taken out again on
 	# 2026-09-24. Free in combat it makes fights easier, which Brad did not
@@ -7005,6 +7084,15 @@ func _toggle_equip(item: Item) -> void:
 		player.equipped.erase(item.slot)
 		msg_log.add("You put away the %s." % item.name)
 		return
+	# Off a stack: the one you wear is its own item from now on, in its own
+	# slot right after the stack (Brad, 2026-10-03: three plain daggers in
+	# three slots asked for gear to stack; the worn one still has to be ONE).
+	if item.count > 1:
+		var one := item.split_one()
+		one.letter = _free_letter()
+		item.count -= 1
+		player.inventory.insert(player.inventory.find(item) + 1, one)
+		item = one
 	var previous: Item = player.equipped.get(item.slot, null)
 	player.equipped[item.slot] = item
 	if previous == null:
@@ -7126,16 +7214,17 @@ func player_drop(index: int) -> bool:
 		return false
 	_travel.clear()
 	var item: Item = player.inventory[index]
+	var left := item.count - 1
 	# Dropping something you are wearing takes it off first, rather than
-	# leaving a dangling reference in `equipped`.
-	if player.is_equipped(item):
-		player.equipped.erase(item.slot)
-	player.inventory.remove_at(index)
-	item.letter = ""
-	item.x = player.x
-	item.y = player.y
-	ground.append(item)
-	msg_log.add("You drop the %s." % item.name)
+	# leaving a dangling reference in `equipped`. Off a stack, one goes.
+	var dropped := _spend_one(item)
+	dropped.x = player.x
+	dropped.y = player.y
+	ground.append(dropped)
+	if left > 0:
+		msg_log.add("You drop one %s (x%d left)." % [dropped.name, left])
+	else:
+		msg_log.add("You drop the %s." % dropped.name)
 	_end_player_turn()
 	return true
 
@@ -7807,6 +7896,7 @@ func apply_dict(d: Dictionary) -> bool:
 			"color": Color(float(c[0]), float(c[1]), float(c[2]))})
 
 	_relabel_unreachable_items()
+	_stack_the_pack()
 	events = []
 	_travel.clear()
 	pathfinder = Pathfinder.new(map)

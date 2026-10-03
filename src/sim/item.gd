@@ -82,9 +82,54 @@ var charges := 0
 var holds := 0
 var contents: Array = []
 ## A stack. Fungus picked into the satchel stacks to STACK_MAX in one slot;
-## everything else is 1.
+## in the pack, like kinds stack to PACK_STACK in one slot under one letter
+## (Brad, 2026-10-02: twenty slots, each a stack -- the pack was the tightest
+## resource in the game, and his 20/20 held five heals).
 var count := 1
 const STACK_MAX := 10
+const PACK_STACK := 20
+
+## What may share a pack slot: consumables and gems that are not somebody's,
+## and PLAIN gear (Brad, 2026-10-03: "if it is a gem item it gets its own
+## slot, else it can stack with like items") -- anything with an element set
+## or found in it, a unique, the ring, a launcher with its quiver, the
+## satchel, a hero's bones and the quiver's arrows (which pile by `ammo`)
+## stay one to a slot.
+func stackable() -> bool:
+	if unique or holds > 0 or bone_name != "" or id == &"arrows" or element != &"" \
+			and is_equipment():
+		return false
+	if is_equipment():
+		return not transforms() and not uses_ammo()
+	return kind == Kind.POTION or kind == Kind.SCROLL or kind == Kind.GEM
+
+## Whether `other` could join this stack: the same thing in every way that
+## changes what using one does. Boosts and element are the whole of that for
+## potions, scrolls and gems; for gear, the forge level too (a dagger +1
+## stacks with a dagger +1 and with nothing else); a haunch's worth is
+## averaged in by `absorb`. Whether either is WORN is the pack's business
+## (GameState._stack_for).
+func stacks_with(other: Item) -> bool:
+	return other != self and stackable() and other.stackable() and id == other.id \
+		and element == other.element and boosts == other.boosts and charges == other.charges \
+		and power_bonus == other.power_bonus and defense_bonus == other.defense_bonus \
+		and count + other.count <= PACK_STACK
+
+## Takes `other` into this stack. Meat is the one thing whose magnitude varies
+## piece by piece, so a stack carries the average, rounded: "a haunch of bear
+## x3, restores 7" rather than a hidden best or worst.
+func absorb(other: Item) -> void:
+	magnitude = int(round(float(magnitude * count + other.magnitude * other.count)
+		/ float(count + other.count)))
+	count += other.count
+
+## One off the stack, as its own item: the same thing in every saved respect,
+## with no letter and a count of one. The stack itself is left to the caller.
+func split_one() -> Item:
+	var one := Item.from_dict(to_dict())
+	one.count = 1
+	one.letter = ""
+	return one
 ## A shovel that has raised its one body and wants a gem. Its own flag rather
 ## than a reuse of `charges`: every save written before this stored a shovel's
 ## charges as 0, and reading that as "dull" would blunt every old shovel.
