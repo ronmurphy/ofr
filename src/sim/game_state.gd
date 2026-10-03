@@ -1625,8 +1625,22 @@ func can_step(fx: int, fy: int, nx: int, ny: int) -> bool:
 ## it. Brad saw an ally standing in a pit, never moving again (2026-09-20).
 ## Monsters do not fall through pits; they keep off them, as items and spawns
 ## already do (`_can_rest_on`) and as a shove already refuses to push them in.
-func can_creature_step(fx: int, fy: int, nx: int, ny: int) -> bool:
-	return can_step(fx, fy, nx, ny) and not Tiles.is_avoided(map.get_tile(nx, ny))
+##
+## A FOUND trap is the floor's own business: a monster steps over it (it laid
+## it), and only the player's side keeps off it (2026-10-02). No actor given
+## means the stricter rule.
+func can_creature_step(fx: int, fy: int, nx: int, ny: int, actor: Entity = null) -> bool:
+	if not can_step(fx, fy, nx, ny):
+		return false
+	var t := map.get_tile(nx, ny)
+	if t == Tiles.PIT:
+		return false
+	return t != Tiles.TRAP or (actor != null and _owns_the_floor(actor))
+
+## Whether a creature knows this floor's traps: everything that is not on the
+## player's side. The risen are the floor's own dead and know it too.
+func _owns_the_floor(e: Entity) -> bool:
+	return not e.is_player and e.faction != Entity.Faction.PLAYER
 
 func move_cost_for(actor: Entity, x: int, y: int) -> int:
 	# Frost is on the CREATURE, not the ground, so it is charged before the
@@ -3757,7 +3771,8 @@ func road_route() -> Array:
 	var key := [turns, player.x, player.y]
 	if _road_cache.get("key", null) != key:
 		_road_cache["key"] = key
-		_road_cache["route"] = Array(pathfinder.path(Vector2i(player.x, player.y), stairs))
+		_road_cache["route"] = Array(pathfinder.path(Vector2i(player.x, player.y), stairs,
+			false, true))
 	return _road_cache["route"]
 
 ## What a queued mouse-walk refuses to keep walking past.
@@ -3901,13 +3916,22 @@ func player_move(dx: int, dy: int) -> bool:
 	if map.get_tile(nx, ny) == Tiles.PIT:
 		return _fall_into_pit()
 
-	if map.get_tile(nx, ny) == Tiles.TRAP or hidden_traps.has(Vector2i(nx, ny)):
-		if hidden_traps.has(Vector2i(nx, ny)):
-			hidden_traps.erase(Vector2i(nx, ny))
-			msg_log.add("The floor clicks under your foot.", Color(0.92, 0.48, 0.40))
+	if hidden_traps.has(Vector2i(nx, ny)):
+		hidden_traps.erase(Vector2i(nx, ny))
+		msg_log.add("The floor clicks under your foot.", Color(0.92, 0.48, 0.40))
 		_spring_trap(nx, ny)
 		if not player.alive:
 			return true
+	elif map.get_tile(nx, ny) == Tiles.TRAP:
+		# A trap you have FOUND is stepped over, slowly, and stays armed. The
+		# alternative is G: disarm it (2026-10-02; before, walking onto a
+		# found trap sprang it, which made spotting one worth nothing in a
+		# corridor).
+		msg_log.add("You step carefully over the trap.", Color(0.95, 0.80, 0.45))
+		player.x = nx
+		player.y = ny
+		_end_player_turn(move_cost_for(player, nx, ny) * TRAP_STEP_OVER)
+		return true
 
 	var cost := move_cost_for(player, nx, ny)
 	player.x = nx
@@ -5230,28 +5254,43 @@ func _spot_traps() -> void:
 		if chance > 0.0 and trap_rng.randf() < chance:
 			_reveal_trap(cell)
 
-## Seen: the trap tile from now on -- drawn, remembered, routed round.
+## Seen: the trap tile from now on -- drawn, remembered, and routed round by
+## your own side. Monsters walk over it: it is their floor.
 func _reveal_trap(cell: Vector2i) -> void:
 	hidden_traps.erase(cell)
 	map.set_tile(cell.x, cell.y, Tiles.TRAP)
 	if pathfinder != null:
-		pathfinder.set_solid(cell.x, cell.y, true)
+		pathfinder.set_trap(cell.x, cell.y, true)
 	events.append({"kind": &"notice", "to": cell})
 	msg_log.add("You spot a trap.", Color(0.95, 0.80, 0.45))
 
 ## Springs once and is gone. A trap corridor can be cleared at a price, which
 ## makes it a toll rather than a permanent wall.
-func _spring_trap(x: int, y: int) -> void:
+##
+## `victim` is whoever set it off -- the player, or an ally that blundered
+## onto it (`_spring_under_allies`); `scale` is the fumbled disarm's half.
+func _spring_trap(x: int, y: int, victim: Entity = null, scale := 1.0) -> void:
+	if victim == null:
+		victim = player
 	map.set_tile(x, y,
 		Tiles.CAVE_FLOOR if map.material_at(x, y) == Materials.CAVERN
 		else Tiles.FLOOR)
-	var hurt := rng.randi_range(2, 4 + depth / 2)
-	player.take_damage(hurt)
-	_tally("taken", hurt)
-	msg_log.add("The mechanism snaps shut. (-%d hp)" % hurt, Color(0.92, 0.48, 0.40))
+	# Sprung, it is floor to every route again. Before 2026-10-02 a found
+	# trap the player sprang stayed solid in the pathfinder for the rest of
+	# the floor.
+	if pathfinder != null:
+		pathfinder.set_trap(x, y, false)
+	var hurt := maxi(1, int(round(rng.randi_range(2, 4 + depth / 2) * scale)))
+	victim.take_damage(hurt)
+	if victim.is_player:
+		_tally("taken", hurt)
+		msg_log.add("The mechanism snaps shut. (-%d hp)" % hurt, Color(0.92, 0.48, 0.40))
+	elif map.is_visible(x, y):
+		msg_log.add("The mechanism snaps shut under the %s. (-%d hp)" % [victim.name, hurt],
+			Color(0.92, 0.48, 0.40))
 	events.append({"kind": &"trap", "to": Vector2i(x, y)})
 	events.append({"kind": &"melee", "from": Vector2i(x, y), "to": Vector2i(x, y),
-		"amount": hurt, "on_player": true})
+		"amount": hurt, "on_player": victim.is_player})
 	# Springing one is loud -- but it is not a BONE CRUNCH, and the difference
 	# matters. This passed no cause, so it defaulted to &"step" and quietly
 	# raised gravestones, against the rule three lines of comment in
@@ -5259,12 +5298,85 @@ func _spring_trap(x: int, y: int) -> void:
 	# rule is one a player can hold in their head. A trap doing it as well made
 	# that a lie for the life of the project.
 	_make_noise(Vector2i(x, y), 5, &"trap")
-	if not player.alive:
-		game_over = true
-		death_cause = "caught in a trap"
-		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
-		write_morgue()
-		write_death_dump()
+	if victim.alive:
+		return
+	if not victim.is_player:
+		_settle_death(victim, victim)
+		return
+	game_over = true
+	death_cause = "caught in a trap"
+	events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
+	write_morgue()
+	write_death_dump()
+
+## YOUR OWN SIDE IS NOT THE FLOOR'S OWN. An ally walking at heel springs the
+## hidden trap under its next step as you would, and tells you where it was;
+## one shoved or swapped onto a found trap springs that. Monsters never do:
+## they laid them. Run after the world has moved.
+func _spring_under_allies() -> void:
+	for e in entities.duplicate():
+		if e.is_player or not e.alive or e.flying or _owns_the_floor(e):
+			continue
+		var at := Vector2i(e.x, e.y)
+		if hidden_traps.has(at):
+			hidden_traps.erase(at)
+			if map.is_visible(at.x, at.y):
+				msg_log.add("The floor clicks under the %s." % e.name, Color(0.92, 0.48, 0.40))
+			_spring_trap(at.x, at.y, e)
+		elif map.get_tile(at.x, at.y) == Tiles.TRAP:
+			_spring_trap(at.x, at.y, e)
+
+## DISARMING (Brad, 2026-10-02: the 5e half of a found trap). G beside or on
+## one: a turn, and a roll on the trap stream. Made, the trap is gone for
+## good; fumbled, it springs under your hands for half. The chance is the
+## trapwright's glass's second job.
+const DISARM_BARE := 0.5
+const DISARM_GLASS := 0.9
+## Crossing a found trap on purpose is a slow step and no hurt: you know where
+## the plate is and edge round it. The trap stays armed behind you.
+const TRAP_STEP_OVER := 2
+
+func disarm_chance() -> float:
+	return DISARM_GLASS if _spots_traps_better() else DISARM_BARE
+
+## The found trap G would work on: underfoot, the one you face, or any beside.
+func disarm_target() -> Vector2i:
+	var here := Vector2i(player.x, player.y)
+	if map.get_tile(here.x, here.y) == Tiles.TRAP:
+		return here
+	if map.get_tile(here.x + player.facing.x, here.y + player.facing.y) == Tiles.TRAP:
+		return here + player.facing
+	for i in 8:
+		var d := Entity.turned(player.facing, i)
+		if map.get_tile(here.x + d.x, here.y + d.y) == Tiles.TRAP:
+			return here + d
+	return Vector2i(-1, -1)
+
+func player_disarm() -> bool:
+	if game_over:
+		return false
+	var c := disarm_target()
+	if c.x < 0:
+		msg_log.add("There is no trap within reach.", Color(0.7, 0.6, 0.4))
+		return false
+	if ratted():
+		msg_log.add("You have no hands. Whatever you meant to do, you cannot.",
+			Color(0.7, 0.6, 0.4))
+		return false
+	_travel.clear()
+	if trap_rng.randf() < disarm_chance():
+		map.set_tile(c.x, c.y,
+			Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN else Tiles.FLOOR)
+		if pathfinder != null:
+			pathfinder.set_trap(c.x, c.y, false)
+		msg_log.add("You find the catch and disarm the trap.", Color(0.95, 0.80, 0.45))
+	else:
+		msg_log.add("Your hand slips. The trap springs under it.", Color(0.92, 0.48, 0.40))
+		_spring_trap(c.x, c.y, player, 0.5)
+		if game_over:
+			return true
+	_end_player_turn()
+	return true
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
 ## it is the counterpart to light, and the second thing that can give you away.
@@ -6308,6 +6420,8 @@ func actions_here() -> Array:
 				int(grave.get("dug", 0)), BURY_SPADEFULS]])
 		elif burn_target().x >= 0 and _can_burn():
 			out.append([KEY_G, "scorch the fungus (torch)"])
+		elif disarm_target().x >= 0:
+			out.append([KEY_G, "disarm the trap (%d%%)" % int(round(disarm_chance() * 100.0))])
 		elif _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
 			var f := _fire_to_give()
 			# "relight with", not "relight it with": the HERE box holds 42
@@ -6430,6 +6544,9 @@ func player_pickup() -> bool:
 			return player_bury()
 		if fungus.x >= 0 and _can_burn():
 			return _burn_at(fungus)
+		# A found trap within reach: disarm it (a roll; see player_disarm).
+		if disarm_target().x >= 0:
+			return player_disarm()
 		# A cold brazier and fire to give it. After the fungus, deliberately:
 		# burning costs nothing, relighting costs a gem or a blade's fire, so a
 		# press meant for the red never spends it.
@@ -7138,7 +7255,7 @@ func _apply_effect(item: Item) -> bool:
 func begin_travel(to: Vector2i) -> bool:
 	if game_over or not map.is_explored(to.x, to.y):
 		return false
-	var route := pathfinder.path(Vector2i(player.x, player.y), to, true)
+	var route := pathfinder.path(Vector2i(player.x, player.y), to, true, true)
 	if route.is_empty():
 		return false
 	_travel = route
@@ -7191,6 +7308,11 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 	if map.get_tile(next.x, next.y) == Tiles.DOOR_BARRED and not ratted():
 		_unbar(next)
 		return true
+	# A trap found since the route was laid: stop and let the player choose.
+	if map.get_tile(next.x, next.y) == Tiles.TRAP:
+		_travel.clear()
+		msg_log.add("You stop at the trap.", Color(0.9, 0.55, 0.35))
+		return false
 	# An unseen trap under the next step springs, and the walk ends there.
 	if hidden_traps.has(next):
 		_travel.clear()
@@ -7283,6 +7405,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	_let_the_stone_settle()
 	update_vision()
 	_run_world()
+	_spring_under_allies()
 	_grow_fungus()
 	_warn_of_red_allies()
 	update_vision()
@@ -8891,7 +9014,8 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 	return true
 
 func _step_toward(actor: Entity, target: Vector2i) -> void:
-	var route := pathfinder.path(Vector2i(actor.x, actor.y), target, actor.careful)
+	var route := pathfinder.path(Vector2i(actor.x, actor.y), target, actor.careful,
+		not _owns_the_floor(actor))
 	if route.is_empty():
 		return
 	var step: Vector2i = route[0]
@@ -9061,7 +9185,7 @@ func _around(actor: Entity, target: Vector2i) -> Vector2i:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if not can_creature_step(actor.x, actor.y, nx, ny):
+			if not can_creature_step(actor.x, actor.y, nx, ny, actor):
 				continue
 			if entity_at(nx, ny) != null:
 				continue
@@ -9342,7 +9466,7 @@ func _step_random(actor: Entity) -> void:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if can_creature_step(actor.x, actor.y, nx, ny) and entity_at(nx, ny) == null:
+			if can_creature_step(actor.x, actor.y, nx, ny, actor) and entity_at(nx, ny) == null:
 				opts.append(Vector2i(nx, ny))
 	if opts.is_empty():
 		return
@@ -9364,7 +9488,7 @@ func _step_away(actor: Entity, foe: Entity) -> bool:
 				continue
 			var nx: int = actor.x + dx
 			var ny: int = actor.y + dy
-			if not can_creature_step(actor.x, actor.y, nx, ny) or entity_at(nx, ny) != null:
+			if not can_creature_step(actor.x, actor.y, nx, ny, actor) or entity_at(nx, ny) != null:
 				continue
 			var d := Los.steps(nx, ny, foe.x, foe.y)
 			if d > best_d:

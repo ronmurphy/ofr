@@ -133,6 +133,8 @@ func _initialize() -> void:
 	_test_fungus_glows()
 	_test_traps()
 	_test_hidden_traps()
+	_test_disarming_and_the_floors_own()
+	_test_traps_by_band()
 	_test_vaults_load()
 	_test_vaults_are_placed_intact()
 	_test_every_sound_renders()
@@ -4222,8 +4224,10 @@ func _test_hidden_traps() -> void:
 	check("standing in torchlight beside it, it is spotted within a few turns (%d)" % turns_taken,
 		gs.map.get_tile(7, 4) == Tiles.TRAP and not gs.hidden_traps.has(Vector2i(7, 4))
 		and turns_taken < 12)
-	check("and said, and routed round from then on", said.contains("You spot a trap")
-		and not gs.pathfinder.path(Vector2i(5, 4), Vector2i(9, 4)).has(Vector2i(7, 4)))
+	check("and said, and your travel routes round it from then on", said.contains("You spot a trap")
+		and not gs.pathfinder.path(Vector2i(5, 4), Vector2i(9, 4), true, true).has(Vector2i(7, 4)))
+	check("  while a monster still walks over it",
+		gs.pathfinder.path(Vector2i(5, 4), Vector2i(9, 4)).has(Vector2i(7, 4)))
 
 	# Unseen underfoot, it springs -- and a walk stops there.
 	var hs := _arena(21, 9)
@@ -4265,6 +4269,171 @@ func _test_hidden_traps() -> void:
 		and back.hidden_traps.has(Vector2i(9, 6)) and back.trap_rng.seed == 99)
 	check("the glass is a unique the chests can give", Item.uniques(2).has(&"trap_glass"))
 
+## THE SECOND TRAP PASS (2026-10-02): G disarms a found trap on a roll the
+## glass improves; the floor's own step over every trap and only your side
+## springs them; a found trap in a doorway stops your travel and nothing else.
+func _test_disarming_and_the_floors_own() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	gs.torch_lit = false
+	gs.map.set_tile(6, 4, Tiles.TRAP)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs.player.facing = Vector2i(1, 0)
+	var said := func() -> String:
+		var all := ""
+		for line in gs.msg_log.entries:
+			all += str(line["text"]) + "|"
+		return all
+	var offered := func() -> String:
+		var all := ""
+		for row in gs.actions_here():
+			all += str(row[1]) + "|"
+		return all
+	check("precondition: the found trap ahead is the target", gs.disarm_target() == Vector2i(6, 4))
+	check("the HERE box offers it, with the odds", offered.call().contains("disarm the trap (50%)"),
+		offered.call())
+	# Seeds whose first roll fails, and succeeds, bare-handed.
+	var probe := RandomNumberGenerator.new()
+	var fumble := -1
+	var deft := -1
+	for sd in range(1, 400):
+		probe.seed = sd
+		var r := probe.randf()
+		if r >= GameState.DISARM_GLASS and fumble < 0:
+			fumble = sd
+		if r < GameState.DISARM_BARE and deft < 0:
+			deft = sd
+	check("precondition: a fumbling seed and a deft one were found", fumble > 0 and deft > 0)
+	gs.trap_rng.seed = fumble
+	var hp0 := gs.player.hp
+	var turn0 := gs.turns
+	check("fumbled, it springs under your hands and is gone", gs.player_disarm()
+		and gs.player.hp < hp0 and gs.map.get_tile(6, 4) == Tiles.FLOOR)
+	check("  for half: at most 2 here", hp0 - gs.player.hp <= 2, "%d" % (hp0 - gs.player.hp))
+	check("  and it cost the turn", gs.turns == turn0 + 1)
+	check("  and said so", said.call().contains("Your hand slips"))
+	gs.map.set_tile(6, 4, Tiles.TRAP)
+	gs.pathfinder.set_trap(6, 4, true)
+	check("precondition: armed again, and your travel goes round it",
+		not gs.pathfinder.path(Vector2i(5, 4), Vector2i(8, 4), true, true).has(Vector2i(6, 4)))
+	gs.trap_rng.seed = deft
+	hp0 = gs.player.hp
+	check("made, the trap is gone for good and nothing hurt", gs.player_disarm()
+		and gs.player.hp == hp0 and gs.map.get_tile(6, 4) == Tiles.FLOOR
+		and said.call().contains("disarm the trap"))
+	check("  and your travel goes straight through again",
+		gs.pathfinder.path(Vector2i(5, 4), Vector2i(8, 4), true, true).has(Vector2i(6, 4)))
+	check("with no trap in reach the key refuses", not gs.player_disarm())
+	# The glass's second job.
+	var glass := Item.make(&"trap_glass")
+	gs.give_item(glass)
+	gs._toggle_equip(glass)
+	gs.map.set_tile(6, 4, Tiles.TRAP)
+	check("the trapwright's glass raises the odds, and the box says so",
+		is_equal_approx(gs.disarm_chance(), GameState.DISARM_GLASS)
+		and offered.call().contains("disarm the trap (90%)"), offered.call())
+	gs._toggle_equip(glass)
+	gs.player.inventory.erase(glass)
+	check("precondition: bare again", is_equal_approx(gs.disarm_chance(), GameState.DISARM_BARE))
+
+	# YOUR SIDE SPRINGS THEM; THE FLOOR'S OWN DO NOT.
+	var hs := _arena(21, 9)
+	hs.player.x = 3
+	hs.player.y = 4
+	hs.torch_lit = false
+	hs.hidden_traps[Vector2i(8, 4)] = true
+	hs.hidden_traps[Vector2i(8, 6)] = true
+	hs.map.set_tile(12, 4, Tiles.TRAP)
+	var mate := _spawn(hs, "orc", 8, 4)
+	mate.faction = Entity.Faction.PLAYER
+	mate.ai = &"ally"
+	var mob := _spawn(hs, "orc", 8, 6)
+	var standing := _spawn(hs, "orc", 12, 4)
+	check("precondition: an ally and a monster stand on hidden traps, a monster on a found one",
+		hs.hidden_traps.has(Vector2i(mate.x, mate.y)) and hs.hidden_traps.has(Vector2i(mob.x, mob.y))
+		and hs.map.get_tile(standing.x, standing.y) == Tiles.TRAP
+		and not hs._owns_the_floor(mate) and hs._owns_the_floor(mob))
+	var mate_hp := mate.hp
+	var mob_hp := mob.hp
+	var standing_hp := standing.hp
+	hs._spring_under_allies()
+	var heard := ""
+	for line in hs.msg_log.entries:
+		heard += str(line["text"]) + "|"
+	check("an ally on a hidden trap springs it, and you learn where it was",
+		mate.hp < mate_hp and not hs.hidden_traps.has(Vector2i(8, 4))
+		and heard.contains("clicks under the orc"), heard)
+	check("a monster on one does not: it is their floor",
+		mob.hp == mob_hp and hs.hidden_traps.has(Vector2i(8, 6)))
+	check("nor on a found one", standing.hp == standing_hp and hs.map.get_tile(12, 4) == Tiles.TRAP)
+	# Hand-rolled steps keep the same rule.
+	check("a monster may side-step onto a found trap", hs.can_creature_step(11, 4, 12, 4, mob))
+	check("an ally may not", not hs.can_creature_step(11, 4, 12, 4, mate))
+	check("and with no actor named, the strict rule holds", not hs.can_creature_step(11, 4, 12, 4))
+	hs.map.set_tile(12, 5, Tiles.PIT)
+	check("nobody side-steps onto a pit", not hs.can_creature_step(11, 4, 12, 5, mob))
+
+	# A FOUND TRAP IN THE ONE DOORWAY: your travel has no way through; every
+	# monster's route does; and you can still step over it yourself.
+	var ds := _arena(21, 9)
+	ds.player.x = 9
+	ds.player.y = 4
+	ds.torch_lit = false
+	for y in range(1, 8):
+		ds.map.set_tile(10, y, Tiles.WALL)
+	ds.map.set_tile(10, 4, Tiles.DOOR_OPEN)
+	ds.map.set_tile(11, 4, Tiles.TRAP)
+	ds.pathfinder = Pathfinder.new(ds.map)
+	check("precondition: the doorway is the only way, and a monster's route runs through it",
+		ds.pathfinder.path(Vector2i(15, 4), Vector2i(5, 4)).has(Vector2i(11, 4)))
+	check("a careful monster's too", ds.pathfinder.path(Vector2i(15, 4), Vector2i(5, 4), true).has(Vector2i(11, 4)))
+	check("your travel finds no way", ds.pathfinder.path(Vector2i(9, 4), Vector2i(15, 4), true, true).is_empty())
+	check("nor does an ally's", ds.pathfinder.path(Vector2i(9, 4), Vector2i(15, 4), false, true).is_empty())
+	ds.player_move(1, 0)
+	var hp2 := ds.player.hp
+	check("but you step over it yourself, unhurt", ds.player_move(1, 0)
+		and ds.player.x == 11 and ds.player.hp == hp2 and ds.map.get_tile(11, 4) == Tiles.TRAP)
+	# A walk laid before the trap was found stops at it rather than crossing.
+	ds.player.x = 9
+	ds.player.y = 4
+	ds._travel = [Vector2i(10, 4), Vector2i(11, 4), Vector2i(12, 4)]
+	ds._step_travel(false)
+	check("precondition: the walk took its first step", ds.player.x == 10)
+	check("a walk stops short of a found trap", not ds._step_travel(false)
+		and ds.player.x == 10 and ds._travel.is_empty())
+
+## WHERE TRAPS ARE LAID (2026-10-02): none in the caves, most in the fortress
+## and on the amulet's floor, and about half of those on a threshold.
+func _test_traps_by_band() -> void:
+	var counts := {}
+	var thresholds := 0
+	for d in [2, 5, 8, 10]:
+		var total := 0
+		for i in 12:
+			var g := GameState.new(50000 + i)
+			g.new_game()
+			g.depth = d
+			g.build_level()
+			total += g.hidden_traps.size()
+			if d != 8:
+				continue
+			for c in g.hidden_traps:
+				for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var t := g.map.get_tile(c.x + step.x, c.y + step.y)
+					if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+						thresholds += 1
+						break
+		counts[d] = total
+	check("the caves lay none (%d in 12 floors)" % counts[5], counts[5] == 0)
+	check("the upper floors lay a few (%d in 12)" % counts[2], counts[2] > 0)
+	check("the fortress lays more (%d vs %d)" % [counts[8], counts[2]], counts[8] > counts[2])
+	check("and so does the amulet's floor (%d)" % counts[10], counts[10] > counts[2])
+	check("about half the fortress's wait on a threshold (%d of %d)" % [thresholds, counts[8]],
+		thresholds * 4 >= counts[8] and thresholds * 4 <= counts[8] * 3)
+
 func _test_traps() -> void:
 	check("a trap can be stepped on", Tiles.is_walkable(Tiles.TRAP))
 	check("but is never routed through", Tiles.is_avoided(Tiles.TRAP))
@@ -4279,22 +4448,40 @@ func _test_traps() -> void:
 	gs.pathfinder = Pathfinder.new(gs.map)
 	gs.map.reveal_all()
 
-	var route := gs.pathfinder.path(Vector2i(5, 6), Vector2i(8, 6))
-	check("travel goes around a trap", not route.has(Vector2i(6, 6)), str(route))
+	gs.torch_lit = false
+	var route := gs.pathfinder.path(Vector2i(5, 6), Vector2i(8, 6), true, true)
+	check("your travel goes around a found trap", not route.has(Vector2i(6, 6)), str(route))
+	check("a monster's route goes straight over it: its own floor",
+		gs.pathfinder.path(Vector2i(5, 6), Vector2i(8, 6)).has(Vector2i(6, 6)))
 
-	# Something asleep nearby, to prove springing one is loud.
-	var dozing := _spawn(gs, "orc", 9, 6)
+	# Something asleep in earshot of a spring, to prove a careful step is not one.
+	var dozing := _spawn(gs, "orc", 11, 6)
 	dozing.alertness = Entity.Alert.ASLEEP
 
+	# A FOUND trap is stepped over (2026-10-02): slow, unhurt, still armed.
 	var hp_before := gs.player.hp
-	check("stepping on it works", gs.player_move(1, 0))
-	check("it hurts", gs.player.hp < hp_before)
+	var spent := gs.elapsed
+	check("stepping onto a found trap works", gs.player_move(1, 0))
+	check("and does not hurt: you step over it", gs.player.hp == hp_before)
 	check("you end up standing on the square",
 		gs.player.x == 6 and gs.player.y == 6)
-	check("and it has sprung for good", gs.map.get_tile(6, 6) != Tiles.TRAP)
+	check("the trap stays armed behind you", gs.map.get_tile(6, 6) == Tiles.TRAP)
+	check("the careful step costs double",
+		gs.elapsed - spent == Scheduler.ACTION_COST * GameState.TRAP_STEP_OVER,
+		"%d" % (gs.elapsed - spent))
+	check("and makes no noise", dozing.alertness == Entity.Alert.ASLEEP)
+
+	# A HIDDEN one under the next step springs, hurts, and is loud.
+	gs.hidden_traps[Vector2i(7, 6)] = true
+	check("stepping onto a hidden trap works (and must)", gs.player_move(1, 0))
+	check("it hurts", gs.player.hp < hp_before)
+	check("and it has sprung for good", gs.map.get_tile(7, 6) == Tiles.FLOOR
+		and not gs.hidden_traps.has(Vector2i(7, 6)))
 	check("springing one is loud", dozing.alertness == Entity.Alert.AWAKE)
 
-	# Crossing again is free.
+	# Crossing again is free (the orc it woke is sent away first: a careful
+	# step costs double, and it was closing fast).
+	gs.entities = [gs.player]
 	var hp_now := gs.player.hp
 	gs.player_move(-1, 0)
 	gs.player_move(1, 0)
@@ -4306,7 +4493,7 @@ func _test_traps() -> void:
 	doomed.player.y = 4
 	doomed.player.max_hp = 60
 	doomed.player.hp = 1
-	doomed.map.set_tile(6, 4, Tiles.TRAP)
+	doomed.hidden_traps[Vector2i(6, 4)] = true
 	doomed.player_move(1, 0)
 	check("a trap can finish you", doomed.game_over)
 	check("and the morgue knows what did it",
@@ -5936,13 +6123,16 @@ func _test_the_trader_deals() -> void:
 ## FAIR SHOTS (day-7 hunt, 2026-09-27, from the playtest report "monsters can
 ## target you around a corner and you can't do the same").
 func _test_fair_shots() -> void:
-	# The exact corner the hunt's probe found: one-way clear, the other blocked.
+	# A corner of this kind on this seed's floor: one-way clear, the other
+	# blocked. The hunt's original was (63, 5) / (59, 2); the floor was laid
+	# differently once traps were counted by band (2026-10-02), and this pair
+	# was found by the same probe on the new layout.
 	var gs := GameState.new(20260927)
 	gs.new_game()
 	gs.depth = 1
 	gs.build_level()
-	var a := Vector2i(63, 5)
-	var b := Vector2i(59, 2)
+	var a := Vector2i(36, 2)
+	var b := Vector2i(39, 8)
 	var there := Los.clear(gs.map, a.x, a.y, b.x, b.y)
 	var back := Los.clear(gs.map, b.x, b.y, a.x, a.y)
 	check("the premise: the one-way line disagrees at this corner (%s / %s)" % [there, back],

@@ -896,7 +896,37 @@ func _scatter_features(map: DungeonMap) -> void:
 					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:
 				map.set_tile(c.x, c.y, bed)
 
-	for _snare in rng.randi_range(0, 3):
+	# TRAPS BY BAND (Brad, 2026-10-02, after never meeting one). Before: 0-3
+	# on every floor, caves included, always in the open middle of a room,
+	# which a player walking corridors never crossed. Now a mechanism belongs
+	# where someone BUILT: none in the caves (a rule the player can hold, and
+	# the same reason caves want few vaults); the fortress and the amulet's
+	# floor carry the most, and about half of theirs wait on a THRESHOLD --
+	# the corridor square before a door, where you actually walk. Hidden
+	# traps route as floor, so a threshold trap severs nothing.
+	var snares := 0
+	var thresholds := 0
+	match Bands.of(depth):
+		Bands.UPPER:
+			snares = rng.randi_range(0, 2)
+		Bands.FORTRESS:
+			var n := rng.randi_range(2, 5)
+			thresholds = n / 2
+			snares = n - thresholds
+		Bands.DEEP:
+			var n := rng.randi_range(3, 5)
+			thresholds = n / 2
+			snares = n - thresholds
+	var doorsteps := _threshold_cells(map)
+	for _step in thresholds:
+		if doorsteps.is_empty():
+			snares += 1
+			continue
+		var i := rng.randi_range(0, doorsteps.size() - 1)
+		var cell: Vector2i = doorsteps[i]
+		doorsteps.remove_at(i)
+		map.set_tile(cell.x, cell.y, Tiles.TRAP)
+	for _snare in snares:
 		var t := _open_ground(map)
 		if t.x >= 0:
 			map.set_tile(t.x, t.y, Tiles.TRAP)
@@ -908,9 +938,32 @@ func _scatter_features(map: DungeonMap) -> void:
 		if spot.x >= 0:
 			map.set_tile(spot.x, spot.y, Tiles.PIT)
 
+## The corridor square outside each door: plain floor, through the door from
+## the room, inside no room or vault. Where a threshold trap goes.
+func _threshold_cells(map: DungeonMap) -> Array:
+	var out: Array = []
+	for y in range(1, map.height - 1):
+		for x in range(1, map.width - 1):
+			if map.get_tile(x, y) != Tiles.DOOR_CLOSED:
+				continue
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var c := Vector2i(x + d.x, y + d.y)
+				if map.get_tile(c.x, c.y) != Tiles.FLOOR or protected.has(c):
+					continue
+				var inside := false
+				for room in rooms:
+					if room.has_point(c):
+						inside = true
+				for spot in vault_spots:
+					if spot["rect"].has_point(c):
+						inside = true
+				if not inside and not out.has(c):
+					out.append(c)
+	return out
+
 ## A cell with open ground on all eight sides.
 ##
-## Both pits and traps are treated as solid by the pathfinder, so one dropped
+## Pits are solid to every route and a found trap to the player's own, so one dropped
 ## into a corridor severs the route -- the 200-seed connectivity test caught
 ## exactly that, three levels in two hundred with unreachable stairs. Out in
 ## the open there is always a way past, and a hazard you can see and walk

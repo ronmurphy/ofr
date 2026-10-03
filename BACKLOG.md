@@ -703,7 +703,23 @@ heal mid-fight.
   the pause menu (rarely used now 3D is the default). Where it is found
   (trader? caves, where food matters most?).
 
-**Traps, second pass (Brad and Claude, 2026-10-02) -- designed, not built.**
+**Traps, second pass (Brad and Claude, 2026-10-02) -- BUILT the same
+evening**, waiting on play. As built: counts by band in
+`MapGen._scatter_features` (upper 0-2, caves 0, fortress 2-5, deep 3-5;
+half of the fortress's and the deep's on a threshold, `_threshold_cells`:
+the corridor square outside a door); `Pathfinder` holds four grids by two
+flags (careful, traps) and only the player's travel, the road's line and
+allies avoid FOUND traps -- monsters and the risen route and side-step over
+them (`_owns_the_floor`); allies spring hidden traps under them and found
+ones they are shoved onto (`_spring_under_allies`, after `_run_world`);
+a found trap is stepped over at `TRAP_STEP_OVER` 2x cost, unhurt, still
+armed, and a stale walk stops at one; G disarms (`player_disarm`,
+`DISARM_BARE` 0.5 / `DISARM_GLASS` 0.9 on `trap_rng`; fumbled, it springs
+for half). The HERE box offers "disarm the trap (50%)". NOTE the risen:
+written below as springing traps; built as the floor's own dead, who know
+it -- only the PLAYER faction springs them. Tests:
+`_test_disarming_and_the_floors_own`, `_test_traps_by_band`. Original
+design:
 From play: Brad never saw a trap and never sprang one. Measured: every floor
 lays 0-3 (`mapgen.gd` ~900), in every band, caves included, and only on a
 cell open on all eight sides -- the middle of a room, never a corridor or a

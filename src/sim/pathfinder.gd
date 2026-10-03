@@ -7,18 +7,23 @@ extends RefCounted
 ## diagonal handling and solid-point marking, which in a from-scratch stack is
 ## an afternoon of work and a source of subtle bugs.
 ##
-## TWO GRIDS. The plain one, and a CAREFUL one where the wrong fungus is solid
-## as well. The careful grid is for the creatures that know better
-## (Entity.careful -- dragons, wizards, liches) and for the player's own
-## auto-travel; everything else walks straight through purple and red, and the
-## ground hurts it. Brad, 2026-09-29: crossing it is a choice, never a wall.
+## FOUR GRIDS, by two flags. The plain one is what a monster walks: it knows
+## its own floor, so only a pit stops a route. CAREFUL adds the wrong fungus
+## as solid, for the creatures that know better (Entity.careful -- dragons,
+## wizards, liches) and for the player's own auto-travel; everything else
+## walks straight through purple and red, and the ground hurts it. Brad,
+## 2026-09-29: crossing it is a choice, never a wall. TRAPS adds every FOUND
+## trap, for the player's travel and for allies (a trap the player has
+## spotted is one their side knows about); monsters step over traps they laid
+## (2026-10-02 -- before this a found trap was solid to everyone, and one in a
+## doorway shut every guard in its room).
 
-var _grid: AStarGrid2D
-var _careful: AStarGrid2D
+var _grids := {}
 
 func _init(map: DungeonMap) -> void:
-	_grid = _make(map)
-	_careful = _make(map)
+	for careful in [false, true]:
+		for traps in [false, true]:
+			_grids[[careful, traps]] = _make(map)
 	refresh(map)
 
 func _make(map: DungeonMap) -> AStarGrid2D:
@@ -39,23 +44,36 @@ func refresh(map: DungeonMap) -> void:
 			# Pits are walkable but never routed through, so auto-travel and
 			# monster pursuit both go around rather than dropping in.
 			var t := map.get_tile(x, y)
-			var blocked := not map.is_walkable(x, y) or Tiles.is_avoided(t)
-			_grid.set_point_solid(Vector2i(x, y), blocked)
-			_careful.set_point_solid(Vector2i(x, y), blocked or Tiles.is_bad_fungus(t))
+			var blocked := not map.is_walkable(x, y) or t == Tiles.PIT
+			for key in _grids:
+				_grids[key].set_point_solid(Vector2i(x, y), blocked
+					or (key[0] and Tiles.is_bad_fungus(t)) or (key[1] and t == Tiles.TRAP))
 
 func set_solid(x: int, y: int, solid: bool) -> void:
-	_grid.set_point_solid(Vector2i(x, y), solid)
-	_careful.set_point_solid(Vector2i(x, y), solid)
+	for key in _grids:
+		_grids[key].set_point_solid(Vector2i(x, y), solid)
 
 ## A cell's ground changed to or from the wrong fungus: only careful routes care.
 func set_fungus(x: int, y: int, bad: bool) -> void:
-	if not _grid.is_point_solid(Vector2i(x, y)):
-		_careful.set_point_solid(Vector2i(x, y), bad)
+	if _grids[[false, false]].is_point_solid(Vector2i(x, y)):
+		return
+	for key in _grids:
+		if key[0]:
+			_grids[key].set_point_solid(Vector2i(x, y), bad)
+
+## A trap was found, or a found one sprang or was disarmed: only the routes
+## that avoid traps care.
+func set_trap(x: int, y: int, found: bool) -> void:
+	if _grids[[false, false]].is_point_solid(Vector2i(x, y)):
+		return
+	for key in _grids:
+		if key[1]:
+			_grids[key].set_point_solid(Vector2i(x, y), found)
 
 ## Returns the path from `from` to `to`, excluding the starting cell. Careful
-## routes go round the wrong fungus.
-func path(from: Vector2i, to: Vector2i, careful := false) -> Array[Vector2i]:
-	var g := _careful if careful else _grid
+## routes go round the wrong fungus; trap-wary ones round every found trap.
+func path(from: Vector2i, to: Vector2i, careful := false, traps := false) -> Array[Vector2i]:
+	var g: AStarGrid2D = _grids[[careful, traps]]
 	if g.is_in_boundsv(to) and g.is_point_solid(to):
 		return []
 	var pts := g.get_id_path(from, to)
