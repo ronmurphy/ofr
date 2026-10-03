@@ -748,8 +748,18 @@ makes every found doorway a free kill. **Brad's shape for it, eventual:**
 a DISARMED trap is kept as an item and LAID again by the player; then the
 roles reverse -- the player knows where it is, the monsters do not, and a
 monster steps on it. One rule for both sides: a trap is hidden from
-whoever did not lay it. The 24-letter inventory pool is the usual blocker
-for a new item.
+whoever did not lay it. **Parked (Brad, 2026-10-02): not acted on yet.**
+The blocker is the inventory: a carried trap is a new item, one more of the
+24 letters a keyboard player has and one more pack slot, and the pack is
+already the tight resource (his 20/20 held five heals before the satchel).
+Circle back when either the letter pool or the pack changes shape -- the
+satchel's "a bag that takes no letter" is one model. What it would need
+when it does: a `trap` tool item; G on open floor lays it (a turn) into a
+second set beside the floor's own, shown to you, hidden from monsters;
+monsters spring player-laid traps and never the floor's, your side the
+reverse; the same spring and noise of 5, so a laid trap at a doorway is a
+lure as much as a wound. About an evening, most of it item plumbing and
+the save.
 
 **The Legends intro -- the game's first cutscene.** Brad's idea, 2026-09-28,
 from the cottage built as a first try at the title screen. Build after the
