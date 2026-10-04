@@ -30,6 +30,7 @@ func _initialize() -> void:
 	_test_nothing_is_drawn_where_you_cannot_see()
 	_test_steps_glide_and_settle()
 	_test_creature_marks()
+	_test_the_mirror_tell()
 	_test_magic_weapons_spark()
 	_test_a_kill_shatters()
 	_test_blows_rock_within_the_tile()
@@ -217,6 +218,67 @@ func _test_creature_marks() -> void:
 	m.hp = 2
 	check("a badly hurt one has the critical wash",
 		CreatureMarks.wound(m).is_equal_approx(Color(Palette.CRITICAL, Palette.CRITICAL_WASH)))
+
+## THE MIRROR TELL: a creature whose shield throws your blows back wears the
+## spore carriers' outline in the stone's blue -- steady on still, shining on
+## simple and full -- and a red risen that kept its shield shows both.
+func _test_the_mirror_tell() -> void:
+	var k := GameState.monster_from(GameState.BESTIARY[1], 0, 0)
+	check("a bare creature has no outline", CreatureMarks.outline(k).a == 0.0)
+	var mirror := Item.make(&"buckler")
+	mirror.element = &"reflect"
+	k.equipped[Item.Slot.OFFHAND] = mirror
+	k.inventory.append(mirror)
+	check("precondition: the shield throws blows back", k.offhand_tier(&"reflect") > 0)
+	_with_mode(Effects.Mode.NONE, func():
+		check("still: its holder wears a steady frame in the stone's blue, whatever the clock",
+			CreatureMarks.outline(k, 0.0) == Palette.MAGIC
+			and CreatureMarks.outline(k, 1.3) == Palette.MAGIC)
+		check("  and the views need not redraw for it", not CreatureMarks.outline_moves(k)))
+	_with_mode(Effects.Mode.TIMERS, func():
+		var period := CreatureMarks.MIRROR_PERIOD
+		var a := CreatureMarks.outline(k, 0.0)
+		var b := CreatureMarks.outline(k, period / 3.0)
+		var c := CreatureMarks.outline(k, period * 2.0 / 3.0)
+		check("simple: the frame shines, blue to light to glint (%s %s %s)" % [a, b, c],
+			a == Palette.MAGIC and b.is_equal_approx(CreatureMarks.MIRROR_LIGHT)
+			and c.is_equal_approx(CreatureMarks.MIRROR_GLINT))
+		check("  and a lap later it is back where it began",
+			CreatureMarks.outline(k, period).is_equal_approx(a))
+		# Brad, 2026-10-04: close enough to the magic colour to be read as it.
+		var strayed := []
+		for i in 24:
+			var at := CreatureMarks.outline(k, period * i / 24.0)
+			if absf(at.h - Palette.MAGIC.h) > 0.03:
+				strayed.append(at)
+		check("  and every colour of the lap keeps the magic blue's hue", strayed.is_empty(),
+			str(strayed))
+		check("  so the views redraw while it is in sight", CreatureMarks.outline_moves(k)))
+	# Both tells at once: a red-marked thing that kept its shield.
+	k.take_spores(&"red")
+	_with_mode(Effects.Mode.NONE, func():
+		check("red spores outrank the shield for the frame",
+			CreatureMarks.outline(k, 0.0) == Palette.FUNGUS_RED)
+		check("  and the mirror shows as a second frame inside it",
+			CreatureMarks.inner_outline(k, 0.0) == Palette.MAGIC)
+		check("  the one-outline view shows the red on still",
+			CreatureMarks.single_outline(k, 0.0) == Palette.FUNGUS_RED))
+	_with_mode(Effects.Mode.SHADERS, func():
+		var turn := CreatureMarks.MIRROR_TURN
+		check("full, one outline: the red first, then the mirror, in turns",
+			CreatureMarks.single_outline(k, turn * 0.5) == Palette.FUNGUS_RED
+			and CreatureMarks.single_outline(k, turn * 1.5)
+				== CreatureMarks.mirror_colour(turn * 1.5)
+			and CreatureMarks.single_outline(k, turn * 2.5) == Palette.FUNGUS_RED))
+	# Only the mirror: a blocking shield is nothing to look at.
+	var plain := GameState.monster_from(GameState.BESTIARY[1], 0, 0)
+	var wall := Item.make(&"buckler")
+	wall.element = &"block"
+	plain.equipped[Item.Slot.OFFHAND] = wall
+	check("a blocking shield earns no frame", CreatureMarks.outline(plain).a == 0.0)
+	check("the shield itself is a mirror; a blocking one, or a sword given reflect, is not",
+		CreatureMarks.is_a_mirror(mirror) and not CreatureMarks.is_a_mirror(wall)
+		and not CreatureMarks.is_a_mirror(Item.make(&"dagger")))
 
 ## A game with the player at a known spot and a monster beside it.
 func _arena() -> Array:
@@ -2500,6 +2562,50 @@ func _test_both_views_share_one_moment() -> void:
 		CreatureMarks.spore_colour(marked) == Palette.FUNGUS_RED
 		and CreatureMarks.spore_colour(GameState.monster_from(GameState.BESTIARY[1], 0, 0)).a == 0.0)
 	st0.entities.erase(marked)
+	# The mirror tell in 3D (2026-10-04): a holder's outline, and a shield
+	# lying there, steady on still and shining on full.
+	var holder := GameState.monster_from(GameState.BESTIARY[1], st0.player.x + 1, st0.player.y)
+	var glass := Item.make(&"buckler")
+	glass.element = &"reflect"
+	holder.equipped[Item.Slot.OFFHAND] = glass
+	holder.inventory.append(glass)
+	st0.entities.append(holder)
+	var lying := Item.make(&"kite_shield")
+	lying.element = &"reflect"
+	lying.x = st0.player.x - 1
+	lying.y = st0.player.y
+	st0.map.set_tile(lying.x, lying.y, Tiles.FLOOR)
+	st0.ground.append(lying)
+	st0.update_vision()
+	var mode_was := Effects._mode
+	Effects._mode = Effects.Mode.NONE
+	scene.diorama._rebuild_world()
+	var still_rim := Color(0, 0, 0, 0)
+	if scene.diorama._creatures.has(holder):
+		still_rim = (scene.diorama._creatures[holder]["label"] as Label3D).outline_modulate
+	check("still: a mirror shield's holder wears the stone's blue outline in 3D",
+		still_rim == Palette.MAGIC, str(still_rim))
+	check("  and the shield on the floor is kept to shine",
+		scene.diorama._mirror_items.size() == 1)
+	Effects._mode = Effects.Mode.SHADERS
+	scene.diorama.anim_time = 0.0
+	scene.diorama._update_dynamic()
+	var rim0: Color = (scene.diorama._creatures[holder]["label"] as Label3D).outline_modulate
+	var lying0: Color = (scene.diorama._mirror_items[0][0] as Label3D).modulate
+	scene.diorama.anim_time = CreatureMarks.MIRROR_PERIOD * 2.0 / 3.0
+	scene.diorama._update_dynamic()
+	var rim1: Color = (scene.diorama._creatures[holder]["label"] as Label3D).outline_modulate
+	var lying1: Color = (scene.diorama._mirror_items[0][0] as Label3D).modulate
+	check("full: the outline shines from one frame to the next (%s -> %s)" % [rim0, rim1],
+		rim0 == Palette.MAGIC and rim1.is_equal_approx(CreatureMarks.MIRROR_GLINT))
+	check("  and so does the shield lying there (%s -> %s)" % [lying0, lying1],
+		lying0 != lying1 and lying1.get_luminance() > lying0.get_luminance())
+	check("  and the classic view knows one is in sight, so it redraws",
+		scene.grid._has_visible_mirror())
+	scene.diorama.anim_time = -1.0
+	Effects._mode = mode_was
+	st0.entities.erase(holder)
+	st0.ground.erase(lying)
 	# The miasma's cloud is washed over its squares in 3D.
 	var stc: GameState = scene.state
 	var pc := Vector2i(stc.player.x + 2, stc.player.y)

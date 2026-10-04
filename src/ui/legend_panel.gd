@@ -297,7 +297,7 @@ func _terrain_lines() -> int:
 	return 1 + TERRAIN_ORDER.size() + 1
 
 func _creature_lines() -> int:
-	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4 + 4
+	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4 + 5
 
 func _item_lines() -> int:
 	var n := 1 + 1 + 1 + Shrines.COUNT
@@ -614,6 +614,8 @@ func _creature_column(x: float, y: float, w: float) -> void:
 	# review): the outline on a map figure, as a ring here.
 	y = _ring_entry(x, y, w, Palette.FUNGUS_PURPLE, "purple ring", "its body rots into purple")
 	y = _ring_entry(x, y, w, Palette.FUNGUS_RED, "red ring", "it rises when it falls")
+	# The mirror tell (2026-10-04): the same ring, in the stone's blue.
+	y = _ring_entry(x, y, w, Palette.MAGIC, "blue ring", "its shield throws your blows back")
 	y = _entry(x, y, w, "", Palette.UI_TEXT, "risen", "blind: it hunts by sound", "",
 		Palette.FUNGUS_RED)
 	y = _entry(x, y, w, "", Palette.UI_TEXT, "corrupted", "crossed the purple, and changed", "",

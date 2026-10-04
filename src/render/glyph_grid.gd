@@ -284,6 +284,7 @@ func _process(delta: float) -> void:
 		_camera_visual = target
 
 	var miasma_animating := Effects.any() and _has_visible_miasma()
+	var mirror_shining := Effects.any() and _has_visible_mirror()
 	var animating := fx.running() or _motion_running()
 	fx.tick(delta)
 
@@ -292,8 +293,28 @@ func _process(delta: float) -> void:
 	var flicker_due := light.tick(delta)
 
 
-	if animating or flicker_due or miasma_animating:
+	if animating or flicker_due or miasma_animating or mirror_shining:
 		queue_redraw()
+
+## The animation clock: the wall's, or the one a screenshot tool set.
+func _clock() -> float:
+	return anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0
+
+## Is a mirror shield in sight, held or lying there? Its shine is the one
+## creature or item mark that changes between turns, so the grid redraws at
+## full rate only while one is on screen (as for the miasma above).
+func _has_visible_mirror() -> bool:
+	if state == null:
+		return false
+	var map := state.map
+	for e in state.entities:
+		if e.alive and not e.is_player and CreatureMarks.wears_a_mirror(e) \
+				and map.is_visible(e.x, e.y):
+			return true
+	for it in state.ground:
+		if CreatureMarks.is_a_mirror(it) and map.is_visible(it.x, it.y):
+			return true
+	return false
 
 func _has_visible_miasma() -> bool:
 	if state == null:
@@ -522,7 +543,12 @@ func _draw() -> void:
 			if glow.a > 0.0:
 				draw_rect(Rect2(_screen(Vector2i(it.x, it.y)), Vector2(cell_size, cell_size)),
 					glow, true)
-			if it.shows_enchanted():
+			if CreatureMarks.is_a_mirror(it):
+				# A mirror shield shines where it lies: the identifier comes
+				# before the pickup (Brad, 2026-10-04). MAGIC on still.
+				_draw_glyph_tinted(it.appearance, Vector2(it.x, it.y),
+					CreatureMarks.mirror_colour(_clock()))
+			elif it.shows_enchanted():
 				_draw_glyph_tinted(it.appearance, Vector2(it.x, it.y), Palette.MAGIC)
 			else:
 				_draw_glyph(it.appearance, Vector2(it.x, it.y))
@@ -540,11 +566,17 @@ func _draw() -> void:
 	for e in state.entities:
 		if e.alive and not e.is_player and map.is_visible(e.x, e.y):
 			_draw_wound(e)
-			# Marked: a frame in the colour of the fungus it carries.
-			var spore := CreatureMarks.spore_colour(e)
-			if spore.a > 0.0:
+			# Marked: a frame in the colour of the fungus it carries, or the
+			# shine of the mirror shield it holds -- and both at once as two
+			# frames, the mirror inside (CreatureMarks.outline).
+			var rim := CreatureMarks.outline(e, _clock())
+			if rim.a > 0.0:
 				draw_rect(Rect2(_screen_f(_visual_cell(e)) + Vector2(1, 1),
-					Vector2(cell_size - 2, cell_size - 2)), spore, false, 2.0)
+					Vector2(cell_size - 2, cell_size - 2)), rim, false, 2.0)
+			var inner := CreatureMarks.inner_outline(e, _clock())
+			if inner.a > 0.0:
+				draw_rect(Rect2(_screen_f(_visual_cell(e)) + Vector2(4, 4),
+					Vector2(cell_size - 8, cell_size - 8)), inner, false, 2.0)
 			# The glyph still says WHICH creature; the colour only says that
 			# the climb has been at it. One override rather than a second set
 			# of theme entries, because there is nothing per-creature to say.

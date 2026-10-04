@@ -362,7 +362,7 @@ func sight_rows() -> Array:
 			# Hunting has no persistent marker on the map (an unmarked thing
 			# is one you work out yourself); in a list it needs one.
 			mark = {"text": "!", "colour": Palette.ALERT}
-		out.append({"name": e.name, "ring": CreatureMarks.spore_colour(e),
+		out.append({"name": e.name, "ring": CreatureMarks.outline(e),
 			"mark": String(mark.get("text", "")),
 			"mark_colour": mark.get("colour", Palette.UI_DIM),
 			"risen": e.faction == Entity.Faction.RISEN, "e": e})

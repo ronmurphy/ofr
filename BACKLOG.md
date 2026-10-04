@@ -611,8 +611,30 @@ their own scratch tag inside a loop -- `use_scratch_files("bearfit%d")`
 legends.json). Harmless, but it is litter in a player-owned folder. Clear and
 restore the suite's own tag after each loop.
 
-**A monster's mirror shield gives no warning before it bites (day-7 hunt,
-2026-10-04; backlogged by Brad the same day).** `_arm_monster` arms weapon and
+**The mirror tell -- BUILT 2026-10-04 (Legion), waiting on play.** What was
+built, from the shape below: `CreatureMarks.outline` is the one answer both
+views and the sidebar's ring ask -- the spores first (red outranks a shield),
+else the mirror, else nothing. Still: a steady frame in `Palette.MAGIC`.
+Simple and full: that blue brightening to a pale glint and back, two seconds
+a lap, anchored on MAGIC so it reads as that colour shining (Brad: close
+enough to be associated with it; the stops are tunable in `CreatureMarks`).
+A red risen that kept its shield shows BOTH: the classic view draws the
+mirror as a second frame inside the red; the 3D card has one outline, so on
+simple and full the two take turns (`single_outline`, 0.9 s each) and on
+still the red wins there -- the sidebar ring and the classic view still show
+the mirror. A mirror shield LYING on the floor shines the same way in both
+views (Brad: the identifier comes before the pickup); on still it is the
+plain magic blue every enchanted item wears, and the HERE box names it. The
+grid redraws at full rate only while one is in sight (`_has_visible_mirror`,
+as for the miasma). Legend: "blue ring -- its shield throws your blows back".
+Proof: `tools/probes/screenshot_mirror.gd` renders both views on still and a
+strip of frames on full (both looked at on 2026-10-04); tests in
+`run_view_tests.gd` (`_test_the_mirror_tell`, and the 3D block in
+`_test_both_views_share_one_moment`). Not done: a mirror shield WORN by the
+player has no mark, since the sidebar's offhand line already names it.
+
+**The original note, kept for the reasoning.** A monster's mirror shield gave
+no warning before it bit (day-7 hunt, 2026-10-04). `_arm_monster` arms weapon and
 armour only, but a scavenger takes a SHIELD off the floor (`_better_item_at`
 has an offhand branch, `_scavenge` equips into the item's own slot), and a
 floor shield can carry `reflect`. Your first sign is your own blow coming back

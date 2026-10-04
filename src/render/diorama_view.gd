@@ -187,6 +187,10 @@ var life := SmallLife.new()
 ## Overridable clock, as on the classic grid, so a screenshot tool can hold the
 ## light still. Negative means the wall clock.
 var anim_time: float = -1.0
+
+## The animation clock: the wall's, or the one a screenshot tool set.
+func _clock() -> float:
+	return anim_time if anim_time >= 0.0 else Time.get_ticks_msec() / 1000.0
 ## Every surface material the world was built with, so the clock can reach
 ## them each frame without rebuilding anything.
 var _surface_materials: Array[ShaderMaterial] = []
@@ -195,6 +199,9 @@ var _surface_materials: Array[ShaderMaterial] = []
 var _pulsing: Array = []
 ## Cells with magic lying in them, cell -> item, for the glow under it.
 var _glowing_items: Dictionary = {}
+## Mirror shields lying in sight, [label, cell]: their shine is re-coloured
+## every frame (CreatureMarks.mirror_colour).
+var _mirror_items: Array = []
 ## A contact shadow under each item on the floor: [cell, width in cells].
 var _item_shadows: Array = []
 ## Floor dots for this rebuild, [position, colour], drawn as one batch.
@@ -834,6 +841,7 @@ func _rebuild_world() -> void:
 	_surface_materials.clear()
 	_pulsing.clear()
 	_glowing_items.clear()
+	_mirror_items.clear()
 	_item_shadows.clear()
 	_dots.clear()
 	_theme_fg.clear()
@@ -1591,6 +1599,11 @@ func _add_items_and_entities() -> void:
 			_floor_point(at.x, at.y), box)
 		label.render_priority = PRIORITY_ITEM
 		label.outline_render_priority = PRIORITY_ITEM - 1
+		# A mirror shield shines where it lies, as in the classic view: the
+		# identifier comes before the pickup (Brad, 2026-10-04).
+		if CreatureMarks.is_a_mirror(item):
+			label.modulate = _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y)
+			_mirror_items.append([label, at])
 		_add_silhouette(label, color, PRIORITY_ITEM - 1)
 		_item_shadows.append([Vector2(at), _ink_size(String(app.get("ch", "?")), box).x])
 	# The trader, remembered where you saw them -- see MapMemory. Out of sight
@@ -1624,11 +1637,13 @@ func _add_items_and_entities() -> void:
 			_legible(color, entity.x, entity.y), _floor_point(entity.x, entity.y), box)
 		label.render_priority = PRIORITY_CREATURE
 		label.outline_render_priority = PRIORITY_CREATURE - 1
-		# Marked: its outline wears the fungus it carries, and thicker, so it
-		# reads before you strike.
-		var spore := CreatureMarks.spore_colour(entity)
-		if spore.a > 0.0:
-			label.outline_modulate = spore
+		# Marked: its outline wears the fungus it carries, or the shine of the
+		# mirror shield it holds, and thicker, so it reads before you strike.
+		# One outline here, so both at once take turns (CreatureMarks.
+		# single_outline); the plain outline is kept to put back.
+		var rim := CreatureMarks.single_outline(entity, _clock())
+		if rim.a > 0.0:
+			label.outline_modulate = rim
 			label.outline_size = maxi(3, label.outline_size * 3)
 		var ink := _ink_size(String(app.get("ch", "?")), box)
 		var nodes := {"label": label, "tall": ink.y, "wide": ink.x,
@@ -1798,8 +1813,14 @@ func _update_dynamic() -> void:
 	if _post_material != null and Effects.any():
 		_post_material.set_shader_parameter("seed",
 			fmod(Time.get_ticks_msec() / 1000.0, 997.0) * 13.0)
+	# The mirror's shine, on what holds one and what lies there.
+	for row in _mirror_items:
+		var at: Vector2i = row[1]
+		(row[0] as Label3D).modulate = _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y)
 	for e in _creatures:
 		var nodes: Dictionary = _creatures[e]
+		if CreatureMarks.outline_moves(e):
+			(nodes["label"] as Label3D).outline_modulate = CreatureMarks.single_outline(e, _clock())
 		var feet := _floor_at(_drawn_cell(e))
 		var tall := float(nodes["tall"])
 		var stand := feet + (Vector3.UP * overhead_lift(tall) if overhead
