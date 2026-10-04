@@ -7233,6 +7233,9 @@ func _test_the_foragers_satchel() -> void:
 		panel.satchel_mode and panel._build_rows().size() == 2
 		and panel.letter_to_index(KEY_A) == 0 and panel.letter_to_index(KEY_B) == 1
 		and panel._keyboard_footer().contains("set down"))
+	check("its title counts the satchel, not the pack", panel.count_line() == "3 inside · 10 of each",
+		panel.count_line())
+	check("it is slung, not raised", bag.verb() == "sling" and Item.make(&"buckler").verb() == "raise")
 	var hp0 := gs.player.hp
 	var t1 := gs.turns
 	check("using the potion from it heals, spends it, and costs a turn (and must)",

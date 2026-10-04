@@ -966,7 +966,8 @@ func verb() -> String:
 		Kind.POTION: return "drink"
 		Kind.SCROLL: return "read"
 		Kind.WEAPON: return "wield"
-		Kind.ARMOR:  return "raise" if slot == Slot.OFFHAND else "wear"
+		# A shield is raised; the satchel hangs on a strap.
+		Kind.ARMOR:  return "sling" if is_satchel() else ("raise" if slot == Slot.OFFHAND else "wear")
 		Kind.AMULET: return "carry"
 	return "use"
 

@@ -612,9 +612,7 @@ func _draw() -> void:
 		Palette.AIM_OK if throw_mode else Palette.STAIRS)
 	# On the title's baseline and right-aligned, so it cannot collide with the
 	# filter chips on the line below.
-	draw_string(font, p.position + Vector2(PAD, PAD + asc),
-		"%d / %d in the pack · %d worn" % [state.player.pack_count(), Entity.INVENTORY_MAX,
-			state.player.inventory.size() - state.player.pack_count()],
+	draw_string(font, p.position + Vector2(PAD, PAD + asc), count_line(),
 		HORIZONTAL_ALIGNMENT_RIGHT, PANEL_W - PAD * 2.0, font_size, Palette.UI_DIM)
 
 	if not throw_mode and not satchel_mode:
@@ -644,6 +642,15 @@ func _draw() -> void:
 		hs -= 1
 	PadGlyphs.draw(self, Vector2(p.position.x + PAD, p.end.y - PAD), hint, font,
 		hs, Palette.UI_DIM)
+
+## The title's right-hand line: the pack's count, or, with the satchel open,
+## the satchel's own ("14 inside · 10 of each"). Separate so the tests read it.
+func count_line() -> String:
+	if satchel_mode and state != null and state._the_satchel() != null:
+		var bag: Item = state._the_satchel()
+		return "%d inside · %d of each" % [bag.satchel_count(), bag.holds]
+	return "%d / %d in the pack · %d worn" % [state.player.pack_count(), Entity.INVENTORY_MAX,
+		state.player.inventory.size() - state.player.pack_count()]
 
 func _draw_chip(chip: Dictionary) -> void:
 	var active: bool = chip["id"] == filter

@@ -831,8 +831,12 @@ the game sees them, and letters are chosen inside the open panel anyway.
    picking go to `_the_satchel()` wherever it is, the offhand only adds
    the key; IT LIVES WITH YOU -- dropping it is refused ("The satchel stays
    with you"; it could not be sold or thrown already), so no floor of
-   thirty things and no message to miss. Test:
-   `_test_the_foragers_satchel`. Original note: Drop the ten SLOTS and
+   thirty things and no message to miss. **Played 2026-10-03 (Brad, floor
+   4): nine potions and five haunches moved in on pickup, the bag read
+   (14), the chooser showed the two shelves.** Polish from that: the bag
+   is SLUNG, not raised (`Item.verb`), and the chooser's title counts the
+   satchel ("14 inside · 10 of each", `InventoryPanel.count_line`) rather
+   than the pack. Test: `_test_the_foragers_satchel`. Original note: Drop the ten SLOTS and
    say: one row per kind it takes, ten per row ("the satchel holds ten of
    each"). No slot arithmetic between a rabbit haunch and a bear haunch.
    Everything else as built: pick fungus, root it, drop meat, use closes
