@@ -1099,10 +1099,11 @@ const BESTIARY := [
 	# it is between you and where you wanted to be. Cheap to kill, expensive
 	# to fight in the wrong place.
 	# WILD since 2026-10-04: it minds its own business until struck, and then
-	# all of the above is true. Hunting it for its meat is a choice now.
+	# all of the above is true. Hunting it for its meat is a choice now. And
+	# it EATS: awake, it hunts the rabbits (the food web, bear > rabbit).
 	{"name": "cave bear", "app": &"bear", "hp": 34, "power": 9, "def": 3,
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
-	 "threat": 17, "knockback": 2, "caves": 2.6, "wild": true},
+	 "threat": 17, "knockback": 2, "caves": 2.6, "wild": true, "eats": true},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "patrol": true},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
@@ -4771,16 +4772,25 @@ func bury_target() -> Dictionary:
 	var cells: Array[Vector2i] = [here]
 	for i in 8:
 		cells.append(here + Entity.turned(player.facing, i))
+	# The red's dead first, wherever they lie in reach: that grave is a race,
+	# and a plain body beside it can wait.
 	for c in cells:
 		for b in bodies:
-			if _buriable(b) and int(b["x"]) == c.x and int(b["y"]) == c.y:
+			if _reds_dead(b) and int(b["x"]) == c.x and int(b["y"]) == c.y:
+				return b
+	for c in cells:
+		for b in bodies:
+			if int(b["x"]) == c.x and int(b["y"]) == c.y:
 				return b
 	return {}
 
 ## The red's dead: a body it has claimed, or one that already rose for it and
-## fell again. Other bodies are left for the rats -- digging them earns
-## nothing and only makes noise.
-func _buriable(b: Dictionary) -> bool:
+## fell again. These are the graves that PAY (the undertaker's pay) -- and
+## until 2026-10-04 the only ones the shovel would dig. Any body can be
+## buried now (Brad, the night the floor came alive): a buried body feeds no
+## rat and seeds no fungus, which is a lever on the floor's whole ecology,
+## and the turns and the noise are the price. It still sharpens nothing.
+func _reds_dead(b: Dictionary) -> bool:
 	return bool(b.get("claimed", false)) or bool(b["e"].get("fungal", false))
 
 func _shovel() -> Item:
@@ -4849,10 +4859,16 @@ func player_bury() -> bool:
 			msg_log.add("You turn the last earth over the %s. The red has lost it." % who,
 				Color(0.80, 0.85, 0.70))
 			_red_loses(at)
-		else:
+			_lay_to_rest()
+		elif _reds_dead(b):
 			msg_log.add("You turn the last earth over the %s. It will not get up again." % who,
 				Color(0.80, 0.85, 0.70))
-		_lay_to_rest()
+			_lay_to_rest()
+		else:
+			# A plain body: nothing to deny the red, so no pay -- but the rats
+			# will not find it, and nothing will grow where it lay.
+			msg_log.add("You turn the last earth over the %s. The rats will not have it." % who,
+				Color(0.80, 0.85, 0.70))
 	_end_player_turn()
 	return true
 
@@ -8006,7 +8022,15 @@ func apply_dict(d: Dictionary) -> bool:
 
 	entities = []
 	for entry in d.get("entities", []):
-		entities.append(Entity.from_dict(entry))
+		var loaded := Entity.from_dict(entry)
+		# A save from before 2026-10-04 has no appetite recorded: the bear in
+		# it would load without one and never hunt. Backfilled from the
+		# bestiary by appearance, once, for saves that lack the key.
+		if not entry.has("eats") and not loaded.is_player:
+			for row in BESTIARY:
+				if row["app"] == loaded.appearance:
+					loaded.eats = bool(row.get("eats", false))
+		entities.append(loaded)
 	var pi := int(d.get("player", 0))
 	if pi < 0 or pi >= entities.size():
 		return false
@@ -9662,6 +9686,11 @@ func _ai_wild(actor: Entity) -> void:
 		return
 	if actor.alertness != Entity.Alert.AWAKE:
 		return
+	# The food web (Brad, 2026-10-04): a bear hunts the rabbits, with the
+	# same hunt the goblins have, and eats what it brings down. Never a bear
+	# (heavy), never you (_prey_for looks only at the wild).
+	if actor.eats and _hunt(actor):
+		return
 	var near := _what_scares(actor)
 	if Los.steps(actor.x, actor.y, near.x, near.y) <= WILD_SPACE \
 			and Los.clear(map, actor.x, actor.y, near.x, near.y) \
@@ -9691,8 +9720,11 @@ func _what_scares(actor: Entity) -> Entity:
 	var best: Entity = player
 	var best_d := Los.steps(actor.x, actor.y, player.x, player.y)
 	for e in entities:
-		if e == actor or not e.alive or e.is_player or e.is_wild() \
-				or e.faction == Entity.Faction.NEUTRAL:
+		if e == actor or not e.alive or e.is_player or e.faction == Entity.Faction.NEUTRAL:
+			continue
+		# A wild thing fears the wild things that EAT -- a rabbit runs from a
+		# bear -- and nothing else wild.
+		if e.is_wild() and not e.eats:
 			continue
 		if not timid and e.faction != Entity.Faction.PLAYER:
 			continue

@@ -2502,11 +2502,25 @@ func _test_the_undertakers_pay() -> void:
 	var panel := InventoryPanel.new()
 	panel.state = gs
 	check("the pack names both roads back",
-		panel._action_hint(shovel) == "dull: a gem, or 5 more graves", panel._action_hint(shovel))
-	# An ordinary body earns nothing: there is nothing to bury it for.
+		panel._action_hint(shovel) == "dull: a gem, or 5 more red graves", panel._action_hint(shovel))
+	# An ordinary body can be buried (2026-10-04: the rats will not have it)
+	# but earns nothing: there is no red to deny.
 	gs.bodies = [{"x": 6, "y": 4, "app": "goblin", "turn": gs.turns, "corrupted": false,
 		"e": {"name": "goblin"}, "seeded": -1, "claimed": false}]
-	check("a plain body is not offered for burial", gs.bury_target().is_empty())
+	check("a plain body is offered for burial", not gs.bury_target().is_empty())
+	for spade in GameState.BURY_SPADEFULS:
+		gs.player_pickup()
+	check("  and buried: gone, for the rats and the fungus both", gs.bodies.is_empty()
+		and _log_says(gs, "The rats will not have it"))
+	check("  but it pays nothing toward the edge", shovel.dull and shovel.laid_to_rest == 0)
+	# The red's dead come first when both lie in reach.
+	gs.bodies = [{"x": 6, "y": 4, "app": "goblin", "turn": gs.turns, "corrupted": false,
+		"e": {"name": "goblin"}, "seeded": -1, "claimed": false},
+		{"x": 4, "y": 4, "app": "kobold", "turn": gs.turns, "corrupted": false,
+		"e": {"name": "risen kobold", "fungal": true}, "seeded": -1, "claimed": false}]
+	check("with a plain body and the red's dead both in reach, the red's dead is dug first",
+		String(gs.bury_target()["e"]["name"]) == "risen kobold")
+	gs.bodies = []
 	# Five fallen risen beside you, buried one after another.
 	for i in GameState.BURIALS_TO_SHARPEN:
 		gs.bodies = [{"x": 6, "y": 4, "app": "kobold", "turn": gs.turns, "corrupted": false,
@@ -15030,6 +15044,61 @@ func _test_hunters_eat_the_wild() -> void:
 	check("  and comes for it (%d -> %d)" % [bd, Los.steps(bat.x, bat.y, sling.x, sling.y)],
 		Los.steps(bat.x, bat.y, sling.x, sling.y) < bd or sling.hp < sling_hp)
 	check("a monster's appetite is saved", Entity.from_dict(gob.to_dict()).eats)
+	# And a save from before appetites existed gets them back on loading.
+	var old_save := cave.to_dict()
+	for entry in old_save["entities"]:
+		entry.erase("eats")
+	var loaded := GameState.new(1)
+	loaded.new_game()
+	check("precondition: the old save loads", loaded.apply_dict(old_save))
+	var fed := 0
+	for e in loaded.entities:
+		if e.appearance == &"goblin" and e.eats:
+			fed += 1
+	check("a save without appetites recorded gets them back from the bestiary", fed >= 1,
+		str(loaded.entities.map(func(e): return [e.appearance, e.eats])))
+
+	# The food web: a bear, awake and unstruck, hunts the rabbit it can see,
+	# and the rabbit fears it as it fears a goblin.
+	var wood := _arena(24, 11)
+	wood.player.x = 2
+	wood.player.y = 2
+	wood.torch_lit = false
+	wood.entities = [wood.player]
+	wood.map.set_tile(12, 5, Tiles.FUNGUS)
+	for y in range(1, 10):
+		wood.map.set_tile(5, y, Tiles.WALL)
+	wood.pathfinder = Pathfinder.new(wood.map)
+	wood._gather_lights()
+	wood.update_vision()
+	# Two cells apart, both in the mushroom's glow: each has to SEE the
+	# other, and the dark three cells out hides a bear from a rabbit.
+	var ursa := _spawn(wood, "cave bear", 10, 5)
+	var hare := _spawn(wood, "rabbit", 12, 5)
+	check("precondition: an awake bear with an appetite, and a rabbit in its sight (and it in the rabbit's)",
+		ursa.eats and ursa.alertness == Entity.Alert.AWAKE and wood._can_see(ursa, hare)
+		and wood._can_see(hare, ursa))
+	check("a rabbit is a bear's game; another bear never is",
+		wood._prey_for(ursa) == hare and wood._what_scares(hare) == ursa)
+	var bd0 := Los.steps(ursa.x, ursa.y, hare.x, hare.y)
+	wood._take_ai_turn(ursa)
+	check("the bear goes for the rabbit (%d -> %d)" % [bd0, Los.steps(ursa.x, ursa.y, hare.x, hare.y)],
+		Los.steps(ursa.x, ursa.y, hare.x, hare.y) < bd0 and not ursa.provoked)
+	var hd0 := Los.steps(ursa.x, ursa.y, hare.x, hare.y)
+	wood._take_ai_turn(hare)
+	check("and the rabbit runs from the bear (%d -> %d)" % [hd0, Los.steps(ursa.x, ursa.y, hare.x, hare.y)],
+		Los.steps(ursa.x, ursa.y, hare.x, hare.y) > hd0)
+	ursa.x = hare.x - 1
+	ursa.y = hare.y
+	hare.hp = 1
+	wood._take_ai_turn(ursa)
+	check("beside it, the bear kills it, and is still no enemy of yours",
+		not hare.alive and not ursa.hostile_to(wood.player))
+	ursa.hp = 20
+	wood._take_ai_turn(ursa)
+	wood._take_ai_turn(ursa)
+	check("and eats the haunch (%d hp)" % ursa.hp, ursa.hp > 20
+		and wood.ground.filter(func(i): return i.id == &"meat").is_empty())
 
 func _test_the_bone_ally() -> void:
 	var gs := _arena(30, 14)

@@ -354,7 +354,7 @@ func detail_lines(item: Item) -> Array:
 		out.append({"text": ("%d turns as a rat" % item.charges) if item.charges > 0
 			else "cold: a gem at the embers", "colour": Palette.UI_TEXT})
 	if item.dulls():
-		out.append({"text": ("dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
+		out.append({"text": ("dull: a gem, or %d more red graves" % (GameState.BURIALS_TO_SHARPEN
 			- item.laid_to_rest)) if item.dull else "sharp: one raise",
 			"colour": Palette.UI_TEXT})
 	# The satchel: how to open it (the key, or the pad's button, by name --
@@ -682,8 +682,9 @@ func _action_hint(item: Item) -> String:
 	if item.transforms() and item.charges <= 0:
 		return "cold: a gem at the embers"
 	if item.dulls() and item.dull:
-		# Both roads back (Gabe's graves, 2026-10-01).
-		return "dull: a gem, or %d more graves" % (GameState.BURIALS_TO_SHARPEN
+		# Both roads back (Gabe's graves, 2026-10-01). "Red graves": any body
+		# can be buried since 2026-10-04, but only the red's dead pay.
+		return "dull: a gem, or %d more red graves" % (GameState.BURIALS_TO_SHARPEN
 			- item.laid_to_rest)
 	if item.kind == Item.Kind.GEM:
 		# A gem with a use of its own, here and now, says so first (6d).

@@ -1020,11 +1020,20 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   struck by any non-player-side attacker turns on what hit it instead of
   "noticing you" (the risen branch in `_attack`, generalised). Legend:
   "eats game  depth N+". Test: `_test_hunters_eat_the_wild`.
+- **Bear > rabbit -- BUILT the same night**, after Brad herded a rabbit to
+  a bear in play and nothing happened: the bear carries `"eats": true` and,
+  awake and unstruck, `_ai_wild` runs the same `_hunt` the goblins have --
+  it goes for a rabbit it can see, kills it, eats the haunch, and is still
+  no enemy of yours. Never a bear (`heavy`), never you. A rabbit now fears
+  a wild thing that eats as it fears a goblin (`_what_scares`). A sleeping
+  bear sleeps: it hunts only once awake, which today means once it has
+  noticed you. A save from before this has no appetite recorded, so the
+  loader backfills `eats` from the bestiary by appearance.
 - **Not in this step:** the rat (floors 1-2 need the slime first), the
-  wolf, the food web between wild things, fire as a fear, the WILD colour
-  freeing the bat's purple in the theme table. **Next (agreed with Brad,
-  2026-10-04):** the wolf, with bear-versus-wolf through the grudge; then
-  the slime.
+  wolf, the rest of the food web (wolf > rabbit, spider > bat and rat), fire
+  as a fear, the WILD colour freeing the bat's purple in the theme table.
+  **Next (agreed with Brad, 2026-10-04):** the wolf, with bear-versus-wolf
+  through the grudge; then the slime.
 
 - **A WILD faction, appended** (factions are saved as ints). NEUTRAL cannot
   serve: today it means *inert* -- `_take_ai_turn` gives a neutral no turn at
@@ -1082,6 +1091,19 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   taught archers. A RED risen spider webs anything in its room.
 - **Open:** the bite's damage; what provokes a wolf pack; how far the torch
   keeps creatures back.
+
+**Any body can be buried -- BUILT 2026-10-04 (Legion).** Brad killed a
+rat with the shovel in his pack and found no way to bury it: the shovel dug
+only the red's dead, by design ("left for the rats -- digging them earns
+nothing"), and the pack's tip said "5 more graves" without saying which.
+Now (Brad's call, the night the floor came alive): any body in reach is
+offered -- "bury the giant rat (shovel, loud) 0/3" -- and goes under in the
+same three loud spadefuls, "The rats will not have it": a buried body feeds
+no rat and seeds no fungus, which is the player's lever on the red's spread.
+Only the red's dead still PAY toward the edge (`_reds_dead`), so the
+dullness after a raise keeps its teeth; the tip reads "dull: a gem, or N
+more red graves". With a plain body and the red's dead both in reach, the
+red's dead is dug first. Tests in `_test_the_undertakers_pay`.
 
 **A floor that was alive before you arrived (Brad and the Legion,
 2026-10-04 -- an idea, not scheduled).** Run a few hundred quiet turns of
