@@ -7192,17 +7192,20 @@ func _test_the_foragers_satchel() -> void:
 		and not Item.uniques(2).has(&"satchel"))
 	var bag := Item.make(&"satchel")
 	gs.give_item(bag)
-	check("it is an offhand piece that holds ten", bag.is_satchel() and bag.slot == Item.Slot.OFFHAND
-		and bag.satchel_room() == 10 and bag.display_name() == "forager's satchel (0/10)")
+	check("it is an offhand piece that holds ten of each", bag.is_satchel() and bag.slot == Item.Slot.OFFHAND
+		and bag.holds == 10 and bag.display_name() == "forager's satchel (0)")
 	check("in the pack, unworn, it is still the satchel you would open", gs._the_satchel() == bag
 		and gs._worn_satchel() == null)
 	var potion := Item.make(&"potion_healing")
 	potion.x = 5
 	potion.y = 4
 	gs.ground.append(potion)
-	check("precondition: unworn, a potion picked up goes to the pack",
-		gs.player_pickup() and gs.player.inventory.has(potion) and bag.contents.is_empty())
-	gs.player.inventory.erase(potion)
+	check("unworn, a potion picked up still goes into it (worn only adds the key)",
+		gs.player_pickup() and bag.contents.has(potion) and not gs.player.inventory.has(potion))
+	bag.contents.erase(potion)
+	check("it cannot be dropped: it lives with you",
+		not gs.player_drop(gs.player.inventory.find(bag)) and gs.player.inventory.has(bag)
+		and gs.msg_log.entries[-1]["text"].contains("stays with you"))
 	gs._toggle_equip(bag)
 	check("worn in the offhand", gs.player.is_equipped(bag) and gs._worn_satchel() == bag)
 	potion.x = 5
@@ -7248,23 +7251,86 @@ func _test_the_foragers_satchel() -> void:
 	check("on floor it does, and glows again (and must)", gs.player_drop_from_satchel(0)
 		and gs.map.get_tile(5, 4) == Tiles.FUNGUS and bag.contents.is_empty())
 	gs.map.set_tile(5, 4, Tiles.FLOOR)
-	# Full, the pack takes over.
-	for i in 10:
-		bag.contents.append(Item.make(&"potion_healing"))
+	# A SHELF PER KIND, ten to a shelf (2026-10-03). Full of potions, the pack
+	# takes the eleventh; a haunch still has a shelf of its own.
+	var ten := Item.make(&"potion_healing")
+	ten.count = 10
+	bag.contents.append(ten)
 	var extra := Item.make(&"potion_healing")
 	extra.x = 5
 	extra.y = 4
 	gs.ground.append(extra)
-	check("full, a potion picked up goes to the pack as before",
-		gs.player_pickup() and gs.player.inventory.has(extra) and bag.contents.size() == 10
-		and bag.display_name() == "forager's satchel (10/10)")
-	check("and fungus is eaten, not picked", not gs._can_pick_fungus())
+	check("a full shelf sends the eleventh potion to the pack",
+		gs.player_pickup() and gs.player.inventory.has(extra) and bag.contents.size() == 1
+		and ten.count == 10 and bag.display_name() == "forager's satchel (10)")
+	var haunch := Item.make(&"meat")
+	haunch.x = 5
+	haunch.y = 4
+	gs.ground.append(haunch)
+	check("while a haunch goes in on its own shelf (and must)",
+		gs.player_pickup() and bag.contents.has(haunch) and bag.contents.size() == 2
+		and gs.msg_log.entries[-1]["text"].contains("(x1)"))
+	var shrooms := Item.make(&"fungus")
+	shrooms.count = 10
+	bag.contents.append(shrooms)
+	check("ten fungus fill their shelf: eaten, not picked", not gs._can_pick_fungus())
+	shrooms.count = 9
+	check("  nine leave room for one more", gs._can_pick_fungus())
 	# Saved inside the item.
-	bag.contents[0].count = 3
+	ten.count = 3
 	var back := Item.from_dict(bag.to_dict())
 	check("what it holds is saved with it, stacks and all",
-		back != null and back.is_satchel() and back.contents.size() == 10
+		back != null and back.is_satchel() and back.contents.size() == 3
 		and back.contents[0].count == 3)
+	# TAKING IT FILLS IT: what the pack held that fits moves in, ten of each,
+	# the rest staying put, and the log says what moved.
+	var finder := _arena(15, 9)
+	finder.player.x = 5
+	finder.player.y = 4
+	finder.player.inventory.clear()
+	finder.player.equipped.clear()
+	var dozen := Item.make(&"potion_healing")
+	dozen.count = 12
+	finder.give_item(dozen)
+	var rabbit := Item.make(&"meat")
+	finder.give_item(rabbit)
+	var blade := Item.make(&"dagger")
+	finder.give_item(blade)
+	var lying_bag := Item.make(&"satchel")
+	lying_bag.x = 5
+	lying_bag.y = 4
+	finder.ground.append(lying_bag)
+	check("precondition: twelve potions, a haunch and a dagger in the pack, the satchel underfoot",
+		finder.player.inventory.size() == 3 and dozen.count == 12 and finder.items_at(5, 4).has(lying_bag))
+	check("picking it up moves the food in: ten potions and the haunch (and must)",
+		finder.player_pickup() and finder.player.inventory.has(lying_bag)
+		and lying_bag.contents.size() == 2 and lying_bag.contents[0].id == &"potion_healing"
+		and lying_bag.contents[0].count == 10 and lying_bag.contents[1] == rabbit
+		and lying_bag.satchel_count() == 11)
+	check("  the two potions over the shelf stay in the pack, the dagger too",
+		dozen.count == 2 and finder.player.inventory.has(dozen) and finder.player.inventory.has(blade)
+		and not finder.player.inventory.has(rabbit) and rabbit.letter == "")
+	var told2 := ""
+	for line in finder.msg_log.entries:
+		told2 += str(line["text"]) + "|"
+	check("  and the log says what moved", told2.contains("go into the satchel: potion of healing x10, haunch of rabbit"), told2)
+	check("  worn or not, fungus can be picked", finder._can_pick_fungus())
+
+	# An old save's satchel of ten single haunches folds onto shelves on load.
+	var olds := _arena(15, 9)
+	olds.player.inventory.clear()
+	olds.player.equipped.clear()
+	var oldbag := Item.make(&"satchel")
+	for i in 4:
+		oldbag.contents.append(Item.make(&"meat"))
+	for i in 2:
+		oldbag.contents.append(Item.make(&"potion_healing"))
+	olds.player.inventory.append(oldbag)
+	var loaded := GameState.new(1)
+	loaded.new_game()
+	check("an old satchel's slots fold onto shelves on load", loaded.apply_dict(olds.to_dict())
+		and loaded.player.inventory[0].contents.size() == 2
+		and loaded.player.inventory[0].satchel_count() == 6)
 	# The keys: s on a keyboard, d-pad down on a pad, and the pack's d-pad
 	# down still drops.
 	check("s opens it and d-pad down is bound to it",
@@ -7277,9 +7343,9 @@ func _test_the_foragers_satchel() -> void:
 	var told := ""
 	for line in pane.detail_lines(bag):
 		told += String(line["text"]) + "|"
-	check("the pack's pane names the key and lists what it holds",
+	check("the pack's pane names the key and lists its shelves",
 		told.contains("s: open it") and told.contains("· potion of healing x3")
-		and told.contains("and 3 more"), told)
+		and told.contains("· fungus x9") and not told.contains("more"), told)
 	pane.pad_cfg = PadConfig.new()
 	pane.pad_input = true
 	told = ""

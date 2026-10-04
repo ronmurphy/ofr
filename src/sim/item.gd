@@ -76,9 +76,12 @@ var scavenged := false
 var unique := false
 ## Turns of use left in a unique that burns down. Zero means it does not.
 var charges := 0
-## THE FORAGER'S SATCHEL (unique, 2026-10-01): how many things it holds, or
-## zero for everything that is not one. What it holds rides inside it, saved
-## with it, letterless -- the satchel's own chooser letters them when opened.
+## THE FORAGER'S SATCHEL (unique, 2026-10-01): how many OF EACH KIND it
+## holds, or zero for everything that is not one. A shelf per kind, ten to a
+## shelf (Brad, 2026-10-03: "the satchel holds ten of each" -- no arithmetic
+## between a rabbit haunch and a bear haunch; it was ten slots before). What
+## it holds rides inside it, saved with it, letterless -- the satchel's own
+## chooser letters them when opened.
 var holds := 0
 var contents: Array = []
 ## A stack. Fungus picked into the satchel stacks to STACK_MAX in one slot;
@@ -109,11 +112,14 @@ func stackable() -> bool:
 ## stacks with a dagger +1 and with nothing else); a haunch's worth is
 ## averaged in by `absorb`. Whether either is WORN is the pack's business
 ## (GameState._stack_for).
-func stacks_with(other: Item) -> bool:
+func stacks_with(other: Item, cap: int = PACK_STACK) -> bool:
+	return same_kind_as(other) and count + other.count <= cap
+
+## The same thing, room aside.
+func same_kind_as(other: Item) -> bool:
 	return other != self and stackable() and other.stackable() and id == other.id \
 		and element == other.element and boosts == other.boosts and charges == other.charges \
-		and power_bonus == other.power_bonus and defense_bonus == other.defense_bonus \
-		and count + other.count <= PACK_STACK
+		and power_bonus == other.power_bonus and defense_bonus == other.defense_bonus
 
 ## Takes `other` into this stack. Meat is the one thing whose magnitude varies
 ## piece by piece, so a stack carries the average, rounded: "a haunch of bear
@@ -848,19 +854,43 @@ func display_name() -> String:
 	# been GIVEN an element", which is only ever news about a weapon.
 	if element != &"" and kind != Kind.GEM:
 		base += " (%s)" % element
-	# A stack says how many; a satchel says how full.
+	# A stack says how many; a satchel says how much is in it.
 	if count > 1:
 		base += " x%d" % count
 	if holds > 0:
-		base += " (%d/%d)" % [contents.size(), holds]
+		base += " (%d)" % satchel_count()
 	return base
 
 func is_satchel() -> bool:
 	return holds > 0
 
-## Slots left in a satchel; a stack takes one.
-func satchel_room() -> int:
-	return holds - contents.size()
+## What the satchel takes: food and potions, which is what it is for.
+func satchel_kind(item: Item) -> bool:
+	return is_satchel() and item.kind == Kind.POTION and item.stackable()
+
+## The shelf this would go on, with room for one more, or null: either a new
+## shelf (nothing of its kind inside) or its own kind's with fewer than
+## `holds`. The satchel is full only OF THAT KIND.
+func satchel_shelf(item: Item) -> Item:
+	for row in contents:
+		if row.same_kind_as(item):
+			return row if row.count + item.count <= holds else null
+	return null
+
+func satchel_takes(item: Item) -> bool:
+	if not satchel_kind(item):
+		return false
+	for row in contents:
+		if row.same_kind_as(item):
+			return row.count + item.count <= holds
+	return true
+
+## Everything inside, counted.
+func satchel_count() -> int:
+	var n := 0
+	for row in contents:
+		n += row.count
+	return n
 
 func is_throwable() -> bool:
 	return throw_range > 0

@@ -3080,7 +3080,46 @@ func give_item(item: Item) -> bool:
 		return false
 	item.letter = _free_letter()
 	player.inventory.append(item)
+	if item.is_satchel():
+		_fill_the_satchel(item)
 	return true
+
+## TAKING THE SATCHEL FILLS IT (Brad, 2026-10-03): by whatever route it
+## arrives -- the cave floor, a chest -- everything in the pack that fits a
+## shelf moves in, ten of each, and the log lists what moved. A player who
+## reaches floor four has a pack full of exactly what it is for; without
+## this the old potions sat in the pack while new ones went to the bag.
+func _fill_the_satchel(bag: Item) -> void:
+	var moved: Array[String] = []
+	for it in player.inventory.duplicate():
+		if it == bag or not bag.satchel_kind(it):
+			continue
+		var shelf: Item = null
+		for row in bag.contents:
+			if row.same_kind_as(it):
+				shelf = row
+				break
+		var room: int = bag.holds - (shelf.count if shelf != null else 0)
+		var n := mini(it.count, room)
+		if n <= 0:
+			continue
+		# Whole, the thing itself moves; part of a stack, a piece splits off.
+		var piece: Item = it
+		if n == it.count:
+			player.inventory.erase(it)
+			it.letter = ""
+		else:
+			piece = it.split_one()
+			piece.count = n
+			it.count -= n
+		if shelf != null:
+			shelf.absorb(piece)
+		else:
+			bag.contents.append(piece)
+		moved.append(piece.name if n == 1 else "%s x%d" % [piece.name, n])
+	if not moved.is_empty():
+		msg_log.add("Your food and potions go into the satchel: %s." % ", ".join(moved),
+			Color(0.75, 0.80, 0.90))
 
 ## The stack in the pack this would join, with room, or null. What you are
 ## wearing is a single thing and never a stack: a plain dagger picked up
@@ -3145,6 +3184,22 @@ func _stack_the_pack() -> void:
 	player.inventory.clear()
 	for k in kept:
 		player.inventory.append(k)
+	# And the satchel's shelves, which were slots before 2026-10-03.
+	for k in kept:
+		if not k.is_satchel():
+			continue
+		var rows: Array = []
+		for it in k.contents:
+			var shelf: Item = null
+			for r in rows:
+				if r.same_kind_as(it):
+					shelf = r
+					break
+			if shelf != null:
+				shelf.absorb(it)
+			else:
+				rows.append(it)
+		k.contents = rows
 
 func _relabel_unreachable_items() -> void:
 	var seen := {}
@@ -6620,17 +6675,24 @@ func player_pickup() -> bool:
 			return player_relight()
 		msg_log.add("There is nothing here to pick up.", Color(0.7, 0.6, 0.4))
 		return false
-	# THE SATCHEL TAKES FOOD AND POTIONS when it is worn with room: no pack
-	# slot spent, and the heal is a key away (the forager's satchel).
-	var bag := _worn_satchel()
-	if bag != null and bag.satchel_room() > 0 and here[0].kind == Item.Kind.POTION:
+	# THE SATCHEL TAKES FOOD AND POTIONS, worn or in the pack (Brad,
+	# 2026-10-03: the offhand only adds the key; the bag works wherever it
+	# is): no pack slot spent, and the heal is a key away (the forager's
+	# satchel). Ten of each kind; the eleventh goes to the pack as before.
+	var bag := _the_satchel()
+	if bag != null and bag.satchel_takes(here[0]):
 		var meal: Item = here[0]
 		ground.erase(meal)
 		meal.letter = ""
-		bag.contents.append(meal)
+		var shelf := bag.satchel_shelf(meal)
+		if shelf != null:
+			shelf.absorb(meal)
+		else:
+			shelf = meal
+			bag.contents.append(meal)
 		_tally_in("picked", meal.name)
-		msg_log.add("You put the %s in the satchel (%d/%d)."
-			% [meal.name, bag.contents.size(), bag.holds], Color(0.75, 0.80, 0.90))
+		msg_log.add("You put the %s in the satchel (x%d)."
+			% [meal.name, shelf.count], Color(0.75, 0.80, 0.90))
 		_end_player_turn()
 		return true
 	# A stack with room takes one more whatever the count says (2026-10-03).
@@ -6739,32 +6801,22 @@ func satchel_items() -> Array:
 	var bag := _the_satchel()
 	return bag.contents if bag != null else []
 
-## Worn, with room for one more fungus: a slot, or a stack not yet full.
+## Carried, with room on the fungus shelf.
 func _can_pick_fungus() -> bool:
-	var bag := _worn_satchel()
-	if bag == null:
-		return false
-	if bag.satchel_room() > 0:
-		return true
-	for it in bag.contents:
-		if it.id == &"fungus" and it.count < Item.STACK_MAX:
-			return true
-	return false
+	var bag := _the_satchel()
+	return bag != null and bag.satchel_takes(Item.make(&"fungus"))
 
 ## Fungus picked where it grew goes into the worn satchel, stacked; the
 ## tile is bare floor after, and its light is gone, as when it is eaten.
 func _pick_fungus() -> bool:
-	var bag := _worn_satchel()
-	var stack: Item = null
-	for it in bag.contents:
-		if it.id == &"fungus" and it.count < Item.STACK_MAX:
-			stack = it
-			break
+	var bag := _the_satchel()
+	var picked := Item.make(&"fungus")
+	var stack := bag.satchel_shelf(picked)
 	if stack == null:
-		stack = Item.make(&"fungus")
+		stack = picked
 		bag.contents.append(stack)
 	else:
-		stack.count += 1
+		stack.absorb(picked)
 	map.set_tile(player.x, player.y,
 		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 		else Tiles.FLOOR)
@@ -7214,6 +7266,12 @@ func player_drop(index: int) -> bool:
 		return false
 	_travel.clear()
 	var item: Item = player.inventory[index]
+	# IT LIVES WITH YOU (Brad, 2026-10-03). Dropping it would strand a floor's
+	# worth of food on the ground or hide it in a line of text; it cannot be
+	# sold or thrown either. Found once, the satchel is yours for the run.
+	if item.is_satchel():
+		msg_log.add("The satchel stays with you.", Color(0.7, 0.6, 0.4))
+		return false
 	var left := item.count - 1
 	# Dropping something you are wearing takes it off first, rather than
 	# leaving a dangling reference in `equipped`. Off a stack, one goes.

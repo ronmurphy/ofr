@@ -816,9 +816,25 @@ the game sees them, and letters are chosen inside the open panel anyway.
    shelves, and he knows which one the potions are on. Hoarding becomes
    possible; nothing creates more drops, and the caves still starve by what
    falls, so that is the right side to err on.
-3. **The satchel as shelves -- designed, not built.** Drop the ten SLOTS
-   and say: one row per kind it takes, ten per row ("the satchel holds ten
-   of each"). No slot arithmetic between a rabbit haunch and a bear haunch.
+3. **The satchel as shelves -- BUILT 2026-10-03**, waiting on play. As
+   built: `Item.satchel_takes` / `satchel_shelf` -- a shelf per kind it
+   takes (food and potions, `satchel_kind`), `holds` 10 to a shelf, full
+   only OF THAT KIND: the eleventh potion goes to the pack while a haunch
+   still gets its own shelf; fungus has its own shelf, so picking is
+   refused only when ten are in. The name reads "forager's satchel (12)",
+   everything inside counted; the pickup says "(x3)". An old satchel of
+   single haunches folds onto shelves on load (`_stack_the_pack`).
+   **Three rules the same evening (Brad):** TAKING IT FILLS IT -- by any
+   route (`give_item` -> `_fill_the_satchel`), everything in the pack that
+   fits a shelf moves in, ten of each, the rest staying put, and the log
+   lists what moved; WORN OR NOT IT WORKS THE SAME -- pickups and fungus
+   picking go to `_the_satchel()` wherever it is, the offhand only adds
+   the key; IT LIVES WITH YOU -- dropping it is refused ("The satchel stays
+   with you"; it could not be sold or thrown already), so no floor of
+   thirty things and no message to miss. Test:
+   `_test_the_foragers_satchel`. Original note: Drop the ten SLOTS and
+   say: one row per kind it takes, ten per row ("the satchel holds ten of
+   each"). No slot arithmetic between a rabbit haunch and a bear haunch.
    Everything else as built: pick fungus, root it, drop meat, use closes
    the chooser, offhand, takes no hand, fills straight from pickups. Its
    capacity grows with the kinds it accepts; if it ever wants tightening,
