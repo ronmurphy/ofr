@@ -945,6 +945,71 @@ found by identity since 2026-09-27, so other neutrals are now safe to add.
 **The wild creatures update (Brad, 2026-10-04 -- a future backlog, rough,
 not scheduled).** An animal ecology, from the bear and the rabbit outward.
 
+**Step 1, the WILD faction -- BUILT 2026-10-04 (Legion), waiting on play.**
+`Entity.Faction.WILD`, appended; the cave bear, rabbit and cave bat carry
+`"wild": true` in the bestiary and `monster_from` seats them. The rules:
+- `hostile_to`: a wild thing is nothing to a MONSTER (goblins hunt you, not
+  rabbits), prey to the RISEN, and your side's enemy only once STRUCK --
+  `Entity.provoked`, set in `_attack` when the player or an ally lands a
+  blow, saved, and for good. The log says "The cave bear turns on you."
+  (not for a forager: a rabbit runs, as before). Two wild things never fight
+  each other yet (the food web is a later step).
+- Unstruck, `_ai_wild` takes its turn: a forager forages as it always did,
+  shying from you or a visible ally (`_what_scares`, never `_foe_for`);
+  anything else sleeps until it notices you (awareness still runs, so the
+  "?" and "notices you" are true), then keeps `WILD_SPACE` (2) between you
+  and it and otherwise wanders or stands. Struck, it falls through to the
+  ordinary monster turn with you its foe.
+- You may shoot, throw at and walk into a wild thing (`_fair_game`: a bow is
+  how you provoke a bear from afar; walking into it strikes it and never
+  swaps places). It stops no journey and forbids no rest until struck
+  (`visible_monsters` leaves it out; `visible_wild` is for the sidebar).
+- A monster goes round a rabbit rather than waiting on it (`_step_toward`
+  asks `hostile_to`, not faction; the trader is still never swapped with).
+- The killer rabbit is a MONSTER again the moment it turns; a corrupted
+  animal is a MONSTER (the purple takes the wild out of it).
+- One colour for the kind: `Palette.WILD` (bfa22f, dry grass), on both
+  renderers, provoked or not. Measured with check_palette.py's functions
+  against the other tints a wild glyph can wear (ALLY, CORRUPTED, the killer
+  rabbit's white, PLAYER): 35 deltaE at worst. The bat's purple, the rabbit's
+  and bear's browns and the rat's grey no longer appear on the map for these
+  three; the theme table still holds them (the legend's own rows read it).
+- Sidebar: the wild in sight are listed in their colour, no "!" however
+  awake, and counted apart -- "2 hostile · 3 wild", or "1 wild" alone. Struck,
+  a bear moves into the hostile count and gets its "!". Legend: "wild -- no
+  one's enemy until struck", and "wild  depth N+" on each animal's row.
+- Tests: `_test_the_wild_are_no_ones_enemy` (full suite) and the sidebar
+  block in `run_view_tests.gd`. `_test_pits_are_an_escape` now provokes its
+  bear: only a hunted bear breaks and runs. Proof shots:
+  `tools/probes/screenshot_wild.gd`.
+- **The grudge (Brad, the same evening):** `Entity.grudge` is the last thing
+  that struck a wild creature, whoever's side it was on (a reference, not
+  saved: a fright does not survive a reload, where `provoked` does). A
+  forager flees it above all else, sight or no sight -- what struck you, you
+  know the whereabouts of (`_minds`: alive and within twice its notice
+  range) -- and flees any MONSTER it can see as well as your side; a bear
+  gives room to you, not to a kobold. Anything else fights its grudge back:
+  a bear with a goblin's spear in it hunts the goblin (`_ai_hunter`) and
+  stays no enemy of yours; `hostile_to` says yes for either party while the
+  grudge lives, which is how a goblin's `_foe_for` turns to the bear beside
+  it, and how two wild things will come to fight (the wolf). The bear's
+  shove was always universal in `_attack`; a test now says so on a goblin.
+- **Open, for play:** the bear still costs 17 threat in a cave that may
+  never fight it, so caves with a bear are easier than they were; Brad's
+  note below about re-measuring the threat ceiling applies to the bear now,
+  not only to the rat. A wild thing hurt by a trap or the fungus is not
+  provoked (nobody struck it) and goes on minding its own business.
+- **Not in this step:** the rat (floors 1-2 need the slime first), the
+  wolf, the food web, fire as a fear, the WILD colour freeing the bat's
+  purple in the theme table. **Agreed with Brad for the next steps
+  (2026-10-04):** monsters that hunt animals, gated like scavenging --
+  unaware only, an `eats` flag per bestiary row, prey smaller than
+  themselves (rabbits for melee, bats for the ranged, never the bear); the
+  kill leaves the body, so a floor where the goblins got to the rabbits
+  first has less meat in it. A monster's blow never provokes an animal
+  against you (it sets the grudge instead, above). Then the wolf, with
+  bear-versus-wolf through the grudge; then the slime.
+
 - **A WILD faction, appended** (factions are saved as ints). NEUTRAL cannot
   serve: today it means *inert* -- `_take_ai_turn` gives a neutral no turn at
   all, and `hostile_to` makes it no one's enemy -- which is right for the
@@ -1001,6 +1066,46 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   taught archers. A RED risen spider webs anything in its room.
 - **Open:** the bite's damage; what provokes a wolf pack; how far the torch
   keeps creatures back.
+
+**A floor that was alive before you arrived (Brad and the Legion,
+2026-10-04 -- an idea, not scheduled).** Run a few hundred quiet turns of
+the ecology at `build_level` before the player is placed: rabbits have
+grazed, rats have been to the old bodies and seeded the fungus, patrols have
+walked their rounds, the goblins have drifted to the brazier. You walk into
+a result, not a fresh board -- which is the one shape of off-screen life
+that pays off within a single visit (the dungeon is one-way). **Brad's
+rule: nobody dies in the pre-run.** Combat is off; creatures move, eat and
+sleep. Then the threat on the floor is exactly what mapgen budgeted, only
+rearranged, and the ceiling promise holds untouched -- no births needed to
+offset losses, because there are none. Its own `RandomNumberGenerator`
+seeded from the run (never the sim's rng: the draw count would move every
+seed-pinned premise). Re-measure the ceiling tests after it anyway: a guard
+that walked its round for two hundred turns can be standing at the door you
+came in by, and that is a feature.
+
+**Monster camps (Brad, 2026-10-04 -- an idea, not scheduled).** Worldgen,
+not behaviour: a camp is placed like an authored vault, in a room or a cave
+(every floor, the fortress for sure, caves without a bear), and the region's
+whole threat budget goes to it -- three goblins and an ogre standing round
+a fire, sleepers and a beat that circles it, a barricade tile at the mouth
+(close to the barred door). Then a stray monster is a fight and a camp is a
+QUESTION: the sidebar and the HERE box say "a camp: 3 goblins and an ogre
+at a fire" before you commit. Suits caves better than masonry does: a fire
+and bedrolls in a cave read as what a cave is for, where a stone room reads
+as a mistake (CLAUDE.md). Most of the behaviour exists: sleeping and
+patrolling activities, scavengers, the wake chain, hunters walking to a
+noise since day 7.
+- **The fire is a CAMPFIRE, not a brazier (Brad's answer, same day).** A
+  new light-source tile: rest and heal at it, as at a brazier, but NO
+  forging -- so it is never a forge site and never a mark for the returning
+  gem, and the tests that count braziers per floor stay true. The monsters
+  use it too: they rest and heal at their own fire, and re-stock it. Icon
+  `nf-md-campfire` U+F0EDD (checked in the full font 2026-10-04; a line in
+  `GlyphTheme` and a rebuild of the subset with `tools/build_icon_font.py`).
+  ASCII and the colour: open.
+- **Open:** whether a camp's sleepers wake to the barricade being forced;
+  what a taken camp is worth (its fire, its gear); how a camp and a wild
+  bear share a cave (they do not: a bear's cave gets no camp).
 
 **The slime (Brad, 2026-10-04 -- rough, not scheduled).** A MONSTER, not a
 wild creature, so it lives here rather than in the update above -- but it

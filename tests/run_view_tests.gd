@@ -1848,6 +1848,30 @@ func _test_the_ui_review() -> void:
 	check("  and the header counts them", side.sight_summary(rows) == "3 hostile · 1 risen",
 		side.sight_summary(rows))
 	check("  nothing in sight says so", side.sight_summary([]) == "nothing")
+	# The WILD in sight (2026-10-04): listed in their own colour, no "!"
+	# however awake, counted apart -- and once struck, among the hostile.
+	var bruin := GameState.monster_from(by_name.call("cave bear"), gs.player.x, gs.player.y + 3)
+	bruin.alertness = Entity.Alert.AWAKE
+	gs.entities.append(bruin)
+	rows = side.sight_rows()
+	var bear_row: Dictionary = {}
+	for r in rows:
+		if r["name"] == "cave bear":
+			bear_row = r
+	check("  an unstruck bear is listed, wild, with no ! though awake",
+		not bear_row.is_empty() and bool(bear_row["wild"]) and bear_row["mark"] == "",
+		str(bear_row))
+	check("  and the header counts it apart", side.sight_summary(rows) == "3 hostile · 1 wild · 1 risen",
+		side.sight_summary(rows))
+	gs.entities = [gs.player, bruin]
+	check("  a bear alone in sight is \"1 wild\", not \"0 hostile\"",
+		side.sight_summary(side.sight_rows()) == "1 wild", side.sight_summary(side.sight_rows()))
+	bruin.provoked = true
+	rows = side.sight_rows()
+	check("  struck, it is hostile and wears the !",
+		side.sight_summary(rows) == "1 hostile" and rows[0]["mark"] == "!"
+		and not bool(rows[0]["wild"]), side.sight_summary(rows))
+	gs.entities = [gs.player, far, near, dead]
 	side.hovered = Vector2i(gs.player.x, gs.player.y)
 	check("  the cursor over something wins back the look block", side.cursor_has_subject())
 	side.look_mode = true

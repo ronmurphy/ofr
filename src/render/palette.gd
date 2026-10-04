@@ -218,6 +218,19 @@ const CRITICAL_WASH := 0.52
 ## a risen ally is the same rank of thing as a risen enemy.
 const ALLY := Color("7fd69a")
 
+## A WILD creature -- bear, rabbit, bat: one colour for the kind and the
+## glyph for the which, as GEM and MAGIC already work. Dry grass. It replaces
+## the animal's own colour on the map, so the pairs that matter are the OTHER
+## tints the same glyph can wear: the ally mint (a bear raised with the
+## shovel), the corrupted violet, the killer rabbit's white and the player's
+## cream. Scanned over the whole brown range with tools/check_palette.py's
+## own functions (2026-10-04): 35 deltaE at worst, against ALLY under
+## protanopia; every darker, earthier brown fell under the 25 the tool
+## demands, and the maximiser's own pick was a saturated gold that read as a
+## kobold. Not run through the tool's shared-glyph pass, which reads only the
+## theme table's own colours -- this is a state tint, like ALLY.
+const WILD := Color("bfa22f")
+
 ## A creature that has given up and is running. Cool rather than hot, because
 ## it is the one alertness state that means you are winning.
 const FLEEING := Color("6fb3c4")

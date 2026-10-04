@@ -8,7 +8,23 @@ extends RefCounted
 ## RISEN is APPENDED (factions are saved as ints): the dead the red fungus
 ## raised. Hostile to everything with a side -- you, your allies and the
 ## monsters alike -- which is what lets a red room snowball.
-enum Faction { PLAYER, MONSTER, NEUTRAL, RISEN }
+## WILD is APPENDED (factions are saved as ints). An animal: it acts and lives
+## its own life, and is nobody's enemy until it is struck -- see `provoked`.
+## NEUTRAL could not serve, because NEUTRAL means INERT: the trader takes no
+## turn at all and nothing can be its enemy, which is right for a shopkeeper
+## and wrong for a bear (Brad, 2026-10-04; built the same day).
+enum Faction { PLAYER, MONSTER, NEUTRAL, RISEN, WILD }
+
+## A WILD thing that has been struck by your side. From then on it is your
+## enemy for good: it hunts, it is counted hostile, it stops your rest. Set
+## in GameState._attack; saved.
+var provoked := false
+## The last thing that struck a WILD creature, whoever's side it was on: a
+## forager flees it above all else, anything else fights it back (Brad,
+## 2026-10-04). A reference, not saved: a fright does not survive a reload,
+## where a grudge against your side does (`provoked`). Cleared by nothing --
+## a dead grudge is simply ignored.
+var grudge: Entity = null
 
 ## Whether these two would fight, which is NOT the same question as "is one of
 ## them the player".
@@ -29,7 +45,28 @@ func hostile_to(other: Entity) -> bool:
 		return false
 	if faction == Faction.NEUTRAL or other.faction == Faction.NEUTRAL:
 		return false
+	# A WILD creature: nothing to a monster, which hunts you and not the
+	# rabbits (the food web is a later step); prey to the risen, as all the
+	# living are; and your enemy only once your side has struck it. Two wild
+	# things never fight each other yet.
+	if faction == Faction.WILD or other.faction == Faction.WILD:
+		var beast := self if faction == Faction.WILD else other
+		var them := other if faction == Faction.WILD else self
+		# What struck it is its enemy, whatever it is -- and that is how two
+		# wild things come to fight (a bear and the wolf that bit it).
+		if beast.grudge == them or (them.grudge == beast and them.alive):
+			return true
+		match them.faction:
+			Faction.WILD, Faction.MONSTER:
+				return false
+			Faction.RISEN:
+				return true
+			_:
+				return beast.provoked
 	return faction != other.faction
+
+func is_wild() -> bool:
+	return faction == Faction.WILD
 
 ## Three states rather than two. A binary asleep/awake makes stealth feel
 ## arbitrary -- you are either invisible or caught, with no warning. The middle
@@ -508,7 +545,7 @@ func to_dict() -> Dictionary:
 			worn[str(slot)] = idx
 	return {
 		"name": name, "app": String(appearance), "x": x, "y": y,
-		"blocks": blocks, "is_player": is_player, "faction": faction,
+		"blocks": blocks, "is_player": is_player, "faction": faction, "provoked": provoked,
 		"hp": hp, "max_hp": max_hp, "power": power, "defense": defense,
 		"speed": speed, "energy": energy, "threat": threat,
 		"level": level, "xp": xp, "ai": String(ai),
@@ -552,6 +589,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.blocks = d.get("blocks", true)
 	e.is_player = d.get("is_player", false)
 	e.faction = int(d.get("faction", Faction.MONSTER))
+	e.provoked = bool(d.get("provoked", false))
 	e.hp = int(d.get("hp", 1))
 	e.max_hp = int(d.get("max_hp", 1))
 	e.power = int(d.get("power", 1))

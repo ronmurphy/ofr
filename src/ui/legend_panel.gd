@@ -297,7 +297,7 @@ func _terrain_lines() -> int:
 	return 1 + TERRAIN_ORDER.size() + 1
 
 func _creature_lines() -> int:
-	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4 + 5
+	return 1 + 1 + GameState.BESTIARY.size() + 1 + 1 + 4 + 6
 
 func _item_lines() -> int:
 	var n := 1 + 1 + 1 + Shrines.COUNT
@@ -593,6 +593,8 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			note = "regrows  " + note
 		elif String(e.get("ai", "")) == "forager":
 			note = "forages  " + note
+		elif bool(e.get("wild", false)):
+			note = "wild  " + note
 		elif int(e.get("wail", 0)) > 0:
 			# Kept to one word like the others. That the cry wakes the floor is
 			# the thing worth learning by meeting one, and the log says it
@@ -620,6 +622,8 @@ func _creature_column(x: float, y: float, w: float) -> void:
 		Palette.FUNGUS_RED)
 	y = _entry(x, y, w, "", Palette.UI_TEXT, "corrupted", "crossed the purple, and changed", "",
 		Palette.CORRUPTED)
+	y = _entry(x, y, w, "", Palette.UI_TEXT, "wild", "no one's enemy until struck", "",
+		Palette.WILD)
 
 ## A row led by a ring rather than a glyph: the spore outline, as drawn
 ## round a figure on the map.

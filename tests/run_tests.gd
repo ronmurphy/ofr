@@ -203,6 +203,7 @@ func _initialize() -> void:
 	_test_banshee()
 	_test_a_side_of_your_own()
 	_test_the_bone_ally()
+	_test_the_wild_are_no_ones_enemy()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -3034,7 +3035,10 @@ func _test_a_lost_hunter_goes_where_it_last_saw_you() -> void:
 	check("but it senses life, and comes for you (%d -> %d)"
 		% [wail_was, Los.steps(wail.x, wail.y, 4, 2)], Los.steps(wail.x, wail.y, 4, 2) < wail_was)
 
-	# And a rabbit is no hunter: its "foe" is what it runs from.
+	# And a rabbit is no hunter: its "foe" is what it runs from. The monsters
+	# leave first: since 2026-10-04 a rabbit fears monsters too, and this is
+	# about the trail, not about them.
+	ds.entities = [ds.player]
 	var bun := _spawn(ds, "rabbit", 25, 7)
 	ds.map.set_tile(28, 7, Tiles.FUNGUS)
 	bun.last_seen = Vector2i(21, 7)
@@ -7668,6 +7672,9 @@ func _test_pits_are_an_escape() -> void:
 	gs.pathfinder = Pathfinder.new(gs.map)
 	var bear := _spawn(gs, "cave bear", 7, 1)
 	bear.hp = 4
+	# A bear you have been fighting: WILD since 2026-10-04, it has to have
+	# been struck to be hunting you, and only a hunter breaks and runs.
+	bear.provoked = true
 	var bear_power := bear.power
 	var bear_threat := bear.threat
 	gs._gather_lights()
@@ -7726,6 +7733,7 @@ func _test_pits_are_an_escape() -> void:
 	ds.pathfinder = Pathfinder.new(ds.map)
 	var dark_bear := _spawn(ds, "cave bear", 7, 1)
 	dark_bear.hp = 4
+	dark_bear.provoked = true
 	ds._gather_lights()
 	ds.update_vision()
 	check("precondition: unlit", ds.light_map.get_light(dark_bear.x, dark_bear.y).get_luminance()
@@ -14791,6 +14799,145 @@ func _test_cave_giant() -> void:
 ## quietly dropped something. Two of the checks below exist only because the
 ## obvious implementation duplicates items, and one because it steals the
 ## player's experience.
+## Whether the log has said `text` since the game began.
+func _log_says(gs: GameState, text: String) -> bool:
+	for line in gs.msg_log.entries:
+		if String(line["text"]).contains(text):
+			return true
+	return false
+
+## THE WILD FACTION (Brad, 2026-10-04): a bear, a rabbit, a bat act and live
+## their own lives, and are nobody's enemy until your side strikes them.
+func _test_the_wild_are_no_ones_enemy() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.hp = gs.player.max_hp
+	gs.entities = [gs.player]
+	var bear := _spawn(gs, "cave bear", 6, 4)
+	check("a cave bear is wild", bear.is_wild())
+	check("unstruck, it is not your enemy, nor you its",
+		not bear.hostile_to(gs.player) and not gs.player.hostile_to(bear))
+	check("  it is not among the monsters that stop a journey or forbid a rest",
+		not gs.visible_monsters().has(bear))
+	check("  but it is in sight, for the sidebar", gs.visible_wild().has(bear))
+	check("  and it may be shot: a bow is how you provoke a bear from afar",
+		gs.firing_targets(6).has(bear))
+	check("precondition: awake and beside you", bear.alertness == Entity.Alert.AWAKE
+		and bear.is_adjacent(gs.player))
+	var hp_before := gs.player.hp
+	gs._take_ai_turn(bear)
+	check("its turn: it does not strike you; it gives you room (%d away)"
+		% Los.steps(bear.x, bear.y, 5, 4),
+		gs.player.hp == hp_before and Los.steps(bear.x, bear.y, 5, 4) == 2)
+	# Walk into it: that is picking the fight, not trading places.
+	bear.x = 6
+	bear.y = 4
+	var bear_hp := bear.hp
+	var hp_at_bump := gs.player.hp
+	check("precondition: the move is a bump", gs.player_move(1, 0))
+	# The move ends your turn, so the bear answers inside it -- and its answer
+	# is a shove, so you are not where you stood. What must be true: it was
+	# hit, and you never changed places with it.
+	check("walking into a bear strikes it, and never swaps you with it",
+		bear.hp < bear_hp and not (gs.player.x == 6 and gs.player.y == 4)
+		and bear.x == 6 and bear.y == 4, "player %d,%d" % [gs.player.x, gs.player.y])
+	check("  and it hit back at once, inside your move (%d -> %d)" % [hp_at_bump, gs.player.hp],
+		gs.player.hp < hp_at_bump)
+	check("  struck, it is your enemy for good", bear.provoked and bear.hostile_to(gs.player)
+		and gs.player.hostile_to(bear))
+	check("  the log says so", _log_says(gs, "turns on you"))
+	check("  and it counts among the monsters now", gs.visible_monsters().has(bear)
+		and not gs.visible_wild().has(bear))
+	gs.player.x = 5
+	gs.player.y = 4
+	hp_before = gs.player.hp
+	gs._take_ai_turn(bear)
+	check("  its next turn, beside you again, it hits you (%d -> %d)" % [hp_before, gs.player.hp],
+		gs.player.hp < hp_before)
+	check("  and a save keeps the grudge and the kind",
+		Entity.from_dict(bear.to_dict()).provoked
+		and Entity.from_dict(bear.to_dict()).faction == Entity.Faction.WILD)
+
+	# The others on the floor.
+	var den := _arena(21, 9)
+	den.player.x = 2
+	den.player.y = 1
+	den.entities = [den.player]
+	var gob := _spawn(den, "goblin", 10, 4)
+	var bun := _spawn(den, "rabbit", 11, 4)
+	check("a goblin's foe is you, never the rabbit beside it", den._foe_for(gob) == den.player)
+	check("an unstruck rabbit has no foe at all", den._foe_for(bun) == null)
+	check("  and a goblin walks round it rather than waiting on it", not gob.hostile_to(bun))
+	# It fears the goblin beside it more than you across the room.
+	den._take_ai_turn(bun)
+	check("a rabbit flees a monster beside it, not only you (%d away now)"
+		% Los.steps(bun.x, bun.y, gob.x, gob.y), Los.steps(bun.x, bun.y, gob.x, gob.y) > 1)
+	# Speared by a goblin, it runs from the goblin even with you nearer.
+	bun.x = 4
+	bun.y = 1
+	gob.x = 8
+	gob.y = 1
+	den._attack(gob, bun)
+	check("struck by a monster, a rabbit remembers it", bun.alive and bun.grudge == gob
+		and bun.hostile_to(gob) and not bun.provoked)
+	den._take_ai_turn(bun)
+	check("  and runs from THAT, though you stand nearer (%d from the goblin, %d from you)"
+		% [Los.steps(bun.x, bun.y, gob.x, gob.y), Los.steps(bun.x, bun.y, 2, 1)],
+		Los.steps(bun.x, bun.y, gob.x, gob.y) > 4)
+	check("  without becoming your enemy", not bun.hostile_to(den.player))
+	gob.x = 10
+	gob.y = 4
+	bun.x = 11
+	bun.y = 4
+	bun.grudge = null
+	var pal := _spawn(den, "skeleton", 12, 4)
+	pal.faction = Entity.Faction.PLAYER
+	check("your ally leaves it be: its foe is the goblin, never the rabbit",
+		not pal.hostile_to(bun) and den._foe_for(pal) == gob)
+	var dead := _spawn(den, "goblin", 10, 6)
+	dead.faction = Entity.Faction.RISEN
+	check("the risen eat the living, wild or not", dead.hostile_to(bun) and bun.hostile_to(dead))
+	den._attack(pal, bun)
+	check("struck by your ally, it is your side's enemy (and no 'turns on you' for a rabbit)",
+		bun.provoked and pal.hostile_to(bun) and bun.hostile_to(den.player)
+		and not _log_says(den, "turns on you"))
+	var bun2 := _spawn(den, "rabbit", 14, 4)
+	den._rabbit_turns(bun2)
+	check("the killer rabbit is a monster, your enemy unstruck",
+		bun2.faction == Entity.Faction.MONSTER and bun2.hostile_to(den.player))
+	var bat := _spawn(den, "cave bat", 15, 4)
+	check("a cave bat is wild", bat.is_wild())
+	den._corrupt(bat)
+	check("corrupted, it is a monster: the purple takes the wild out of it",
+		bat.faction == Entity.Faction.MONSTER and bat.hostile_to(den.player))
+	# A bear with a goblin's spear in it has a goblin problem, not a you
+	# problem -- and its answer is the shove, on a monster as on you.
+	var lair := _arena(21, 9)
+	lair.player.x = 2
+	lair.player.y = 4
+	lair.entities = [lair.player]
+	var bruin := _spawn(lair, "cave bear", 6, 4)
+	var spear := _spawn(lair, "goblin", 7, 4)
+	lair._attack(spear, bruin)
+	check("precondition: the goblin struck the bear", bruin.hp < bruin.max_hp and bruin.grudge == spear)
+	check("a bear struck by a monster is that monster's enemy, not yours",
+		bruin.hostile_to(spear) and spear.hostile_to(bruin) and not bruin.hostile_to(lair.player)
+		and not bruin.provoked)
+	var gob_hp := spear.hp
+	var player_hp := lair.player.hp
+	lair._take_ai_turn(bruin)
+	check("  its turn, it hits the goblin back (%d -> %d) and leaves you be" % [gob_hp, spear.hp],
+		spear.hp < gob_hp and lair.player.hp == player_hp)
+	check("  and the shove lands on a monster as on you (goblin at %d,%d)" % [spear.x, spear.y],
+		not spear.alive or spear.x > 7)
+	check("  the goblin's own foe is now the bear, since it is nearer than you",
+		not spear.alive or lair._foe_for(spear) == bruin)
+	var trader := Entity.new("trader", &"trader", 16, 4)
+	trader.faction = Entity.Faction.NEUTRAL
+	check("the trader is still nobody's: not fair game, not swappable",
+		not den._fair_game(trader) and not bear.hostile_to(trader))
+
 func _test_the_bone_ally() -> void:
 	var gs := _arena(30, 14)
 	gs.player.x = 4

@@ -1069,7 +1069,8 @@ const BESTIARY := [
 	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2, "reload": true,
 	 "threat": 6, "caves": 0.5, "patrol": true, "scavenge": true},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
-	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6},
+	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6,
+	 "wild": true},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
 	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0, "patrol": true, "scavenge": true},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
@@ -1097,9 +1098,11 @@ const BESTIARY := [
 	# you and the stairs: the bear takes all of that away in one hit and then
 	# it is between you and where you wanted to be. Cheap to kill, expensive
 	# to fight in the wrong place.
+	# WILD since 2026-10-04: it minds its own business until struck, and then
+	# all of the above is true. Hunting it for its meat is a choice now.
 	{"name": "cave bear", "app": &"bear", "hp": 34, "power": 9, "def": 3,
 	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
-	 "threat": 17, "knockback": 2, "caves": 2.6},
+	 "threat": 17, "knockback": 2, "caves": 2.6, "wild": true},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "patrol": true},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
@@ -1146,7 +1149,7 @@ const BESTIARY := [
 	# it. "Not catchable without a bow" was the original claim here and play
 	# disproved it.
 	{"name": "rabbit", "app": &"rabbit", "hp": 6, "power": 0, "def": 0,
-	 "speed": 130, "ai": &"forager", "flee": 0.0, "no_fade": true,
+	 "speed": 130, "ai": &"forager", "flee": 0.0, "no_fade": true, "wild": true,
 	 # Read the COUNT here, not the share. A rabbit is 20% of a cave floor's
 	 # population and 11% of a fortress one, which sounds like a warren and is
 	 # not: cave floors hold about fourteen monsters, so three rabbits is a
@@ -2485,6 +2488,10 @@ func _corrupt(m: Entity) -> void:
 	m.corrupted = true
 	# Brad's lore: the corrupted crossed purple fungus and were changed.
 	m.take_spores(&"purple")
+	# Changed all the way: a corrupted animal is a monster, and hunts you
+	# unstruck. The purple takes the wild out of it (2026-10-04).
+	if m.faction == Entity.Faction.WILD:
+		m.faction = Entity.Faction.MONSTER
 	m.max_hp = int(round(float(m.max_hp) * CORRUPT_SCALE))
 	m.hp = m.max_hp
 	m.power = int(round(float(m.power) * CORRUPT_SCALE))
@@ -2642,6 +2649,10 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.defense = entry["def"]
 	m.speed = entry["speed"]
 	m.ai = entry.get("ai", &"hunter")
+	# An animal. WILD acts and is nobody's enemy until struck -- see
+	# Entity.hostile_to and _ai_wild (Brad, 2026-10-04).
+	if bool(entry.get("wild", false)):
+		m.faction = Entity.Faction.WILD
 	# CAPABILITY, not state. `patrols` says this kind of creature is the sort
 	# that walks a beat; whether THIS one currently is gets rolled at spawn --
 	# see `_set_the_watch`. Setting it here made every kobold, goblin and orc
@@ -3402,7 +3413,7 @@ func firing_targets(reach: int = -1) -> Array:
 		# cursor offers it as a shot and tab-targeting walks onto it -- the
 		# player would eventually put an arrow through their own bone ally by
 		# pressing tab one time too many.
-		if not e.alive or not e.hostile_to(player):
+		if not e.alive or not _fair_game(e):
 			continue
 		if can_reach(Vector2i(e.x, e.y), r):
 			out.append(e)
@@ -3488,7 +3499,7 @@ func player_fire(cell: Vector2i) -> bool:
 	# Gated on hostile_to() rather than on Faction.NEUTRAL directly, so anything
 	# marked neutral later inherits the refusal without anyone remembering to
 	# come back here. That inheritance is the whole reason the faction exists.
-	if not target.hostile_to(player):
+	if not _fair_game(target):
 		msg_log.add("The %s is not your enemy." % target.name,
 			Color(0.7, 0.6, 0.4))
 		return false
@@ -3570,7 +3581,7 @@ func player_throw(index: int, cell: Vector2i) -> bool:
 	# item killed the trader on 25 of 25 attempts. Checked BEFORE the item
 	# leaves the inventory, so declining the throw does not also cost the thing
 	# you were going to throw.
-	if not target.hostile_to(player):
+	if not _fair_game(target):
 		msg_log.add("The %s is not your enemy." % target.name,
 			Color(0.7, 0.6, 0.4))
 		return false
@@ -3969,6 +3980,23 @@ func visible_monsters() -> Array:
 			out.append(e)
 	return out
 
+## The WILD in sight that are not yet your enemy: listed by the sidebar,
+## shootable, and nothing else -- they stop no journey and forbid no rest.
+func visible_wild() -> Array:
+	var out := []
+	for e in entities:
+		if e.alive and e.is_wild() and not e.hostile_to(player) \
+				and map.is_visible(e.x, e.y):
+			out.append(e)
+	return out
+
+## What you may shoot, throw at or walk into: your enemies, and the wild --
+## hunting a rabbit with a bow is the oldest loop in the game, and a bear
+## has to be provokable from a distance (2026-10-04). The trader and your
+## allies stay refused, through hostile_to.
+func _fair_game(e: Entity) -> bool:
+	return e.hostile_to(player) or e.is_wild()
+
 # ---------------------------------------------------------- player turn ----
 
 ## Every one of these returns true if game time actually passed. Returning
@@ -4008,7 +4036,10 @@ func player_move(dx: int, dy: int) -> bool:
 	# costs you the escape, and attacking it costs you the ally. Swapping is
 	# the only version where the help you summoned is not also the thing that
 	# traps you. It is free, deliberately: the ally moves on its own turn.
-	if target != null and target != player and not target.hostile_to(player):
+	# Not with a WILD thing, which is not your enemy either: walking into a
+	# bear is how you pick the fight, and you do not trade places with it.
+	if target != null and target != player and not target.hostile_to(player) \
+			and not target.is_wild():
 		var from := Vector2i(player.x, player.y)
 		player.x = nx
 		player.y = ny
@@ -8261,6 +8292,21 @@ func _take_ai_turn(actor: Entity) -> int:
 	if dread != null and _step_away(actor, dread):
 		return _last_move_cost
 
+	# AN ANIMAL, UNSTRUCK, LIVES ITS OWN LIFE (Brad, 2026-10-04). Awareness
+	# above still runs -- it notices you, and the sidebar says so -- but
+	# noticing is not hunting. Struck, it falls through to everything below
+	# like any monster, with you its foe (Entity.hostile_to).
+	if actor.is_wild() and not actor.provoked:
+		# Struck by something not on your side, it fights THAT -- a bear with
+		# a goblin's spear in it has a goblin problem, not a you problem. A
+		# forager never fights; its grudge is what it runs from (_ai_wild).
+		var score := actor.grudge
+		if score != null and actor.ai != &"forager" and _minds(actor, score):
+			_ai_hunter(actor, score)
+			return _last_move_cost
+		_ai_wild(actor)
+		return _last_move_cost
+
 	# A careful guard shuts the door it just came through. See _shut_behind.
 	if actor.alertness != Entity.Alert.AWAKE and _shut_behind(actor):
 		return _last_move_cost
@@ -8293,9 +8339,7 @@ func _take_ai_turn(actor: Entity) -> int:
 				# The player is passed as the thing to shy away from, not as a
 				# target: `_ai_forager` flees anything within RABBIT_NOSE and
 				# otherwise goes looking for mushrooms.
-				var near := _foe_for(actor)
-				if near != null:
-					_ai_forager(actor, near)
+				_ai_forager(actor, _what_scares(actor))
 			_:
 				# Asleep, or merely stirring: it spends its turn not acting.
 				# That pause is the player's window to withdraw, and it is the
@@ -9321,7 +9365,11 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 		# `_gives_way` -- head-on and idle friends trade places), and failing
 		# that, to go round. Monsters have always gone round monsters; a comment
 		# here once claimed they "simply wait", and the code never did.
-		if blocker.faction != actor.faction:
+		# "Something it would fight" is hostile_to, not another faction: a
+		# goblin goes round a rabbit now that the two are at peace
+		# (2026-10-04). The trader is never traded places with -- a trader
+		# who wandered would turn the legend's "there is a trader" into a lie.
+		if actor.hostile_to(blocker) or blocker.faction == Entity.Faction.NEUTRAL:
 			return
 		if _gives_way(actor, blocker):
 			_swap_places(actor, blocker)
@@ -9515,6 +9563,62 @@ const RABBIT_NOSE := 14
 ## The order matters: fleeing beats feeding. A rabbit that finished its mouthful
 ## while you closed would be catchable by walking, which is precisely what the
 ## speed is there to prevent.
+## How close you may come before an awake animal gives you room.
+const WILD_SPACE := 2
+
+## What an unstruck WILD creature does with its turn. A forager forages, as
+## it always has, shying from whoever is near. Anything else sleeps until it
+## notices you, then keeps its distance -- a step away when you come within
+## WILD_SPACE -- and otherwise wanders, or stands. No hunting: that is what
+## being struck changes.
+func _ai_wild(actor: Entity) -> void:
+	if actor.ai == &"forager":
+		_ai_forager(actor, _what_scares(actor))
+		return
+	if actor.alertness != Entity.Alert.AWAKE:
+		return
+	var near := _what_scares(actor)
+	if Los.steps(actor.x, actor.y, near.x, near.y) <= WILD_SPACE \
+			and Los.clear(map, actor.x, actor.y, near.x, near.y) \
+			and _step_away(actor, near):
+		return
+	if rng.randf() < 0.5:
+		_step_random(actor)
+
+## Whether a grudge still weighs: the thing is alive and not long gone. Not
+## _can_see -- what struck you, you know the whereabouts of, dark or not;
+## a rabbit speared from the shadows runs from the spear.
+func _minds(actor: Entity, score: Entity) -> bool:
+	return score.alive and Los.steps(actor.x, actor.y, score.x, score.y) <= actor.notice_range * 2
+
+## What an animal shies from. Whatever struck it last, if that is alive and
+## not long gone, before anything else (Brad, 2026-10-04: a rabbit a goblin has
+## speared runs from the goblin, not from you). Else the nearest of you, an
+## ally of yours it can see, and -- for a forager, which fears everything
+## that is not wild -- any monster it can see; a bear gives room to you, not
+## to a kobold. Never null: you are always somewhere. Not _foe_for, which
+## asks about enemies, and an unstruck animal has none.
+func _what_scares(actor: Entity) -> Entity:
+	var fright := actor.grudge
+	if fright != null and _minds(actor, fright):
+		return fright
+	var timid := actor.ai == &"forager"
+	var best: Entity = player
+	var best_d := Los.steps(actor.x, actor.y, player.x, player.y)
+	for e in entities:
+		if e == actor or not e.alive or e.is_player or e.is_wild() \
+				or e.faction == Entity.Faction.NEUTRAL:
+			continue
+		if not timid and e.faction != Entity.Faction.PLAYER:
+			continue
+		if not _can_see(actor, e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if d < best_d:
+			best = e
+			best_d = d
+	return best
+
 func _ai_forager(actor: Entity, foe: Entity) -> void:
 	if actor.busy > 0:
 		actor.busy -= 1
@@ -9585,6 +9689,9 @@ func _rabbit_turns(actor: Entity) -> void:
 	actor.name = "killer rabbit"
 	actor.appearance = &"killer_rabbit"
 	actor.ai = &"hunter"
+	# And it is an animal no longer: a MONSTER, your enemy unstruck, as it
+	# always was before the rabbit went WILD (2026-10-04).
+	actor.faction = Entity.Faction.MONSTER
 	# And it stops FORAGING, which since the activity split is a separate fact
 	# from its `ai`. Setting `ai` alone left `activity` on FEEDING, so the turn
 	# loop kept sending it after mushrooms: Brad ate a haunch worth 14 hp,
@@ -10118,6 +10225,19 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 			defender.lost_turns = 0
 	elif defender.faction != Entity.Faction.RISEN:
 		wake(defender)
+	# A WILD THING REMEMBERS WHAT STRUCK IT (Entity.grudge): a forager runs
+	# from it, anything else fights it back, whoever's side it is on.
+	if defender.is_wild() and attacker != defender:
+		defender.grudge = attacker
+	# STRUCK BY YOUR SIDE, A WILD THING IS YOUR ENEMY FOR GOOD. A forager
+	# says nothing: it runs, as it did before, and "turns on you" would be a
+	# lie about a rabbit.
+	if defender.is_wild() and not defender.provoked \
+			and (attacker.is_player or attacker.faction == Entity.Faction.PLAYER):
+		defender.provoked = true
+		if defender.alive and defender.ai != &"forager" \
+				and map.is_visible(defender.x, defender.y):
+			msg_log.add("The %s turns on you." % defender.name, Color(0.95, 0.72, 0.45))
 	# A risen hit carries the red: what it kills, rises. The snowball.
 	if attacker.fungal and not defender.is_player:
 		defender.take_spores(&"red")

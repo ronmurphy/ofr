@@ -590,6 +590,12 @@ func _draw() -> void:
 				# without the tint it would be indistinguishable from the troll
 				# about to hit you.
 				_draw_glyph_tinted(e.appearance, _visual_cell(e), Palette.ALLY)
+			elif e.faction == Entity.Faction.WILD:
+				# An animal, provoked or not: the colour says the KIND, the
+				# glyph the which (Brad, 2026-10-04). Whether it has turned on
+				# you is the sidebar's to say -- it moves from "wild" to the
+				# hostile count -- as a hunting monster has no map mark either.
+				_draw_glyph_tinted(e.appearance, _visual_cell(e), Palette.WILD)
 			else:
 				_draw_glyph(e.appearance, _visual_cell(e))
 	if state.player.alive:

@@ -346,7 +346,11 @@ func _draw_chips(y: float) -> float:
 const SIGHT_ROWS := 5
 
 func sight_rows() -> Array:
-	var seen := state.visible_monsters()
+	# The hostile, and the WILD in sight beside them (2026-10-04): a bear you
+	# can walk round is still the most important thing in the room to know
+	# about. visible_monsters() leaves the wild out on purpose -- it is what
+	# stops travel and forbids rest, and a rabbit must do neither.
+	var seen: Array = state.visible_monsters() + state.visible_wild()
 	var keyed: Array = []
 	for i in seen.size():
 		var e: Entity = seen[i]
@@ -358,25 +362,37 @@ func sight_rows() -> Array:
 	for k in keyed:
 		var e: Entity = k[2]
 		var mark := CreatureMarks.awareness(e)
-		if mark.is_empty() and e.alertness == Entity.Alert.AWAKE:
+		# Unstruck, an animal is not hunting whatever it has noticed: no "!".
+		var wild: bool = e.is_wild() and not e.hostile_to(state.player)
+		if mark.is_empty() and e.alertness == Entity.Alert.AWAKE and not wild:
 			# Hunting has no persistent marker on the map (an unmarked thing
 			# is one you work out yourself); in a list it needs one.
 			mark = {"text": "!", "colour": Palette.ALERT}
 		out.append({"name": e.name, "ring": CreatureMarks.outline(e),
 			"mark": String(mark.get("text", "")),
 			"mark_colour": mark.get("colour", Palette.UI_DIM),
-			"risen": e.faction == Entity.Faction.RISEN, "e": e})
+			"risen": e.faction == Entity.Faction.RISEN, "wild": wild, "e": e})
 	return out
 
 ## "2 hostile · 1 risen", for the header's right side.
 func sight_summary(rows: Array) -> String:
 	var risen := 0
+	var wild := 0
 	for r in rows:
 		if bool(r["risen"]):
 			risen += 1
+		if bool(r.get("wild", false)):
+			wild += 1
 	if rows.is_empty():
 		return "nothing"
-	var text := "%d hostile" % rows.size()
+	# "1 wild" alone, when nothing in sight means you harm: a count of zero
+	# hostile would be true and would read as a warning.
+	var hostile := rows.size() - wild
+	if hostile == 0:
+		return "%d wild" % wild
+	var text := "%d hostile" % hostile
+	if wild > 0:
+		text += " · %d wild" % wild
 	if risen > 0:
 		text += " · %d risen" % risen
 	return text
@@ -408,6 +424,8 @@ func _draw_sight_row(y: float, row: Dictionary) -> void:
 	var e: Entity = row["e"]
 	if e.corrupted:
 		tint = Palette.CORRUPTED
+	elif bool(row.get("wild", false)):
+		tint = Palette.WILD
 	draw_string(font, Vector2(PAD + RING_W, y), _fit(String(row["name"]), RING_W + reserve),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
 	if mark != "":

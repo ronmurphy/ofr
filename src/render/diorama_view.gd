@@ -1630,6 +1630,9 @@ func _add_items_and_entities() -> void:
 			# The player is on its own side too, but keeps its own colour: the
 			# ally tint is for what fights beside you, as in the classic view.
 			color = Palette.ALLY
+		elif entity.faction == Entity.Faction.WILD:
+			# An animal: one colour for the kind, as in the classic view.
+			color = Palette.WILD
 		if entity.is_player and state.ratted():
 			color = Palette.PLAYER
 		var box := BillboardSizes.box(appearance, BillboardSizes.CREATURE)
