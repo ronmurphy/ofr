@@ -611,6 +611,25 @@ their own scratch tag inside a loop -- `use_scratch_files("bearfit%d")`
 legends.json). Harmless, but it is litter in a player-owned folder. Clear and
 restore the suite's own tag after each loop.
 
+**A monster's mirror shield gives no warning before it bites (day-7 hunt,
+2026-10-04; backlogged by Brad the same day).** `_arm_monster` arms weapon and
+armour only, but a scavenger takes a SHIELD off the floor (`_better_item_at`
+has an offhand branch, `_scavenge` equips into the item's own slot), and a
+floor shield can carry `reflect`. Your first sign is your own blow coming back
+("The kobold's shield throws it back for N"). Brad's design from 2026-09-21: a
+creature wearing reflect gets an animated colour fade on its glyph.
+
+**Brad's shape for it (2026-10-04):** reuse the spore OUTLINE the red and
+purple carriers already wear in both views (`CreatureMarks.spore_colour` ->
+the thicker outline in `GlyphGrid` and on the 3D card in `DioramaView`) for
+anything wearing a reflect shield. On Effects "still", a steady outline in the
+colour the player already reads as "a stone" (`Palette.GEM` or
+`Palette.MAGIC`); on simple and full, the same outline fading cyan -> blue ->
+light blue and round. Colours rough, not fixed. One mechanism, both
+renderers, no new system -- and the still form is the motion-sensitive
+tester's fallback by construction. Mind the risen: they keep their shields
+when they rise.
+
 **InputMap, and when it would be worth migrating.** Suggested by a reviewer, and
 the design document names it as the strongest criticism of the input layer. It
 is the correct long-term architecture: engine-level actions bound to keys and
@@ -899,6 +918,128 @@ in code, bypassing the threat ceiling.
 **Wolves.** A pack (4+), the game's first genuinely neutral creature — they
 ignore you unless provoked. `Faction.NEUTRAL` is used by the trader, which is
 found by identity since 2026-09-27, so other neutrals are now safe to add.
+**Folded into the wild creatures update below (2026-10-04).**
+
+**The wild creatures update (Brad, 2026-10-04 -- a future backlog, rough,
+not scheduled).** An animal ecology, from the bear and the rabbit outward.
+
+- **A WILD faction, appended** (factions are saved as ints). NEUTRAL cannot
+  serve: today it means *inert* -- `_take_ai_turn` gives a neutral no turn at
+  all, and `hostile_to` makes it no one's enemy -- which is right for the
+  trader and wrong for an animal. WILD acts, lives its own life, and ignores
+  you until provoked. The wolf needs exactly this; build it once.
+- **Members:** bat, rabbit, rat, bear, wolf, spider. (The rat joined the
+  same day, Brad: it is the spider's prey and a creature, not a monster.)
+  Mind, when it is built: the giant rat is a depth-1 enemy, so a rat that
+  ignores you until provoked thins the first floors; the threat ceiling
+  should be re-measured. The ring of the rat (you pass as one) only gets
+  more fitting. The slime (below) is the proposed replacement on floors 1-2.
+- **One colour for the kind, the glyph for the which** -- as GEM and MAGIC
+  already work. A creature colour (`Palette.WILD`, an earth tone); the letter
+  or icon says what it is. The rabbit is NOT white: white is the killer
+  rabbit's identity. The rabbit (`e0a05c`) and bear (`b5763d`) are browns
+  already; the bat's purple (`8e6fa8`) is one of the muted purples
+  `palette.gd` has to keep the vivid violet clear of, so moving the bat frees
+  room -- and the rat's grey-brown (`8a7f6a`) comes free with it. Brad: the
+  bat's purple also now reads as "a purple-spore bat", because purple means
+  the poison fungus (the bat's colour is about two months older than the
+  fungus, but players will not know that), so the move clears up a
+  misreading as well. The new colour needs the palette's dichromacy check. Letters: `s` and
+  `w` are taken (skeleton, wight) -- either colour carries it, as the ally `s`
+  already does, or the wolf takes `d` (free).
+- **The food web:** spider > bat, spider > rat, bear > rabbit, wolf >
+  rabbit, rabbit > green fungus. Rats are the plague carriers that seed
+  purple and red at bodies, so a den is a natural check on the fungus spread.
+- **Fire, an innate fear:** a lit torch keeps every creature back. Bears and
+  wolves fight HARDER within 2 of fire -- an animal cornered by flame. (Its
+  own constant: `FIRE_SAFE` is 1 and is the fungus rule. Keeping back could
+  reuse the giving-way code that already steps things away from a dragon.)
+
+**The spider** (D&D's giant spider by way of Minecraft):
+- Ranged, and does not attack you directly: it shoots WEBS, so you spend
+  your turns getting free while the others catch up. Cornered, it bites.
+- Escapes by walking the walls: the banshee's `_step_phasing`, used only to
+  flee. It may end a move inside a wall cell -- deliberately, and it reads
+  as clinging there -- and stays killable, because `player_move` tests for a
+  creature before it tests the ground.
+- **A nest it protects**, always a cave (`cave_regions`): rare in the
+  fortress, decent in the upper band, common in the caves. Hostile inside the
+  den, indifferent outside it; attacking one or burning its web provokes.
+- **Webs are a TILE** (appended), where a shot lands and through the nest.
+  Forcing past one costs **200 energy**, two turns -- the same shape as mud's
+  move cost of 2.0. Burning it costs **100**, one turn, with the torch or a
+  fire melee weapon. That is deliberately faster than the torch's three slow
+  scorches on fungus (dry silk): paying attention and using fire is the smart
+  move. Struggling is LOUD (`_make_noise`), and since 2026-10-04 hunters walk
+  to a noise -- which is how the others catch you, with no coordination.
+  Webs hold flyers (the bat, the spider's prey). A bear walks straight
+  through.
+- **As a risen ally** it webs your enemies. Allies use `_ai_ally`, not their
+  bestiary AI, so the web shot must be taught there, as `_ready_weapon`
+  taught archers. A RED risen spider webs anything in its room.
+- **Open:** the bite's damage; what provokes a wolf pack; how far the torch
+  keeps creatures back.
+
+**The slime (Brad, 2026-10-04 -- rough, not scheduled).** A MONSTER, not a
+wild creature, so it lives here rather than in the update above -- but it
+belongs beside it: if the rat goes WILD, floors 1-2 lose their commonest
+enemy, and the slime is the classic thing to fill them.
+- **Floors 1-2 entry monster, low cost,** and filler wherever a few threat
+  points are left over. Mind the TIER_FADE: `weight` decays to zero about six
+  depths past `min_depth`, so a min-depth-1 slime stops appearing on the
+  descent by about floor 7 on its own. "Filler for other levels" therefore
+  wants either a gentler fade for it or a filler rule; the CLIMB needs
+  nothing -- `_roll_corruptible` re-admits cheap low-tier things without the
+  fade, so a corrupted slime joins the climb's list for free.
+- **Icons (both checked in the full Nerd Font in `tools/fonts`, neither used
+  yet):** `nf-md-square_rounded` U+F14FB, or `nf-fa-jira` U+EF56. Adding one
+  is a line in `GlyphTheme` and a rebuild of the subset
+  (`tools/build_icon_font.py`). ASCII: `j` is free -- NetHack's jelly.
+- **What it does (Brad, same day).** NOT the Minecraft split -- everyone
+  knows that one. It is a SCAVENGER of everything:
+  - It hunts down items -- weapons, armour, food, potions, scrolls, all of
+    it -- picks them up and carries them away. Left alone long enough it is
+    a walking treasure chest, and on death it DROPS EVERYTHING. It moves loot
+    and never makes any, so the sparse-caves rule is untouched.
+  - **Except what it eats:** meat (bear or rabbit) and fungus DISSOLVE in
+    it and are not dropped.
+  - **Acid that lingers,** borrowed from the purple: its hit goes on hurting
+    a few points after it lands, unless you fight it standing in WATER or
+    run to water and wash it off.
+  - **The player's tactic:** drop things to lure it -- anything, it wants all
+    of it -- and lead it into water to fight it there. (Food is a poor lure:
+    it is eaten, not carried.)
+- **What the code already has for it:**
+  - The lingering hurt is the miasma's poison tick (`Entity.poisoned`,
+    POISON_HURT a turn for POISON_LINGER turns), and `_wash` already clears
+    `poisoned` in water. It wants its own name in the log and the status
+    line -- "acid", and the water's message saying acid, not poison -- so the
+    HERE box can teach "wash it off". **Mind the rabbit:** `_breathe` returns
+    early for rabbits BEFORE the tick, which is harmless while the miasma is
+    the only poison (checked 2026-10-04) -- but acid riding `poisoned` would
+    make rabbits immune to it too. Move the guard to the miasma half only.
+  - Carrying: a monster's `inventory` is saved, and `_drop_loot` already
+    calls the dragon's hoard "the one thing in the dungeon that hoards" and
+    says several creatures could be. The slime is the second.
+- **Two existing rules it breaks, on purpose -- say so in the code:**
+  - `_scavenge` runs only while a creature is UNAWARE ("nothing stops
+    mid-fight to try on armour"). The lure needs the slime to go for a
+    dropped item even while it hunts you.
+  - `Item.scavenged`: "the dungeon may take your things, not eat them." The
+    slime eats your food. It is the one thing that does, and only food.
+- **Answered (Brad, same day):**
+  - **Carrying nothing,** it hunts anything that may have an item -- you
+    included -- or, cheaper with the pathfinding and items already there,
+    goes for a potion on the floor.
+  - **Eating heals it** -- the first monster that heals by eating. New code,
+    on a low-level monster.
+  - **It eats the red risen.** Bigger takes longer: a risen giant or dragon
+    keeps moving and attacking while the acid works on it.
+  - **What it is:** no brain -- a kind of red-fungus variant. The red says
+    "expand the risen"; the slime says "I hunger. Everything is good."
+  - **A red risen slime** -- humorous and terrifying. The red must keep it
+    from eating other red risen (one side; `hostile_to` already makes the
+    RISEN faction no enemy of itself, but the slime's hunger has to ask too).
 
 **Armour gems -- BUILT 2026-10-01**, waiting on play: three per slot now, as
 for weapons and shields. The road (rubble only, +1 defence per 4 rooms, +3

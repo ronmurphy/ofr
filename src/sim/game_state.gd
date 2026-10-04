@@ -1500,6 +1500,23 @@ func _reload_after_shot(actor: Entity) -> int:
 func _can_rest_on(x: int, y: int) -> bool:
 	return map.is_walkable(x, y) and not Tiles.is_avoided(map.get_tile(x, y))
 
+## Somewhere a creature can ARRIVE without walking in: a blink, the blink
+## scroll, the returning gem, a creature fallen from the floor above.
+##
+## And walkable is not enough a third time. A shut or barred door is walkable
+## because walking INTO it is how it opens, so every arrival that asked only
+## that stood its creature inside one -- a lich blinked into a shut, opaque
+## door (day 7, 2026-10-04), and the scroll, whose own copy of the rule lacked
+## even is_avoided, could set you over a pit with no fall to follow.
+##
+## A HIDDEN trap is floor here and stays so: landing on one does not spring
+## it, because a landing is not a step. Settled by Brad, 2026-10-04: the
+## scroll is a panic escape to a square you did not choose, and springing a
+## trap you could neither see nor avoid there would be unfair, not tense.
+func _can_land_on(x: int, y: int) -> bool:
+	var t := map.get_tile(x, y)
+	return _can_rest_on(x, y) and t != Tiles.DOOR_CLOSED and t != Tiles.DOOR_BARRED
+
 func _open_cell_in(room: Rect2i) -> Vector2i:
 	var c := room.get_center()
 	var best := c
@@ -3121,6 +3138,17 @@ func _fill_the_satchel(bag: Item) -> void:
 		msg_log.add("Your food and potions go into the satchel: %s." % ", ".join(moved),
 			Color(0.75, 0.80, 0.90))
 
+## Whether the key could take this off the floor: a satchel shelf for it, a
+## stack it joins, or a free slot. The one test the key and the HERE box share
+## (day-7 hunt, 2026-10-04: they had drifted apart).
+func _can_take(item: Item) -> bool:
+	var bag := _the_satchel()
+	if bag != null and bag.satchel_takes(item):
+		return true
+	if _stack_for(item) != null:
+		return true
+	return player.pack_count() < Entity.INVENTORY_MAX
+
 ## The stack in the pack this would join, with room, or null. What you are
 ## wearing is a single thing and never a stack: a plain dagger picked up
 ## while one is in hand goes to its own slot.
@@ -3785,9 +3813,16 @@ func _muffled(at: Vector2i) -> bool:
 			return true
 	return false
 
-## Rooms whose cold has run out are forgotten, each turn.
+## Rooms whose cold has run out are forgotten, each turn -- and what stands
+## frozen thaws by one, on YOUR turn, not its own (Brad, 2026-10-04). Counted
+## on its own turns, a speed-170 thing frozen "for 8" moved again after five
+## of yours and a slow one outlived the room's silence: the count over its
+## head was true only at speed 100. Now room and creature end together.
 func _thaw_rooms() -> void:
 	frozen_rooms = frozen_rooms.filter(func(fr): return turns < int(fr[1]))
+	for e in entities:
+		if e.frozen > 0:
+			e.frozen -= 1
 
 ## THE GEM OF RETURNING RECALLS YOU (6d). Crushed beside a brazier -- lit,
 ## spent or cold; a fire is a landmark -- it marks it. A second, crushed
@@ -3842,7 +3877,7 @@ func _recall_spot(mark: Vector2i) -> Vector2i:
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var c := mark + Vector2i(dx, dy)
-				if map.in_bounds(c.x, c.y) and _can_rest_on(c.x, c.y) 						and entity_at(c.x, c.y) == null:
+				if map.in_bounds(c.x, c.y) and _can_land_on(c.x, c.y)						and entity_at(c.x, c.y) == null:
 					return c
 	return Vector2i(-1, -1)
 
@@ -3862,9 +3897,11 @@ func _show_the_road(gem: Item) -> bool:
 		% gem.name, Color(0.95, 0.90, 0.60))
 	return true
 
-## The route the road shows: from you to the stairs over the plain grid,
-## worked out again only when the turn or your square has changed. Empty
-## until the gem is crushed.
+## The route the road shows: from you to the stairs, worked out again only
+## when the turn or your square has changed. Empty until the gem is crushed.
+## Round the traps you have FOUND, but straight through purple and red: the
+## gem has no idea of fungus dangers (Brad, 2026-10-04), so it can draw a line
+## your own travel would refuse -- reading the ground is still yours.
 func road_route() -> Array:
 	if not road_shown:
 		return []
@@ -4796,11 +4833,18 @@ func player_bury() -> bool:
 const THIRST_SHARE := 2
 
 ## The body the gem would drink: the richest within reach (underfoot or
-## beside you); ties go to the earliest laid. Empty for none.
+## beside you) that it WOULD drink -- whole, only one the red has claimed;
+## ties go to the earliest laid. Empty for none. The key, the pack and the
+## HERE box all ask this one question (day-7 hunt, 2026-10-04: the pack
+## offered a drink the key refused, and a claimed body beside a richer plain
+## one was never offered at all).
 func thirst_target() -> Dictionary:
+	var whole := player.hp >= player.max_hp
 	var best: Dictionary = {}
 	for b in bodies:
 		if maxi(absi(int(b["x"]) - player.x), absi(int(b["y"]) - player.y)) > 1:
+			continue
+		if whole and not bool(b.get("claimed", false)):
 			continue
 		if best.is_empty() or _thirst_heal(b) > _thirst_heal(best):
 			best = b
@@ -4812,12 +4856,15 @@ func _thirst_heal(b: Dictionary) -> int:
 func _drink_the_dead(gem: Item) -> bool:
 	var b := thirst_target()
 	if b.is_empty():
-		msg_log.add("There is no body here for it to drink.", Color(0.7, 0.6, 0.4))
+		# Which refusal: nothing to drink, or nothing worth it while whole.
+		var near := false
+		for body in bodies:
+			if maxi(absi(int(body["x"]) - player.x), absi(int(body["y"]) - player.y)) <= 1:
+				near = true
+		msg_log.add("You are already whole." if near else "There is no body here for it to drink.",
+			Color(0.7, 0.6, 0.4))
 		return false
 	var claimed := bool(b.get("claimed", false))
-	if player.hp >= player.max_hp and not claimed:
-		msg_log.add("You are already whole.", Color(0.7, 0.6, 0.4))
-		return false
 	var at := Vector2i(int(b["x"]), int(b["y"]))
 	var who := String(b["e"].get("name", b["app"]))
 	var healed := mini(_thirst_heal(b), player.max_hp - player.hp)
@@ -5268,6 +5315,10 @@ func _invoke_shrine(kind: int) -> void:
 			var made := entities.size() - before
 			for i in range(before, entities.size()):
 				entities[i].alertness = Entity.Alert.AWAKE
+				# Called up AT you, so it knows where you were. Without a
+				# mark, one stepping through behind a pillar had nowhere to go
+				# once hunters followed last_seen (2026-10-04).
+				entities[i].last_seen = Vector2i(player.x, player.y)
 			msg_log.add("The air splits, and %d things step through." % made,
 				Color(0.95, 0.50, 0.45))
 
@@ -5852,7 +5903,17 @@ func can_forge_item(item: Item) -> bool:
 	var donor := _find_duplicate(item)
 	if donor == null or donor.upgrade_level() > item.upgrade_level():
 		return false
+	if forge_wants_room(item):
+		return false
 	return item_can_upgrade(item) and not _forge_site(item).is_empty()
+
+## A stack of three or more worked with a full pack: the worked one must be
+## set apart from the plain ones left, and there is no slot for them. The ONE
+## rule the key (player_merge), the ● and the hint all ask (day-7 hunt,
+## 2026-10-04 -- they offered the forge the key then refused; Brad: one rule,
+## not two).
+func forge_wants_room(item: Item) -> bool:
+	return item.count >= 3 and player.pack_count() >= Entity.INVENTORY_MAX
 
 ## Merge the item at `index` with an identical one from the pack, at a brazier.
 func player_merge(index: int) -> bool:
@@ -5904,7 +5965,8 @@ func player_merge(index: int) -> bool:
 	# worked one apart, so the forge is refused before anything is spent.
 	if donor == item:
 		var rest := item.count - 2
-		if rest > 0 and player.pack_count() >= Entity.INVENTORY_MAX:
+		# The same question the ● and the hint ask -- one rule, not two.
+		if forge_wants_room(item):
 			msg_log.add("Your pack is full; there is nowhere to set the rest of the %s apart." % item.name,
 				Color(0.9, 0.55, 0.35))
 			return false
@@ -6487,10 +6549,13 @@ func actions_here() -> Array:
 		return out
 
 	var here := items_at(player.x, player.y)
-	# A full pack means the key does what the square is for (see
-	# player_pickup), so the offer has to say the same.
-	var full := player.pack_count() >= Entity.INVENTORY_MAX
-	if not here.is_empty() and not (full and here[0].id != &"arrows"
+	# When the item cannot be taken, the key does what the square is for (see
+	# player_pickup), so the offer has to say the same -- through the SAME
+	# test, _can_take. "Full" alone was wrong once stacks and the satchel took
+	# things a full pack could not (day-7 hunt, 2026-10-04): the box promised
+	# the stairs while the key picked up the potion.
+	var taken := not here.is_empty() and _can_take(here[0])
+	if not here.is_empty() and not (not taken and here[0].id != &"arrows"
 			and here[0].kind != Item.Kind.AMULET
 			and map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES):
 		var it: Item = here[0]
@@ -6589,9 +6654,9 @@ func gem_use_here(gem: Item) -> String:
 			if not _hunters().is_empty():
 				return "veil: lose every hunter"
 		&"leech":
+			# thirst_target already refuses a plain body while you are whole.
 			var body := thirst_target()
-			if not body.is_empty() \
-					and (player.hp < player.max_hp or bool(body.get("claimed", false))):
+			if not body.is_empty():
 				# "drink the", not "drink the": the box holds about 42
 				# characters and "risen kobold slinger" is the longest body.
 				return "thirst: drink %s (+%d)" % [String(body["e"].get("name", body["app"])),
@@ -6679,6 +6744,8 @@ func player_pickup() -> bool:
 	# 2026-10-03: the offhand only adds the key; the bag works wherever it
 	# is): no pack slot spent, and the heal is a key away (the forager's
 	# satchel). Ten of each kind; the eleventh goes to the pack as before.
+	# The three ways in -- the satchel, a stack, a free slot -- are one
+	# question, _can_take, which the HERE box asks too.
 	var bag := _the_satchel()
 	if bag != null and bag.satchel_takes(here[0]):
 		var meal: Item = here[0]
@@ -6696,7 +6763,7 @@ func player_pickup() -> bool:
 		_end_player_turn()
 		return true
 	# A stack with room takes one more whatever the count says (2026-10-03).
-	if player.pack_count() >= Entity.INVENTORY_MAX and _stack_for(here[0]) == null:
+	if not _can_take(here[0]):
 		# A FULL PACK MUST NOT BLOCK THE SQUARE'S OWN USE. Found in the
 		# 2026-09-27 hunt: an item lying on the stairs, with a full pack, made
 		# this key refuse -- and on a pad this key is the only way down or up.
@@ -6821,7 +6888,7 @@ func _pick_fungus() -> bool:
 		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
 		else Tiles.FLOOR)
 	_gather_lights()
-	msg_log.add("You pick the fungus. Its glow goes with it into the satchel (%d)." % stack.count,
+	msg_log.add("You pick the fungus. Its glow goes with it into the satchel (x%d)." % stack.count,
 		Color(0.62, 0.85, 0.68))
 	_end_player_turn()
 	return true
@@ -6870,12 +6937,25 @@ func player_drop_from_satchel(index: int) -> bool:
 		msg_log.add("You set the fungus down. It takes root, and glows.", Color(0.62, 0.85, 0.68))
 		_end_player_turn()
 		return true
-	bag.contents.remove_at(index)
-	item.letter = ""
-	item.x = player.x
-	item.y = player.y
-	ground.append(item)
-	msg_log.add("You take the %s out of the satchel and drop it." % item.name)
+	# One at a time, as from the pack ("one leaves at a time", 2026-10-03).
+	# This took the WHOLE shelf -- ten potions on the floor -- while the log
+	# said "drop it" (day-7 hunt, 2026-10-04).
+	var left := item.count - 1
+	var dropped := item
+	if left > 0:
+		item.count = left
+		dropped = item.split_one()
+	else:
+		bag.contents.remove_at(index)
+	dropped.letter = ""
+	dropped.x = player.x
+	dropped.y = player.y
+	ground.append(dropped)
+	if left > 0:
+		msg_log.add("You take one %s out of the satchel and drop it (x%d left)."
+			% [dropped.name, left])
+	else:
+		msg_log.add("You take the %s out of the satchel and drop it." % dropped.name)
 	_end_player_turn()
 	return true
 
@@ -7386,7 +7466,7 @@ func _apply_effect(item: Item) -> bool:
 			var r := item.magnitude
 			for y in range(maxi(0, player.y - r), mini(map.height, player.y + r + 1)):
 				for x in range(maxi(0, player.x - r), mini(map.width, player.x + r + 1)):
-					if not map.is_walkable(x, y):
+					if not _can_land_on(x, y):
 						continue
 					if entity_at(x, y) != null:
 						continue
@@ -8116,11 +8196,10 @@ func _run_world() -> void:
 func _take_ai_turn(actor: Entity) -> int:
 	if not actor.alive or game_over:
 		return Scheduler.ACTION_COST
-	# Frozen (the gem of frost): it stands there, the turn spent, one turn
-	# nearer the thaw. Before the risen and everything else, because it is
-	# true of all of them.
+	# Frozen (the gem of frost): it stands there, the turn spent. It thaws on
+	# your turns, in _thaw_rooms, not on its own. Before the risen and
+	# everything else, because it is true of all of them.
 	if actor.frozen > 0:
-		actor.frozen -= 1
 		return Scheduler.ACTION_COST
 
 	# A neutral takes no turn at all.
@@ -8246,6 +8325,23 @@ func _take_ai_turn(actor: Entity) -> int:
 			return _last_move_cost
 		_ai_flee(actor, foe)
 		return _last_move_cost
+
+	# LOST, IT GOES WHERE IT LAST SAW YOU (Brad, 2026-10-04). Until then every
+	# awake thing steered by your true position, seen or not: `last_seen` was
+	# written in seven places and read in none, so the boss gem's decoy fooled
+	# nothing and a far noise pulled the floor toward YOU. Only a sight of you
+	# moves the mark (_update_awareness). Not for what senses life -- it never
+	# needed to see you -- nor a forager, whose "foe" is what it runs from.
+	# But something it can SEE beats a memory (Brad, 2026-10-04): with your
+	# ally in view it turns on the ally, and walks your trail only when there
+	# is nothing in front of it.
+	if foe.is_player and actor.lost_turns > 0 and not actor.senses \
+			and actor.ai != &"forager":
+		var in_view := _foe_for(actor, true)
+		if in_view == null:
+			_seek_last_seen(actor)
+			return _last_move_cost
+		foe = in_view
 
 	match actor.ai:
 		&"erratic": _ai_erratic(actor, foe)
@@ -8544,15 +8640,19 @@ func _can_see(watcher: Entity, other: Entity) -> bool:
 ## only be fought by something already hunting. Whether an ally should be able
 ## to draw attention on its own is the open design question, and it belongs
 ## with the confusion beat rather than here.
-func _foe_for(actor: Entity) -> Entity:
+func _foe_for(actor: Entity, without_you := false) -> Entity:
 	var best: Entity = null
 	var best_d := 0
 	for e in entities:
 		if not e.alive or not actor.hostile_to(e):
 			continue
+		# Asked by a hunter that has LOST you: what can it see instead?
+		if without_you and e.is_player:
+			continue
 		# THE PLAYER STAYS A TARGET WHEN UNSEEN, because an awake monster hunts
-		# by `last_seen` and that memory is the whole point of the field.
-		# Everything else has to be visible right now.
+		# by `last_seen` and that memory is the whole point of the field (the
+		# LOST step in _take_ai_turn -- until 2026-10-04 this comment was the
+		# only place that happened). Everything else has to be visible now.
 		#
 		# Without this the scan had no range and no sight check at all, so a
 		# monster that woke to the player could lock onto an ally thirty cells
@@ -8718,30 +8818,30 @@ const MORALE_SHAKEN_TURNS := 12
 ##
 ## Uses position rather than `_can_see`, because the thing it is looking at is
 ## already dead and `_can_see` refuses corpses.
-func _rattle_the_ranks(fallen: Entity) -> void:
+func _rattle_the_ranks(slain: Entity) -> void:
 	for e in entities:
-		if e == fallen or not e.alive or e.is_player:
+		if e == slain or not e.alive or e.is_player:
 			continue
-		if e.faction != fallen.faction or not e.scavenges:
+		if e.faction != slain.faction or not e.scavenges:
 			continue
 		# Something that never flees cannot be shaken either.
 		if e.flee_below <= 0.0:
 			continue
-		if Los.steps(e.x, e.y, fallen.x, fallen.y) > e.notice_range:
+		if Los.steps(e.x, e.y, slain.x, slain.y) > e.notice_range:
 			continue
-		if not Los.clear(map, e.x, e.y, fallen.x, fallen.y):
+		if not Los.clear(map, e.x, e.y, slain.x, slain.y):
 			continue
 		# Was that the biggest thing here, or just another body?
-		var biggest := fallen.threat
+		var biggest := slain.threat
 		for o in entities:
-			if o == fallen or o == e or not o.alive or o.is_player:
+			if o == slain or o == e or not o.alive or o.is_player:
 				continue
 			if o.faction != e.faction:
 				continue
 			if Los.steps(e.x, e.y, o.x, o.y) > MORALE_REACH:
 				continue
 			biggest = maxi(biggest, o.threat)
-		if biggest > fallen.threat:
+		if biggest > slain.threat:
 			continue
 		e.shaken = MORALE_SHAKEN_TURNS
 		if map.is_visible(e.x, e.y):
@@ -8774,6 +8874,27 @@ func _ai_hunter(actor: Entity, foe: Entity) -> void:
 		_attack(actor, foe)
 		return
 	_step_toward(actor, Vector2i(foe.x, foe.y))
+
+## A hunter that has lost you walks to where it last saw you -- or to the
+## crash or the noise it took for you -- and stands there until it gives up
+## the trail (Entity.pursue_turns). Only WHERE it goes changes, not what it
+## is: a bat still flits, a lone goblin still hangs back (_ai_pack), and the
+## ranged keep fetching stones and winding their blink on the way.
+func _seek_last_seen(actor: Entity) -> void:
+	if actor.reload_left > 0:
+		actor.reload_left -= 1
+	if actor.blink_cool > 0:
+		actor.blink_cool -= 1
+	var to := actor.last_seen
+	# No mark at all (a save from before it was kept): nothing to walk to.
+	if to.x < 0 or (actor.x == to.x and actor.y == to.y):
+		return
+	if actor.ai == &"erratic" and rng.randf() < 0.6:
+		_step_random(actor)
+		return
+	if actor.ai == &"pack" and _allies_near(actor, 5) == 0 and rng.randf() >= 0.45:
+		return
+	_step_toward(actor, to)
 
 ## Puts the right weapon in a creature's hands for the range it is fighting at.
 ##
@@ -8950,7 +9071,10 @@ func _fair_from_the_dark(shooter: Entity, target: Entity) -> bool:
 ## 4 always fired from the dark. Brad was at 2 hp from exactly that
 ## (2026-09-29): shooters must now stand at the very edge of your light.
 func dark_shot_grace() -> int:
-	if torch_flare > 0 or (torch_lit and torch_radius() >= TORCH_RADIUS):
+	# The BAND's torch, not torch_radius(): the lantern in your armour adds a
+	# cell to that, and one more tuning step would have handed the caves back
+	# the grace Brad took away on 2026-09-29 (day-7 hunt, 2026-10-04).
+	if torch_flare > 0 or (torch_lit and not Bands.is_caves(effective_depth())):
 		return DARK_SHOT_GRACE
 	return 0
 
@@ -8972,7 +9096,7 @@ func _blink_away(actor: Entity, foe: Entity) -> bool:
 	var r := actor.blink_range
 	for y in range(maxi(1, actor.y - r), mini(map.height - 1, actor.y + r + 1)):
 		for x in range(maxi(1, actor.x - r), mini(map.width - 1, actor.x + r + 1)):
-			if not map.is_walkable(x, y) or Tiles.is_avoided(map.get_tile(x, y)):
+			if not _can_land_on(x, y):
 				continue
 			if entity_at(x, y) != null:
 				continue
@@ -9090,7 +9214,7 @@ func _far_landing() -> Vector2i:
 	var best_d := -1
 	for y in map.height:
 		for x in map.width:
-			if not _can_rest_on(x, y) or entity_at(x, y) != null:
+			if not _can_land_on(x, y) or entity_at(x, y) != null:
 				continue
 			var d := Los.steps(x, y, player.x, player.y)
 			if d > best_d:

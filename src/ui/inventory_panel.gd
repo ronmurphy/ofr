@@ -737,6 +737,9 @@ func _action_hint(item: Item) -> String:
 		return "needs a guttering brazier"
 	if state.can_forge_item(item):
 		return "merge -> +%d" % (item.upgrade_level() + 1)
+	if state.forge_wants_room(item) and state._find_duplicate(item) != null \
+			and state.item_can_upgrade(item) and not state._forge_site(item).is_empty():
+		return "pack full: nowhere to set the rest apart"
 	return ""
 
 func _draw_row(r: Rect2, item: Item, index: int) -> void:

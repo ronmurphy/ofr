@@ -266,7 +266,8 @@ var unliving := false
 ## thing still swings as hard, it just cannot close or flee as fast.
 var chilled := 0
 ## Turns frozen solid (the gem of frost's room): it neither acts nor hears
-## until this runs out, and can be hit without hitting back.
+## until this runs out, and can be hit without hitting back. The PLAYER'S
+## turns, whatever its speed (GameState._thaw_rooms).
 var frozen := 0
 
 ## A low-tier creature the climb has made worse. Cosmetically a colour, but the

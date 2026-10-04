@@ -115,6 +115,7 @@ func _initialize() -> void:
 	_test_a_bone_ally_can_carry_the_red()
 	_test_the_undertakers_pay()
 	_test_gems_in_the_world()
+	_test_a_lost_hunter_goes_where_it_last_saw_you()
 	_test_suspend_slot_is_destroyed_on_load()
 	_test_morgue_line()
 	_test_shrines_appear()
@@ -244,6 +245,7 @@ func _initialize() -> void:
 	_test_authored_pits_obey_the_rule()
 	_test_casters()
 	_test_caster_standoff_and_blink()
+	_test_nothing_arrives_inside_a_door()
 	_test_graves_remember_the_dead()
 	_test_elapsed_is_time_not_keypresses()
 	_test_run_is_recorded()
@@ -253,6 +255,7 @@ func _initialize() -> void:
 	_test_inventory_letters_dodge_the_keys()
 	_test_worn_gear_is_not_in_the_pack()
 	_test_stacks_in_the_pack()
+	_test_the_forge_mark_keeps_its_word()
 	_test_no_key_steals_an_inventory_letter()
 	_test_an_older_save_still_loads()
 	_test_fungus_is_a_mouthful()
@@ -2381,6 +2384,29 @@ func _test_the_gem_of_thirst() -> void:
 	_kill(gs, kob, kob)
 	check("whole, a plain body is not worth the gem",
 		not gs.player_use(gs.player.inventory.find(gem2)) and gs.bodies.size() == 1)
+	# And nothing OFFERS it either (day-7 hunt, 2026-10-04: the pack said
+	# "drink the kobold" here while the key refused). The body must still be
+	# there, or "nothing offered" is true of an empty floor: with the gate
+	# broken, the key above drinks it and this passed on nothing.
+	check("whole, beside a plain body, neither the pack nor the HERE box offers it",
+		gs.bodies.size() == 1 and not panel._action_hint(gem2).begins_with("drink")
+			and gs.gem_use_here(gem2) == "",
+		"pack '%s' / here '%s'" % [panel._action_hint(gem2), gs.gem_use_here(gem2)])
+	# Whole, a claimed body beside a RICHER plain one: the claimed one is the
+	# drink -- it used to pick the richer, refuse, and never offer the other.
+	var red_rat := _spawn(gs, "giant rat", 6, 5)
+	red_rat.spores = &"red"
+	_kill(gs, red_rat, red_rat)
+	check("precondition: a plain kobold and a claimed rat, both in reach",
+		gs.bodies.size() == 2 and gs.thirst_target().get("app", &"") == &"rat",
+		str(gs.thirst_target().get("app", "none")))
+	check("whole, the claimed one is offered and drunk; the plain one stays",
+		panel._action_hint(gem2).begins_with("drink the")
+		and gs.player_use(gs.player.inventory.find(gem2)) and gs.bodies.size() == 1
+		and not bool(gs.bodies[0].get("claimed", false)),
+		panel._action_hint(gem2))
+	gem2 = Item.make(&"gem_leech")
+	gs.give_item(gem2)
 	gs.bodies = []
 	var red_kob := _spawn(gs, "kobold", 4, 5)
 	red_kob.spores = &"red"
@@ -2786,8 +2812,26 @@ func _test_gems_in_the_world() -> void:
 	var stood := Vector2i(inside.x, inside.y)
 	var left := inside.frozen
 	fs._take_ai_turn(inside)
-	check("it stands where it is and thaws by one",
-		Vector2i(inside.x, inside.y) == stood and inside.frozen == left - 1)
+	check("its own turn: it stands where it is, and thaws nothing",
+		Vector2i(inside.x, inside.y) == stood and inside.frozen == left)
+	fs._thaw_rooms()
+	check("your turn thaws it by one", inside.frozen == left - 1)
+	# In YOUR turns whatever its speed (Brad, 2026-10-04). Counted on its own,
+	# a fast thing was free early and a slow one outlived the room's silence.
+	# The fast one is given two turns to each of yours, the slow one one.
+	var quick := _spawn(fs, "kobold", 9, 8)
+	quick.speed = 170
+	quick.frozen = 3
+	var plodder := _spawn(fs, "kobold", 10, 8)
+	plodder.speed = 70
+	plodder.frozen = 3
+	for _t in 2:
+		fs._take_ai_turn(quick)
+		fs._take_ai_turn(quick)
+		fs._take_ai_turn(plodder)
+		fs._thaw_rooms()
+	check("a fast thing and a slow one, frozen together, thaw together (%d, %d)"
+		% [quick.frozen, plodder.frozen], quick.frozen == 1 and plodder.frozen == 1)
 	outside.alertness = Entity.Alert.ASLEEP
 	fs._make_noise(Vector2i(5, 6), 20, &"crash")
 	check("noise made in the frozen room carries nowhere",
@@ -2899,6 +2943,139 @@ func _test_gems_in_the_world() -> void:
 		not ms.player_use(ms.player.inventory.find(second)) and ms.player.inventory.has(second)
 		and panel._action_hint(second) != "name the shrine")
 
+## A HUNTER THAT HAS LOST YOU GOES WHERE IT LAST SAW YOU (Brad, 2026-10-04).
+##
+## `last_seen` was written in seven places and read in none, so every awake
+## thing steered by your true position, seen or not. The boss gem's checks
+## asked for the field -- `hunter.last_seen == crash` -- and passed while the
+## goblin walked straight at you. So every check here takes a STEP and asks
+## which way it went, with you and the mark on opposite sides of it.
+func _test_a_lost_hunter_goes_where_it_last_saw_you() -> void:
+	# A noise to the east; you far to the west, out of its sight.
+	var gs := _arena(30, 14)
+	gs.player.x = 2
+	gs.player.y = 1
+	var orc := _spawn(gs, "orc", 22, 10)
+	orc.alertness = Entity.Alert.ASLEEP
+	gs._make_noise(Vector2i(27, 10), 8, &"trap")
+	check("precondition: the noise wakes it and marks where it was",
+		orc.alertness == Entity.Alert.AWAKE and orc.last_seen == Vector2i(27, 10))
+	gs._take_ai_turn(orc)
+	check("precondition: it cannot see you (%d turns lost)" % orc.lost_turns, orc.lost_turns > 0)
+	check("woken by a noise, it goes to the noise, not to you (%s)" % Vector2i(orc.x, orc.y),
+		orc.x == 23 and orc.y == 10)
+	for _t in 6:
+		gs._take_ai_turn(orc)
+	check("and once there it stands, still hunting (%s, %d lost)"
+		% [Vector2i(orc.x, orc.y), orc.lost_turns],
+		Vector2i(orc.x, orc.y) == Vector2i(27, 10) and orc.alertness == Entity.Alert.AWAKE)
+	# A sight of you moves the mark, and the hunt is on you again.
+	gs.player.x = 20
+	gs.player.y = 6
+	gs._take_ai_turn(orc)
+	check("seen again, the mark is you (%s)" % orc.last_seen,
+		orc.last_seen == Vector2i(20, 6) and orc.lost_turns == 0)
+	check("and it comes for you (%s)" % Vector2i(orc.x, orc.y),
+		Los.steps(orc.x, orc.y, 20, 6) < Los.steps(27, 10, 20, 6))
+
+	# THE BOSS GEM'S DECOY, thrown for real at a hunter that has lost you.
+	var ds := _arena(30, 14)
+	ds.player.x = 4
+	ds.player.y = 2
+	ds.player.inventory.clear()
+	var boss := Item.make(&"gem_boss")
+	ds.give_item(boss)
+	# An orc, not the goblin of the probe: a lone goblin hangs back about half
+	# its turns, and this is about the way it goes, not its nerve.
+	var decoyed := _spawn(ds, "orc", 22, 10)
+	decoyed.last_seen = Vector2i(4, 2)
+	decoyed.lost_turns = 2
+	check("precondition: the crash is thrown",
+		ds.player_throw(ds.player.inventory.find(boss), Vector2i(12, 10)))
+	# The throw's own turn moves it too, so this asks the way, not the cell:
+	# along row 10 to the crash -- toward you would climb toward row 2.
+	ds._take_ai_turn(decoyed)
+	check("a hunter that lost you walks to the crash, not to you (%s)" % Vector2i(decoyed.x, decoyed.y),
+		decoyed.x < 22 and decoyed.y == 10)
+
+	# Only WHERE it goes changed, not what it is: a lone goblin that has lost
+	# you still hangs back about half its turns, as _ai_pack has it do in
+	# sight. Its mark is far off, so it never arrives in these eight turns,
+	# and it starts one turn lost so it stays on the trail throughout.
+	var shy := _spawn(ds, "goblin", 27, 4)
+	shy.last_seen = Vector2i(27, 12)
+	var shy_moves := 0
+	for _t in 8:
+		shy.lost_turns = 1
+		var shy_was := Vector2i(shy.x, shy.y)
+		ds._take_ai_turn(shy)
+		if Vector2i(shy.x, shy.y) != shy_was:
+			shy_moves += 1
+	check("a lone goblin on your trail still hangs back some turns (%d of 8 moved)" % shy_moves,
+		shy_moves > 0 and shy_moves < 8)
+
+	# With no mark at all it stands. (Walking "to" (-1, -1) would find no
+	# route either -- this pins the standing, not the guard.)
+	var blank := _spawn(ds, "orc", 22, 3)
+	blank.last_seen = Vector2i(-1, -1)
+	blank.lost_turns = 2
+	ds._take_ai_turn(blank)
+	check("with no mark at all it stands where it is",
+		Vector2i(blank.x, blank.y) == Vector2i(22, 3) and blank.lost_turns > 0)
+
+	# What senses life never needed to see you: it still comes for YOU.
+	var wail := _spawn(ds, "banshee", 22, 12)
+	wail.wail_cool = 5
+	wail.last_seen = Vector2i(28, 12)
+	wail.lost_turns = 2
+	var wail_was := Los.steps(wail.x, wail.y, 4, 2)
+	ds._take_ai_turn(wail)
+	check("precondition: the banshee has lost sight of you too", wail.lost_turns > 0)
+	check("but it senses life, and comes for you (%d -> %d)"
+		% [wail_was, Los.steps(wail.x, wail.y, 4, 2)], Los.steps(wail.x, wail.y, 4, 2) < wail_was)
+
+	# And a rabbit is no hunter: its "foe" is what it runs from.
+	var bun := _spawn(ds, "rabbit", 25, 7)
+	ds.map.set_tile(28, 7, Tiles.FUNGUS)
+	bun.last_seen = Vector2i(21, 7)
+	bun.lost_turns = 2
+	ds._take_ai_turn(bun)
+	check("precondition: lost as well", bun.lost_turns > 0)
+	check("a rabbit goes to its supper, not down your trail (%s)" % Vector2i(bun.x, bun.y),
+		bun.x == 26 and bun.y == 7)
+
+	# Something it can SEE beats a memory (Brad, 2026-10-04): a hunter that
+	# has lost you turns on your ally in view rather than walk your trail.
+	# YOU must be the nearer, behind a wall: with the ally nearer, `_foe_for`
+	# already picked it and the LOST step never ran -- the first version of
+	# this check put the ally beside it and passed with the change undone.
+	var vs := _arena(30, 14)
+	for wy in [9, 10, 11]:
+		vs.map.set_tile(21, wy, Tiles.WALL)
+	vs.pathfinder = Pathfinder.new(vs.map)
+	vs.player.x = 20
+	vs.player.y = 10
+	var hunter := _spawn(vs, "orc", 22, 10)
+	hunter.last_seen = Vector2i(27, 10)
+	hunter.lost_turns = 2
+	var friend := _spawn(vs, "kobold", 22, 7)
+	friend.faction = Entity.Faction.PLAYER
+	# And in LIGHT: past arm's length a living thing sees only what is lit
+	# (`_can_see`), and the first rebuild left the ally in the dark.
+	vs.map.set_tile(23, 6, Tiles.BRAZIER)
+	vs.brazier_charge = {Vector2i(23, 6): GameState.BRAZIER_CHARGE}
+	vs._gather_lights()
+	vs.update_vision()
+	check("precondition: you are nearer than the ally, but behind the wall",
+		Los.steps(22, 10, 20, 10) < Los.steps(22, 10, 22, 7)
+		and not Los.clear(vs.map, 22, 10, 20, 10))
+	vs._take_ai_turn(hunter)
+	check("precondition: it has lost you (%d)" % hunter.lost_turns, hunter.lost_turns > 0)
+	check("precondition: it can see your ally", vs._can_see(hunter, friend))
+	check("so it turns on the ally it can see, not down your trail (%s)"
+		% Vector2i(hunter.x, hunter.y),
+		Los.steps(hunter.x, hunter.y, friend.x, friend.y) < 3 and hunter.x <= 22)
+
 ## SPREADING (Dwarf Fortress plan, strand 2b): marks, marked deaths, trails,
 ## and rats drawn to fresh bodies.
 func _test_the_fungus_spreads() -> void:
@@ -3002,6 +3179,22 @@ func _test_the_dark_is_fair() -> void:
 	climb.torch_flare = 5
 	check("unless your flare is burning", climb.dark_shot_grace() == GameState.DARK_SHOT_GRACE)
 	climb.torch_flare = 0
+	# THE LANTERN DOES NOT BUY IT BACK (day-7 hunt, 2026-10-04): a cell more of
+	# torch in the caves is still the caves. Pinned here so a tuned constant
+	# cannot quietly hand the grace back.
+	var lantern_mail := Item.make(&"chain_mail")
+	lantern_mail.element = &"lantern"
+	climb.give_item(lantern_mail)
+	climb._toggle_equip(lantern_mail)
+	check("precondition: the lantern lengthens the torch", climb.torch_radius()
+		== GameState.CORRUPT_TORCH + GameState.LANTERN_CELLS)
+	check("and in the caves the grace stays 0 with it", climb.dark_shot_grace() == 0)
+	room.give_item(Item.make(&"chain_mail"))
+	var up_mail: Item = room.player.inventory[-1]
+	up_mail.element = &"lantern"
+	room._toggle_equip(up_mail)
+	check("while on a room floor the lantern keeps the full torch's margin (and must)",
+		room.dark_shot_grace() == GameState.DARK_SHOT_GRACE)
 	check("the dragon, wizard and arch lich cast; a slinger does not",
 		GameState.monster_from(_bestiary_entry("young dragon"), 0, 0).casts
 		and GameState.monster_from(_bestiary_entry("wizard"), 0, 0).casts
@@ -3792,6 +3985,18 @@ func _test_shrine_effects() -> void:
 		if call.entities[i].alertness != Entity.Alert.AWAKE:
 			all_awake = false
 	check("and it arrives already looking for you", all_awake)
+	# Knowing where you stood (2026-10-04, when hunters began following their
+	# mark): without one, a thing called up behind a pillar stood there. The
+	# shrine itself, not the prayer -- the prayer's own turn lets them see you,
+	# which would hand them the mark and hide a missing one.
+	var call2 := _shrine_arena(Shrines.SUMMONS)
+	var before2 := call2.entities.size()
+	call2._invoke_shrine(Shrines.SUMMONS)
+	var all_marked := call2.entities.size() > before2
+	for i in range(before2, call2.entities.size()):
+		if call2.entities[i].last_seen != Vector2i(call2.player.x, call2.player.y):
+			all_marked = false
+	check("and it knows where you stood when it was called", all_marked)
 
 ## A prayer may leave a gem, whatever else the shrine just did.
 ##
@@ -4799,6 +5004,10 @@ func _test_a_pillar_stops_an_arrow() -> void:
 	gs.pathfinder = Pathfinder.new(gs.map)
 
 	var archer := _spawn(gs, "kobold slinger", 9, 4)
+	# It saw you there before you put the pillar between you. _spawn hands it
+	# AWAKE with no mark, which play never does (2026-10-04: a hunter that
+	# has lost you now goes where it last saw you, and with no mark, nowhere).
+	archer.last_seen = Vector2i(3, 4)
 	var hp_before := gs.player.hp
 	gs._take_ai_turn(archer)
 	check("a pillar stops the arrow", gs.player.hp == hp_before)
@@ -7193,7 +7402,7 @@ func _test_the_foragers_satchel() -> void:
 	var bag := Item.make(&"satchel")
 	gs.give_item(bag)
 	check("it is an offhand piece that holds ten of each", bag.is_satchel() and bag.slot == Item.Slot.OFFHAND
-		and bag.holds == 10 and bag.display_name() == "forager's satchel (0)")
+		and bag.holds == 10 and bag.display_name() == "forager's satchel, 0 inside")
 	check("in the pack, unworn, it is still the satchel you would open", gs._the_satchel() == bag
 		and gs._worn_satchel() == null)
 	var potion := Item.make(&"potion_healing")
@@ -7254,6 +7463,25 @@ func _test_the_foragers_satchel() -> void:
 	check("on floor it does, and glows again (and must)", gs.player_drop_from_satchel(0)
 		and gs.map.get_tile(5, 4) == Tiles.FUNGUS and bag.contents.is_empty())
 	gs.map.set_tile(5, 4, Tiles.FLOOR)
+	# Anything else comes out ONE at a time, as from the pack (day-7 hunt,
+	# 2026-10-04: the whole shelf hit the floor while the log said "drop it").
+	var shelf3 := Item.make(&"potion_healing")
+	shelf3.count = 3
+	bag.contents.append(shelf3)
+	var floor_had := gs.items_at(5, 4).size()
+	var dropped_one := gs.player_drop_from_satchel(0)
+	var said_drop := str(gs.msg_log.entries.back())
+	check("a potion out of a shelf of three drops ONE, and says how many are left (and must)",
+		dropped_one and gs.items_at(5, 4).size() == floor_had + 1
+		and gs.items_at(5, 4).back().count == 1 and shelf3.count == 2
+		and bag.contents.has(shelf3) and said_drop.contains("x2 left"), said_drop)
+	gs.player_drop_from_satchel(0)
+	check("and the last one takes the shelf with it",
+		gs.player_drop_from_satchel(0) and bag.contents.is_empty()
+		and gs.items_at(5, 4).size() == floor_had + 3)
+	# Cleared: the shelf test below picks up off this same square.
+	for lying in gs.items_at(5, 4):
+		gs.ground.erase(lying)
 	# A SHELF PER KIND, ten to a shelf (2026-10-03). Full of potions, the pack
 	# takes the eleventh; a haunch still has a shelf of its own.
 	var ten := Item.make(&"potion_healing")
@@ -7265,7 +7493,7 @@ func _test_the_foragers_satchel() -> void:
 	gs.ground.append(extra)
 	check("a full shelf sends the eleventh potion to the pack",
 		gs.player_pickup() and gs.player.inventory.has(extra) and bag.contents.size() == 1
-		and ten.count == 10 and bag.display_name() == "forager's satchel (10)")
+		and ten.count == 10 and bag.display_name() == "forager's satchel, 10 inside")
 	var haunch := Item.make(&"meat")
 	haunch.x = 5
 	haunch.y = 4
@@ -11228,6 +11456,60 @@ func _test_the_sidebar_says_what_is_here() -> void:
 
 	# And the panel's promise must match what the key DOES.
 	check("and pressing it really does pick it up", gs.player_pickup())
+	# FULL, BUT THE ITEM STILL GOES: into a stack it matches, or the satchel's
+	# shelf. The key takes it (2026-10-03) -- so the box must offer it, not
+	# the stairs (day-7 hunt, 2026-10-04: it offered "go down" while g picked
+	# up the potion). Then, with nowhere for it at all, both say the stairs.
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	# Twenty things that stack with nothing: elemental daggers are one to a
+	# slot. On a fungus square, so the square's own action is harmless.
+	for i in Entity.INVENTORY_MAX:
+		var blade := Item.make(&"dagger")
+		blade.element = &"fire"
+		gs.give_item(blade)
+	gs.map.set_tile(5, 5, Tiles.FUNGUS)
+	gs.player.hp = gs.player.max_hp
+	check("precondition: the pack is full, twenty slots", gs.player.pack_count() == Entity.INVENTORY_MAX
+		and gs.player.inventory.size() == Entity.INVENTORY_MAX)
+	var heal := Item.make(&"potion_healing")
+	heal.x = 5
+	heal.y = 5
+	gs.ground = [heal]
+	var left := gs.actions_here()
+	check("full, a potion that stacks with nothing is left for the square's own use",
+		String(left[0][1]) == "eat the fungus", str(left))
+	check("  and the key agrees: it tries the fungus (whole, refused) and leaves the potion",
+		not gs.player_pickup() and gs.ground.has(heal) and gs.player.inventory.size() == Entity.INVENTORY_MAX)
+	var carried := Item.make(&"potion_healing")
+	gs.player.inventory.remove_at(0)
+	gs.give_item(carried)
+	check("precondition: full again, with one potion in the pack to stack on",
+		gs.player.pack_count() == Entity.INVENTORY_MAX and gs._stack_for(heal) == carried)
+	var stacked := gs.actions_here()
+	check("full, a potion that joins a stack is offered, not the square",
+		String(stacked[0][1]) == "pick up the potion of healing", str(stacked))
+	check("  and the key picks it up onto the stack", gs.player_pickup()
+		and carried.count == 2 and not gs.ground.has(heal))
+	# The satchel's shelf: the same promise.
+	gs.player.inventory.erase(carried)
+	var bag := Item.make(&"satchel")
+	gs.give_item(bag)
+	var meal := Item.make(&"meat")
+	meal.x = 5
+	meal.y = 5
+	gs.ground = [meal]
+	check("precondition: full, and the satchel has a shelf for the haunch",
+		gs.player.pack_count() == Entity.INVENTORY_MAX and bag.satchel_takes(meal))
+	var shelved := gs.actions_here()
+	check("full, food the satchel takes is offered, not the square",
+		String(shelved[0][1]) == "pick up the haunch of rabbit", str(shelved))
+	check("  and the key puts it in the satchel", gs.player_pickup() and bag.satchel_count() == 1
+		and not gs.ground.has(meal))
+	gs.ground = []
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.map.set_tile(5, 5, Tiles.STAIRS_DOWN)
 	check("the stairs are offered on the next press",
 		String(gs.actions_here()[0][1]) == "go down", str(gs.actions_here()))
 
@@ -13993,6 +14275,15 @@ func _test_the_gong_is_answered() -> void:
 
 	# And when it does finally give up, it is an ordinary creature again --
 	# a summons must not permanently change what something is.
+	#
+	# Back behind the wall first. This used to run from wherever the walk
+	# ended, so it passed only while the walk happened to end out of sight.
+	# A draft of the 2026-10-04 last_seen change walked the goblin further;
+	# it rounded the wall and SAW you, and a thing that sees you never gives up.
+	far.x = 34
+	far.y = 6
+	check("precondition: from there it cannot see you",
+		not Los.clear(hall.map, far.x, far.y, hall.player.x, hall.player.y))
 	far.lost_turns = GameState.VIGIL_PURSUIT + 1
 	hall._update_awareness(far)
 	check("giving up at last drops it back to suspicious",
@@ -14633,6 +14924,41 @@ func _test_the_bone_ally() -> void:
 				and read_back.upgrade_level() == made.upgrade_level()
 				and read_back.element == made.element,
 			"got %s" % (read_back.display_name() if read_back else "null"))
+
+	# The same bug, again (day-7 hunt, 2026-10-04): stacks and the satchel
+	# taught display_name " x3" and "(14)" on 2026-10-03, and nothing told
+	# the reader. A worn satchel is in every morgue line that wears one.
+	var three_daggers := Item.make(&"dagger")
+	three_daggers.count = 3
+	var three_back := Item.from_display_name(three_daggers.display_name())
+	check("\"%s\" survives the morgue and back" % three_daggers.display_name(),
+		three_back != null and three_back.id == &"dagger" and three_back.count == 3,
+		"got %s" % (three_back.display_name() if three_back else "null"))
+	var worn_bag := Item.make(&"satchel")
+	var bag_back := Item.from_display_name(worn_bag.display_name())
+	check("\"%s\" comes back a satchel, its count not read as a binding"
+		% worn_bag.display_name(),
+		bag_back != null and bag_back.id == &"satchel" and bag_back.element == &"",
+		"got %s" % (bag_back.display_name() + " element '%s'" % bag_back.element
+			if bag_back else "null"))
+	var bag_twice: Item = Item.from_display_name(bag_back.display_name()) if bag_back else null
+	check("and survives a second trip, as a bone ally's kit takes it",
+		bag_twice != null and bag_twice.id == &"satchel")
+	# Written "(14)" for one day; those morgue lines are the player's and stay.
+	var old_bag := Item.from_display_name("forager's satchel (14)")
+	check("a morgue line from the \"(14)\" day still reads as a plain satchel",
+		old_bag != null and old_bag.id == &"satchel" and old_bag.element == &"",
+		"got %s" % (old_bag.display_name() if old_bag else "null"))
+	# Every catalogue item, plain, there and back -- the must-succeed half.
+	var name_lost: Array = []
+	for id in Item.CATALOGUE:
+		var plain_item := Item.make(id)
+		if plain_item == null:
+			continue
+		var plain_back := Item.from_display_name(plain_item.display_name())
+		if plain_back == null or plain_back.display_name() != plain_item.display_name():
+			name_lost.append(plain_item.display_name())
+	check("every catalogue item reads back as itself", name_lost.is_empty(), str(name_lost))
 
 	# And in situ: the grave this actually broke.
 	var bound_tomb := _arena(30, 14)
@@ -15320,6 +15646,110 @@ func _test_caster_standoff_and_blink() -> void:
 		Entity.from_dict(older).standoff == 1
 		and Entity.from_dict(older).blink_range == 0)
 
+## Nothing ARRIVES inside a door (day 7, 2026-10-04). Shut and barred doors are
+## walkable -- walking into one is how it opens -- so every arrival that asked
+## only "walkable?" took them: a lich's blink stood it inside a shut, opaque
+## door, and the blink scroll, whose own copy of the rule lacked is_avoided
+## too, could set you over a pit with no fall (that lives only in player_move)
+## or on a found trap. Four arrivals share GameState._can_land_on now.
+##
+## Each is tried in a sealed cell whose only ground is the forbidden squares
+## and one of floor, so an arrival that refused EVERYTHING fails the "every
+## time" checks instead of passing the "never" ones quietly.
+##
+## A HIDDEN trap is floor to every arrival, and landing on one does not spring
+## it -- Brad's call, 2026-10-04 (see GameState._can_land_on). Nothing below
+## asserts it either way.
+func _test_nothing_arrives_inside_a_door() -> void:
+	var shut := Vector2i(12, 3)
+	var barred := Vector2i(12, 4)
+	var pit := Vector2i(12, 5)
+	var found_trap := Vector2i(12, 6)
+	var open_floor := Vector2i(12, 7)
+	var gs := _arena(31, 11)
+	for y in range(1, 10):
+		for x in range(1, 30):
+			gs.map.set_tile(x, y, Tiles.WALL)
+	gs.map.set_tile(5, 5, Tiles.FLOOR)
+	gs.map.set_tile(6, 5, Tiles.FLOOR)
+	gs.map.set_tile(shut.x, shut.y, Tiles.DOOR_CLOSED)
+	gs.map.set_tile(barred.x, barred.y, Tiles.DOOR_BARRED)
+	gs.map.set_tile(pit.x, pit.y, Tiles.PIT)
+	gs.map.set_tile(found_trap.x, found_trap.y, Tiles.TRAP)
+	gs.map.set_tile(open_floor.x, open_floor.y, Tiles.FLOOR)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs.player.x = 5
+	gs.player.y = 5
+	var lich := _spawn(gs, "arch lich", 6, 5)
+
+	# The doors are ground the old rule took, and every square lies inside a
+	# blink's reach and past the caster's stand-off -- or the "never" checks
+	# below would pass for the wrong reason.
+	check("a shut and a barred door are both walkable ground",
+		gs.map.is_walkable(shut.x, shut.y) and gs.map.is_walkable(barred.x, barred.y))
+	var placed := true
+	for c in [shut, barred, pit, found_trap, open_floor]:
+		placed = placed and Los.steps(6, 5, c.x, c.y) <= lich.blink_range \
+			and Los.steps(5, 5, c.x, c.y) > lich.standoff
+	check("and every square is in reach, out of the quarry's", placed)
+
+	var blinked := 0
+	var lich_landed := {}
+	for i in 24:
+		lich.x = 6
+		lich.y = 5
+		lich.blink_cool = 0
+		if gs._blink_away(lich, gs.player):
+			blinked += 1
+			lich_landed[Vector2i(lich.x, lich.y)] = true
+	check("a cornered caster still blinks every time (%d of 24)" % blinked, blinked == 24)
+	check("never into a shut door", not lich_landed.has(shut), str(lich_landed.keys()))
+	check("never into a barred door", not lich_landed.has(barred), str(lich_landed.keys()))
+	check("only ever onto the floor", lich_landed.keys() == [open_floor],
+		str(lich_landed.keys()))
+
+	# The scroll, in the same cell. Its effect itself rather than player_use,
+	# so no end of turn can change the cell between reads.
+	gs.entities.erase(lich)
+	gs.map.set_tile(6, 5, Tiles.WALL)
+	var read := 0
+	var you_landed := {}
+	for i in 24:
+		gs.player.x = 5
+		gs.player.y = 5
+		if gs._apply_effect(Item.make(&"scroll_blink")):
+			read += 1
+			you_landed[Vector2i(gs.player.x, gs.player.y)] = true
+	check("the scroll still works every time (%d of 24)" % read, read == 24)
+	check("it never sets you inside a shut door", not you_landed.has(shut),
+		str(you_landed.keys()))
+	check("or a barred one", not you_landed.has(barred), str(you_landed.keys()))
+	check("or over a pit, with no fall to follow", not you_landed.has(pit),
+		str(you_landed.keys()))
+	check("or on a trap you have found", not you_landed.has(found_trap),
+		str(you_landed.keys()))
+	check("the scroll lands only on the floor", you_landed.keys() == [open_floor],
+		str(you_landed.keys()))
+
+	# The returning gem's ring round the fire is searched in a fixed order, and
+	# a shut door sits first in it, a barred one second.
+	gs.map.set_tile(19, 4, Tiles.DOOR_CLOSED)
+	gs.map.set_tile(20, 4, Tiles.DOOR_BARRED)
+	gs.map.set_tile(21, 6, Tiles.FLOOR)
+	var back := gs._recall_spot(Vector2i(20, 5))
+	check("the returning gem sets you by the fire, not in its doorway (%s)" % back,
+		back == Vector2i(21, 6))
+
+	# And the fallen land on the farthest open square -- here a door, with
+	# floor one step nearer.
+	gs.map.set_tile(28, 5, Tiles.DOOR_CLOSED)
+	gs.map.set_tile(27, 5, Tiles.FLOOR)
+	gs.player.x = 5
+	gs.player.y = 5
+	var far := gs._far_landing()
+	check("the fallen land on the farthest floor, not in a door (%s)" % far,
+		far == Vector2i(27, 5))
+
 func _test_graves_remember_the_dead() -> void:
 	# Parsing, including a line written before the run recorder existed. That
 	# older format is the one line the real morgue actually holds, so it has to
@@ -15751,6 +16181,56 @@ func _test_offhand_and_swap() -> void:
 ## LIKE KINDS STACK IN THE PACK (Brad, 2026-10-02; built 2026-10-03): one
 ## slot, one letter, up to twenty; gear and uniques never; one leaves at a
 ## time by use, drop, throw, sale and binding; a forge works two into one.
+## THE ● KEEPS ITS WORD (day-7 hunt, 2026-10-04): a stack of three or more
+## with a full pack cannot be forged (nowhere to set the plain ones apart),
+## and the mark and the hint say so before the key refuses; a stack of two
+## forges as ever, full pack or not.
+func _test_the_forge_mark_keeps_its_word() -> void:
+	var gs := _arena(11, 7)
+	gs.player.x = 5
+	gs.player.y = 3
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.map.set_tile(6, 3, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(6, 3)] = 60
+	for i in Entity.INVENTORY_MAX - 1:
+		var blade := Item.make(&"dagger")
+		blade.element = &"fire"
+		gs.give_item(blade)
+	var stack := Item.make(&"dagger")
+	gs.give_item(stack)
+	gs.give_item(Item.make(&"dagger"))
+	gs.give_item(Item.make(&"dagger"))
+	check("precondition: a full pack, with a stack of three plain daggers in it",
+		gs.player.pack_count() == Entity.INVENTORY_MAX and stack.count == 3
+		and gs.can_forge_here() and not gs._forge_site(stack).is_empty())
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	panel.font = load("res://assets/fonts/JetBrainsMono-Regular.ttf")
+	check("full, the stack of three wears no ● and the hint says why",
+		not gs.can_forge_item(stack)
+		and panel._action_hint(stack) == "pack full: nowhere to set the rest apart",
+		panel._action_hint(stack))
+	check("  and the key refuses it with nothing spent",
+		not gs.player_merge(gs.player.inventory.find(stack)) and stack.count == 3)
+	# Two in the stack: the worked one IS the slot, nothing is set apart.
+	stack.count = 2
+	check("a stack of two forges with a full pack (and must)", gs.can_forge_item(stack)
+		and panel._action_hint(stack) == "merge -> +1"
+		and gs.player_merge(gs.player.inventory.find(stack))
+		and stack.upgrade_level() == 1 and stack.count == 1)
+	# Room made: three forges again, and the plain one left is set apart.
+	stack.count = 3
+	stack.power_bonus = stack.base_power_bonus
+	stack.boosts = 0
+	gs.player.inventory.remove_at(0)
+	check("precondition: a slot free", gs.player.pack_count() == Entity.INVENTORY_MAX - 1)
+	var rows_before := gs.player.inventory.size()
+	check("with a slot free the ● comes back and the forge sets the rest apart",
+		gs.can_forge_item(stack) and gs.player_merge(gs.player.inventory.find(stack))
+		and stack.count == 1 and stack.upgrade_level() == 1
+		and gs.player.inventory.size() == rows_before + 1)
+
 func _test_stacks_in_the_pack() -> void:
 	var gs := _arena(21, 9)
 	gs.player.x = 5

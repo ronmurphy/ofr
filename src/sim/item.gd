@@ -783,6 +783,31 @@ static func from_display_name(text: String) -> Item:
 	# The lesson is the one the morgue regex already learned when `name` was
 	# added: a format has TWO ends, and teaching one of them a new field is
 	# half a change.
+	#
+	# And it happened again (day-7 hunt, 2026-10-04): stacks and the satchel
+	# taught the writer " x3" and "(14)" on 2026-10-03, and the reader neither.
+	# "dagger x3" came back null; a worn satchel, "forager's satchel (14)",
+	# came back with the ELEMENT "14" -- and null the next time round. So they
+	# come off first, in the reverse of the order display_name writes them.
+	# The satchel's count is a NUMBER where a binding is a word, and its
+	# contents are not in the name: a satchel read back is empty. Written
+	# ", 14 inside" since 2026-10-04; "(14)" is still read, because morgue
+	# lines from the day it was written that way are the player's, and stay.
+	if trimmed.ends_with(" inside"):
+		var comma := trimmed.rfind(", ")
+		if comma > 0 and trimmed.substr(comma + 2,
+				trimmed.length() - comma - 9).is_valid_int():
+			trimmed = trimmed.substr(0, comma)
+	if trimmed.ends_with(")"):
+		var open_n := trimmed.rfind(" (")
+		if open_n > 0 and trimmed.substr(open_n + 2,
+				trimmed.length() - open_n - 3).is_valid_int():
+			trimmed = trimmed.substr(0, open_n)
+	var stacked := 1
+	var times := trimmed.rfind(" x")
+	if times > 0 and trimmed.substr(times + 2).is_valid_int():
+		stacked = trimmed.substr(times + 2).to_int()
+		trimmed = trimmed.substr(0, times)
 	var bound := &""
 	if trimmed.ends_with(")"):
 		var open_at := trimmed.rfind(" (")
@@ -809,6 +834,8 @@ static func from_display_name(text: String) -> Item:
 		# were legal when they were dug.
 		if bound != &"":
 			it.element = bound
+		if stacked > 1 and it.stackable():
+			it.count = stacked
 		return it
 	return null
 
@@ -854,11 +881,16 @@ func display_name() -> String:
 	# been GIVEN an element", which is only ever news about a weapon.
 	if element != &"" and kind != Kind.GEM:
 		base += " (%s)" % element
-	# A stack says how many; a satchel says how much is in it.
+	# A stack says how many; a satchel says how much is in it. One mark per
+	# meaning, game-wide (Brad, 2026-10-04): "x" is HOW MANY -- a stack, the
+	# quiver's "r5 x12", a ring's charges -- and brackets are a BINDING. The
+	# satchel's number is neither (x14 would be fourteen satchels), so it gets
+	# words, the same ones its panel uses. It was "(14)" for a day, and the
+	# morgue read that back as an element.
 	if count > 1:
 		base += " x%d" % count
 	if holds > 0:
-		base += " (%d)" % satchel_count()
+		base += ", %d inside" % satchel_count()
 	return base
 
 func is_satchel() -> bool:
