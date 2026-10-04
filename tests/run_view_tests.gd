@@ -694,8 +694,12 @@ func _test_magic_glows_and_embers_keep_their_rules() -> void:
 	var got := {"lo": 9.0}
 	_with_mode(Effects.Mode.SHADERS, func():
 		got["lo"] = LivingLight.item_glow(enchanted).a)
+	# The breath runs from HALF the glow to the whole of it (0.75 + 0.25 sin);
+	# this asked for three quarters and passed only by where in the sine the
+	# suite happened to reach it -- a wall-clock sample, so one slow afternoon
+	# (2026-10-04) it failed and three reruns passed. Half is the real floor.
 	check("and breathes, never fading out, with motion on",
-		got["lo"] >= LivingLight.ITEM_GLOW * 0.75 - 0.001
+		got["lo"] >= LivingLight.ITEM_GLOW * 0.5 - 0.001
 		and got["lo"] <= LivingLight.ITEM_GLOW + 0.001)
 	var cold := Color(0.4, 0.3, 0.3)
 	_with_mode(Effects.Mode.NONE, func():

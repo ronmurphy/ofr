@@ -1064,21 +1064,21 @@ const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
 	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2, "caves": 1.8},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
-	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true},
+	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"ranged", "range": 6, "flee": 0.45, "gear": 0.25, "min_depth": 2, "reload": true,
-	 "threat": 6, "caves": 0.5, "patrol": true, "scavenge": true},
+	 "threat": 6, "caves": 0.5, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "cave bat", "app": &"bat", "hp": 5, "power": 3, "def": 0,
 	 "speed": 170, "ai": &"erratic", "flee": 0.0, "flying": true, "min_depth": 2, "threat": 5, "caves": 2.6,
 	 "wild": true},
 	{"name": "goblin", "app": &"goblin", "hp": 9, "power": 4, "def": 1,
-	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0, "patrol": true, "scavenge": true},
+	 "speed": 100, "ai": &"pack", "flee": 0.20, "gear": 0.50, "min_depth": 2, "threat": 5, "caves": 2.0, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "skeleton", "app": &"skeleton", "hp": 12, "power": 5, "def": 2,
 	 "speed": 90, "ai": &"hunter", "flee": 0.0, "gear": 0.40, "min_depth": 3, "threat": 8, "caves": 0.4, "unliving": true, "resists": ["slash", "pierce"], "weak_to": ["blunt"],
 	 ## It was set to guard something and never stopped.
 	 "patrol": true},
 	{"name": "orc", "app": &"orc", "hp": 16, "power": 6, "def": 2,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3, "patrol": true, "scavenge": true},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "gear": 0.70, "min_depth": 4, "threat": 10, "caves": 1.3, "patrol": true, "scavenge": true, "eats": true},
 
 	# --- deep tiers -------------------------------------------------------
 	# Power from 7 upward, because below that a levelled character in chain
@@ -1086,7 +1086,7 @@ const BESTIARY := [
 	# deeper. These also carry the whole ascent, which runs at effective
 	# depths of 10 to 19.
 	{"name": "ogre", "app": &"ogre", "hp": 26, "power": 9, "def": 3,
-	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14, "caves": 1.6, "patrol": true, "scavenge": true},
+	 "speed": 90, "ai": &"hunter", "flee": 0.12, "gear": 0.50, "heavy": true, "min_depth": 5, "threat": 14, "caves": 1.6, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "harpy", "app": &"harpy", "hp": 16, "power": 7, "def": 1,
 	 "speed": 160, "ai": &"erratic", "flee": 0.25, "flying": true, "min_depth": 5, "threat": 12, "caves": 1.8},
 	{"name": "cave troll", "app": &"troll", "hp": 30, "power": 8, "def": 3,
@@ -2663,6 +2663,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	# Foraging is not rolled: a rabbit is always a rabbit.
 	m.patrols = entry.get("patrol", false)
 	m.scavenges = entry.get("scavenge", false)
+	m.eats = entry.get("eats", false)
 	if m.ai == &"forager":
 		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
@@ -5562,7 +5563,11 @@ func player_disarm() -> bool:
 
 ## Loud ground. Noise carries through stone, so this ignores line of sight --
 ## it is the counterpart to light, and the second thing that can give you away.
-func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void:
+## `by` is whoever made it, and is not roused by it: a goblin's own kill
+## would otherwise turn it from hunting rabbits to hunting YOU (2026-10-04,
+## the day a monster first struck something that was not the player).
+func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step",
+		by: Entity = null) -> void:
 	if radius <= 0:
 		return
 	# Made in a frozen room, it carries nowhere (the gem of frost).
@@ -5580,7 +5585,7 @@ func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step") -> void
 			e.heard = at
 	var roused := 0
 	for e in entities:
-		if e.is_player or not e.alive or e.alertness == Entity.Alert.AWAKE:
+		if e.is_player or e == by or not e.alive or e.alertness == Entity.Alert.AWAKE:
 			continue
 		# A frozen thing hears nothing, and is not left holding what it did
 		# not hear when it thaws.
@@ -8318,6 +8323,12 @@ func _take_ai_turn(actor: Entity) -> int:
 			and _scavenge(actor):
 		return _last_move_cost
 
+	# THEY HAVE TO EAT TOO (Brad, 2026-10-04). While unaware of you, a
+	# hunter with `eats` goes after the wild for food, and eats the kill.
+	# Gated like scavenging: nothing stops mid-fight for supper.
+	if actor.alertness != Entity.Alert.AWAKE and actor.eats and _hunt(actor):
+		return _last_move_cost
+
 	# Rats go to fresh bodies when they are not hunting you.
 	if actor.alertness != Entity.Alert.AWAKE and actor.appearance == &"rat" \
 			and _rat_to_body(actor):
@@ -9566,6 +9577,80 @@ const RABBIT_NOSE := 14
 ## How close you may come before an awake animal gives you room.
 const WILD_SPACE := 2
 
+## How far a hungry monster looks for game, or for meat lying about.
+const HUNT_REACH := 6
+
+## A monster's hunt (Brad, 2026-10-04: "they have to eat, too"). Meat
+## underfoot is eaten first; else the nearest prey it can see within
+## HUNT_REACH is hunted with the creature's own fighting -- the ranged keep
+## their distance and sling, the rest close -- and failing prey, it walks to
+## the nearest meat lying about. The kill leaves the haunch where the rabbit
+## fell, and the hunter eats it off the floor, so a floor where the goblins
+## got to the rabbits first has less meat in it. True of anything the player
+## left lying as well. Answers whether the turn was spent.
+func _hunt(actor: Entity) -> bool:
+	if _eat_here(actor):
+		return true
+	var prey := _prey_for(actor)
+	if prey != null:
+		if actor.ai == &"ranged":
+			_ai_ranged(actor, prey)
+		else:
+			_ai_hunter(actor, prey)
+		return true
+	var meat := _meat_near(actor)
+	if meat.x >= 0:
+		_step_toward(actor, meat)
+		return true
+	return false
+
+## Game for this hunter: a WILD thing it can see within HUNT_REACH, no
+## bigger than itself (the bear is nobody's supper: `heavy`), and for a
+## melee hunter nothing that flies -- a bat is the slinger's. Rabbit before
+## bear, as Brad asked; in practice rabbit, and bat for the ranged.
+func _prey_for(actor: Entity) -> Entity:
+	var best: Entity = null
+	var best_d := HUNT_REACH + 1
+	for e in entities:
+		if not e.alive or not e.is_wild() or e.heavy or e.threat > actor.threat:
+			continue
+		if e.flying and actor.ai != &"ranged":
+			continue
+		if not _can_see(actor, e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if d <= HUNT_REACH and d < best_d:
+			best = e
+			best_d = d
+	return best
+
+## Meat underfoot goes down the hunter's throat: gone from the floor, and
+## it heals what it would have healed you (the first monster that heals by
+## eating; the slime will be the second). Said where you can see it.
+func _eat_here(actor: Entity) -> bool:
+	for it in ground:
+		if it.x == actor.x and it.y == actor.y and (it.id == &"meat" or it.id == &"bear_meat"):
+			ground.erase(it)
+			actor.hp = mini(actor.max_hp, actor.hp + it.effective_magnitude())
+			if map.is_visible(actor.x, actor.y):
+				msg_log.add("The %s eats the %s." % [actor.name, it.name],
+					Color(0.85, 0.78, 0.55))
+			return true
+	return false
+
+## The nearest meat lying within HUNT_REACH, or (-1, -1).
+func _meat_near(actor: Entity) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := HUNT_REACH + 1
+	for it in ground:
+		if it.id != &"meat" and it.id != &"bear_meat":
+			continue
+		var d := Los.steps(actor.x, actor.y, it.x, it.y)
+		if d < best_d and Los.clear(map, actor.x, actor.y, it.x, it.y):
+			best = Vector2i(it.x, it.y)
+			best_d = d
+	return best
+
 ## What an unstruck WILD creature does with its turn. A forager forages, as
 ## it always has, shying from whoever is near. Anything else sleeps until it
 ## notices you, then keeps its distance -- a step away when you come within
@@ -10216,9 +10301,9 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	if defender.is_player:
 		# Never keep auto-walking into something that is hurting you.
 		_travel.clear()
-	elif attacker.faction == Entity.Faction.RISEN:
-		# Woken by the dead, not by you: no "notices you", and it turns on
-		# what hit it.
+	elif not attacker.is_player and attacker.faction != Entity.Faction.PLAYER:
+		# Woken by the dead -- or, since 2026-10-04, by a hunting monster --
+		# not by you: no "notices you", and it turns on what hit it.
 		if defender.alertness != Entity.Alert.AWAKE:
 			defender.alertness = Entity.Alert.AWAKE
 			defender.last_seen = Vector2i(attacker.x, attacker.y)
@@ -10254,11 +10339,11 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	# Routing it through _make_noise rather than waking things directly also
 	# means combat obeys the same rule bones do: it carries through stone, and
 	# it reaches exactly as far as the radius says.
-	_make_noise(Vector2i(defender.x, defender.y), COMBAT_NOISE, &"combat")
+	_make_noise(Vector2i(defender.x, defender.y), COMBAT_NOISE, &"combat", attacker)
 	if ranged:
 		# A loosed arrow is heard where it was loosed. Twenty-six shots at a
 		# stone golem is twenty-six calls for company.
-		_make_noise(Vector2i(attacker.x, attacker.y), COMBAT_NOISE, &"combat")
+		_make_noise(Vector2i(attacker.x, attacker.y), COMBAT_NOISE, &"combat", attacker)
 
 	if attacker.is_player:
 		if ranged:

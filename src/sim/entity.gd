@@ -180,6 +180,9 @@ var shaken: int = 0
 ## a guard can walk its round AND stoop for a blade, which a single activity
 ## field could never express. It is a trait, like `patrols`.
 var scavenges := false
+## It hunts the wild for food while it is not hunting you, and eats what it
+## kills (GameState._hunt). From the bestiary; saved.
+var eats := false
 
 ## Whether this thing walks a beat. Separate from `alertness`, which is only
 ## where it is RIGHT NOW: without a standing flag, a guard that chased you and
@@ -573,7 +576,7 @@ func to_dict() -> Dictionary:
 		"heard": [heard.x, heard.y],
 		"leash": [leash.position.x, leash.position.y, leash.size.x, leash.size.y],
 		"patrols": patrols, "patrol_at": patrol_at,
-		"scavenges": scavenges, "shaken": shaken,
+		"scavenges": scavenges, "eats": eats, "shaken": shaken,
 		"pursue_turns": pursue_turns,
 		"want": [want.x, want.y], "want_turn": want_turn,
 		"shut_behind": [shut_behind.x, shut_behind.y],
@@ -644,6 +647,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.leash = Rect2i(int(l[0]), int(l[1]), int(l[2]), int(l[3]))
 	e.patrols = bool(d.get("patrols", false))
 	e.scavenges = bool(d.get("scavenges", false))
+	e.eats = bool(d.get("eats", false))
 	e.shaken = int(d.get("shaken", 0))
 	e.pursue_turns = int(d.get("pursue_turns", DEFAULT_PURSUIT))
 	var wanted: Array = d.get("want", [-1, -1])

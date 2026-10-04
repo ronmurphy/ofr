@@ -204,6 +204,7 @@ func _initialize() -> void:
 	_test_a_side_of_your_own()
 	_test_the_bone_ally()
 	_test_the_wild_are_no_ones_enemy()
+	_test_hunters_eat_the_wild()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -14937,6 +14938,98 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## THEY HAVE TO EAT TOO (Brad, 2026-10-04): while unaware of you, a monster
+## with an appetite hunts the wild, and eats the kill off the floor.
+func _test_hunters_eat_the_wild() -> void:
+	var cave := _arena(24, 11)
+	cave.player.x = 2
+	cave.player.y = 2
+	cave.torch_lit = false
+	cave.entities = [cave.player]
+	# A mushroom lights the rabbit grazing on it: the hunter needs to SEE.
+	cave.map.set_tile(12, 5, Tiles.FUNGUS)
+	cave.map.set_tile(12, 8, Tiles.FUNGUS)
+	# And a wall between you and the hunting ground: in the dark a creature
+	# still has a small chance a turn of noticing you, and one lucky roll
+	# would turn a hunter into a hunter of YOU.
+	for y in range(1, 10):
+		cave.map.set_tile(5, y, Tiles.WALL)
+	cave.pathfinder = Pathfinder.new(cave.map)
+	cave._gather_lights()
+	cave.update_vision()
+	var gob := _spawn(cave, "goblin", 9, 5)
+	gob.alertness = Entity.Alert.PATROL
+	var bun := _spawn(cave, "rabbit", 12, 5)
+	check("precondition: a goblin has an appetite, and can see the rabbit in the fungus light",
+		gob.eats and cave._can_see(gob, bun))
+	check("a rabbit is a goblin's game", cave._prey_for(gob) == bun)
+	var skel := _spawn(cave, "skeleton", 9, 7)
+	check("a skeleton has no appetite", not skel.eats)
+	var kob := _spawn(cave, "kobold", 11, 5)
+	var bruin := _spawn(cave, "cave bear", 10, 4)
+	check("precondition: the kobold can see the bear beside it", cave._can_see(kob, bruin))
+	cave.entities.erase(bun)
+	check("a kobold never hunts a bear", cave._prey_for(kob) == null)
+	cave.entities.append(bun)
+	cave.entities.erase(bruin)
+	cave.entities.erase(kob)
+	cave.entities.erase(skel)
+
+	var d0 := Los.steps(gob.x, gob.y, bun.x, bun.y)
+	cave._take_ai_turn(gob)
+	check("unaware of you, the goblin goes for the rabbit (%d -> %d)"
+		% [d0, Los.steps(gob.x, gob.y, bun.x, bun.y)], Los.steps(gob.x, gob.y, bun.x, bun.y) < d0)
+	check("  and is no enemy of the rabbit yet", not gob.hostile_to(bun) and not bun.provoked)
+	# Beside it, with the rabbit on its last legs: the kill, and the haunch.
+	gob.x = 11
+	gob.y = 5
+	bun.hp = 1
+	cave._take_ai_turn(gob)
+	check("beside it, the goblin kills the rabbit", not bun.alive)
+	check("  its own racket does not wake it to hunting you", gob.alertness != Entity.Alert.AWAKE)
+	var haunch: Item = null
+	for it in cave.ground:
+		if it.id == &"meat":
+			haunch = it
+	check("the haunch lies where the rabbit fell", haunch != null and haunch.x == 12 and haunch.y == 5,
+		str(cave.ground.map(func(i): return [i.id, i.x, i.y])))
+	gob.hp = 3
+	cave._take_ai_turn(gob)
+	check("the goblin walks to the meat", gob.x == 12 and gob.y == 5, "%d,%d" % [gob.x, gob.y])
+	# In your sight for the meal, so the log has to say so.
+	cave.map.set_all_visible()
+	cave._take_ai_turn(gob)
+	check("and eats it: gone from the floor, and it is healed (%d hp)" % gob.hp,
+		not cave.ground.has(haunch) and gob.hp > 3 and _log_says(cave, "eats the haunch"))
+
+	# Aware of you, nothing stops for supper.
+	var bun2 := _spawn(cave, "rabbit", 13, 5)
+	gob.alertness = Entity.Alert.AWAKE
+	cave._take_ai_turn(gob)
+	check("a goblin that has seen you leaves the rabbit beside it alone", bun2.hp == bun2.max_hp)
+
+	# The ranged take the bats. And a bat shot at fights back.
+	var sling := _spawn(cave, "kobold slinger", 9, 8)
+	sling.alertness = Entity.Alert.PATROL
+	var bat := _spawn(cave, "cave bat", 12, 8)
+	check("precondition: the slinger can see the bat", cave._can_see(sling, bat))
+	check("a bat is the slinger's game, and never a goblin's",
+		cave._prey_for(sling) == bat and cave._prey_for(gob) != bat)
+	for i in 4:
+		if bat.hp < bat.max_hp:
+			break
+		cave._take_ai_turn(sling)
+	check("the slinger slings at the bat (%d of %d)" % [bat.hp, bat.max_hp], bat.hp < bat.max_hp,
+		"slinger alert %d at %d,%d reload %d; bat at %d,%d" % [sling.alertness, sling.x, sling.y,
+			sling.reload_left, bat.x, bat.y])
+	check("  which remembers the slinger, and no one else", bat.grudge == sling and not bat.provoked)
+	var bd := Los.steps(bat.x, bat.y, sling.x, sling.y)
+	var sling_hp := sling.hp
+	cave._take_ai_turn(bat)
+	check("  and comes for it (%d -> %d)" % [bd, Los.steps(bat.x, bat.y, sling.x, sling.y)],
+		Los.steps(bat.x, bat.y, sling.x, sling.y) < bd or sling.hp < sling_hp)
+	check("a monster's appetite is saved", Entity.from_dict(gob.to_dict()).eats)
 
 func _test_the_bone_ally() -> void:
 	var gs := _arena(30, 14)

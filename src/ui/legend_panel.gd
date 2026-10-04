@@ -595,6 +595,8 @@ func _creature_column(x: float, y: float, w: float) -> void:
 			note = "forages  " + note
 		elif bool(e.get("wild", false)):
 			note = "wild  " + note
+		elif bool(e.get("eats", false)):
+			note = "eats game  " + note
 		elif int(e.get("wail", 0)) > 0:
 			# Kept to one word like the others. That the cry wakes the floor is
 			# the thing worth learning by meeting one, and the log says it

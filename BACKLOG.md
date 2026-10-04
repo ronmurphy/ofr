@@ -999,16 +999,32 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   note below about re-measuring the threat ceiling applies to the bear now,
   not only to the rat. A wild thing hurt by a trap or the fungus is not
   provoked (nobody struck it) and goes on minding its own business.
+- **They have to eat too -- BUILT 2026-10-04 (Legion), waiting on play.**
+  `"eats": true` on the kobold, kobold slinger, goblin, orc and ogre
+  (`Entity.eats`, saved). While UNAWARE of you -- gated like scavenging,
+  nothing stops mid-fight for supper -- `_hunt` runs each turn: meat
+  underfoot is eaten first (`_eat_here`: gone from the floor, and it heals
+  the eater what it would have healed you -- the first monster that heals
+  by eating; the slime will be the second); else the nearest game it can
+  see within `HUNT_REACH` (6) is hunted with the creature's own fighting,
+  `_ai_ranged` for the slinger, `_ai_hunter` for the rest; else it walks to
+  the nearest meat lying about, yours included. Game (`_prey_for`): a WILD
+  thing no bigger than the hunter, never the bear (`heavy`), and for a
+  melee hunter nothing that flies -- a bat is the slinger's. The kill
+  leaves the haunch where the rabbit fell and the hunter eats it off the
+  floor, so a floor where the goblins got to the rabbits first has less
+  meat in it. The rabbit runs from the goblin that speared it (the grudge);
+  a bat shot at comes for the slinger. Two fixes the hunt forced, both from
+  every earlier fight having had the player on one side: a fight's noise no
+  longer rouses the one making it (`_make_noise(..., by)`), and a defender
+  struck by any non-player-side attacker turns on what hit it instead of
+  "noticing you" (the risen branch in `_attack`, generalised). Legend:
+  "eats game  depth N+". Test: `_test_hunters_eat_the_wild`.
 - **Not in this step:** the rat (floors 1-2 need the slime first), the
-  wolf, the food web, fire as a fear, the WILD colour freeing the bat's
-  purple in the theme table. **Agreed with Brad for the next steps
-  (2026-10-04):** monsters that hunt animals, gated like scavenging --
-  unaware only, an `eats` flag per bestiary row, prey smaller than
-  themselves (rabbits for melee, bats for the ranged, never the bear); the
-  kill leaves the body, so a floor where the goblins got to the rabbits
-  first has less meat in it. A monster's blow never provokes an animal
-  against you (it sets the grudge instead, above). Then the wolf, with
-  bear-versus-wolf through the grudge; then the slime.
+  wolf, the food web between wild things, fire as a fear, the WILD colour
+  freeing the bat's purple in the theme table. **Next (agreed with Brad,
+  2026-10-04):** the wolf, with bear-versus-wolf through the grudge; then
+  the slime.
 
 - **A WILD faction, appended** (factions are saved as ints). NEUTRAL cannot
   serve: today it means *inert* -- `_take_ai_turn` gives a neutral no turn at
