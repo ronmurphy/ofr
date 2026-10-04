@@ -1015,6 +1015,29 @@ the red off, and the blind risen hear you splashing and come. A risen in
 water washes nothing -- it is dead, the red has it. The two halves ship
 together or the wash is a free lunch.
 
+**"Extra" effects: tilt-shift and fog (Brad, 2026-10-03 night) -- an
+idea, not decided.** A fourth step on the `e` cycle: still > simple >
+full > extra, extra being full plus a tilt-shift (depth of field, the
+overhead view as a miniature on a table) and a drifting fog. Brad is
+mostly sure about the tilt-shift and would put it in FULL, but knows
+players who like the game as it is and dislike tilt-shift in other games
+-- hence a step above full that nobody has to take. What exists: the 3D
+view already has a hidden "rich" tier that switches on by itself on
+Forward+ (`DioramaView.rich`: screen-space occlusion, soft shadows, the
+volumetric fog the miasma uses), so extra is a player switch over that,
+plus the two effects. To settle before building: (1) it cannot exist on
+the web or mobile build (Compatibility has no depth of field and no
+volumetric fog) -- extra collapses to full there and the settings row
+must say "PC only", or itch players think the key is broken; (2) fog
+must not hide information: the memory fade and the torch's edge already
+do the darkening, so keep it thin and beyond the lit radius, never over
+a cell the rules say you see; (3) the Q cycle: classic has nothing to
+blur or fog (extra = full there), both 3D views take both, and in the
+follow camera the focus plane is a fixed distance. About an evening, with
+view tests for "extra collapses to full off Forward+" and "still is
+untouched"; judging the look needs a build on a Forward+ machine (the
+Legion is one). After the Legends intro.
+
 **Destructive environments (Brad, 2026-10-01 night) -- unformed, kept.** He
 has carried it three days without a shape. What exists already: bears take
 doors off hinges, fire burns fungus (bones and wooden doors designed under
