@@ -1022,6 +1022,10 @@ var _last_footing := Tiles.FLOOR
 ## every turn spent under it. A warning that repeats is a warning that gets
 ## tuned out, which is the opposite of the point.
 var _hp_warned := false
+## The wild thing the player was just warned about bumping (player_move):
+## the same move again attacks it. Not saved; a warning repeating after a
+## reload is no harm.
+var _meant: Entity = null
 ## The grave last stood on, so pacing back and forth across one does not
 ## reprint its epitaph every step.
 var _last_grave := Vector2i(-1, -1)
@@ -1066,6 +1070,38 @@ static var _vault_library: Array[Vault] = []
 const BESTIARY := [
 	{"name": "giant rat", "app": &"rat", "hp": 4, "power": 2, "def": 0,
 	 "speed": 120, "ai": &"hunter", "flee": 0.30, "min_depth": 1, "threat": 2, "caves": 1.8},
+	## THE SLIME (Brad, 2026-10-04; built 2026-10-05). The classic floors-1-2
+	## monster, and not the Minecraft one: a SCAVENGER OF EVERYTHING. It goes
+	## for anything lying on the floor before anything else, even you, swallows
+	## it and carries it (so a slime left alone is a walking chest that drops
+	## the lot when it dies -- it moves loot, never makes any); meat and
+	## fungus it eats, and those are gone. Its hit leaves ACID that goes on
+	## eating for ACID_LINGER turns unless washed off in water -- so drop
+	## something to lure it, and fight it standing in a pool. Slow (70), one
+	## hit for anyone by depth 6, and kept on the deeper floors at a low
+	## weight with no fade as a CARRIER of the red (SPORE_CARRIERS): the
+	## threat deep down is to the floor's food and the floor's dead, never to
+	## your hp. The climb corrupts it like any cheap thing (_roll_corruptible).
+	{"name": "slime", "app": &"slime", "hp": 5, "power": 2, "def": 0,
+	 "speed": 70, "ai": &"slime", "flee": 0.0, "min_depth": 1, "threat": 2,
+	 "no_fade": true, "weight": 0.35, "caves": 0.8, "acid": true},
+	## THE WOLF (Brad's wild creatures update; built 2026-10-05). The first
+	## thing that comes as a PACK: the fauna roll that lands one lands its
+	## `pack` beside it (_spawn_pack). WILD like the bear -- it hunts the
+	## rabbits and keeps its distance from you -- until one is struck: then
+	## every wolf within PACK_REACH turns together, and the pack AI it shares
+	## with the goblins does the rest (bold with company, which for a wild
+	## thing means its own kind: _allies_near). One pack a floor.
+	## WHERE IT LIVES (Brad, 2026-10-05): the upper floors and the caves, on
+	## both halves -- floors 1-6 and 14 on -- and never a fortress, where a
+	## wild pack reads wrong; a trained one with its master is the way in
+	## there (BACKLOG). `bands` is that rule (see _roll_the_wild); `pack` is
+	## read by band too: a pair on the upper floors, four in the caves.
+	{"name": "wolf", "app": &"wolf", "hp": 9, "power": 4, "def": 1,
+	 "speed": 130, "ai": &"pack", "flee": 0.15, "min_depth": 1, "threat": 6,
+	 "no_fade": true, "bands": {&"upper": 0.5, &"caves": 0.75},
+	 "caves": 2.0, "wild": true, "eats": true,
+	 "pack": {&"upper": 2, &"caves": 4}, "max_per_floor": 1},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
@@ -1104,9 +1140,16 @@ const BESTIARY := [
 	# WILD since 2026-10-04: it minds its own business until struck, and then
 	# all of the above is true. Hunting it for its meat is a choice now. And
 	# it EATS: awake, it hunts the rabbits (the food web, bear > rabbit).
+	# Floors 1-6 and 14 on, like the wolf (Brad, 2026-10-05): it was kept off
+	# floors 1-3 while it attacked on sight; wild, a floor-1 player walks
+	# round it. The chances: a bear on about a third of the upper floors,
+	# not furniture, and on most cave floors, where it is at home.
 	{"name": "cave bear", "app": &"bear", "hp": 34, "power": 9, "def": 3,
-	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 5,
-	 "threat": 17, "knockback": 2, "caves": 2.6, "wild": true, "eats": true},
+	 "speed": 100, "ai": &"hunter", "flee": 0.15, "heavy": true, "min_depth": 1,
+	 "threat": 17, "knockback": 2, "caves": 2.6, "wild": true, "eats": true,
+	 "no_fade": true, "bands": {&"upper": 0.3, &"caves": 0.85},
+	 # One a floor, set down by _place_the_wild; the cap is a guard only.
+	 "max_per_floor": 1},
 	{"name": "wight", "app": &"wight", "hp": 24, "power": 10, "def": 4,
 	 "speed": 100, "ai": &"hunter", "flee": 0.0, "gear": 0.60, "min_depth": 7, "threat": 17, "caves": 0.5, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "patrol": true},
 	{"name": "wyvern", "app": &"wyvern", "hp": 32, "power": 11, "def": 4,
@@ -1296,6 +1339,7 @@ func build_level() -> void:
 	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
 	trap_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0x7A9D
+	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
 	red_from = {}
@@ -1422,10 +1466,12 @@ func build_level() -> void:
 	# guard spawned this turn already has somewhere to walk.
 	_lay_the_beat()
 	_place_graves()
+	_roll_the_wild()
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
 	for region in gen.caves:
 		_populate_cave(region)
+	_place_the_wild(gen)
 	_place_vault_contents(gen)
 	_place_first_gem()
 	_place_the_satchel()
@@ -2448,6 +2494,7 @@ func _populate_room(room: Rect2i, archetype: int) -> void:
 		if cost < 0:
 			break
 		spent += cost
+	_place_fauna(Rect2i(room.position, room.size), FAUNA_CHANCE)
 
 ## The climb's own population, bought from its own budget.
 ##
@@ -2584,7 +2631,9 @@ func _populate_cave(region: Rect2i) -> void:
 		if cost < 0:
 			break
 		spent += cost
-	_make_a_den(region)
+	# The caves are where the animals live: a better chance of one. (The
+	# bear, and its den, are placed by _place_the_wild once the floor is.)
+	_place_fauna(region, FAUNA_CHANCE_CAVE)
 
 ## Bones where a bear lives, and nowhere else in a cave.
 ##
@@ -2613,21 +2662,96 @@ func _make_a_den(region: Rect2i) -> void:
 		return
 
 ## Returns the threat spent, or -1 if nothing was placed.
-func _spawn_in(area: Rect2i, remaining: int) -> int:
+func _spawn_in(area: Rect2i, remaining: int, wild_only := false) -> int:
 	var mx := rng.randi_range(area.position.x, area.end.x - 1)
 	var my := rng.randi_range(area.position.y, area.end.y - 1)
-	return _spawn_at(Vector2i(mx, my), -1, remaining)
+	return _spawn_at(Vector2i(mx, my), -1, remaining, wild_only)
 
-func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
+## THE WILD, ON TOP OF THE BUDGET (2026-10-05). Each room and cave has a
+## chance of one animal, rolled by the bestiary's own weights, depths and
+## bands (the bat's floors, the bear's caves) and never SPENT from the
+## threat ceiling: an animal is a cost to nobody until it is struck. Nor is
+## it PRICED by the area's ceiling any more (the same evening): that price
+## only ever touched the bear -- a floor-1 room's ceiling of 12 could not
+## afford a 17 -- and Brad wants the bear on the upper floors now that a
+## player can walk round it. The bear and the wolf are not in this roll at
+## all any more: see `bands` below. Chances set so the counts match what
+## the old budget roll produced (about four to six animals a floor).
+const FAUNA_CHANCE := 0.4
+const FAUNA_CHANCE_CAVE := 0.6
+## No price: an animal's threat is never compared with a ceiling.
+const WILD_UNPRICED := 1 << 16
+
+## WHERE A THING LIVES, AND HOW OFTEN (Brad, 2026-10-05). A bestiary row
+## with `bands` names the bands it is found in, with the chance that a floor
+## of that band has it AT ALL: the wolf's {upper: 0.5, caves: 0.75} is a
+## pack on half the upper floors and three cave floors in four. The band
+## table is mirrored, so "upper and caves" is floors 1-6 and 14 on and never
+## either fortress -- a wild pack in masonry reads wrong; the fortress gets
+## its animals trained, with a master (BACKLOG). Decided once a floor, here,
+## and SET DOWN once by _place_the_wild, never as a share of the per-area
+## roll: a share on floor 1, where the wolf and the bear are the only wild
+## things there are, put both on nearly every floor (measured: 60/60 and
+## 50/60); and a share in the caves starved the rabbits the climb's caves
+## exist to feed you with (17 in 30 floors against a fortress floor's 60).
+## Own rng, so the floor's other rolls do not move; not saved, since it is
+## only the floor's own population.
+var absent_wild: Array = []
+var fauna_rng := RandomNumberGenerator.new()
+
+## The floor's banded animals, one each, in a cave where the floor has
+## caves and otherwise in a room that is not the first. A bear's den forms
+## round it as it did when the cave roll placed the bear.
+func _place_the_wild(gen: MapGen) -> void:
+	var in_caves := not gen.caves.is_empty()
+	var areas: Array[Rect2i] = gen.caves if in_caves else gen.rooms.slice(1)
+	if areas.is_empty():
+		return
+	for e in BESTIARY:
+		if not e.has("bands") or absent_wild.has(e["name"]):
+			continue
+		for _try in 12:
+			var area: Rect2i = areas[fauna_rng.randi_range(0, areas.size() - 1)]
+			var at := Vector2i(fauna_rng.randi_range(area.position.x, area.end.x - 1),
+				fauna_rng.randi_range(area.position.y, area.end.y - 1))
+			if not _can_rest_on(at.x, at.y) or entity_at(at.x, at.y) != null \
+					or at == stairs or at == Vector2i(player.x, player.y):
+				continue
+			_place_pick(at, e, -1, WILD_UNPRICED)
+			if in_caves and e["app"] == &"bear":
+				_make_a_den(area)
+			break
+
+func _roll_the_wild() -> void:
+	absent_wild = []
+	var band_name: StringName = Bands.NAMES[Bands.of(effective_depth())]
+	for e in BESTIARY:
+		if not e.has("bands"):
+			continue
+		var chance := float((e["bands"] as Dictionary).get(band_name, 0.0))
+		if fauna_rng.randf() >= chance:
+			absent_wild.append(e["name"])
+
+func _place_fauna(area: Rect2i, chance: float) -> void:
+	if rng.randf() < chance:
+		_spawn_in(area, WILD_UNPRICED, true)
+
+func _spawn_at(at: Vector2i, tier: int, remaining: int, wild_only := false) -> int:
 	var mx := at.x
 	var my := at.y
 	if not _can_rest_on(mx, my) or entity_at(mx, my) != null:
 		return 0
 	if Vector2i(mx, my) == stairs or Vector2i(mx, my) == Vector2i(player.x, player.y):
 		return 0
-	var pick := _roll_monster(remaining, tier)
+	var pick := _roll_monster(remaining, tier, wild_only)
 	if pick.is_empty():
 		return -1
+	return _place_pick(at, pick, tier, remaining)
+
+## The rolled (or chosen) entry, set down at a cell already checked.
+func _place_pick(at: Vector2i, pick: Dictionary, tier: int, remaining: int) -> int:
+	var mx := at.x
+	var my := at.y
 	var m := monster_from(pick, mx, my)
 	_set_the_watch(m)
 	# Gear raises what a monster is actually worth facing, so it must raise the
@@ -2635,7 +2759,46 @@ func _spawn_at(at: Vector2i, tier: int, remaining: int) -> int:
 	# ceiling claims, and the survivability guarantee becomes a lie.
 	m.threat += _arm_monster(m, pick, remaining - m.threat)
 	entities.append(m)
+	# A pack animal brings its pack (the wolf, 2026-10-05): the rest come on
+	# top of the one the roll bought, beside it, and cost the ceiling nothing
+	# -- an animal is nobody's enemy until struck.
+	var pack := _pack_size(pick, tier)
+	if pack > 1:
+		_spawn_pack(m, pick, pack - 1)
 	return m.threat
+
+## How far a struck wolf's pack turns with it.
+const PACK_REACH := 8
+
+## A pack's size at a depth: a number, or a table by band name (a pair of
+## wolves on the upper floors, four in the caves). One, for the packless.
+func _pack_size(entry: Dictionary, at_depth: int = -1) -> int:
+	var pack: Variant = entry.get("pack", 1)
+	if pack is Dictionary:
+		var d := effective_depth() if at_depth < 0 else at_depth
+		return int(pack.get(Bands.NAMES[Bands.of(d)], 1))
+	return int(pack)
+
+## `more` of the same beside `leader`, on the nearest open squares (chosen
+## in ring order, not rolled: a draw here would move every later roll).
+func _spawn_pack(leader: Entity, pick: Dictionary, more: int) -> void:
+	var placed := 0
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if placed >= more:
+					return
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var c := Vector2i(leader.x + dx, leader.y + dy)
+				if not map.in_bounds(c.x, c.y) or not _can_rest_on(c.x, c.y) \
+						or entity_at(c.x, c.y) != null or c == stairs \
+						or c == Vector2i(player.x, player.y):
+					continue
+				var m := monster_from(pick, c.x, c.y)
+				_set_the_watch(m)
+				entities.append(m)
+				placed += 1
 
 ## A bestiary entry, made flesh.
 ##
@@ -2669,6 +2832,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.patrols = entry.get("patrol", false)
 	m.scavenges = entry.get("scavenge", false)
 	m.eats = entry.get("eats", false)
+	m.acid = bool(entry.get("acid", false))
 	if m.ai == &"forager":
 		m.activity = Entity.Activity.FEEDING
 	m.attack_range = entry.get("range", 1)
@@ -2834,6 +2998,18 @@ func _drop_loot(victim: Entity) -> void:
 		it.letter = ""
 		ground.append(it)
 		msg_log.add("It drops the %s." % it.display_name(), Color(0.72, 0.78, 0.90))
+	# WHAT IT CARRIED UNWORN (the slime, 2026-10-05: the first monster to
+	# carry things it does not wear). Everything it swallowed is marked
+	# scavenged, so all of it comes back out, certain -- the dungeon may take
+	# your things, not eat them; anything else unworn rolls like gear does.
+	for it in victim.inventory:
+		if victim.is_equipped(it):
+			continue
+		if victim.faction != Entity.Faction.PLAYER and not it.scavenged \
+				and rng.randf() > LOOT_DROP_CHANCE:
+			continue
+		_drop_item_at(it, at)
+		msg_log.add("It drops the %s." % it.display_name(), Color(0.72, 0.78, 0.90))
 	victim.equipped.clear()
 	victim.inventory.clear()
 
@@ -2990,7 +3166,7 @@ func _roll_launcher() -> Item:
 		return null
 	return Item.make(pool[rng.randi_range(0, pool.size() - 1)])
 
-func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
+func _roll_monster(remaining: int, tier: int = -1, wild_only := false) -> Dictionary:
 	var pool := []
 	var total := 0.0
 	# Past the deepest tier the fade stops advancing, so the heaviest monsters
@@ -2999,6 +3175,19 @@ func _roll_monster(remaining: int, tier: int = -1) -> Dictionary:
 	var effective := mini(here, deepest_tier() + TIER_GRACE)
 	for e in BESTIARY:
 		if e["min_depth"] > here:
+			continue
+		# AN ANIMAL IS NOT WHAT THE CEILING BUYS (2026-10-05). The bat, the
+		# bear and the rabbit are nobody's enemy until struck, so their
+		# threat in the hostile budget was danger the floor did not have:
+		# measured the morning after they went WILD, floors 2-6 carried a
+		# fifth to a third less than the ceiling arithmetic promised. The
+		# budget rolls enemies only; the wild come on top, by _place_fauna.
+		if bool(e.get("wild", false)) != wild_only:
+			continue
+		# WHERE A THING LIVES (Brad, 2026-10-05): a row that names its bands
+		# is a floor feature, on the floor or not by _roll_the_wild and set
+		# down by _place_the_wild -- never a share of this roll.
+		if e.has("bands"):
 			continue
 		# Ascent-only things, gated separately from the tier ladder.
 		#
@@ -4058,6 +4247,19 @@ func player_move(dx: int, dy: int) -> bool:
 			msg_log.add("You have no hands. Whatever you meant to do, you cannot.",
 				Color(0.7, 0.6, 0.4))
 			return false
+		# PICKING A FIGHT WITH A WILD THING IS DELIBERATE (the floor-1 bear,
+		# 2026-10-05). An animal that has done nothing to you costs no turn
+		# on the first bump and says what it is; the same move again, with
+		# nothing in between, is the attack. A new player on floor 1 with
+		# 30 hp who walks into a bear by mistake would otherwise be dead in
+		# three of its hits. A rabbit is never worth the warning (power 0),
+		# and a provoked animal is your enemy already and gets none.
+		if target.is_wild() and not target.hostile_to(player) and target.power > 0 \
+				and _meant != target:
+			_meant = target
+			msg_log.add("That is a %s, and it has done nothing to you. Move into it again to pick the fight."
+				% target.name, Color(0.95, 0.72, 0.45))
+			return false
 		_attack(player, target)
 		_end_player_turn()
 		return true
@@ -4147,7 +4349,7 @@ const TORCH_SCORCHES := 3
 ## A floor can only hold so much crawling red; past this it stops spreading.
 const RED_CAP := 60
 ## Who carries spores from a body.
-const SPORE_CARRIERS := [&"rat", &"bat", &"rabbit"]
+const SPORE_CARRIERS := [&"rat", &"bat", &"rabbit", &"slime"]
 ## A marked creature, awake and on plain floor, leaves its fungus behind it on
 ## this share of its turns: a trail you can read. Brad: 5 was his first
 ## thought, 3 to start cautious. Capped per colour, so it never runs away.
@@ -4228,16 +4430,38 @@ func _wash(e: Entity) -> void:
 	if not e.alive or e.flying or e.fungal or e.risen \
 			or map.get_tile(e.x, e.y) != Tiles.WATER:
 		return
-	if e.spores == &"" and e.poisoned == 0:
+	if e.spores == &"" and e.poisoned == 0 and e.acid_turns == 0:
 		return
 	var had := String(e.spores)
+	var burning := e.acid_turns > 0
 	e.spores = &""
 	e.poisoned = 0
+	e.acid_turns = 0
 	if e.is_player:
-		msg_log.add("The water washes the poison off you.", Color(0.62, 0.78, 0.90))
+		msg_log.add("The water washes the %s off you." % ("acid" if burning else "poison"),
+			Color(0.62, 0.78, 0.90))
 	elif map.is_visible(e.x, e.y) and had != "":
 		msg_log.add("The water takes the %s off the %s." % [had, e.name],
 			Color(0.62, 0.78, 0.90))
+
+## ACID (the slime, 2026-10-05): a slime's hit clings and eats for a few
+## turns; water washes it off (_wash). Not the miasma's poison: a rabbit
+## breathes the purple unharmed and is eaten by acid like anything else,
+## and the log says "acid" where it means it.
+const ACID_HURT := 1
+const ACID_LINGER := 3
+
+## One turn of acid on a creature. True if it killed.
+func _acid_bites(e: Entity) -> bool:
+	if e.acid_turns <= 0:
+		return false
+	e.take_damage(ACID_HURT)
+	e.acid_turns -= 1
+	if e.is_player:
+		_tally("taken", ACID_HURT)
+		if e.acid_turns == 0 and e.alive:
+			msg_log.add("The acid is spent.", Color(0.70, 0.78, 0.70))
+	return not e.alive
 
 ## One turn of air for a creature: the cloud poisons (or re-poisons), and the
 ## poison bites. True if it killed.
@@ -4442,7 +4666,10 @@ func _grow_fungus() -> void:
 	for e in entities:
 		if not e.is_player:
 			_wash(e)
-	# The miasma: every creature breathes, flyers included.
+	# Acid, then the miasma: every creature breathes, flyers included.
+	for e in entities.duplicate():
+		if e.alive and not e.is_player and _acid_bites(e):
+			_settle_death(e, e)
 	for e in entities.duplicate():
 		if e.alive and not e.is_player and _breathe(e):
 			if map.is_visible(e.x, e.y):
@@ -4459,7 +4686,7 @@ func _grow_fungus() -> void:
 		e.take_spores(&"red" if t == Tiles.FUNGUS_RED else &"purple")
 		# The red lets its carriers be (Brad, 2026-09-30): it marks a rat and
 		# does not bite it.
-		if t == Tiles.FUNGUS_RED and e.appearance == &"rat":
+		if t == Tiles.FUNGUS_RED and (e.appearance == &"rat" or e.appearance == &"slime"):
 			continue
 		e.take_damage(PURPLE_HURT if t == Tiles.FUNGUS_PURPLE else RED_HURT)
 		if e.alive and e.alertness == Entity.Alert.ASLEEP:
@@ -4528,6 +4755,7 @@ func _rise_from(b: Dictionary) -> bool:
 	r.poisoned = 0
 	r.chilled = 0
 	r.frozen = 0
+	r.acid_turns = 0
 	r.regen = 0
 	r.careful = false
 	r.max_hp = maxi(1, r.max_hp / 2)
@@ -6412,6 +6640,14 @@ func _cells_to_strings(cells: Array) -> Array:
 		out.append("%d,%d" % [c.x, c.y])
 	return out
 
+## The bestiary's row for an appearance, or {} -- for the rules a creature
+## carries by kind rather than on itself (a pack animal's pack).
+func _bestiary_row(app: StringName) -> Dictionary:
+	for row in BESTIARY:
+		if row["app"] == app:
+			return row
+	return {}
+
 ## Any brazier beside the player, lit, guttered or black.
 func _adjacent_any_brazier() -> Vector2i:
 	for dy in [-1, 0, 1]:
@@ -7629,6 +7865,8 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	Scheduler.spend(player, cost)
 	turns += 1
+	# The "move into it again" warning holds for one move only.
+	_meant = null
 	_tick_returning()
 	_thaw_rooms()
 	_spot_traps()
@@ -7650,6 +7888,13 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	if game_over:
 		return
 	_wash(player)
+	if _acid_bites(player):
+		game_over = true
+		death_cause = "eaten by a slime's acid"
+		events.append({"kind": &"death", "to": Vector2i(player.x, player.y)})
+		write_morgue()
+		write_death_dump()
+		return
 	if _breathe(player):
 		game_over = true
 		death_cause = "poisoned by the miasma"
@@ -8427,6 +8672,7 @@ func _take_ai_turn(actor: Entity) -> int:
 		foe = in_view
 
 	match actor.ai:
+		&"slime":   _ai_slime(actor, foe)
 		&"erratic": _ai_erratic(actor, foe)
 		&"forager": _ai_forager(actor, foe)
 		&"banshee": _ai_banshee(actor, foe)
@@ -9311,6 +9557,10 @@ func _allies_near(actor: Entity, radius: int) -> int:
 		# backwards and would have been very hard to see in play.
 		if e == actor or not e.alive or e.faction != actor.faction:
 			continue
+		# For a wild thing, its own KIND: a rabbit beside a wolf is supper,
+		# not company (2026-10-05).
+		if actor.is_wild() and e.appearance != actor.appearance:
+			continue
 		if Los.steps(actor.x, actor.y, e.x, e.y) <= radius:
 			n += 1
 	return n
@@ -9829,6 +10079,55 @@ func _what_scares(actor: Entity) -> Entity:
 			best = e
 			best_d = d
 	return best
+
+## THE SLIME'S TURN. Anything lying under it is swallowed, meat and fungus
+## eaten; anything lying within SCAVENGE_REACH is walked to BEFORE anything
+## else -- even with you beside it, which is what makes dropping something
+## a lure (Brad, 2026-10-04; the one creature that breaks `_scavenge`'s
+## "nothing stops mid-fight" rule, on purpose). Nothing to take: it hunts
+## like anything else.
+func _ai_slime(actor: Entity, foe: Entity) -> void:
+	if _slime_feeds(actor):
+		return
+	var want := Vector2i(-1, -1)
+	var best := SCAVENGE_REACH + 1
+	for it in ground:
+		var d := Los.steps(actor.x, actor.y, it.x, it.y)
+		if d < best and Los.clear(map, actor.x, actor.y, it.x, it.y):
+			best = d
+			want = Vector2i(it.x, it.y)
+	if want.x >= 0:
+		_step_toward(actor, want)
+		return
+	_ai_hunter(actor, foe)
+
+## What a slime does with what it stands on: eats meat and green fungus
+## (gone for good), swallows everything else (carried, and dropped whole when
+## it dies -- marked `scavenged`, so the drop is certain). True if it fed.
+func _slime_feeds(actor: Entity) -> bool:
+	if _eat_here(actor):
+		return true
+	var at := Vector2i(actor.x, actor.y)
+	if map.get_tile(at.x, at.y) == Tiles.FUNGUS:
+		map.set_tile(at.x, at.y,
+			Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN else Tiles.FLOOR)
+		_gather_lights()
+		actor.hp = mini(actor.max_hp, actor.hp + 1)
+		if map.is_visible(at.x, at.y):
+			msg_log.add("The %s dissolves the fungus." % actor.name, Color(0.70, 0.88, 0.50))
+		return true
+	var found := items_at(at.x, at.y)
+	if found.is_empty():
+		return false
+	var it: Item = found[0]
+	ground.erase(it)
+	it.letter = ""
+	it.scavenged = true
+	actor.inventory.append(it)
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The %s swallows the %s." % [actor.name, it.display_name()],
+			Color(0.70, 0.88, 0.50))
+	return true
 
 func _ai_forager(actor: Entity, foe: Entity) -> void:
 	if actor.busy > 0:
@@ -10403,6 +10702,12 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	defender.take_damage(dmg)
 	if gem != &"":
 		_gem_strikes(gem, attacker, defender, dmg, ranged)
+	# The slime's touch: acid that goes on eating (ACID_LINGER turns).
+	if attacker.acid and defender.alive and not ranged:
+		defender.acid_turns = ACID_LINGER
+		if defender.is_player:
+			msg_log.add("The %s's acid clings to you. Water would wash it off." % attacker.name,
+				Color(0.70, 0.88, 0.50))
 
 	if attacker.is_player:
 		_tally("dealt", dmg)
@@ -10446,9 +10751,25 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	if defender.is_wild() and not defender.provoked \
 			and (attacker.is_player or attacker.faction == Entity.Faction.PLAYER):
 		defender.provoked = true
+		# A PACK TURNS TOGETHER (the wolf, 2026-10-05): every one of its kind
+		# within PACK_REACH takes the same grudge and the same enemy.
+		var pack := 0
+		if _pack_size(_bestiary_row(defender.appearance)) > 1:
+			for e in entities:
+				if e == defender or not e.alive or e.appearance != defender.appearance \
+						or e.provoked or Los.steps(e.x, e.y, defender.x, defender.y) > PACK_REACH:
+					continue
+				e.provoked = true
+				e.grudge = attacker
+				e.alertness = Entity.Alert.AWAKE
+				pack += 1
 		if defender.alive and defender.ai != &"forager" \
 				and map.is_visible(defender.x, defender.y):
-			msg_log.add("The %s turns on you." % defender.name, Color(0.95, 0.72, 0.45))
+			if pack > 0:
+				msg_log.add("The %s turns on you -- and the pack with it." % defender.name,
+					Color(0.95, 0.72, 0.45))
+			else:
+				msg_log.add("The %s turns on you." % defender.name, Color(0.95, 0.72, 0.45))
 	# A risen hit carries the red: what it kills, rises. The snowball.
 	if attacker.fungal and not defender.is_player:
 		defender.take_spores(&"red")

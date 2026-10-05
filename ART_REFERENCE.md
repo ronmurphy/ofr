@@ -1,6 +1,6 @@
 # OFR art reference
 
-Generated 2026-10-01 by `tools/art_reference.gd` from the game's own tables. Regenerate with
+Generated 2026-10-05 by `tools/art_reference.gd` from the game's own tables. Regenerate with
 `godot --headless --path . -s tools/art_reference.gd`; do not edit by hand.
 
 ## How the game draws today
@@ -60,7 +60,7 @@ sight and light pass. The legend's note is what the game tells the player about 
 | brazier | `Ω` | ✶ | U+F0238 (md-fire) | 0.78 : 1 | #e0913c | #241408 | card 0.60 x 0.60 | no | yes | rest at it, or forge |
 | pillar | procedural (legend shows ●) | (same) | -- |  | #9a9082 | #0b0c10 | mesh | no | no |  |
 | rubble | `▒` | (same) | -- |  | #6b5b47 | #1a150f | floor | yes | yes | slightly slow; knaps sling stones |
-| water | `~` | ≈ | U+EF30 (fa-water) | 1.50 : 1 | #4d7f9e | #15242e | card 0.50 x 0.30 | yes | yes | slow to wade |
+| water | `~` | ≈ | U+EF30 (fa-water) | 1.50 : 1 | #4d7f9e | #15242e | card 0.50 x 0.30 | yes | yes | slow and LOUD; washes the red off |
 | rock | procedural (legend shows █) | (same) | -- |  | #857a69 / #4a4238 (light / dark rock; hue-shifted per region) | #0b0c10 | mesh | no | no |  |
 | cave floor | `·` | (same) | -- |  | #6d6250 | #1c1814 | floor | yes | yes |  |
 | stalagmite | procedural (legend shows ▲) | (same) | -- |  | #857a69 | #241f19 | mesh | no | no |  |
@@ -74,7 +74,7 @@ sight and light pass. The legend's note is what the game tells the player about 
 | red fungus | `*` | ◌ | U+F07DF (md-mushroom) | 1.00 : 1 | #d8434a | #241314 | card 0.50 x 0.40 | yes | yes | claims the dead; burn or bury |
 | door barred | `+` | ■ | U+F081B (md-door_closed) | 1.11 : 1 | #8d8578 | #1c1712 | mesh | yes | no | holds all but a bear |
 | pit | procedural (legend shows ●) | (same) | -- |  | #5a5044 | #000000 | floor | yes | yes | drops you a floor |
-| trap | `^` | ⚠ | U+F0026 (md-alert) | 1.16 : 1 | #d4674f | #2a1714 | card 0.55 x 0.40 | yes | yes | springs once |
+| trap | `^` | ⚠ | U+F0026 (md-alert) | 1.16 : 1 | #d4674f | #2a1714 | card 0.55 x 0.40 | yes | yes | hidden; found, step over or disarm |
 | brazier dead | `Ω` | ✶ | U+F0238 (md-fire) | 0.78 : 1 | #3a3234 | #121013 | card 0.60 x 0.60 | no | yes | cold, until fire |
 | grave | `Π` | (same) | U+F0BA2 (md-grave_stone) | 0.90 : 1 | #8d94a6 | #15161b | card 0.55 x 0.60 | yes | yes |  |
 | chest | `¢` | (same) | U+F0726 (md-treasure_chest) | 1.25 : 1 | #c9953f | #1d1710 | card 0.60 x 0.45 | no | yes |  |
@@ -88,8 +88,10 @@ the depth it first appears, its hit points and its power; `heavy` creatures shou
 |---|---|---|---|---|---|---|---|
 | bat | `b` | U+F0B5F (md-bat) | 2.08 : 1 | #8e6fa8 | 0.75 x 0.36 | x1.55 | cave bat (depth 2+, hp 5, power 3) |
 | rat | `r` | U+F1327 (md-rodent) | 1.11 : 1 | #8a7f6a | 0.60 x 0.40 | x1.55 | giant rat (depth 1+, hp 4, power 2) |
+| slime | `j` | U+F14FB (md-square_rounded) | 1.00 : 1 | #86c93e | 0.62 x 0.42 | x1.55 | slime (depth 1+, hp 5, power 2) |
 | rabbit | `u` | U+F1A61 (md-rabbit_variant) | 0.72 : 1 | #e0a05c | 0.55 x 0.45 | x1.55 | rabbit (depth 1+, hp 6, power 0) |
 | killer rabbit | `U` | U+F1A61 (md-rabbit_variant) | 0.72 : 1 | #fff2f2 | 0.60 x 0.50 | x1.55 | the killer rabbit |
+| wolf | `d` | U+F0A44 (md-dog_side) | 1.11 : 1 | #a9a9b4 | 0.85 x 0.55 | x1.55 | wolf (depth 1+, hp 9, power 4) |
 | kobold | `k` | U+F02E7 (md-human_child) | 0.60 : 1 | #e8d9a0 | 0.60 x 0.60 | x0.87 | kobold (depth 1+, hp 6, power 3) |
 | goblin | `g` | U+F02E7 (md-human_child) | 0.60 : 1 | #2f6b4f | 0.60 x 0.62 | x0.87 | goblin (depth 2+, hp 9, power 4) |
 | slinger | `K` | U+F082C (md-karate) | 0.86 : 1 | #d8a04a | 0.62 x 0.62 | x1.15 | kobold slinger (depth 2+, hp 5, power 3) |
@@ -98,12 +100,12 @@ the depth it first appears, its hit points and its power; `heavy` creatures shou
 | harpy | `H` | U+F15C6 (md-bird) | 1.23 : 1 | #d08fc0 | 0.90 x 0.70 | x1.55 | harpy (depth 5+, hp 16, power 7) |
 | orc | `o` | U+F02E6 (md-human) | 0.90 : 1 | #b5643c | 0.80 x 0.80 | x1.55 | orc (depth 4+, hp 16, power 6) |
 | banshee | `h` | U+F165D (md-ghost_outline) | 0.90 : 1 | #f2f4ff | 0.80 x 0.80 | x1.55 | banshee (depth 3+, hp 8, power 0) |
-| wizard | `l` | U+F02E6 (md-human) | 0.90 : 1 | #3d6ee8 | 0.80 x 0.82 | x1.55 | wizard (depth 8+, hp 18, power 11) |
 | wight | `w` | U+F02E6 (md-human) | 0.90 : 1 | #b8c4d8 | 0.80 x 0.82 | x1.55 | wight (depth 7+, hp 24, power 10) |
+| wizard | `l` | U+F02E6 (md-human) | 0.90 : 1 | #3d6ee8 | 0.80 x 0.82 | x1.55 | wizard (depth 8+, hp 18, power 11) |
 | player | `@` | U+EA67 (cod-person) | 0.50 : 1 | #f2e9d8 | 0.60 x 0.85 | x1.55 | you |
 | shadow | `S` | U+F02A0 (md-ghost) | 0.90 : 1 | #8a63c4 | 0.80 x 0.85 | x1.55 | shadow (depth 9+, hp 20, power 13) |
 | trader | `&` | U+F4CA (oct-feed_person) | 1.00 : 1 | #e8b76a | 0.80 x 0.85 | x1.55 | the trader (neutral) |
-| bear | `B` | U+F03E9 (md-paw) | 1.11 : 1 | #b5763d | 1.00 x 0.85 | x1.55 | cave bear (depth 5+, hp 34, power 9, heavy) |
+| bear | `B` | U+F03E9 (md-paw) | 1.11 : 1 | #b5763d | 1.00 x 0.85 | x1.55 | cave bear (depth 1+, hp 34, power 9, heavy) |
 | lich | `L` | U+EE6F (fa-monument) | 0.75 : 1 | #7cf0d8 | 0.90 x 0.90 | x1.55 | arch lich (depth 10+, hp 40, power 15) |
 | golem | `G` | U+F06A9 (md-robot) | 1.10 : 1 | #9aa0a8 | 0.95 x 1.00 | x1.55 | stone golem (depth 8+, hp 42, power 10, heavy) |
 | ogre | `O` | U+F115D (md-weight_lifter) | 0.91 : 1 | #9a7fb8 | 0.95 x 1.05 | x1.95 | ogre (depth 5+, hp 26, power 9, heavy) |
@@ -120,6 +122,7 @@ sword, and the name (read with the look key) says which. `3D box` is the card ly
 | picture id | letters | symbols | picture | shape | fg | 3D box | items that wear it |
 |---|---|---|---|---|---|---|---|
 | scroll | `?` | ≡ | U+F0BC2 (md-script_text) | 1.00 : 1 | #cfc39a | 0.50 x 0.36 | scroll of blink, scroll of light |
+| fungus | `*` | ◌ | U+F07DF (md-mushroom) | 1.00 : 1 | #7fd9b0 | 0.50 x 0.40 | fungus |
 | shovel | `|` | Γ | U+F0710 (md-shovel) | 1.00 : 1 | #7fd69a | 0.50 x 0.36 | undertaker's shovel |
 | amulet | `"` | ◎ | U+F0F0B (md-necklace) | 1.27 : 1 | #ffe07a | 0.40 x 0.34 | Amulet of the Deep |
 | shield | `(` | ▽ | U+F0498 (md-shield) | 0.82 : 1 | #a89a7c | 0.50 x 0.36 | buckler, kite shield, tower shield |
@@ -132,8 +135,8 @@ sword, and the name (read with the look key) says which. `3D box` is the card ly
 | potion | `!` | ◔ | U+F0093 (md-flask) | 0.90 : 1 | #d2607a | 0.50 x 0.36 | potion of healing |
 | meat | `%` | (same) | U+F146A (md-food_steak) | 0.70 : 1 | #c46b5a | 0.50 x 0.36 | haunch of bear, haunch of rabbit |
 | ring | `=` | (same) | U+F07EB (md-ring) | 0.80 : 1 | #b98cd6 | 0.36 x 0.30 | ring of the rat |
-| gem | `$` | (same) | U+F01C8 (md-diamond_stone) | 1.00 : 1 | #dfe4ea | 0.40 x 0.30 | gem of fire, gem of frost, gem of returning, gem of the boss, gem of the bulwark, gem of the crag, gem of the mirror, gem of the road, gem of thirst |
-| sack | `¤` | (same) | U+F0D2E (md-sack) | 0.91 : 1 | #8a5a3c | 0.50 x 0.36 | sack |
+| gem | `$` | (same) | U+F01C8 (md-diamond_stone) | 1.00 : 1 | #dfe4ea | 0.40 x 0.30 | gem of fire, gem of frost, gem of returning, gem of the boss, gem of the bulwark, gem of the crag, gem of the lantern, gem of the mirror, gem of the road, gem of the veil, gem of thirst, the trapwright's glass |
+| sack | `¤` | (same) | U+F0D2E (md-sack) | 0.91 : 1 | #8a5a3c | 0.50 x 0.36 | forager's satchel, sack |
 | bone | `/` | ∵ | U+F00B9 (md-bone) | 2.00 : 1 | #7fd69a | 0.50 x 0.36 | knucklebone |
 
 ## Drawn without a glyph

@@ -81,6 +81,10 @@ func _initialize() -> void:
 	_test_brazier_resting()
 	_test_levels_offer_braziers()
 	_test_threat_ceiling_holds()
+	_test_the_wild_are_not_the_budget()
+	_test_the_slime()
+	_test_the_wolf_pack()
+	_test_picking_a_fight_is_deliberate()
 	_test_threat_ceiling_holds_on_the_climb()
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
@@ -702,7 +706,7 @@ func _test_threat_ceiling_holds_on_the_climb() -> void:
 				rooms_checked += 1
 				var sum := 0
 				for e in gs.entities:
-					if not e.is_player and room.has_point(Vector2i(e.x, e.y)):
+					if not e.is_player and not e.is_wild() and room.has_point(Vector2i(e.x, e.y)):
 						sum += e.threat
 				if sum > ceiling:
 					breaches += 1
@@ -713,7 +717,358 @@ func _test_threat_ceiling_holds_on_the_climb() -> void:
 	check("and the climb actually fielded some liches", liches > 0, str(liches))
 
 ## The headline guarantee: no room can roll something unsurvivable.
+## THE WOLF (the wild creatures update, 2026-10-05): it comes as a pack, the
+## pack is nobody's enemy until one is struck and then turns together, its
+## company is its own kind, and a provoked pack hunts you.
+func _test_the_wolf_pack() -> void:
+	var gs := _arena(21, 11)
+	gs.depth = 5
+	gs.player.x = 3
+	gs.player.y = 5
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	var row := _bestiary_entry("wolf")
+	check("precondition: the wolf is wild, eats, and comes in a pack in the caves",
+		bool(row.get("wild", false)) and bool(row.get("eats", false)) and gs._pack_size(row) == 4)
+	# Brad's bands (2026-10-05): a pair on the upper floors, four in the caves,
+	# on both halves of the dungeon; none in either fortress.
+	check("the pack is a pair on the upper floors and four in the caves, going down and coming up",
+		gs._pack_size(row, 2) == 2 and gs._pack_size(row, 5) == 4
+		and gs._pack_size(row, 15) == 4 and gs._pack_size(row, 18) == 2)
+	check("and a thing without a pack is one", gs._pack_size(_bestiary_entry("goblin")) == 1)
+	var leader := _spawn(gs, "wolf", 12, 5)
+	gs._spawn_pack(leader, row, gs._pack_size(row) - 1)
+	var wolves := []
+	for e in gs.entities:
+		if e.appearance == &"wolf":
+			wolves.append(e)
+	var close := true
+	for w in wolves:
+		close = close and Los.steps(w.x, w.y, leader.x, leader.y) <= 3
+	check("the pack stands together (%d wolves)" % wolves.size(),
+		wolves.size() == gs._pack_size(row) and close)
+	# Unstruck: nobody's enemy, and your turn is not stopped by them.
+	var quiet := true
+	for w in wolves:
+		quiet = quiet and not w.hostile_to(gs.player) and w.is_wild()
+	check("unstruck, none of them is your enemy", quiet)
+	var rabbit := _spawn(gs, "rabbit", leader.x + 1, leader.y)
+	check("a rabbit beside a wolf is supper, not company",
+		gs._allies_near(leader, 5) == wolves.size() - 1)
+	# Struck: the pack turns as one.
+	# PACK_REACH is 8 in steps; (19, 9) was 7 from the leader and turned too.
+	var far := _spawn(gs, "wolf", 1, 1)
+	var said := func() -> String:
+		var all := ""
+		for line in gs.msg_log.entries:
+			all += str(line["text"]) + "|"
+		return all
+	gs.player.x = leader.x - 1
+	gs.player.y = leader.y
+	gs._attack(gs.player, leader)
+	var turned := 0
+	for w in wolves:
+		if w.provoked and w.hostile_to(gs.player):
+			turned += 1
+	check("struck, every wolf within reach turns on you (and must)",
+		turned == wolves.size() and said.call().contains("and the pack with it"), said.call())
+	check("one too far off does not", not far.provoked)
+	# A provoked pack hunts: a wolf with company steps in.
+	var hunter: Entity = wolves[1]
+	var before := Los.steps(hunter.x, hunter.y, gs.player.x, gs.player.y)
+	hunter.alertness = Entity.Alert.AWAKE
+	gs._take_ai_turn(hunter)
+	check("with the pack round it, a provoked wolf closes on you",
+		Los.steps(hunter.x, hunter.y, gs.player.x, gs.player.y) <= before)
+	# Saved: the grudge against your side survives a reload.
+	var back := GameState.new(1)
+	back.new_game()
+	var kept := 0
+	if back.apply_dict(gs.to_dict()):
+		for e in back.entities:
+			if e.appearance == &"wolf" and e.provoked:
+				kept += 1
+	check("the pack's grudge is saved", kept == turned)
+	# The fauna roll lands a pack, not a wolf: one pack a floor at most.
+	var packs := 0
+	var lone := 0
+	for i in 30:
+		var floor_gs := GameState.new(40000 + i)
+		floor_gs.new_game()
+		floor_gs.depth = 4
+		floor_gs.build_level()
+		var n := 0
+		for e in floor_gs.entities:
+			if e.appearance == &"wolf":
+				n += 1
+		if n >= 3:
+			packs += 1
+		elif n > 0:
+			lone += 1
+	check("on the floors they roam, wolves come in packs (%d packs, %d lone, of 30 floors)"
+		% [packs, lone], packs >= 3 and lone <= packs)
+	# The bands, measured: floors 1-6 and 14 on have wolves and bears; the
+	# fortress (7-9) and the corrupted fortress (11-13) have neither; the
+	# upper floors' packs are pairs. Unpriced now, a bear can land on floor 1
+	# (a room there could never afford a 17), but on a minority of floors.
+	var where := {}
+	var pairs := 0
+	var odd_packs := 0
+	var bears_at_1 := 0
+	for d in [1, 2, 5, 7, 8, 9, 11, 12, 13, 15, 18]:
+		var wolf_floors := 0
+		var bear_floors := 0
+		for i in 12:
+			var floor_gs := GameState.new(41000 + d * 100 + i)
+			floor_gs.new_game()
+			floor_gs.ascending = d > 10
+			floor_gs.depth = d if d <= 10 else 20 - d
+			floor_gs.build_level()
+			var n := 0
+			var b := 0
+			for e in floor_gs.entities:
+				if e.appearance == &"wolf":
+					n += 1
+				elif e.appearance == &"bear":
+					b += 1
+			if n > 0:
+				wolf_floors += 1
+			if b > 0:
+				bear_floors += 1
+			if d == 1:
+				bears_at_1 += b
+			if n > 0 and Bands.of(floor_gs.effective_depth()) == Bands.UPPER:
+				if n == 2:
+					pairs += 1
+				else:
+					odd_packs += 1
+		where[d] = [wolf_floors, bear_floors]
+	var fortress_clear := true
+	for d in [7, 8, 9, 11, 12, 13]:
+		fortress_clear = fortress_clear and where[d][0] == 0 and where[d][1] == 0
+	check("neither fortress has a wolf or a bear (12 floors each of 7-9 and 11-13)", fortress_clear, str(where))
+	check("floors 1, 2, 5, 15 and 18 have wolves (%s)" % str(where),
+		where[1][0] >= 4 and where[2][0] >= 4 and where[5][0] >= 4 and where[15][0] >= 4 and where[18][0] >= 4)
+	check("the caves have bears, going down and coming up (%d, %d of 12)" % [where[5][1], where[15][1]],
+		where[5][1] >= 4 and where[15][1] >= 4)
+	check("on the upper floors a pack is a pair (%d pairs, %d other)" % [pairs, odd_packs],
+		pairs >= 6 and odd_packs == 0)
+	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
+		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## THE BUMP WARNING (2026-10-05): a wild thing that could hurt you is not
+## attacked by the first move into it; the second, straight after, is the
+## fight. A rabbit is hit at once, a provoked animal too, and anything done
+## in between starts the warning over.
+func _test_picking_a_fight_is_deliberate() -> void:
+	var gs := _arena(15, 7)
+	gs.player.x = 3
+	gs.player.y = 3
+	gs.player.max_hp = 200
+	gs.player.hp = 200
+	var wolf := _spawn(gs, "wolf", 4, 3)
+	wolf.alertness = Entity.Alert.AWAKE
+	var hp := wolf.hp
+	var t := gs.turns
+	check("precondition: a wolf, wild, unprovoked, beside you, able to bite",
+		wolf.is_wild() and not wolf.hostile_to(gs.player) and wolf.power > 0 and wolf.is_adjacent(gs.player))
+	check("the first move into it is a warning: no blow, no turn, no grudge",
+		not gs.player_move(1, 0) and wolf.hp == hp and gs.turns == t and not wolf.provoked
+		and _log_says(gs, "That is a wolf, and it has done nothing to you"))
+	# Something else in between -- a step away and back -- starts it over.
+	check("precondition: a step away is a move", gs.player_move(0, 1) and gs.player.y == 4)
+	gs.player.x = 3
+	gs.player.y = 3
+	wolf.x = 4
+	wolf.y = 3
+	t = gs.turns
+	check("after another move, the warning is given again",
+		not gs.player_move(1, 0) and wolf.hp == hp and gs.turns == t and not wolf.provoked)
+	# The same move again: the fight (and it must happen).
+	check("the move repeated is the attack", gs.player_move(1, 0) and gs.turns == t + 1
+		and (wolf.hp < hp or not wolf.alive) and wolf.provoked)
+	# A rabbit: no warning, it is supper. A provoked thing: no warning, it is
+	# your enemy already.
+	# (On free cells: the first wolf still stands east of you.)
+	check("precondition: the cell above you is free", gs.entity_at(gs.player.x, gs.player.y - 1) == null)
+	var rabbit := _spawn(gs, "rabbit", gs.player.x, gs.player.y - 1)
+	var rhp := rabbit.hp
+	check("a rabbit is struck by the first move", gs.player_move(0, -1) and (rabbit.hp < rhp or not rabbit.alive))
+	check("precondition: the cell west of you is free", gs.entity_at(gs.player.x - 1, gs.player.y) == null)
+	var other := _spawn(gs, "wolf", gs.player.x - 1, gs.player.y)
+	other.provoked = true
+	other.alertness = Entity.Alert.AWAKE
+	var ohp := other.hp
+	check("precondition: a provoked wolf is your enemy", other.hostile_to(gs.player))
+	check("and is struck by the first move, no warning",
+		gs.player_move(-1, 0) and (other.hp < ohp or not other.alive))
+
+## THE SLIME (Brad's design, 2026-10-05): it goes for what lies on the floor
+## before anything else, swallows it and drops it all when it dies; meat and
+## fungus it eats; its hit leaves acid that water washes off and rabbits do
+## not shrug off; it seeds the dead like a rat; the climb corrupts it.
+func _test_the_slime() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	var slime := _spawn(gs, "slime", 8, 4)
+	check("precondition: a slime, slow, acid, no appetite flag needed",
+		slime.ai == &"slime" and slime.acid and slime.speed < 100)
+	# A lure: a dagger lying two cells off. It goes for the dagger, not you.
+	var bait := Item.make(&"dagger")
+	bait.x = 10
+	bait.y = 4
+	gs.ground = [bait]
+	var d0 := Los.steps(slime.x, slime.y, gs.player.x, gs.player.y)
+	for i in 3:
+		gs._take_ai_turn(slime)
+	check("lured, it walks to what lies there and swallows it (and must)",
+		not gs.ground.has(bait) and slime.inventory.has(bait) and bait.scavenged
+		and Los.steps(slime.x, slime.y, gs.player.x, gs.player.y) >= d0)
+	# Meat and fungus are eaten, not kept.
+	var meat := Item.make(&"meat")
+	meat.magnitude = 3
+	meat.x = slime.x
+	meat.y = slime.y
+	gs.ground = [meat]
+	slime.hp = 1
+	gs._take_ai_turn(slime)
+	check("meat under it is eaten, not carried", not gs.ground.has(meat)
+		and not slime.inventory.has(meat) and slime.hp > 1)
+	gs.map.set_tile(slime.x, slime.y, Tiles.FUNGUS)
+	gs._take_ai_turn(slime)
+	check("fungus under it is dissolved", gs.map.get_tile(slime.x, slime.y) == Tiles.FLOOR)
+	# Nothing left to take: it hunts you, and its hit clings.
+	gs.ground = []
+	slime.x = 4
+	slime.y = 4
+	gs.player.hp = 50
+	gs.player.max_hp = 50
+	var hit := 0
+	for i in 6:
+		gs._attack(slime, gs.player)
+		if gs.player.acid_turns > 0:
+			hit += 1
+			break
+	check("its hit leaves acid on you (and must)", gs.player.acid_turns == GameState.ACID_LINGER
+		and hit == 1)
+	var here := HerePanel.new()
+	here.state = gs
+	check("the box says acid, and how to be rid of it",
+		here.status_line().begins_with("acid") and here.status_line().contains("water"),
+		here.status_line())
+	var hp0 := gs.player.hp
+	gs._acid_bites(gs.player)
+	check("acid eats a point a turn", gs.player.hp == hp0 - GameState.ACID_HURT
+		and gs.player.acid_turns == GameState.ACID_LINGER - 1)
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.WATER)
+	gs._wash(gs.player)
+	check("water washes the acid off", gs.player.acid_turns == 0)
+	gs.map.set_tile(gs.player.x, gs.player.y, Tiles.FLOOR)
+	# A rabbit shrugs off the purple, not the acid.
+	var bunny := _spawn(gs, "rabbit", 12, 6)
+	bunny.acid_turns = 2
+	var bhp := bunny.hp
+	gs._acid_bites(bunny)
+	check("acid is not the miasma: a rabbit is eaten by it", bunny.hp < bhp)
+	# It drops everything it swallowed when it dies.
+	_kill(gs, slime, gs.player)
+	var dropped := false
+	for it in gs.ground:
+		if it == bait:
+			dropped = true
+	check("killed, it drops what it swallowed, every time (scavenged)", dropped)
+	# A carrier of the red: beside a body, it seeds it.
+	var cs := _arena(15, 9)
+	cs.player.x = 2
+	cs.player.y = 2
+	var carrier := _spawn(cs, "slime", 8, 4)
+	cs.bodies = [{"x": 9, "y": 4, "app": "kobold", "turn": cs.turns, "corrupted": false,
+		"e": GameState.monster_from(_bestiary_entry("kobold"), 9, 4).to_dict(), "seeded": -1,
+		"claimed": false, "still": false, "rises": -1}]
+	cs.ground = []
+	cs._grow_fungus()
+	check("beside a body it seeds the fungus, like a rat", int(cs.bodies[0].get("seeded", -1)) >= 0
+		and GameState.SPORE_CARRIERS.has(&"slime"))
+	# Deep down it still appears, and the climb corrupts it.
+	var deep := GameState.new(77)
+	deep.new_game()
+	deep.depth = 9
+	deep.build_level()
+	var slimes := 0
+	for i in 300:
+		var pick := deep._roll_monster(99)
+		if not pick.is_empty() and pick["name"] == "slime":
+			slimes += 1
+	check("at depth 9 the roll still finds it, rarely (%d of 300)" % slimes, slimes > 0 and slimes < 90)
+	var corruptible := false
+	for i in 200:
+		var pick := deep._roll_corruptible(20)
+		if not pick.is_empty() and pick["name"] == "slime":
+			corruptible = true
+	check("and the climb can corrupt it", corruptible)
+
+## THE WILD ARE NOT THE BUDGET (2026-10-05): the hostile roll never buys an
+## animal, the fauna roll buys nothing else, floors keep the danger the
+## ceiling promises, and the animals are still there.
+func _test_the_wild_are_not_the_budget() -> void:
+	var gs := GameState.new(5)
+	gs.new_game()
+	gs.depth = 5
+	gs.build_level()
+	var wild_in_budget := 0
+	var tame_in_fauna := 0
+	var fauna_rolled := 0
+	for i in 200:
+		var pick := gs._roll_monster(99)
+		if not pick.is_empty() and bool(pick.get("wild", false)):
+			wild_in_budget += 1
+		var beast := gs._roll_monster(99, -1, true)
+		if not beast.is_empty():
+			fauna_rolled += 1
+			if not bool(beast.get("wild", false)):
+				tame_in_fauna += 1
+	check("the hostile roll never buys an animal (0 of 200)", wild_in_budget == 0, "%d" % wild_in_budget)
+	check("the fauna roll buys nothing but animals (%d rolled)" % fauna_rolled,
+		fauna_rolled == 200 and tame_in_fauna == 0, "%d tame" % tame_in_fauna)
+	# Floors keep their danger, and their animals. Depth 6 carried about 131
+	# threat all told before the animals went wild (probe, 2026-10-05); the
+	# enemies alone must still carry most of that, with animals on top.
+	var hostile := 0.0
+	var animals := 0
+	var bears := 0
+	var bats_at_3 := 0
+	for i in 20:
+		var six := GameState.new(60000 + i)
+		six.new_game()
+		six.depth = 6
+		six.build_level()
+		for e in six.entities:
+			if e.is_player:
+				continue
+			if e.hostile_to(six.player):
+				hostile += e.threat
+			if e.is_wild():
+				animals += 1
+				if e.appearance == &"bear":
+					bears += 1
+		var three := GameState.new(30000 + i)
+		three.new_game()
+		three.depth = 3
+		three.build_level()
+		for e in three.entities:
+			if not e.is_player and e.appearance == &"bat":
+				bats_at_3 += 1
+	check("depth 6 keeps its hostile threat with the animals on top (mean %.0f)" % (hostile / 20.0),
+		hostile / 20.0 >= 110.0)
+	check("and still has its animals (%d in 20 floors, %d bears)" % [animals, bears],
+		animals >= 40 and bears >= 5)
+	check("and depth 3 its bats (%d in 20 floors)" % bats_at_3, bats_at_3 >= 20)
+
 func _test_threat_ceiling_holds() -> void:
+	# The wild are left out of every sum: an animal is nobody's enemy until
+	# struck, and since 2026-10-05 the ceiling never bought one (_place_fauna).
 	var worst_over := 0
 	var breaches := 0
 	var rooms_checked := 0
@@ -729,7 +1084,7 @@ func _test_threat_ceiling_holds() -> void:
 				rooms_checked += 1
 				var sum := 0
 				for e in gs.entities:
-					if not e.is_player and room.has_point(Vector2i(e.x, e.y)):
+					if not e.is_player and not e.is_wild() and room.has_point(Vector2i(e.x, e.y)):
 						sum += e.threat
 				if sum > ceiling:
 					breaches += 1
@@ -771,7 +1126,7 @@ func _test_threat_ceiling_holds() -> void:
 				smallest_ceiling = mini(smallest_ceiling, mine)
 				var sum := 0
 				for e in gs.entities:
-					if not e.is_player and region.has_point(Vector2i(e.x, e.y)):
+					if not e.is_player and not e.is_wild() and region.has_point(Vector2i(e.x, e.y)):
 						sum += e.threat
 				if sum > roof:
 					cave_breaches += 1
@@ -6367,14 +6722,16 @@ func _test_the_trader_deals() -> void:
 func _test_fair_shots() -> void:
 	# A corner of this kind on this seed's floor: one-way clear, the other
 	# blocked. The hunt's original was (63, 5) / (59, 2); the floor was laid
-	# differently once traps were counted by band (2026-10-02), and this pair
-	# was found by the same probe on the new layout.
+	# differently once traps were counted by band (2026-10-02) -- (36, 2) /
+	# (39, 8) -- and again when the wild got their own roll (2026-10-05).
+	# Each pair was found by the same probe on the new layout: every walkable
+	# cell against every walkable cell within six, first disagreement wins.
 	var gs := GameState.new(20260927)
 	gs.new_game()
 	gs.depth = 1
 	gs.build_level()
-	var a := Vector2i(36, 2)
-	var b := Vector2i(39, 8)
+	var a := Vector2i(37, 1)
+	var b := Vector2i(35, 5)
 	var there := Los.clear(gs.map, a.x, a.y, b.x, b.y)
 	var back := Los.clear(gs.map, b.x, b.y, a.x, a.y)
 	check("the premise: the one-way line disagrees at this corner (%s / %s)" % [there, back],
@@ -14851,7 +15208,14 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	bear.y = 4
 	var bear_hp := bear.hp
 	var hp_at_bump := gs.player.hp
-	check("precondition: the move is a bump", gs.player_move(1, 0))
+	# The first bump is a warning, not a blow (2026-10-05): no turn passes,
+	# the bear is untouched and still nobody's enemy. The same move again is
+	# the fight.
+	var turns_at_bump := gs.turns
+	check("the first move into it is refused, with a warning, at no cost",
+		not gs.player_move(1, 0) and gs.turns == turns_at_bump and bear.hp == bear_hp
+		and not bear.provoked and _log_says(gs, "done nothing to you"))
+	check("precondition: the second move is a bump", gs.player_move(1, 0))
 	# The move ends your turn, so the bear answers inside it -- and its answer
 	# is a shove, so you are not where you stood. What must be true: it was
 	# hit, and you never changed places with it.
@@ -14935,6 +15299,16 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	lair.entities = [lair.player]
 	var bruin := _spawn(lair, "cave bear", 6, 4)
 	var spear := _spawn(lair, "goblin", 7, 4)
+	# Lit by your torch, so the goblin can SEE the bear it is about to prefer
+	# (past arm's length a living thing sees only what is lit); and tough
+	# enough to live through the bear's answer. Found 2026-10-05: the goblin
+	# used to die to that blow and the foe check below passed on
+	# `not spear.alive` without ever asking its question.
+	lair.torch_lit = true
+	lair._gather_lights()
+	lair.update_vision()
+	spear.max_hp = 40
+	spear.hp = 40
 	lair._attack(spear, bruin)
 	check("precondition: the goblin struck the bear", bruin.hp < bruin.max_hp and bruin.grudge == spear)
 	check("a bear struck by a monster is that monster's enemy, not yours",
@@ -14946,9 +15320,11 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	check("  its turn, it hits the goblin back (%d -> %d) and leaves you be" % [gob_hp, spear.hp],
 		spear.hp < gob_hp and lair.player.hp == player_hp)
 	check("  and the shove lands on a monster as on you (goblin at %d,%d)" % [spear.x, spear.y],
-		not spear.alive or spear.x > 7)
+		spear.alive and spear.x > 7)
+	check("  precondition: it lives, and can see the bear in your torchlight",
+		spear.alive and lair._can_see(spear, bruin))
 	check("  the goblin's own foe is now the bear, since it is nearer than you",
-		not spear.alive or lair._foe_for(spear) == bruin)
+		spear.alive and lair._foe_for(spear) == bruin)
 	var trader := Entity.new("trader", &"trader", 16, 4)
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",

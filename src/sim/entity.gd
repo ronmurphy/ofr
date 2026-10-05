@@ -183,6 +183,12 @@ var scavenges := false
 ## It hunts the wild for food while it is not hunting you, and eats what it
 ## kills (GameState._hunt). From the bestiary; saved.
 var eats := false
+## Its blows leave ACID that goes on eating for a few turns (the slime,
+## 2026-10-05). From the bestiary; saved.
+var acid := false
+## Turns of acid left on a creature: ACID_HURT a turn, washed off in water.
+## Not the miasma's poison, which rabbits ignore and acid does not. Saved.
+var acid_turns := 0
 
 ## Whether this thing walks a beat. Separate from `alertness`, which is only
 ## where it is RIGHT NOW: without a standing flag, a guard that chased you and
@@ -558,7 +564,7 @@ func to_dict() -> Dictionary:
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
-		"chilled": chilled, "frozen": frozen,
+		"chilled": chilled, "frozen": frozen, "acid": acid, "acid_turns": acid_turns,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
 		"busy": busy, "meal": meal,
 		"flee_below": flee_below,
@@ -686,6 +692,8 @@ static func from_dict(d: Dictionary) -> Entity:
 		e.weak_to.append(StringName(w))
 	e.chilled = int(d.get("chilled", 0))
 	e.frozen = int(d.get("frozen", 0))
+	e.acid = bool(d.get("acid", false))
+	e.acid_turns = int(d.get("acid_turns", 0))
 	e.alive = d.get("alive", true)
 
 	for entry in d.get("inventory", []):

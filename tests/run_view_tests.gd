@@ -2153,8 +2153,14 @@ func _test_the_screens_review() -> void:
 	check("  with motion on, it shows one of the three",
 		legend.layout_index() >= 0 and legend.layout_index() < 3)
 	Effects.set_mode(was_mode)
-	check("  the legend still fits the window (%.0f <= %.0f px)" % [legend.wanted_height(), 852.0],
-		legend.wanted_height() <= 852.0)
+	# The roster grows with the bestiary, so the rows squeeze to fit the
+	# window rather than run off its bottom (the slime and the wolf took it
+	# over the line, 2026-10-05). What must hold: the pitch stays legible.
+	var pitch: float = legend.pitch_at(900.0)
+	check("  the legend fits the window at a legible pitch (%.0f px wanted, pitch %.1f >= %.0f)"
+		% [legend.wanted_height(), pitch, LegendPanel.PITCH_MIN],
+		pitch >= LegendPanel.PITCH_MIN and pitch <= LegendPanel.LINE)
+	check("  in a tall window the rows keep their full pitch", legend.pitch_at(1200.0) == LegendPanel.LINE)
 	legend.free()
 
 	# THE PAUSE MENU: who and where beside the title, caps on a keyboard, a

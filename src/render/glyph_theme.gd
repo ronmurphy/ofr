@@ -60,6 +60,8 @@ const OVERRIDES := {
 
 	# --- everything else keeps its own silhouette ---------------------------
 	&"rat":      0xF1327,   # md-rodent
+	&"slime":    0xF14FB,   # md-square_rounded (Brad's pick; a blob)
+	&"wolf":     0xF0A44,   # md-dog_side: a canine in profile reads as the wolf
 	&"bat":      0xF0B5F,   # md-bat
 	&"harpy":    0xF15C6,   # md-bird
 	&"skeleton": 0xF068C,   # md-skull

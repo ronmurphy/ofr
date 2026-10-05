@@ -248,6 +248,9 @@ func condition_chips() -> Array:
 			"colour": Palette.BRAZIER})
 	else:
 		out.append({"glyph": "", "text": "firm", "colour": Palette.UI_DIM})
+	if state.player.acid_turns > 0:
+		out.append({"glyph": "", "text": "acid · %d" % state.player.acid_turns,
+			"colour": Palette.FUNGUS})
 	if state.player.poisoned > 0:
 		out.append({"glyph": "", "text": "poisoned · %d" % state.player.poisoned,
 			"colour": Palette.FUNGUS_PURPLE})

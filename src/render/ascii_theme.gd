@@ -88,6 +88,13 @@ const TABLE := {
 	&"trader":      {"ch": "&", "fg": Palette.TRADER},
 	&"player":      {"ch": "@", "fg": Palette.PLAYER},
 	&"rat":         {"ch": "r", "fg": Color("8a7f6a")},
+	# NetHack's jelly letter. Its own green, apart from the ally mint and the
+	# fungus' glow (the slime is a creature, not a thing that grows).
+	&"slime":       {"ch": "j", "fg": Color("86c93e")},
+	# `d`, the free letter (s and w are the skeleton and the wight). On the
+	# map every wild thing wears Palette.WILD; this grey is for the pack and
+	# the bestiary.
+	&"wolf":        {"ch": "d", "fg": Color("a9a9b4")},
 	&"kobold":      {"ch": "k", "fg": Color("e8d9a0")},
 	&"goblin":      {"ch": "g", "fg": Color("2f6b4f")},
 	&"bat":         {"ch": "b", "fg": Color("8e6fa8")},

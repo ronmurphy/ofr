@@ -53,7 +53,7 @@ func _draw_keycap(y: float, label: String, colour: Color) -> void:
 ## The status line's colour: what is hurting you, in its own colour.
 func status_colour() -> Color:
 	var line := status_line()
-	if line.begins_with("poisoned") or line.begins_with("purple"):
+	if line.begins_with("poisoned") or line.begins_with("purple") or line.begins_with("acid"):
 		return Palette.FUNGUS_PURPLE
 	if line.begins_with("red"):
 		return Palette.FUNGUS_RED
@@ -82,6 +82,8 @@ func press_name(key: int) -> String:
 func status_line() -> String:
 	if state == null or state.game_over:
 		return ""
+	if state.player.acid_turns > 0:
+		return "acid -- 1 hp a turn, %d more; water washes it off" % state.player.acid_turns
 	if state.player.poisoned > 0:
 		return "poisoned -- 1 hp a turn, %d more turn%s" % [state.player.poisoned,
 			"" if state.player.poisoned == 1 else "s"]

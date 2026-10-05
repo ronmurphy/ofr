@@ -1034,6 +1034,65 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   as a fear, the WILD colour freeing the bat's purple in the theme table.
   **Next (agreed with Brad, 2026-10-04):** the wolf, with bear-versus-wolf
   through the grudge; then the slime.
+- **The wolf -- BUILT 2026-10-05 (desktop)**, waiting on play. As built:
+  WILD, `eats`, depth 3+, caves twice over (`caves: 2.0`), hp 9, power 4,
+  def 1, speed 130, flee 0.15; `d` in ascii, md-dog_side in the picture
+  look, grey. It comes as a PACK of four: the fauna roll places one and
+  `_spawn_pack` sets three more on the nearest open cells round it (no rng
+  of its own, so seeds hold), and `max_per_floor: 1` makes that ONE pack a
+  floor. Unstruck, the pack is nobody's enemy and hunts rabbits as the bear
+  does (`_allies_near` counts only its own kind for a wild thing, so a
+  rabbit beside a wolf is supper, not company). STRUCK by you or an ally,
+  every wolf of its kind within `PACK_REACH` (8) turns with it -- provoked,
+  the grudge on the attacker, awake -- and the log says "The wolf turns on
+  you -- and the pack with it."; one further off keeps its peace until it
+  is hit itself. Provoked wolves hunt you with `_ai_hunter` and the pack
+  AI's "step in with company" rule, and the grudge is saved (`provoked`).
+  Bear-versus-wolf is NOT in: two wild things still never fight each other
+  (the food web step). Test: `_test_the_wolf_pack`.
+  **Where they live (Brad, the same day):** floors 1-6 and 14 on -- the
+  upper floors and the caves on both halves -- and never either fortress,
+  where a wild pack in masonry reads wrong (the trained animals below are
+  the way in there). Built as `bands` on the bestiary row: the bands a
+  thing is found in, each with the chance a floor of that band has it at
+  all, rolled ONCE A FLOOR on its own rng (`_roll_the_wild`, `fauna_rng`)
+  and SET DOWN once (`_place_the_wild`: in a cave if the floor has caves,
+  else a room that is not the first; the bear's den forms round it), never
+  as a share of the per-area animal roll. Two measurements forced that: a
+  share on floor 1, where the wolf and the bear are the only wild things,
+  put both on nearly every floor (60/60, 50/60); and a share in the caves
+  starved the rabbits the climb's caves exist to feed you with (17 in 30
+  floors against a fortress floor's 60 -- `_test_cave_dwellers` caught
+  it). Wolf {upper 0.5, caves 0.75}, a PAIR on the upper floors and four
+  in the caves (`pack` by band, `_pack_size`); bear {upper 0.3, caves
+  0.85}, back on floors 1-3 now a player can walk round it, and one a
+  floor everywhere (the caves' second bear is gone with the cap lift). The
+  per-area roll is no longer priced by the area's ceiling
+  (`WILD_UNPRICED`): that price only ever touched the bear. Measured (60
+  seeds a floor, `tools/probes/wolf_band_probe.gd`): upper floors have a
+  pack on 43-57% and a bear on 23-35%; cave floors a pack on 65-83% and a
+  bear on 75-92%; floors 7-13 none. **The bump warning**, the same batch:
+  the first move into an unprovoked wild thing that can hurt you costs no
+  turn and says "That is a cave bear, and it has done nothing to you. Move
+  into it again to pick the fight."; the same move again attacks; anything
+  else in between starts it over (`_meant`, cleared in `_end_player_turn`).
+  A rabbit is never warned about (power 0), a provoked animal is your enemy
+  already. Without it a floor-1 player with 30 hp who walked into a bear
+  by mistake was dead in three of its hits. Tests: `_test_the_wolf_pack`
+  (bands measured on both halves), `_test_picking_a_fight_is_deliberate`.
+- **Trained animals (Brad, 2026-10-05 -- designed, not built).** Reusable
+  variants from two changes, the faction and the colour: a KOBOLD WOLF
+  RIDER and a GOBLIN BEAR RIDER use the animal's icon and ascii in the
+  MONSTER's colour (that is the tell: not a wild animal), the animal's
+  stats, and are MONSTER, attacking on sight. An ORC or OGRE HOUNDMASTER
+  is too big to ride: the master has its own icon and ascii, and its
+  hounds -- wolves or bears -- wear the master's colour and are MONSTER.
+  These are how the fortress bands (7-9, 11-13) get their animals, since a
+  wild pack never rolls there. One thought from the desktop: when the
+  master dies, the survivors could go WILD on the spot -- the provoke rule
+  run backwards -- a fight you can end early by picking the right target.
+  Everything needed exists: `_spawn_pack`, the pack AI, the faction field;
+  what is new is a row that says "my pack is this other row, in my colour".
 
 - **A WILD faction, appended** (factions are saved as ints). NEUTRAL cannot
   serve: today it means *inert* -- `_take_ai_turn` gives a neutral no turn at
@@ -1116,7 +1175,24 @@ the poison. Risen enemies are untouched: the red walks them. Test:
   Brad's order for 2026-10-05: the ceiling FIRST -- the probe, then the fix
   sized to its number -- then points 2-4, then allies washing, then the
   wolf, the slime and the rest.**
-  1. **Measure the ceiling, do not feel it.** The bat was a real depth-2
+  1. **DONE 2026-10-05 (desktop): measured, then split.** The probe
+     (`tools/probes/threat_wild_probe.gd`, 60 seeds a depth) found the
+     rabbit never counted in practice (it flees) but the bat was 20-26% of
+     the hostile threat on floors 2-4 and the bear 15-30% on 5-7: floors 2-6
+     carried a fifth to a third less than the ceiling promised. The fix is
+     not a bigger ceiling: AN ANIMAL IS NOT WHAT THE CEILING BUYS.
+     `_roll_monster` skips `wild` entries for the budget, and each room
+     (FAUNA_CHANCE 0.4) and cave (FAUNA_CHANCE_CAVE 0.6) rolls one animal on
+     top by the bestiary's own weights, never SPENT from the budget but still
+     PRICED by the area's ceiling (a cramped cave could not afford a bear
+     before and still cannot), with the bear capped at one a floor, two in
+     the caves band (`_place_fauna`). Measured after: hostile threat per
+     floor within a few percent of the old totals at every depth (2: 87 vs
+     90; 6: 140 vs 131; 10: 278 vs 281), bats about four a floor on 2-3,
+     bears about one a floor from 5 down. The ceiling test sums enemies
+     only. First try without the price gave two to four bears a floor. Test:
+     `_test_the_wild_are_not_the_budget`. Original note: **Measure the
+     ceiling, do not feel it.** The bat was a real depth-2
      enemy and the bear the caves' heaviest; both are nobody's enemy
      unstruck, so floors 2 and 5-6 lost hostile threat the ceiling
      arithmetic still counts. A probe: hostile threat per floor over ~100
@@ -1196,7 +1272,23 @@ noise since day 7.
   what a taken camp is worth (its fire, its gear); how a camp and a wild
   bear share a cave (they do not: a bear's cave gets no camp).
 
-**The slime (Brad, 2026-10-04 -- rough, not scheduled).** A MONSTER, not a
+**The slime -- BUILT 2026-10-05 (desktop)**, waiting on play. As built: a
+floors-1-2 monster (hp 5, power 2, speed 70, threat 2, `j`, md-square_rounded
+in the picture look, its own green) kept on every floor at a low no-fade
+weight (0.35) as a CARRIER of the red (`SPORE_CARRIERS`; the red lets it be,
+as it does the rat); the climb corrupts it through `_roll_corruptible` as
+any cheap thing. Its own AI (`_ai_slime`): what lies under it is eaten if
+meat or green fungus (gone) and SWALLOWED otherwise (carried, marked
+scavenged); anything lying within SCAVENGE_REACH is walked to before
+anything else, even with you beside it -- the lure; nothing to take, it
+hunts like a hunter. Killed, it drops everything it swallowed, certain
+(`_drop_loot` now drops a monster's unworn carry too -- the first monster
+that had one). ACID is its own field (`Entity.acid` trait, `acid_turns`
+ACID_LINGER 3 at ACID_HURT 1), not the miasma's poison: a rabbit is eaten
+by it, `_wash` clears it ("washes the acid off you"), the sidebar chip says
+"acid · N" and the HERE box "acid -- 1 hp a turn, N more; water washes it
+off"; a death to it reads "eaten by a slime's acid". Test:
+`_test_the_slime`. Original design: A MONSTER, not a
 wild creature, so it lives here rather than in the update above -- but it
 belongs beside it: if the rat goes WILD, floors 1-2 lose their commonest
 enemy, and the slime is the classic thing to fill them.
@@ -1237,6 +1329,15 @@ enemy, and the slime is the classic thing to fill them.
   - Carrying: a monster's `inventory` is saved, and `_drop_loot` already
     calls the dragon's hoard "the one thing in the dungeon that hoards" and
     says several creatures could be. The slime is the second.
+- **Deeper down, a carrier, not a fighter (Brad, 2026-10-04 night):** by
+  depth 6 it is a one-hit kill and no threat by damage at all; it keeps
+  appearing on the later descent floors as an AGENT of the red -- it eats the
+  meat and, like the rat, seeds red spores at the bodies it passes
+  (`take_spores` / the body-seeding the rat carriers use) -- so the threat is
+  to the floor's food and the floor's dead, not to your hp. On the climb it
+  is a corrupted monster through `_roll_corruptible`, which re-admits it
+  without the TIER_FADE. So the fade only needs to be gentle enough to keep
+  it on the descent as a carrier; a filler rule is not required.
 - **Two existing rules it breaks, on purpose -- say so in the code:**
   - `_scavenge` runs only while a creature is UNAWARE ("nothing stops
     mid-fight to try on armour"). The lure needs the slime to go for a

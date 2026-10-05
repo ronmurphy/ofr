@@ -51,6 +51,12 @@ var _pick := -1
 
 const PAD := 24.0
 const LINE := 21.0
+## The row pitch actually drawn: LINE while the window has the room, tighter
+## when it has not, so a roster that has grown by a creature or two squeezes
+## rather than runs off the bottom. Never below PITCH_MIN, which is the font's
+## own height plus a little air; below that the fix would be the fault.
+const PITCH_MIN := 16.0
+var _pitch := LINE
 const GLYPH_X := 4.0
 ## Leaves room for a second glyph beside the first -- see _entry's `second`,
 ## which is where a corrupted variant is shown.
@@ -214,7 +220,7 @@ func _gui_input(event: InputEvent) -> void:
 ## of itself.
 func _highlight(x: float, y: float, w: float) -> void:
 	if _pick == _rows.size():
-		draw_rect(Rect2(x - 4.0, y, w, LINE), Color(Palette.CURSOR, 0.13), true)
+		draw_rect(Rect2(x - 4.0, y, w, _pitch), Color(Palette.CURSOR, 0.13), true)
 
 func _row_at(pos: Vector2) -> int:
 	for i in _rows.size():
@@ -274,6 +280,7 @@ func _draw() -> void:
 		maxi(_item_lines(), _control_lines()))
 	var wanted := PAD * 2.0 + 34.0 + float(tallest) * LINE + 10.0
 	var h := minf(wanted, size.y - 48.0)
+	_pitch = pitch_at(size.y)
 	var panel := Rect2(Vector2(24.0, (size.y - h) * 0.5), Vector2(size.x - 48.0, h))
 	draw_rect(panel, Palette.UI_PANEL_BG, true)
 	draw_rect(panel, Palette.UI_FRAME, false, 1.0)
@@ -316,10 +323,18 @@ func wanted_height() -> float:
 		maxi(_item_lines(), _control_lines()))
 	return PAD * 2.0 + 34.0 + float(tallest) * LINE + 10.0
 
+## The pitch the rows get in a window this tall: LINE when wanted_height()
+## fits, else the room shared out among the tallest column's lines.
+func pitch_at(height: float) -> float:
+	var tallest := maxi(maxi(_terrain_lines(), _creature_lines()),
+		maxi(_item_lines(), _control_lines()))
+	var room := minf(wanted_height(), height - 48.0) - (PAD * 2.0 + 34.0 + 10.0)
+	return clampf(room / float(tallest), PITCH_MIN, LINE)
+
 func _heading(x: float, y: float, text: String) -> float:
 	draw_string(font_bold, Vector2(x, y + font.get_ascent(font_size)), text,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, Palette.UI_DIM)
-	return y + LINE
+	return y + _pitch
 
 ## One row: glyph, name, and an optional dim note on the right.
 func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
@@ -347,7 +362,7 @@ func _entry(x: float, y: float, w: float, glyph: String, tint: Color,
 		draw_string(font, Vector2(x + NAME_X, base), note,
 			HORIZONTAL_ALIGNMENT_RIGHT, w - NAME_X - 12.0, font_size - 2,
 			Palette.UI_DIM)
-	return y + LINE
+	return y + _pitch
 
 ## The eight-way movement scheme, drawn rather than described.
 ##
@@ -395,7 +410,7 @@ func _process(_delta: float) -> void:
 func _art(x: float, y: float, text: String, tint: Color) -> float:
 	draw_string(font, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)), text,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
-	return y + LINE
+	return y + _pitch
 
 ## A key's written form as cap labels: "arrows / hjklyubn" is two caps,
 ## ". or 5" two, "m  - +" three, "f (no bow)" one. A pad's picture is one.
@@ -454,7 +469,7 @@ func _control_column(x: float, y: float, w: float) -> void:
 		var stick := String.chr(PadConfig.STICK_GLYPH)
 		PadGlyphs.draw(self, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
 			stick + "  the left stick: eight directions", font, font_size, Palette.UI_TEXT)
-		y += LINE
+		y += _pitch
 		y = _art(x, y, "the d-pad is four actions, below", Palette.UI_DIM)
 	else:
 		var layout: Dictionary = MOVE_LAYOUTS[layout_index()]
@@ -471,7 +486,7 @@ func _control_column(x: float, y: float, w: float) -> void:
 			Palette.AMULET if layout_index() == MOVE_LAYOUTS.size() - 1
 			or not Effects.any() else Palette.UI_TEXT)
 
-	y += LINE * 0.6
+	y += _pitch * 0.6
 	y = _heading(x, y, "KEYS")
 	# Straight from the sidebar's table, so the two can never disagree about
 	# what a key does -- grouped, and drawn as caps.
@@ -481,7 +496,7 @@ func _control_column(x: float, y: float, w: float) -> void:
 			group = String(row["group"])
 			draw_string(font_bold, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
 				group, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 3, Palette.UI_DIM)
-			y += LINE
+			y += _pitch
 		var row_base := y + font.get_ascent(font_size)
 		var dim: bool = bool(row["keyboard_only"])
 		Keycap.draw_row(self, Vector2(x + GLYPH_X, row_base), row["caps"], font,
@@ -489,7 +504,7 @@ func _control_column(x: float, y: float, w: float) -> void:
 		draw_string(font, Vector2(x + GLYPH_X, row_base), String(row["action"]),
 			HORIZONTAL_ALIGNMENT_RIGHT, w - 12.0, font_size - 1,
 			Palette.UI_DIM if dim else Palette.UI_TEXT)
-		y += LINE
+		y += _pitch
 
 	# The page marker. Said on the screen rather than left to be discovered,
 	# because a page you do not know is there is a page nobody visits -- and on
@@ -499,7 +514,7 @@ func _control_column(x: float, y: float, w: float) -> void:
 	# took it. Kept because paging between the two reference screens is still
 	# how most people will reach it, and the corrected claim is worth having
 	# written down rather than silently deleted.
-	y += LINE * 0.8
+	y += _pitch * 0.8
 	draw_string(font, Vector2(x + GLYPH_X, y + font.get_ascent(font_size)),
 		"right  \u2192  the map", HORIZONTAL_ALIGNMENT_LEFT, -1,
 		font_size - 1, Palette.STAIRS)
@@ -608,7 +623,7 @@ func _creature_column(x: float, y: float, w: float) -> void:
 		_rows.append({"rect": Rect2(x, top, w, y - top),
 			"app": e["app"], "title": String(e["name"]), "note": note})
 
-	y += LINE * 0.6
+	y += _pitch * 0.6
 	y = _heading(x, y, "BEHAVIOUR MARKS")
 	y = _entry(x, y, w, "z", Palette.SLEEP, "asleep", "")
 	y = _entry(x, y, w, "?", Palette.ALERT, "stirring", "")
@@ -631,7 +646,7 @@ func _creature_column(x: float, y: float, w: float) -> void:
 ## round a figure on the map.
 func _ring_entry(x: float, y: float, w: float, colour: Color, name: String,
 		note: String) -> float:
-	draw_arc(Vector2(x + GLYPH_X + 7.0, y + LINE * 0.5), 5.0, 0.0, TAU, 16, colour, 2.0)
+	draw_arc(Vector2(x + GLYPH_X + 7.0, y + _pitch * 0.5), 5.0, 0.0, TAU, 16, colour, 2.0)
 	return _entry(x, y, w, "", colour, name, note)
 
 func _item_column(x: float, y: float, w: float) -> void:
@@ -642,9 +657,9 @@ func _item_column(x: float, y: float, w: float) -> void:
 		if String(row[3]) != "":
 			draw_string(font, Vector2(x + NAME_X, y + font.get_ascent(font_size)),
 				String(row[3]), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, Palette.UI_DIM)
-			y += LINE
+			y += _pitch
 
-	y += LINE * 0.6
+	y += _pitch * 0.6
 	y = _heading(x, y, "SHRINES")
 	# Which colour does what is shuffled every run, so the legend can only
 	# report what has actually been learned. Spoiling that here would undo the
