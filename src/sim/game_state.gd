@@ -2927,7 +2927,7 @@ func _drop_loot(victim: Entity) -> void:
 		victim.inventory.clear()
 		return
 	if victim.appearance == &"rabbit" or victim.appearance == &"killer_rabbit" \
-			or victim.appearance == &"bear":
+			or victim.appearance == &"bear" or victim.appearance == &"wolf":
 		_drop_meat(victim)
 	# A golem falls apart into what it was made of, and what it was throwing.
 	#
@@ -4178,6 +4178,10 @@ func visible_monsters() -> Array:
 		if e.alive and e.hostile_to(player) and map.is_visible(e.x, e.y):
 			out.append(e)
 	return out
+
+## A haunch of anything: what the hunters eat and the slime dissolves.
+static func _is_meat(it: Item) -> bool:
+	return it.id == &"meat" or it.id == &"bear_meat" or it.id == &"wolf_meat"
 
 ## Is anything alive on this floor that would eat meat left lying?
 func _eaters_about() -> bool:
@@ -6896,7 +6900,7 @@ func actions_here() -> Array:
 		var row := "pick up the %s" % it.name
 		# Meat on a floor with eaters is not a stash (the desktop's review,
 		# 2026-10-04): the hunters eat what lies about, yours included.
-		if (it.id == &"meat" or it.id == &"bear_meat") and _eaters_about():
+		if _is_meat(it) and _eaters_about():
 			row += "; eaters about"
 		out.append([KEY_G, "gather arrows" if it.id == &"arrows" else row])
 	else:
@@ -10141,7 +10145,7 @@ func _prey_for(actor: Entity) -> Entity:
 ## eating; the slime will be the second). Said where you can see it.
 func _eat_here(actor: Entity) -> bool:
 	for it in ground:
-		if it.x == actor.x and it.y == actor.y and (it.id == &"meat" or it.id == &"bear_meat"):
+		if it.x == actor.x and it.y == actor.y and _is_meat(it):
 			ground.erase(it)
 			actor.hp = mini(actor.max_hp, actor.hp + it.effective_magnitude())
 			if map.is_visible(actor.x, actor.y):
@@ -10155,7 +10159,7 @@ func _meat_near(actor: Entity) -> Vector2i:
 	var best := Vector2i(-1, -1)
 	var best_d := HUNT_REACH + 1
 	for it in ground:
-		if it.id != &"meat" and it.id != &"bear_meat":
+		if not _is_meat(it):
 			continue
 		var d := Los.steps(actor.x, actor.y, it.x, it.y)
 		if d < best_d and Los.clear(map, actor.x, actor.y, it.x, it.y):
@@ -10422,7 +10426,10 @@ const MEAT_PER_DEPTH := 3.0
 
 func _drop_meat(victim: Entity) -> void:
 	var bear := victim.appearance == &"bear"
-	var meat := Item.make(&"bear_meat" if bear else &"meat")
+	# A wolf leaves its own haunch (2026-10-05): the wolves you fight feed
+	# you. Worth a rabbit's base, no `meal` term -- it ate rabbits, not fungus.
+	var wolf := victim.appearance == &"wolf"
+	var meat := Item.make(&"bear_meat" if bear else (&"wolf_meat" if wolf else &"meat"))
 	if meat == null:
 		return
 	# A bear is a lot of meat, and it is worth MORE than a brazier's whole
@@ -10433,7 +10440,7 @@ func _drop_meat(victim: Entity) -> void:
 	#
 	# No `meal` term. A rabbit's haunch is worth more for every mushroom it got
 	# to first; a bear has not been eating the scenery.
-	meat.magnitude = (MEAT_BEAR if bear else MEAT_BASE + victim.meal) \
+	meat.magnitude = (MEAT_BEAR if bear else MEAT_BASE + (0 if wolf else victim.meal)) \
 		+ int(floor(float(effective_depth()) / MEAT_PER_DEPTH))
 	var at := Vector2i(victim.x, victim.y)
 	if not _can_rest_on(at.x, at.y):

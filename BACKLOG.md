@@ -712,14 +712,32 @@ below).
 - **The payoff: the pack hunts for you.** Wolves hunt rabbits today and
   eat the kill. Yours hunt and leave the haunch unless hurt -- a floor's
   rabbits become a delivery.
-- **Wolves drop meat** when killed (the rabbit's haunch): the wolves you
-  fight feed you, the wolves you feed fight for you. Today the wolf is the
-  only animal with no drop, by accident of the list.
+- **Wolves drop meat -- BUILT 2026-10-05 (Legion):** a "haunch of wolf"
+  (`wolf_meat`, its own entry like the bear's so it never merges with a
+  rabbit's), worth a rabbit's base plus depth, no `meal` term; eaten by the
+  hunters and the slime like any haunch (`_is_meat`, the one question the
+  three id lists became). The wolves you fight feed you; the wolves you
+  feed will fight for you. **WATCH THIS ONE (Brad, the same night):** most
+  of the testers are Minecraft players, who tame the first wolf they see;
+  a haunch of wolf may draw hard pushback. If it does, remove it: the
+  wolf's name in `_drop_loot`'s meat test and the `wolf_meat` entry, two
+  lines, nothing else knows. No substitute drop then -- a pelt would need
+  a use, and the trader buying it is the money loop we declined. The
+  taming is the real payoff and survives the haunch going.
 - **Decay.** By the fortress a 9 hp wolf is chaff against what lives there,
   so a fed pack decays by being outclassed rather than by a clock. Play
   will say whether that is enough.
 - **Open:** does bear meat count toward the haunch price; whether a tamed
   wolf keeps its warning glyph colour or takes the ally's.
+- **The tell, when the pack turns (Brad, 2026-10-05 night):** reuse the
+  "LEVEL UP" popup (`Fx` `levelup`) -- a red heart floating over each wolf
+  that turned, for a few seconds. WHICH heart is Brad's pick when it is
+  built: the full font has plenty (`md-heart` U+F02D1, `md-heart_outline`
+  U+F02D5, `oct-heart`, more), and any one is a codepoint in the theme and
+  a rebuild of the subset. One effect, reusable: Brad foresees testers asking to tame other
+  things -- a slime, a bat for a flyer, a cat once there is one -- a "pet"
+  system the wolf begins. Not a 151-creature roster; but the heart and the
+  turning-as-one loop should be built so a second tameable costs a row.
 
 **Jobs without names (Brad, 2026-10-05 -- a design note, not work).** We
 decided against D&D classes, and the game has grown class-LIKE play
@@ -1549,7 +1567,22 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
-**A bestiary page of its own (Brad, 2026-10-05, not asked for yet).** The
+**Tomorrow's order (set 2026-10-05 night, for 2026-10-06):** animals drink
+at the pools (half an hour), bodies say who killed them (forty minutes),
+then TAMING THE WOLVES as the day's feature (half a day; settle first
+whether bear meat counts toward the haunch price -- the Legion's view: yes,
+any haunch). The pre-run gets its own session after, when more routines
+exist to run. The bestiary page below gets its own UI session, not a slot
+in a full day.
+
+**A bestiary page of its own (Brad, 2026-10-05, not asked for yet;
+Brad's own thoughts the same night: yes to the page -- legend > bestiary >
+overview map as one cycle on cursor, vi keys and the pad; and NO to a
+hand-kept markdown file as its source, however tempting for icons and
+colours. The page draws from the bestiary rows as the legend does, so it
+can never disagree with the floor; a file beside the data is the hand-kept
+copy that falls behind -- check_palette.py's shared-glyph groups did
+exactly that once. Its own UI session.)** The
 legend's creature column grows by a row with every creature added, and it
 will keep being added to: the slime and the wolf took it past the window
 on 2026-10-05 and the rows now squeeze their pitch to fit (`LegendPanel.

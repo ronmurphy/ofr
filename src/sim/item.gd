@@ -256,6 +256,16 @@ const CATALOGUE := {
 		"effect": &"heal", "magnitude": 1, "verb": "eat",
 		"min_depth": 999, "weight": 0,
 	},
+	## The wolf's (2026-10-05): the wolves you fight feed you, the wolves you
+	## feed will fight for you (the taming design). Its own entry for the
+	## same reason as the bear's -- a different meal, never merged with a
+	## rabbit's -- and worth a rabbit's base: a wolf has not been eating the
+	## scenery either.
+	&"wolf_meat": {
+		"name": "haunch of wolf", "app": &"meat", "kind": Kind.POTION,
+		"effect": &"heal", "magnitude": 1, "verb": "eat",
+		"min_depth": 999, "weight": 0,
+	},
 
 	## Fungus PICKED rather than eaten where it grew (the forager's satchel).
 	## Only ever made by picking, only ever carried in the satchel, where it

@@ -11605,6 +11605,22 @@ func _test_meat_keeps_its_worth() -> void:
 	gs._drop_meat(bun)
 	check("a rabbit leaves a haunch", gs.ground.size() == 1)
 	var haunch: Item = gs.ground[0]
+	# A wolf leaves its own (2026-10-05): a rabbit's base worth, and never
+	# merged with a rabbit's haunch.
+	var wolf := _spawn(gs, "wolf", 8, 4)
+	gs._drop_meat(wolf)
+	var wolf_cut: Item = null
+	for it in gs.ground:
+		if it.id == &"wolf_meat":
+			wolf_cut = it
+	check("a wolf leaves a haunch of wolf", wolf_cut != null and wolf_cut.name == "haunch of wolf")
+	check("  worth a rabbit's base plus depth (%d)" % (wolf_cut.effective_magnitude() if wolf_cut else -1),
+		wolf_cut != null and wolf_cut.effective_magnitude()
+			== GameState.MEAT_BASE + int(floor(9.0 / GameState.MEAT_PER_DEPTH)))
+	check("  and it never stacks with a rabbit's", wolf_cut != null and not haunch.stacks_with(wolf_cut))
+	check("  a hunter eats it like any haunch", GameState._is_meat(wolf_cut))
+	gs.ground.erase(wolf_cut)
+	gs.entities.erase(wolf)
 	var want := GameState.MEAT_BASE + 2 + int(floor(9.0 / GameState.MEAT_PER_DEPTH))
 	check("worth base plus what it ate plus depth (%d, wanted %d)"
 		% [haunch.effective_magnitude(), want],
