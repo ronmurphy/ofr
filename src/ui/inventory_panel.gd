@@ -687,7 +687,14 @@ func _action_hint(item: Item) -> String:
 		return "dull: a gem, or %d more red graves" % (GameState.BURIALS_TO_SHARPEN
 			- item.laid_to_rest)
 	if item.kind == Item.Kind.GEM:
-		# A gem with a use of its own, here and now, says so first (6d).
+		# At the embers with a host for it, setting comes before the gem's
+		# own use (Brad set out to forge and crushed the stone, 2026-10-05).
+		if state.gem_sets_here(item):
+			var host: Variant = state._gem_host(item)
+			if state.can_feed(host):
+				return "feed the %s" % ("ring" if host.transforms() else "shovel")
+			return "set into %s" % host.display_name()
+		# A gem with a use of its own, here and now, says so next (6d).
 		if item.element == &"reflect" and state.mirror_target() >= 0:
 			return "name the shrine"
 		if item.element == &"crag" and state.crag_target().x >= 0:

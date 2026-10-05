@@ -1080,6 +1080,32 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
   already. Without it a floor-1 player with 30 hp who walked into a bear
   by mistake was dead in three of its hits. Tests: `_test_the_wolf_pack`
   (bands measured on both halves), `_test_picking_a_fight_is_deliberate`.
+  **From Brad's first play (the same evening): a pack of four, three dead
+  when he arrived.** Probe (`tools/probes/wolf_deaths_probe.gd`: cave
+  floors, the player waiting 150 turns, each dead wolf's grudge read): of
+  97 dead wolves, 65 had been killed BY A WOLF. The hunt took anything wild
+  of no greater threat as prey, and a wolf is threat 6 like its packmates,
+  so packs ate themselves. Fixed: `_prey_for` never takes the hunter's own
+  kind. And a pack now REMEMBERS TOGETHER: a wolf struck by anything --
+  an orc, a bear -- hands the grudge to every packmate within PACK_REACH
+  (awake, not provoked: no one turns on you for an orc's spear), where
+  before an orc camp ate a pack one sleeping wolf at a time. After: 73 of
+  434 dead in 150 turns, none by a wolf; orcs 23, bears 13 (a bear hunts
+  wolves as it hunts rabbits -- bear-versus-wolf through the grudge, as
+  wanted), ogres 8, goblins 6, risen 6, 14 to no attacker (the miasma,
+  traps). That is life outside the player and stays.
+
+**The embers come first (Brad's play, 2026-10-05) -- FIXED.** At a
+guttering brazier with a bow in hand he pressed the gem of returning to
+set it, and the pack crushed it for its own use ("mark this brazier"): the
+gems' own uses (6d) were listed before the forge in the pack's hint and in
+`player_use`. One predicate, `gem_sets_here(gem)`: at EMBERS with a host
+that will take it (or a unique to feed), setting is what the gem does --
+the pack's hint says "set into short bow", the HERE box "set the gem of
+returning", the letter, the click and the pad's use all go to the forge
+with its choice of weapon (`_use_item` routes to `_merge_item`), and
+`player_use` binds. At a LIT brazier, or with nothing to hold it, the
+gem's own use stands as before. Test: `_test_the_embers_come_first`.
 - **Trained animals (Brad, 2026-10-05 -- designed, not built).** Reusable
   variants from two changes, the faction and the colour: a KOBOLD WOLF
   RIDER and a GOBLIN BEAR RIDER use the animal's icon and ascii in the

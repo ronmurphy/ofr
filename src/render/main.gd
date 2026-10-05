@@ -1574,6 +1574,12 @@ func _close_inventory() -> void:
 ## into view. Anything that keeps acting on your behalf stops the moment the
 ## world has something to say.
 func _use_item(index: int) -> void:
+	# A gem that would be SET here goes to the forge, with its choice of
+	# weapon, whichever key or click asked (gem_sets_here).
+	if index >= 0 and index < state.player.inventory.size() \
+			and state.gem_sets_here(state.player.inventory[index]):
+		_merge_item(index)
+		return
 	var watch := _watch_pack()
 	var id: StringName = state.player.inventory[index].id \
 		if index >= 0 and index < state.player.inventory.size() else &""

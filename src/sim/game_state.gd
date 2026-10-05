@@ -6455,6 +6455,21 @@ func player_bind(index: int, target: int = -1) -> bool:
 ## Can this gem be set right now? Drives the inventory marker, the same way
 ## can_forge_item does -- so a weapon that already holds one simply never
 ## offers, rather than refusing after the click.
+## THE EMBERS COME FIRST (Brad's play, 2026-10-05). Standing at a guttering
+## brazier with a bow in hand and a gem of returning, he pressed the gem and
+## it was CRUSHED -- "mark this brazier", the gem's own use -- when he meant
+## to set it. A gem's own use is the second thing it does; where it can be
+## set, this very turn, into something that will hold it, setting is what
+## the gem is for. True only at EMBERS with a willing host: a lit brazier
+## is not yet the forge, and the gem's own use stands there.
+func gem_sets_here(gem: Item) -> bool:
+	if gem.kind != Item.Kind.GEM or _adjacent_embers().x < 0:
+		return false
+	var host: Variant = _gem_host(gem)
+	if host == null:
+		return false
+	return can_feed(host) or (host.element == &"" and host.accepts_element(gem.element))
+
 func can_bind_gem(gem: Item) -> bool:
 	if gem.kind != Item.Kind.GEM:
 		return false
@@ -6928,6 +6943,8 @@ func actions_here() -> Array:
 ## The pack's hint for the same gem (InventoryPanel._action_hint) ends with
 ## the same words, so the box and the pack agree.
 func gem_use_here(gem: Item) -> String:
+	if gem_sets_here(gem):
+		return "set the %s" % gem.name
 	match gem.element:
 		&"crag":
 			if crag_target().x >= 0:
@@ -7486,6 +7503,10 @@ func player_use(index: int) -> bool:
 		_end_player_turn(Scheduler.ACTION_COST * took)
 		return true
 
+	# At the embers with something to set it into, a gem is SET, not spent on
+	# its own use (gem_sets_here). The pack's hint and the HERE box say so.
+	if item.kind == Item.Kind.GEM and gem_sets_here(item):
+		return player_bind(index)
 	# A refused effect costs neither the item nor the turn. Wasting a potion to
 	# a misclick is the kind of thing that makes people stop playing.
 	if not _apply_effect(item):
@@ -9982,6 +10003,12 @@ func _prey_for(actor: Entity) -> Entity:
 	for e in entities:
 		if not e.alive or not e.is_wild() or e.heavy or e.threat > actor.threat:
 			continue
+		# Never its own kind. A wolf is threat 6 like its packmates, and
+		# without this the pack ate itself: of 97 wolves found dead on cave
+		# floors while the player waited, 65 had a wolf's teeth in them
+		# (probe, Brad's "three of four dead when I arrived", 2026-10-05).
+		if e.appearance == actor.appearance:
+			continue
 		if e.flying and actor.ai != &"ranged":
 			continue
 		if not _can_see(actor, e):
@@ -10742,9 +10769,19 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	elif defender.faction != Entity.Faction.RISEN:
 		wake(defender)
 	# A WILD THING REMEMBERS WHAT STRUCK IT (Entity.grudge): a forager runs
-	# from it, anything else fights it back, whoever's side it is on.
+	# from it, anything else fights it back, whoever's side it is on. A PACK
+	# remembers together: an orc that spears one wolf has the pack's grudge
+	# within PACK_REACH (2026-10-05 -- before this an orc camp ate a pack one
+	# wolf at a time, each one's packmates asleep beside it).
 	if defender.is_wild() and attacker != defender:
 		defender.grudge = attacker
+		if _pack_size(_bestiary_row(defender.appearance)) > 1:
+			for e in entities:
+				if e == defender or not e.alive or e.appearance != defender.appearance \
+						or Los.steps(e.x, e.y, defender.x, defender.y) > PACK_REACH:
+					continue
+				e.grudge = attacker
+				e.alertness = Entity.Alert.AWAKE
 	# STRUCK BY YOUR SIDE, A WILD THING IS YOUR ENEMY FOR GOOD. A forager
 	# says nothing: it runs, as it did before, and "turns on you" would be a
 	# lie about a rabbit.

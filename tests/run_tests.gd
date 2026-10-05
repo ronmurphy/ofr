@@ -85,6 +85,7 @@ func _initialize() -> void:
 	_test_the_slime()
 	_test_the_wolf_pack()
 	_test_picking_a_fight_is_deliberate()
+	_test_the_embers_come_first()
 	_test_threat_ceiling_holds_on_the_climb()
 	_test_tiers_fade_with_depth()
 	_test_camera_deadzone()
@@ -773,6 +774,38 @@ func _test_the_wolf_pack() -> void:
 	check("struck, every wolf within reach turns on you (and must)",
 		turned == wolves.size() and said.call().contains("and the pack with it"), said.call())
 	check("one too far off does not", not far.provoked)
+	# No cannibals: a wolf never hunts its own kind, and a rabbit is supper.
+	var hungry: Entity = wolves[2]
+	hungry.alertness = Entity.Alert.AWAKE
+	hungry.grudge = null
+	# (The first rabbit may have been eaten by now; it is out of this.)
+	if rabbit.alive:
+		rabbit.x = 1
+		rabbit.y = 9
+	check("precondition: a packmate in plain sight, no rabbit near",
+		gs._can_see(hungry, leader) and gs._prey_for(hungry) != rabbit)
+	check("a wolf never hunts its own kind", gs._prey_for(hungry) == null
+		or gs._prey_for(hungry).appearance != &"wolf")
+	# At arm's length, as the packmates are: the arena is dark, and a wolf
+	# finds what is beside it however dark (as _can_see says).
+	var spot := Vector2i(-1, -1)
+	for i in 8:
+		var d := Entity.turned(Vector2i(1, 0), i)
+		if gs.entity_at(hungry.x + d.x, hungry.y + d.y) == null and gs._can_rest_on(hungry.x + d.x, hungry.y + d.y):
+			spot = Vector2i(hungry.x + d.x, hungry.y + d.y)
+			break
+	check("precondition: a free cell beside it", spot.x >= 0)
+	var supper := _spawn(gs, "rabbit", spot.x, spot.y)
+	check("precondition: it can see the rabbit", gs._can_see(hungry, supper))
+	check("  the rabbit beside it is supper (and must be)", gs._prey_for(hungry) == supper)
+	# A pack remembers together: an orc that spears one wolf has the whole
+	# pack's grudge, without any of them turning on you.
+	var orc := _spawn(gs, "orc", far.x + 1, far.y)
+	var fresh := _spawn(gs, "wolf", far.x + 1, far.y + 1)
+	gs._attack(orc, far)
+	check("struck by an orc, a wolf and its packmate in reach hold the grudge",
+		far.grudge == orc and fresh.grudge == orc and fresh.alertness == Entity.Alert.AWAKE)
+	check("  and neither is your enemy for it", not far.provoked and not fresh.provoked)
 	# A provoked pack hunts: a wolf with company steps in.
 	var hunter: Entity = wolves[1]
 	var before := Los.steps(hunter.x, hunter.y, gs.player.x, gs.player.y)
@@ -855,6 +888,56 @@ func _test_the_wolf_pack() -> void:
 		pairs >= 6 and odd_packs == 0)
 	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
 		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## THE EMBERS COME FIRST (Brad's play, 2026-10-05): at a guttering brazier
+## with a bow in hand, pressing a gem of returning SETS it; it was crushed
+## for its own use instead. At a lit brazier, or with nothing to hold it,
+## the gem's own use stands.
+func _test_the_embers_come_first() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	var bow := Item.make(&"short_bow")
+	gs.player.inventory.append(bow)
+	gs.player.equipped[Item.Slot.WEAPON] = bow
+	var back := Item.make(&"gem_return")
+	gs.player.inventory.append(back)
+	var panel := InventoryPanel.new()
+	panel.state = gs
+	# A LIT brazier beside you: the gem's own use, mark the fire.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(6, 4)] = 10
+	check("precondition: a lit brazier is not the forge",
+		gs._adjacent_embers().x < 0 and gs._adjacent_brazier().x >= 0 and gs.return_target() == &"mark")
+	check("beside a lit brazier the gem does not set", not gs.gem_sets_here(back))
+	check("  and the pack says mark this brazier", panel._action_hint(back) == "mark this brazier",
+		panel._action_hint(back))
+	# Now the coals: setting comes first.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_SPENT)
+	gs.brazier_charge.erase(Vector2i(6, 4))
+	gs.ember_until[Vector2i(6, 4)] = gs.turns + GameState.EMBER_TURNS
+	check("precondition: embers beside you, a bow in hand that takes returning",
+		gs._adjacent_embers().x >= 0 and bow.accepts_element(&"return") and gs.return_target() == &"mark")
+	check("at the embers the gem sets", gs.gem_sets_here(back))
+	check("  the pack says set into the bow", panel._action_hint(back) == "set into short bow",
+		panel._action_hint(back))
+	check("  and the HERE box offers the setting", gs.gem_use_here(back) == "set the gem of returning",
+		gs.gem_use_here(back))
+	check("pressing the gem SETS it (and must)", gs.player_use(gs.player.inventory.find(back))
+		and bow.element == &"return" and not gs.player.inventory.has(back))
+	check("  and the fire was not marked", gs.recall_mark.x < 0)
+	# Embers again, but nothing to hold a second stone: its own use stands.
+	gs.map.set_tile(5, 5, Tiles.BRAZIER_SPENT)
+	gs.ember_until[Vector2i(5, 5)] = gs.turns + GameState.EMBER_TURNS
+	var second := Item.make(&"gem_return")
+	gs.player.inventory.append(second)
+	check("precondition: the bow is set already, the embers are hot",
+		bow.element == &"return" and gs._adjacent_embers().x >= 0)
+	check("with nothing to hold it the gem does not set", not gs.gem_sets_here(second))
+	check("  and pressing it marks the fire (and must)",
+		gs.player_use(gs.player.inventory.find(second)) and gs.recall_mark.x >= 0)
+	panel.free()
 
 ## THE BUMP WARNING (2026-10-05): a wild thing that could hurt you is not
 ## attacked by the first move into it; the second, straight after, is the
