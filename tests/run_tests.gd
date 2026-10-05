@@ -213,6 +213,7 @@ func _initialize() -> void:
 	_test_allies_back_out_of_the_poison()
 	_test_the_desktops_review_points()
 	_test_drip_pools_in_the_caves()
+	_test_tending_the_fire_with_the_torch()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15414,6 +15415,62 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## TENDING A FIRE WITH YOUR TORCH (Brad, 2026-10-05): the guards' job with
+## their numbers; a dead brazier stays a paid problem.
+func _test_tending_the_fire_with_the_torch() -> void:
+	var gs := _arena(16, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.player.equipped.clear()
+	gs.torch_lit = true
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(6, 4)] = 3
+	gs._gather_lights()
+	var rows := func() -> String:
+		var all := ""
+		for a in gs.actions_here():
+			all += String(a[1]) + "|"
+		return all
+	check("a low fire beside you is one the torch can feed", gs.tend_target() == Vector2i(6, 4))
+	check("  and the box offers it, counting", rows.call().contains("feed the fire (torch) 0/3"),
+		rows.call())
+	var t0 := gs.turns
+	check("the first press spends a turn and changes nothing yet",
+		gs.player_pickup() and gs.turns == t0 + 1 and int(gs.brazier_charge[Vector2i(6, 4)]) == 3
+		and rows.call().contains("feed the fire (torch) 1/3"), rows.call())
+	gs.player_pickup()
+	gs.player_pickup()
+	check("three turns of tending bring it up by the guard's three (and must)",
+		int(gs.brazier_charge[Vector2i(6, 4)]) == 6 and _log_says(gs, "burns brighter (+3)"))
+	check("  no longer low, it is not offered again", gs.tend_target().x < 0
+		and not rows.call().contains("feed the fire"))
+	# The guard's own number, never more: a fire at 4 comes to 7, not 10.
+	gs.brazier_charge[Vector2i(6, 4)] = GameState.BRAZIER_LOW
+	for i in GameState.TORCH_TENDING:
+		gs.player_pickup()
+	check("the torch is never better than the watch it stands in for (%d)"
+		% int(gs.brazier_charge[Vector2i(6, 4)]),
+		int(gs.brazier_charge[Vector2i(6, 4)]) == GameState.BRAZIER_LOW + GameState.BRAZIER_STOKE)
+	# A dead brazier is not this.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER_DEAD)
+	gs.brazier_charge[Vector2i(6, 4)] = 0
+	check("a dead brazier is not the torch's to relight", gs.tend_target().x < 0
+		and not rows.call().contains("feed the fire"))
+	check("  and with no fire to give, the key does nothing there", not gs.player_pickup())
+	# Nor is a fire with the torch out.
+	gs.map.set_tile(6, 4, Tiles.BRAZIER)
+	gs.brazier_charge[Vector2i(6, 4)] = 2
+	gs.torch_lit = false
+	check("with the torch out there is nothing to feed it with", gs.tend_target().x < 0)
+	gs.torch_lit = true
+	# Progress is the floor's, and saved with it.
+	gs.player_pickup()
+	var saved := GameState.new(1)
+	saved.new_game()
+	check("a half-fed fire is remembered by the save",
+		saved.apply_dict(gs.to_dict()) and int(saved.tending.get("6,4", 0)) == 1)
 
 ## DRIP POOLS (Brad, 2026-10-05): most caves hold a little water, so the
 ## purple's poison and the slime's acid have their answer where they live.

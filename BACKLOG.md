@@ -1342,8 +1342,21 @@ seed-pinned premise). Re-measure the ceiling tests after it anyway: a guard
 that walked its round for two hundred turns can be standing at the door you
 came in by, and that is a feature.
 
+**Tending a low fire with your torch -- BUILT 2026-10-05 (Legion).** Not
+the relight below: Brad's worry was that a free relight always in your hand
+would make the scroll of light, the fire gem and the fire blade worthless,
+and he was right. The split is the dungeon's own: guards never relight a
+dead fire, they stoke a low one. So the torch does the guard's job with the
+guard's numbers -- a brazier still lit at `BRAZIER_LOW` (4) or less, three
+turns of feeding (`TORCH_TENDING`, "feed the fire (torch) 1/3" in the HERE
+box, G), and it comes up by `BRAZIER_STOKE` (3), never more than a passing
+guard would have given it. A dead brazier stays a paid problem. Progress
+is the floor's (`tending`, saved beside `scorched`). Fair both ways: the
+guards already tend ("The kobold feeds the fire."). Test:
+`_test_tending_the_fire_with_the_torch`. The original note, kept:
+
 **Relighting a cold brazier with your torch (Brad, 2026-10-05 -- an idea,
-recommended, not scheduled).** Brad sees most fires guttered: a fire loses a
+superseded the same day by the tending above).** Brad sees most fires guttered: a fire loses a
 charge every 40 turns and guards stoke the low ones by 3, so a floor whose
 watch he killed goes cold -- the system working, with no way to take over
 the guards' job. Today a cold brazier costs a fire gem (15) or a fire

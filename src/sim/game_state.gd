@@ -1344,6 +1344,7 @@ func build_level() -> void:
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
+	tending = {}
 	red_from = {}
 	withering = []
 	_reload_said = false
@@ -4527,6 +4528,9 @@ const SPOT_LIT := 0.60
 const SPOT_GLASS := 1.5
 ## Torch scorches landed so far, "x,y" -> count. One floor only.
 var scorched: Dictionary = {}
+## Turns spent feeding a low fire from the torch, "x,y" -> count. One floor
+## only, like the scorches; saved beside them.
+var tending: Dictionary = {}
 ## THE RED'S CHAINS. Each square the crawl grew, -> the square it grew from,
 ## so a chain that loses its body can die back the way it came. Generated and
 ## seeded red is a SOURCE: it has no entry and never withers. Saved.
@@ -6942,6 +6946,10 @@ func actions_here() -> Array:
 			out.append([KEY_G, "scorch the fungus (torch)"])
 		elif disarm_target().x >= 0:
 			out.append([KEY_G, "disarm the trap (%d%%)" % int(round(disarm_chance() * 100.0))])
+		elif tend_target().x >= 0:
+			var tc := tend_target()
+			out.append([KEY_G, "feed the fire (torch) %d/%d" % [
+				int(tending.get("%d,%d" % [tc.x, tc.y], 0)), TORCH_TENDING]])
 		elif _adjacent_cold_brazier().x >= 0 and _fire_to_give() != null:
 			var f := _fire_to_give()
 			# "relight with", not "relight it with": the HERE box holds 42
@@ -7069,6 +7077,9 @@ func player_pickup() -> bool:
 		# A found trap within reach: disarm it (a roll; see player_disarm).
 		if disarm_target().x >= 0:
 			return player_disarm()
+		# A low fire beside you: feed it from the torch (TORCH_TENDING turns).
+		if tend_target().x >= 0:
+			return player_tend()
 		# A cold brazier and fire to give it. After the fungus, deliberately:
 		# burning costs nothing, relighting costs a gem or a blade's fire, so a
 		# press meant for the red never spends it.
@@ -8132,6 +8143,7 @@ func to_dict() -> Dictionary:
 		"trap_rng": [str(trap_rng.seed), str(trap_rng.state)],
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
+		"tending": tending,
 		"red_from": _red_from_rows(),
 		"withering": withering.map(func(chain): return chain.map(
 			func(c): return [c.x, c.y])),
@@ -8271,6 +8283,10 @@ func apply_dict(d: Dictionary) -> bool:
 	var sc: Dictionary = d.get("scorched", {})
 	for k in sc:
 		scorched[String(k)] = int(sc[k])
+	tending = {}
+	var td: Dictionary = d.get("tending", {})
+	for k in td:
+		tending[String(k)] = int(td[k])
 	red_from = {}
 	for row in d.get("red_from", []):
 		red_from[Vector2i(int(row[0]), int(row[1]))] = Vector2i(int(row[2]), int(row[3]))
@@ -8903,6 +8919,54 @@ func _lay_the_beat() -> void:
 		here = posts[best]
 		patrol_route.append(here)
 		posts.remove_at(best)
+
+## TENDING A FIRE WITH YOUR TORCH (Brad, 2026-10-05). The guards' job, handed
+## to you with their numbers: a brazier still lit but low (at most
+## BRAZIER_LOW), TORCH_TENDING turns of feeding it from the lit torch, and it
+## comes up by BRAZIER_STOKE -- never more than a passing guard would have
+## given it, so the torch is never better than the watch it stands in for.
+## A DEAD brazier is not this: that stays a paid problem -- a scroll of
+## light, a fire gem or a fire blade -- so a floor whose watch you killed
+## goes cold for good unless you spend something. Brad's worry, and the
+## reason for the split: a free relight always in your hand would have made
+## those three worthless.
+const TORCH_TENDING := 3
+
+## The low fire beside you the torch could feed, or (-1, -1).
+func tend_target() -> Vector2i:
+	if not torch_lit:
+		return Vector2i(-1, -1)
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var c := Vector2i(player.x + dx, player.y + dy)
+			if map.get_tile(c.x, c.y) != Tiles.BRAZIER:
+				continue
+			var left := int(brazier_charge.get(c, 0))
+			if left > 0 and left <= BRAZIER_LOW:
+				return c
+	return Vector2i(-1, -1)
+
+## G beside a low fire with the torch lit. False, spending nothing, without.
+func player_tend() -> bool:
+	if game_over:
+		return false
+	var c := tend_target()
+	if c.x < 0:
+		return false
+	_travel.clear()
+	var key := "%d,%d" % [c.x, c.y]
+	tending[key] = int(tending.get(key, 0)) + 1
+	if int(tending[key]) >= TORCH_TENDING:
+		tending.erase(key)
+		var left := int(brazier_charge.get(c, 0))
+		brazier_charge[c] = mini(BRAZIER_CHARGE, left + BRAZIER_STOKE)
+		msg_log.add("You feed the fire from your torch. It burns brighter (+%d)." % BRAZIER_STOKE,
+			Color(0.95, 0.78, 0.45))
+	else:
+		msg_log.add("You feed the fire from your torch. (%d/%d)"
+			% [int(tending[key]), TORCH_TENDING], Color(0.90, 0.72, 0.50))
+	_end_player_turn()
+	return true
 
 ## A guard throwing a log on. Answers true if it spent the turn doing so.
 func _tend_the_fire(actor: Entity) -> bool:
