@@ -1112,6 +1112,30 @@ the test). With no clear way at all it comes as near as clear ground
 allows and waits at the cloud's edge: an ally will not follow you through
 the poison. Risen enemies are untouched: the red walks them. Test:
 `_test_allies_back_out_of_the_poison`.
+- **The desktop's review of the night's six commits (2026-10-04, late).
+  Brad's order for 2026-10-05: the ceiling FIRST -- the probe, then the fix
+  sized to its number -- then points 2-4, then allies washing, then the
+  wolf, the slime and the rest.**
+  1. **Measure the ceiling, do not feel it.** The bat was a real depth-2
+     enemy and the bear the caves' heaviest; both are nobody's enemy
+     unstruck, so floors 2 and 5-6 lost hostile threat the ceiling
+     arithmetic still counts. A probe: hostile threat per floor over ~100
+     seeds, before (6b4e32c) and after, so the number is known before
+     Brad plays the caves -- and the slime's cost is set against that gap.
+  2. **A stale grudge.** `grudge` is a live reference and `_minds` tests
+     `alive` and distance -- but a creature that leaves `entities` while
+     alive (the pit leap) keeps `alive == true` on a stale x/y, so a bear
+     could spend turns hunting a ghost. Guard: `entities.has(score) or
+     score == player`.
+  3. **Eaters eat what you left lying.** `_hunt` lets a goblin eat a haunch
+     the player dropped -- the slime's lure design arriving early. Intended;
+     say so where players learn things (the HERE box over a dropped haunch,
+     or the legend's "eats game" row), since a dropped haunch is no longer
+     a safe stash on a floor with eaters.
+  4. **Bound the ally's walk.** `_ally_walk` searches the whole map when it
+     cannot reach you (`map.width * map.height`); two boxed-out allies on a
+     big floor is two map-sized searches a turn. Cap it (~30 cells) and let
+     the "settle for the nearest" fallback do the rest.
 - **Next (Brad, for 2026-10-05): allies wash themselves.** Once poisoned
   (`Entity.poisoned` ticking after it has left the cloud), an ally with
   water in reach walks into it and the wash clears the poison, as `_wash`
