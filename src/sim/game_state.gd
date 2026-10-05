@@ -663,6 +663,8 @@ var _reload_said := false
 ## "backs out of the purple", said once a floor: the ally teaches the
 ## scenario, so the player need not learn it by losing one.
 var _retreat_said := false
+## "makes for the water", once a floor, for the same reason.
+var _wade_said := false
 
 ## And one for the trader's room, for the same reason again: it is drawn after
 ## the floor is already populated, so taking it from the main stream would make
@@ -1346,6 +1348,7 @@ func build_level() -> void:
 	withering = []
 	_reload_said = false
 	_retreat_said = false
+	_wade_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
@@ -4369,7 +4372,11 @@ const RAT_NOSE := 8
 ## squares round it. Breathing it poisons: POISON_HURT a turn, lasting
 ## POISON_LINGER turns after you leave. It is AIR -- flyers breathe it too.
 const POISON_HURT := 1
-const POISON_LINGER := 3
+## Five since 2026-10-05 (three before): with drip pools in most caves, a
+## two-step walk to water now saves three points instead of one, and the
+## HERE box's "water washes it off" is worth acting on. The purple is the
+## red's counterweight; a little deadlier is the role.
+const POISON_LINGER := 5
 ## THE RED RAISES THE DEAD (strand 4; Brad's numbers, 2026-09-30). A claimed
 ## body rises RISE_BASE + its max hp turns after the red takes it -- a rat in 8,
 ## a young dragon in 59, time to burn it or to hide. It gets up at half its hp
@@ -4428,20 +4435,26 @@ func in_miasma(x: int, y: int) -> bool:
 ## spores across the floor. The trade is the noise wading makes
 ## (Tiles.WADING_NOISE): the blind risen hear the splash.
 ##
-## A risen washes nothing. It is a dead thing and the red has it, whichever
-## way it got up (`fungal` from the red, `risen` from a grave).
+## A risen washes no SPORES: it is a dead thing and the red has it, whichever
+## way it got up (`fungal` from the red, `risen` from a grave). Poison and
+## acid are another matter (2026-10-05, allies washing themselves): every
+## ally you can have is risen, and the miasma kills them as it kills the
+## living, so the water takes the poison off anything that wades, dead or
+## not. The red keeps its claim; the pool keeps your bear.
 ##
 ## Underfoot each turn rather than on each kind of step: a swap, a knockback,
 ## a fall and every walker's own step all land here, in one place.
 func _wash(e: Entity) -> void:
-	if not e.alive or e.flying or e.fungal or e.risen \
-			or map.get_tile(e.x, e.y) != Tiles.WATER:
+	if not e.alive or e.flying or map.get_tile(e.x, e.y) != Tiles.WATER:
 		return
-	if e.spores == &"" and e.poisoned == 0 and e.acid_turns == 0:
+	var dead := e.fungal or e.risen
+	var had := "" if dead else String(e.spores)
+	var hurting := e.poisoned > 0 or e.acid_turns > 0
+	if had == "" and not hurting:
 		return
-	var had := String(e.spores)
 	var burning := e.acid_turns > 0
-	e.spores = &""
+	if not dead:
+		e.spores = &""
 	e.poisoned = 0
 	e.acid_turns = 0
 	if e.is_player:
@@ -4450,6 +4463,9 @@ func _wash(e: Entity) -> void:
 	elif map.is_visible(e.x, e.y) and had != "":
 		msg_log.add("The water takes the %s off the %s." % [had, e.name],
 			Color(0.62, 0.78, 0.90))
+	elif map.is_visible(e.x, e.y) and hurting and e.faction == Entity.Faction.PLAYER:
+		msg_log.add("The water washes the %s off %s." % ["acid" if burning else "poison",
+			_called(e, false)], Color(0.62, 0.78, 0.90))
 
 ## ACID (the slime, 2026-10-05): a slime's hit clings and eats for a few
 ## turns; water washes it off (_wash). Not the miasma's poison: a rabbit
@@ -9320,6 +9336,18 @@ func _ai_ally(actor: Entity, quarry: Entity) -> void:
 			msg_log.add("%s backs out of the poison." % _called(actor, true),
 				Color(0.70, 0.78, 0.70))
 		return
+	# AND WASHES ITSELF (Brad, 2026-10-05). Poisoned or burning, with a pool
+	# near enough to be worth the walk -- fewer steps than points of hurt
+	# left, since every step is a tick taken -- it wades in, and _wash clears
+	# it underfoot. Already in the water, it has only to stand there.
+	var stake := actor.poisoned + actor.acid_turns
+	if stake > 1 and map.get_tile(actor.x, actor.y) != Tiles.WATER \
+			and _wade_to_water(actor, stake - 1):
+		if not _wade_said and map.is_visible(actor.x, actor.y):
+			_wade_said = true
+			msg_log.add("%s makes for the water." % _called(actor, true),
+				Color(0.62, 0.78, 0.90))
+		return
 	# Something to fight, and near enough to YOU to be worth fighting. Measured
 	# from the player rather than from the ally, so it never strays further
 	# than its reach however far it has already wandered.
@@ -9367,6 +9395,13 @@ const RETREAT_REACH := 5
 func _back_out_of_harm(actor: Entity) -> bool:
 	return _ally_walk(actor, func(c: Vector2i) -> bool:
 		return not _harmful_ground(c.x, c.y), RETREAT_REACH, false)
+
+## One step toward the nearest pool within `reach`, by clear ground only.
+## False, unmoved, when none is near enough.
+func _wade_to_water(actor: Entity, reach: int) -> bool:
+	return _ally_walk(actor, func(c: Vector2i) -> bool:
+		return map.get_tile(c.x, c.y) == Tiles.WATER and not _harmful_ground(c.x, c.y),
+		reach, true)
 
 ## One step toward `target` by a way that never sets foot on harmful ground,
 ## stopping at arm's length. False, unmoved, when no such way exists: an

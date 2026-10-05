@@ -1293,12 +1293,25 @@ the poison. Risen enemies are untouched: the red walks them. Test:
      cannot reach you (`map.width * map.height`); two boxed-out allies on a
      big floor is two map-sized searches a turn. Cap it (~30 cells) and let
      the "settle for the nearest" fallback do the rest.
-- **Next (Brad, for 2026-10-05): allies wash themselves.** Once poisoned
-  (`Entity.poisoned` ticking after it has left the cloud), an ally with
-  water in reach walks into it and the wash clears the poison, as `_wash`
-  already does for anything standing in WATER. The same `_ally_walk` with
-  a goal of "a WATER cell", a reach of a few steps, and the poison's
-  remaining turns against the walk: not worth three steps for one tick.
+- **Allies wash themselves -- BUILT 2026-10-05 (Legion).** Poisoned or
+  burning with acid, an ally with a pool nearer than the hurt is long --
+  fewer steps than points of hurt left, since every step is a tick taken
+  (`_wade_to_water`, the same `_ally_walk`, clear ground only) -- makes for
+  the water and stands in it; "The bone skeleton makes for the water." once
+  a floor. **A rule changed to make it mean anything:** `_wash` said "a
+  risen washes nothing", and every ally you can have is risen, raised from
+  a grave or the recent dead, so water would have cleared nothing off the
+  very allies this is for. Now the red keeps its dead's SPORES (a risen or
+  fungal thing's spores are never washed), but poison and acid wash off
+  anything that wades, living or dead -- the miasma kills them as it kills
+  the living, so the pool keeps your bear. Tests in
+  `_test_allies_back_out_of_the_poison`.
+- **An idea from the same talk (Brad, 2026-10-05): bodies say who killed
+  them.** A rabbit's body with no haunch beside it is the only tell that a
+  wolf or a bear got there first. The body record could carry its killer,
+  and the cursor read "a rabbit, torn by a wolf" -- the floor's history
+  read from its bodies, the whole ecology visible without being witnessed.
+  Small; not asked for yet.
 
 **Any body can be buried -- BUILT 2026-10-04 (Legion).** Brad killed a
 rat with the shovel in his pack and found no way to bury it: the shovel dug
@@ -1328,6 +1341,22 @@ seeded from the run (never the sim's rng: the draw count would move every
 seed-pinned premise). Re-measure the ceiling tests after it anyway: a guard
 that walked its round for two hundred turns can be standing at the door you
 came in by, and that is a feature.
+
+**Relighting a cold brazier with your torch (Brad, 2026-10-05 -- an idea,
+recommended, not scheduled).** Brad sees most fires guttered: a fire loses a
+charge every 40 turns and guards stoke the low ones by 3, so a floor whose
+watch he killed goes cold -- the system working, with no way to take over
+the guards' job. Today a cold brazier costs a fire gem (15) or a fire
+blade's binding (10). The pick: THREE TURNS of kindling at a cold brazier
+with the lit torch, like the three scorches on fungus (`TORCH_SCORCHES`),
+and it comes back at `BRAZIER_STOKE` (3) -- one heal, not a merge -- which
+is what a passing guard would have given it. No new item, no letter, built
+on the burn-the-fungus verb. Rejected for now: longer burn times (delay the
+same cold floor and undo "take healing when you find it"); FLINT knapped
+from rubble (a good item, but a pack letter -- park until the pack has room
+or it can live in the satchel). And for the pre-run: it moves creatures,
+not clocks -- fires do not age during it, so a pre-run floor is one whose
+guards tended their fires.
 
 **Monster camps (Brad, 2026-10-04 -- an idea, not scheduled).** Worldgen,
 not behaviour: a camp is placed like an authored vault, in a room or a cave
@@ -1541,6 +1570,20 @@ whole 96x54 floor at 2 px a cell is 192x108 -- about five lines, narrower than
 the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
 **Rule: the minimap gives way** -- not drawn on a frame when the description
 would reach it. Information always wins.
+
+**Drip pools in the caves, and a longer poison -- BUILT 2026-10-05 (Legion).**
+Brad, from play: poisoned by the miasma in a cave, no water anywhere near
+-- the HERE box's "water washes it off" was a promise the caves rarely kept
+(one cave in five was damp), and three lingering turns were gone before
+any pool was reached: a decided but useless counter. Now most caves (70%)
+hold a drip pool of three to six cells grown from one spot over cave floor
+(`MapGen._drip_pool`, its own `pool_rng` so no seed-pinned premise moves),
+the small-life drips always fall on cave water so the pool reads as where
+the ceiling drips, and `POISON_LINGER` is 5 (was 3): a two-step walk saves
+three points instead of one. Tests: `_test_drip_pools_in_the_caves`, and
+the drips in the view suite's small-life check. **Ideas from the same talk
+(Brad): animals go to the pools to drink** -- they eat already -- and a
+camp's monsters could too, once camps exist.
 
 **Water washes it off (Brad, from play, 2026-10-01 night) -- BUILT
 2026-10-02**, waiting on play. As built: `GameState._wash`, run underfoot

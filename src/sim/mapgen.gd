@@ -1043,6 +1043,51 @@ func _lay_terrain(map: DungeonMap) -> void:
 		# where it hurt most.
 		if rng.randf() < CAVE_SCREE_CHANCE:
 			_paint_ground(map, _scree_patch(region), Ground.RUBBLED)
+	# DRIP POOLS (Brad, 2026-10-05). A cave is a wet place, and water is the
+	# one answer to the purple's poison and the slime's acid -- yet only a
+	# cave in five was damp, so the HERE box's "water washes it off" was a
+	# promise the caves rarely kept. Most caves now hold a small pool where
+	# the ceiling drips (the small-life drips fall on cave water always).
+	# Its own stream: a draw from `rng` here would re-lay every floor after
+	# it and move every seed-pinned premise in the suite (CLAUDE.md).
+	var pool_rng := RandomNumberGenerator.new()
+	pool_rng.seed = int(rng.seed) ^ (depth * 4591) ^ 0xD71B
+	for region in caves:
+		if pool_rng.randf() < DRIP_POOL_CHANCE:
+			_drip_pool(map, region, pool_rng)
+
+## How many caves hold a drip pool, and how big one is (cells).
+const DRIP_POOL_CHANCE := 0.7
+const DRIP_POOL_MIN := 3
+const DRIP_POOL_MAX := 6
+
+## A few cells of water grown from one spot in the cave: the centre, then
+## neighbours of what is already wet, over cave floor only and never over
+## anything protected. Water is walkable, so it can sever nothing.
+func _drip_pool(map: DungeonMap, region: Rect2i, prng: RandomNumberGenerator) -> void:
+	var want := prng.randi_range(DRIP_POOL_MIN, DRIP_POOL_MAX)
+	var start := Vector2i(-1, -1)
+	for _try in 20:
+		var c := Vector2i(prng.randi_range(region.position.x, region.end.x - 1),
+			prng.randi_range(region.position.y, region.end.y - 1))
+		if map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR and not protected.has(c):
+			start = c
+			break
+	if start.x < 0:
+		return
+	var wet: Array[Vector2i] = [start]
+	map.set_tile(start.x, start.y, Tiles.WATER)
+	for _grow in 40:
+		if wet.size() >= want:
+			break
+		var from: Vector2i = wet[prng.randi_range(0, wet.size() - 1)]
+		var n := from + Vector2i(prng.randi_range(-1, 1), prng.randi_range(-1, 1))
+		if n == from or not region.has_point(n) or wet.has(n):
+			continue
+		if map.get_tile(n.x, n.y) != Tiles.CAVE_FLOOR or protected.has(n):
+			continue
+		map.set_tile(n.x, n.y, Tiles.WATER)
+		wet.append(n)
 
 func _paint_ground(map: DungeonMap, area: Rect2i, g: int) -> void:
 	var tile := Tiles.WATER

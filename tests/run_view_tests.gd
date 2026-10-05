@@ -830,6 +830,14 @@ func _test_small_life() -> void:
 		got["spores"] = spores
 		got["bubbles"] = bubbles
 		got["same"] = str(life.motes(4.2)) == str(life.motes(4.2)))
+	# In the caves, water always drips (the drip pools, 2026-10-05).
+	var drip_state: GameState = made[0]
+	drip_state.depth = 5
+	var drip_life := SmallLife.new()
+	drip_life.rebuild(drip_state)
+	check("in the caves band, a pool is always among the drips",
+		drip_life._drips.has(at["water"]), str(drip_life._drips))
+	drip_state.depth = 1
 	check("on full, fungus drifts spores and mud bubbles (%d, %d)"
 		% [got["spores"], got["bubbles"]], got["spores"] > 0 and got["bubbles"] > 0)
 	check("and the same moment is the same motes, in either view", got["same"])

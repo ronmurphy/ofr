@@ -79,8 +79,10 @@ func rebuild(state: GameState) -> void:
 				found["fungus"].append([d, Vector2i(x, y)])
 			elif tile == Tiles.MUD:
 				found["mud"].append([d, Vector2i(x, y)])
-			if caves and (tile == Tiles.CAVE_FLOOR or tile == Tiles.WATER) \
-					and LivingLight.hash01(x * 13 + 7, y * 17 + 3) < DRIP_SHARE:
+			# Cave water ALWAYS drips (2026-10-05): a drip pool is the place
+			# the ceiling drips, so the pool and the effect say one thing.
+			if caves and (tile == Tiles.WATER or (tile == Tiles.CAVE_FLOOR
+					and LivingLight.hash01(x * 13 + 7, y * 17 + 3) < DRIP_SHARE)):
 				found["drips"].append([d, Vector2i(x, y)])
 			if d <= lit * lit and Tiles.is_open_floor(tile) \
 					and LivingLight.hash01(x * 5 + 1, y * 7 + 2) < DUST_SHARE:

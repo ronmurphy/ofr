@@ -212,6 +212,7 @@ func _initialize() -> void:
 	_test_hunters_eat_the_wild()
 	_test_allies_back_out_of_the_poison()
 	_test_the_desktops_review_points()
+	_test_drip_pools_in_the_caves()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15414,6 +15415,51 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
 
+## DRIP POOLS (Brad, 2026-10-05): most caves hold a little water, so the
+## purple's poison and the slime's acid have their answer where they live.
+func _test_drip_pools_in_the_caves() -> void:
+	var regions := 0
+	var wet_regions := 0
+	var pool_cells := 0
+	var seeds := 10
+	for i in seeds:
+		var gs := GameState.new(60000 + i)
+		gs.new_game()
+		gs.depth = 5
+		gs.build_level()
+		for region in gs.cave_regions:
+			regions += 1
+			var water := 0
+			for y in range(region.position.y, region.end.y):
+				for x in range(region.position.x, region.end.x):
+					if gs.map.get_tile(x, y) == Tiles.WATER:
+						water += 1
+			if water > 0:
+				wet_regions += 1
+			pool_cells += water
+	check("precondition: cave floors have caves (%d regions in %d floors)" % [regions, seeds], regions >= seeds)
+	check("most caves hold water now (%d of %d)" % [wet_regions, regions],
+		float(wet_regions) / float(maxi(1, regions)) >= 0.55)
+	check("and it is pools, not floods (%.1f cells a wet cave)" % (float(pool_cells) / maxi(1, wet_regions)),
+		float(pool_cells) / maxi(1, wet_regions) <= 14.0)
+	# The pools draw from their own stream: the same seed lays the same floor.
+	var a := GameState.new(60003)
+	a.new_game()
+	a.depth = 5
+	a.build_level()
+	var b := GameState.new(60003)
+	b.new_game()
+	b.depth = 5
+	b.build_level()
+	var same := true
+	for y in a.map.height:
+		for x in a.map.width:
+			if a.map.get_tile(x, y) != b.map.get_tile(x, y):
+				same = false
+	check("the same seed lays the same pools", same)
+	check("the poison lingers five turns now, so a short walk to water is worth it",
+		GameState.POISON_LINGER == 5)
+
 ## The desktop's four review points of 2026-10-04, built 2026-10-05: a
 ## grudge dies with the floor, the slime leaves the run's own things, the
 ## HERE box says the eaters are about, the ally's walk is bounded.
@@ -15571,6 +15617,49 @@ func _test_allies_back_out_of_the_poison() -> void:
 			trod = true
 	check("with no clear way to you, it waits at the edge and never wades in (%d,%d)"
 		% [waiter.x, waiter.y], not trod and waiter.x >= 11 and waiter.x <= 12)
+
+	# AND WASHES ITSELF (Brad, 2026-10-05): poisoned, with a pool near, a
+	# risen ally wades in and the water takes the poison off it -- the red
+	# keeps its dead's spores, but not their poison.
+	var pool := _arena(21, 9)
+	pool.player.x = 3
+	pool.player.y = 4
+	pool.entities = [pool.player]
+	pool.map.set_all_visible()
+	pool.map.set_tile(13, 4, Tiles.WATER)
+	var bones := _spawn(pool, "skeleton", 11, 4)
+	bones.faction = Entity.Faction.PLAYER
+	bones.risen = true
+	bones.name = "bone skeleton"
+	bones.poisoned = 3
+	pool._take_ai_turn(bones)
+	check("poisoned, with water two steps off, it makes for the pool (%d,%d)" % [bones.x, bones.y],
+		Los.steps(bones.x, bones.y, 13, 4) == 1 and _log_says(pool, "makes for the water"))
+	pool._take_ai_turn(bones)
+	check("  and wades in", pool.map.get_tile(bones.x, bones.y) == Tiles.WATER)
+	pool._wash(bones)
+	check("  where the water takes the poison off a RISEN ally (and must)", bones.poisoned == 0
+		and _log_says(pool, "washes the poison off"))
+	bones.spores = &"red"
+	pool._wash(bones)
+	check("  but never the red's claim on its dead", bones.spores == &"red")
+	# Not worth it: more steps than hurt left.
+	var far_pool := _arena(21, 9)
+	far_pool.player.x = 3
+	far_pool.player.y = 4
+	far_pool.entities = [far_pool.player]
+	far_pool.map.set_tile(18, 4, Tiles.WATER)
+	var sore := _spawn(far_pool, "skeleton", 4, 4)
+	sore.faction = Entity.Faction.PLAYER
+	sore.poisoned = 2
+	far_pool._take_ai_turn(sore)
+	check("with the pool further than the hurt is long, it stays at heel (%d,%d)" % [sore.x, sore.y],
+		sore.x <= 5)
+	sore.poisoned = 0
+	sore.x = 11
+	sore.y = 4
+	far_pool._take_ai_turn(sore)
+	check("and a well ally never goes paddling", sore.x < 11)
 
 ## THEY HAVE TO EAT TOO (Brad, 2026-10-04): while unaware of you, a monster
 ## with an appetite hunts the wild, and eats the kill off the floor.
