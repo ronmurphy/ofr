@@ -4175,6 +4175,13 @@ func visible_monsters() -> Array:
 			out.append(e)
 	return out
 
+## Is anything alive on this floor that would eat meat left lying?
+func _eaters_about() -> bool:
+	for e in entities:
+		if e.alive and not e.is_player and e.eats and e.faction != Entity.Faction.PLAYER:
+			return true
+	return false
+
 ## The WILD in sight that are not yet your enemy: listed by the sidebar,
 ## shootable, and nothing else -- they stop no journey and forbid no rest.
 func visible_wild() -> Array:
@@ -6866,8 +6873,12 @@ func actions_here() -> Array:
 			and here[0].kind != Item.Kind.AMULET
 			and map.get_tile(player.x, player.y) in _TILES_THE_KEY_TAKES):
 		var it: Item = here[0]
-		out.append([KEY_G, "gather arrows" if it.id == &"arrows"
-			else "pick up the %s" % it.name])
+		var row := "pick up the %s" % it.name
+		# Meat on a floor with eaters is not a stash (the desktop's review,
+		# 2026-10-04): the hunters eat what lies about, yours included.
+		if (it.id == &"meat" or it.id == &"bear_meat") and _eaters_about():
+			row += "; eaters about"
+		out.append([KEY_G, "gather arrows" if it.id == &"arrows" else row])
 	else:
 		match map.get_tile(player.x, player.y):
 			Tiles.STAIRS_DOWN:
@@ -9365,8 +9376,15 @@ func _back_out_of_harm(actor: Entity) -> bool:
 ## stepping in and backing out, forever, at the edge (found by the test).
 func _safe_step_toward(actor: Entity, target: Vector2i) -> bool:
 	return _ally_walk(actor, func(c: Vector2i) -> bool:
-		return Los.steps(c.x, c.y, target.x, target.y) <= 1, map.width * map.height, true,
+		return Los.steps(c.x, c.y, target.x, target.y) <= 1, ALLY_WALK_REACH, true,
 		target)
+
+## How far an ally's own walk looks before settling for the nearest cell it
+## found. Bounded (the desktop's review, 2026-10-04): two allies boxed out
+## of a purple room on a big floor were two map-sized searches a turn.
+## Within a room nothing changes; across a floor it comes as near as it
+## can, which is what the fallback is for.
+const ALLY_WALK_REACH := 30
 
 ## The ally's own breadth-first search over the ground it may step on, from
 ## where it stands (harmful or not) to the nearest cell `is_goal` accepts that
@@ -10074,7 +10092,12 @@ func _ai_wild(actor: Entity) -> void:
 ## _can_see -- what struck you, you know the whereabouts of, dark or not;
 ## a rabbit speared from the shadows runs from the spear.
 func _minds(actor: Entity, score: Entity) -> bool:
-	return score.alive and Los.steps(actor.x, actor.y, score.x, score.y) <= actor.notice_range * 2
+	# Still ON THE FLOOR: a thing that leapt into a pit leaves `entities`
+	# alive, on a stale square, and a pack sharing its grudge would hunt a
+	# ghost there (the desktop's review, 2026-10-04; built 2026-10-05).
+	if not score.alive or (score != player and not entities.has(score)):
+		return false
+	return Los.steps(actor.x, actor.y, score.x, score.y) <= actor.notice_range * 2
 
 ## What an animal shies from. Whatever struck it last, if that is alive and
 ## not long gone, before anything else (Brad, 2026-10-04: a rabbit a goblin has
@@ -10119,6 +10142,8 @@ func _ai_slime(actor: Entity, foe: Entity) -> void:
 	var want := Vector2i(-1, -1)
 	var best := SCAVENGE_REACH + 1
 	for it in ground:
+		if _slime_refuses(it):
+			continue
 		var d := Los.steps(actor.x, actor.y, it.x, it.y)
 		if d < best and Los.clear(map, actor.x, actor.y, it.x, it.y):
 			best = d
@@ -10127,6 +10152,14 @@ func _ai_slime(actor: Entity, foe: Entity) -> void:
 		_step_toward(actor, want)
 		return
 	_ai_hunter(actor, foe)
+
+## WHAT A SLIME WILL NOT TOUCH (Brad, 2026-10-05): the amulet, a unique,
+## the satchel, a named hero's bone -- the run's own things. A slime that
+## swallowed the amulet and then dissolved in the miasma out of your sight
+## would have left the run's goal somewhere you were not looking. Chests
+## are tiles, opened by your step alone, so they were never in reach.
+func _slime_refuses(it: Item) -> bool:
+	return it.unique or it.kind == Item.Kind.AMULET or it.holds > 0 or it.bone_name != ""
 
 ## What a slime does with what it stands on: eats meat and green fungus
 ## (gone for good), swallows everything else (carried, and dropped whole when
@@ -10143,10 +10176,13 @@ func _slime_feeds(actor: Entity) -> bool:
 		if map.is_visible(at.x, at.y):
 			msg_log.add("The %s dissolves the fungus." % actor.name, Color(0.70, 0.88, 0.50))
 		return true
-	var found := items_at(at.x, at.y)
-	if found.is_empty():
+	var it: Item = null
+	for candidate in items_at(at.x, at.y):
+		if not _slime_refuses(candidate):
+			it = candidate
+			break
+	if it == null:
 		return false
-	var it: Item = found[0]
 	ground.erase(it)
 	it.letter = ""
 	it.scavenged = true

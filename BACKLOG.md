@@ -1272,17 +1272,24 @@ the poison. Risen enemies are untouched: the red walks them. Test:
      arithmetic still counts. A probe: hostile threat per floor over ~100
      seeds, before (6b4e32c) and after, so the number is known before
      Brad plays the caves -- and the slime's cost is set against that gap.
-  2. **A stale grudge.** `grudge` is a live reference and `_minds` tests
+  2. **DONE 2026-10-05 (Legion).** `_minds` now asks that the grudge still
+     be on the floor (`entities.has`, or you); a wolf whose orc leapt into
+     a pit no longer hunts the ghost. Original: **A stale grudge.** `grudge` is a live reference and `_minds` tests
      `alive` and distance -- but a creature that leaves `entities` while
      alive (the pit leap) keeps `alive == true` on a stale x/y, so a bear
      could spend turns hunting a ghost. Guard: `entities.has(score) or
      score == player`.
-  3. **Eaters eat what you left lying.** `_hunt` lets a goblin eat a haunch
+  3. **DONE 2026-10-05 (Legion).** The HERE box over meat reads "pick up the
+     haunch of rabbit; eaters about" while anything with an appetite is
+     alive on the floor (`_eaters_about`); plain otherwise. Original:
+     **Eaters eat what you left lying.** `_hunt` lets a goblin eat a haunch
      the player dropped -- the slime's lure design arriving early. Intended;
      say so where players learn things (the HERE box over a dropped haunch,
      or the legend's "eats game" row), since a dropped haunch is no longer
      a safe stash on a floor with eaters.
-  4. **Bound the ally's walk.** `_ally_walk` searches the whole map when it
+  4. **DONE 2026-10-05 (Legion).** `ALLY_WALK_REACH` (30) bounds the follow
+     walk; the nearest-cell fallback does the rest. Original: **Bound the
+     ally's walk.** `_ally_walk` searches the whole map when it
      cannot reach you (`map.width * map.height`); two boxed-out allies on a
      big floor is two map-sized searches a turn. Cap it (~30 cells) and let
      the "settle for the nearest" fallback do the rest.
@@ -1346,7 +1353,13 @@ noise since day 7.
   what a taken camp is worth (its fire, its gear); how a camp and a wild
   bear share a cave (they do not: a bear's cave gets no camp).
 
-**The slime -- BUILT 2026-10-05 (desktop)**, waiting on play. As built: a
+**The slime -- BUILT 2026-10-05 (desktop)**, waiting on play. **It leaves
+the run's own things alone (Brad, 2026-10-05; Legion):** `_slime_refuses`
+-- the amulet, a unique, the satchel, a named hero's bone -- are neither
+swallowed nor walked to; a slime that swallowed the amulet and dissolved in
+the miasma out of your sight would have hidden the run's goal. Chests are
+tiles, opened by your step alone, so they were never in reach. Tested in
+`_test_the_desktops_review_points`. As built: a
 floors-1-2 monster (hp 5, power 2, speed 70, threat 2, `j`, md-square_rounded
 in the picture look, its own green) kept on every floor at a low no-fade
 weight (0.35) as a CARRIER of the red (`SPORE_CARRIERS`; the red lets it be,

@@ -211,6 +211,7 @@ func _initialize() -> void:
 	_test_the_wild_are_no_ones_enemy()
 	_test_hunters_eat_the_wild()
 	_test_allies_back_out_of_the_poison()
+	_test_the_desktops_review_points()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15412,6 +15413,84 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## The desktop's four review points of 2026-10-04, built 2026-10-05: a
+## grudge dies with the floor, the slime leaves the run's own things, the
+## HERE box says the eaters are about, the ally's walk is bounded.
+func _test_the_desktops_review_points() -> void:
+	# A stale grudge: the orc that speared the wolf leaps into a pit.
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.entities = [gs.player]
+	var wolf := _spawn(gs, "wolf", 10, 4)
+	var orc := _spawn(gs, "orc", 11, 4)
+	gs._attack(orc, wolf)
+	check("precondition: the wolf holds the orc's grudge and minds it",
+		wolf.alive and wolf.grudge == orc and gs._minds(wolf, orc))
+	gs.entities.erase(orc)
+	check("the orc gone from the floor, alive, the grudge no longer weighs",
+		orc.alive and not gs._minds(wolf, orc))
+	wolf.x = 10
+	wolf.y = 4
+	gs._take_ai_turn(wolf)
+	check("  and the wolf does not hunt the ghost (%d,%d)" % [wolf.x, wolf.y],
+		not (wolf.x == 11 and wolf.y == 4))
+	wolf.grudge = gs.player
+	check("  you are always on the floor", gs._minds(wolf, gs.player))
+
+	# The slime leaves the run's own things.
+	var pit := _arena(21, 9)
+	pit.player.x = 3
+	pit.player.y = 4
+	pit.entities = [pit.player]
+	var slime := _spawn(pit, "slime", 10, 4)
+	var amulet := Item.make(&"amulet")
+	var bag := Item.make(&"satchel")
+	var blade := Item.make(&"dagger")
+	check("precondition: an amulet and a satchel are things a slime refuses, a dagger is not",
+		amulet != null and bag != null and pit._slime_refuses(amulet)
+		and pit._slime_refuses(bag) and not pit._slime_refuses(blade))
+	for it in [amulet, bag, blade]:
+		it.x = 10
+		it.y = 4
+	pit.ground = [amulet, bag, blade]
+	check("under it all three, it swallows the dagger alone",
+		pit._slime_feeds(slime) and slime.inventory.has(blade)
+		and pit.ground.has(amulet) and pit.ground.has(bag))
+	check("  and with only those left underfoot it feeds no more", not pit._slime_feeds(slime))
+	pit.ground = [amulet]
+	amulet.x = 13
+	amulet.y = 4
+	pit._ai_slime(slime, pit.player)
+	check("an amulet lying near is no lure: it hunts you instead (%d,%d)" % [slime.x, slime.y],
+		slime.x < 10)
+
+	# The HERE box over meat says the eaters are about.
+	var den := _arena(21, 9)
+	den.player.x = 5
+	den.player.y = 4
+	den.entities = [den.player]
+	den.map.set_tile(5, 4, Tiles.FLOOR)
+	var haunch := Item.make(&"meat")
+	haunch.x = 5
+	haunch.y = 4
+	den.ground = [haunch]
+	var rows := func() -> String:
+		var all := ""
+		for a in den.actions_here():
+			all += String(a[1]) + "|"
+		return all
+	check("with no eater alive, meat underfoot is plain", rows.call().contains("pick up the haunch of rabbit|"),
+		rows.call())
+	_spawn(den, "goblin", 15, 4)
+	check("with an eater on the floor, the box says so", rows.call().contains("haunch of rabbit; eaters about"),
+		rows.call())
+	check("  within the box's width", "pick up the haunch of rabbit; eaters about".length() <= 42)
+
+	# The ally's walk is bounded.
+	check("an ally's own walk looks a bounded distance before settling",
+		GameState.ALLY_WALK_REACH <= 40 and GameState.ALLY_WALK_REACH >= GameState.RETREAT_REACH)
 
 ## AN ALLY STEPS OUT OF THE POISON ON ITS OWN (Brad, 2026-10-04, after a
 ## bear ally died in the purple's cloud while he stood still).
