@@ -685,6 +685,54 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
+**Taming the wolves (Brad, 2026-10-05 -- designed, not built; about half a
+day).** A pack on your side, instead of a bone ally or the risen. Brad can
+see players choosing it as their way to play (see "jobs without names",
+below).
+- **Two prices, one choice.** The offer rides on the bump warning: with a
+  knucklebone, or haunches to the pack's count (two on the upper floors,
+  four in the caves), the first move into an unprovoked wolf OFFERS instead
+  of warning -- "You hold out the knucklebone. The wolf takes it, and the
+  pack comes with it." / "You throw down the haunches. The pack eats, and
+  is yours." The warning text names what it would take. The bone is rare
+  and has another use (a skeleton with a grave's kit, most likely armed),
+  the haunches are the caves' sustain: either reads as a real price.
+- **The pack turns as one, the other way.** Every wolf within PACK_REACH
+  goes to PLAYER -- the provocation loop run backwards, the loop the
+  houndmaster's death would also use. Allies follow you down the stairs.
+- **Feeding heals -- the first ally that heals, and it is paid for.** The
+  no-heal rule on allies is load-bearing (it is why they may follow you
+  without becoming a permanent party); this exception keeps it honest
+  because the healing is bought with your own food. The rule: a HURT wolf
+  of yours eats meat lying about and heals what that meat would have
+  healed you (`_eat_here` already does exactly this for hunters); a well
+  wolf leaves it, so the pack does not steal your haunches. Nothing else
+  heals it; the bone ally stays as it is. Needs a test that WATCHES a fed
+  ally, not a look at the code.
+- **The payoff: the pack hunts for you.** Wolves hunt rabbits today and
+  eat the kill. Yours hunt and leave the haunch unless hurt -- a floor's
+  rabbits become a delivery.
+- **Wolves drop meat** when killed (the rabbit's haunch): the wolves you
+  fight feed you, the wolves you feed fight for you. Today the wolf is the
+  only animal with no drop, by accident of the list.
+- **Decay.** By the fortress a 9 hp wolf is chaff against what lives there,
+  so a fed pack decays by being outclassed rather than by a clock. Play
+  will say whether that is enough.
+- **Open:** does bear meat count toward the haunch price; whether a tamed
+  wolf keeps its warning glyph colour or takes the ally's.
+
+**Jobs without names (Brad, 2026-10-05 -- a design note, not work).** We
+decided against D&D classes, and the game has grown class-LIKE play
+anyway, chosen by what you pick up and switchable at any time, like Final
+Fantasy Tactics' jobs: a player running wolves is a druid or a ranger (by
+weapon); a bone ally a necromancer or a grave cleric; the risen a
+necromancer outright; the rat ring a rogue; scrolls a wizard (and WE NEED
+MORE SCROLLS -- an idea to grow); none of these, a warrior. The lesson for
+new systems: give each "job" its own tools and its own costs, never a
+label, and let the player drift between them. The Legends page could one
+day NAME a finished run's job from what it used, after the fact, the way
+the morgue names a cause of death -- a title earned, never picked.
+
 **The forager's satchel -- BUILT 2026-10-01**, waiting on play. As built: a
 unique (`satchel`, min depth 3, through the chest pipe after the ring and the
 shovel -- uniques are never on a shelf; a trader price can follow if wanted),
