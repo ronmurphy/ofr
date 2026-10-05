@@ -660,6 +660,9 @@ var enchant_rng := RandomNumberGenerator.new()
 var reload_rng := RandomNumberGenerator.new()
 ## One line per floor the first time a slinger is seen reloading.
 var _reload_said := false
+## "backs out of the purple", said once a floor: the ally teaches the
+## scenario, so the player need not learn it by losing one.
+var _retreat_said := false
 
 ## And one for the trader's room, for the same reason again: it is drawn after
 ## the floor is already populated, so taking it from the main stream would make
@@ -1298,6 +1301,7 @@ func build_level() -> void:
 	red_from = {}
 	withering = []
 	_reload_said = false
+	_retreat_said = false
 	trader_rng.seed = int(rng.seed) ^ (depth * 2246822519) ^ 0x7AAD
 	map = DungeonMap.new(MAP_W, MAP_H)
 	light_map = LightMap.new(MAP_W, MAP_H)
@@ -9026,6 +9030,18 @@ func _ready_weapon(actor: Entity, dist: int) -> bool:
 ## after whatever is nearest on the floor, and the player spends the fight
 ## wondering where their help went.
 func _ai_ally(actor: Entity, quarry: Entity) -> void:
+	# OUT OF THE POISON FIRST (Brad, 2026-10-04: a bear ally died in the
+	# purple's cloud while he stood still, learning the scenario). An ally
+	# cannot be healed, so every turn in the miasma or on the wrong fungus is
+	# a pure loss -- it steps clear before anything else, even with a foe
+	# beside it: the foe will follow, and it fights better out of the cloud.
+	# Boxed in with nowhere clear in reach, it holds and does what it can.
+	if _harmful_ground(actor.x, actor.y) and _back_out_of_harm(actor):
+		if not _retreat_said and map.is_visible(actor.x, actor.y):
+			_retreat_said = true
+			msg_log.add("%s backs out of the poison." % _called(actor, true),
+				Color(0.70, 0.78, 0.70))
+		return
 	# Something to fight, and near enough to YOU to be worth fighting. Measured
 	# from the player rather than from the ally, so it never strays further
 	# than its reach however far it has already wandered.
@@ -9052,13 +9068,91 @@ func _ai_ally(actor: Entity, quarry: Entity) -> void:
 				and Los.clear_both(map, actor.x, actor.y, quarry.x, quarry.y):
 			_attack(actor, quarry, true)
 			return
-		_step_toward(actor, Vector2i(quarry.x, quarry.y))
+		_safe_step_toward(actor, Vector2i(quarry.x, quarry.y))
 		return
 	# Nothing worth doing: come back. Stops at arm's length rather than trying
 	# to stand on you -- a companion that crowds the doorway you are backing
 	# through is a companion that gets you killed.
 	if Los.steps(actor.x, actor.y, player.x, player.y) > 1:
-		_step_toward(actor, Vector2i(player.x, player.y))
+		_safe_step_toward(actor, Vector2i(player.x, player.y))
+
+## Ground that hurts whatever stands on it: the purple's cloud (a purple
+## square or beside one -- in_miasma), or the wrong fungus underfoot.
+func _harmful_ground(x: int, y: int) -> bool:
+	return in_miasma(x, y) or Tiles.is_bad_fungus(map.get_tile(x, y))
+
+## How far an ally will look for clear ground before giving up.
+const RETREAT_REACH := 5
+
+## One step toward the nearest clear cell it can walk to. False, unmoved,
+## when nothing clear is in reach.
+func _back_out_of_harm(actor: Entity) -> bool:
+	return _ally_walk(actor, func(c: Vector2i) -> bool:
+		return not _harmful_ground(c.x, c.y), RETREAT_REACH, false)
+
+## One step toward `target` by a way that never sets foot on harmful ground,
+## stopping at arm's length. False, unmoved, when no such way exists: an
+## ally will not follow you through the poison, and waits at its edge. Not
+## the pathfinder: its careful grid routes round fungus SQUARES, and a route
+## that hugs the purple is in the cloud every step -- which had the ally
+## stepping in and backing out, forever, at the edge (found by the test).
+func _safe_step_toward(actor: Entity, target: Vector2i) -> bool:
+	return _ally_walk(actor, func(c: Vector2i) -> bool:
+		return Los.steps(c.x, c.y, target.x, target.y) <= 1, map.width * map.height, true,
+		target)
+
+## The ally's own breadth-first search over the ground it may step on, from
+## where it stands (harmful or not) to the nearest cell `is_goal` accepts that
+## is empty and, when `clear_only`, not harmful -- and takes the first step
+## of that way. Occupied cells are walls for the search: the first step has
+## to be onto an empty square, so a friend in the way is a wall for this one
+## turn and it goes round next turn. With no goal in reach and a `toward`
+## given, it settles for the reachable cell nearest that -- the edge of the
+## cloud, waiting for you. Answers whether it moved.
+func _ally_walk(actor: Entity, is_goal: Callable, reach: int, clear_only: bool,
+		toward := Vector2i(-1, -1)) -> bool:
+	var start := Vector2i(actor.x, actor.y)
+	var came_from: Dictionary = {start: start}
+	var queue: Array[Vector2i] = [start]
+	var goal := Vector2i(-1, -1)
+	var nearest := start
+	var nearest_d := Los.steps(start.x, start.y, toward.x, toward.y) if toward.x >= 0 else 0
+	while not queue.is_empty():
+		var c: Vector2i = queue.pop_front()
+		if c != start and is_goal.call(c):
+			goal = c
+			break
+		if toward.x >= 0 and Los.steps(c.x, c.y, toward.x, toward.y) < nearest_d:
+			nearest = c
+			nearest_d = Los.steps(c.x, c.y, toward.x, toward.y)
+		if Los.steps(start.x, start.y, c.x, c.y) >= reach:
+			continue
+		for dy in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				var n := Vector2i(c.x + dx, c.y + dy)
+				if (dx == 0 and dy == 0) or came_from.has(n):
+					continue
+				if not can_creature_step(c.x, c.y, n.x, n.y, actor):
+					continue
+				if entity_at(n.x, n.y) != null:
+					continue
+				if clear_only and _harmful_ground(n.x, n.y):
+					continue
+				came_from[n] = c
+				queue.append(n)
+	if goal.x < 0:
+		if nearest == start:
+			return false
+		goal = nearest
+	var step := goal
+	while came_from[step] != start:
+		step = came_from[step]
+	if _through_the_door(actor, step):
+		return true
+	_last_move_cost = move_cost_for(actor, step.x, step.y)
+	actor.x = step.x
+	actor.y = step.y
+	return true
 
 ## Bites when it happens to be beside you, but will not hold a line -- so you
 ## cannot reliably disengage from one, and cannot reliably corner it either.

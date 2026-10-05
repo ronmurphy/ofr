@@ -1092,6 +1092,33 @@ not scheduled).** An animal ecology, from the bear and the rabbit outward.
 - **Open:** the bite's damage; what provokes a wolf pack; how far the torch
   keeps creatures back.
 
+**Allies step out of the poison on their own -- BUILT 2026-10-04 (Legion),
+the last thing of the night.** Brad's bear ally died in the purple's cloud
+while he stood still, learning the scenario. An ally cannot be healed, so
+every turn in the miasma or on the wrong fungus is a pure loss. Now, first
+thing in its turn (`_ai_ally`), an ally standing on harmful ground
+(`_harmful_ground`: in the cloud, or on purple or red) steps to the nearest
+clear cell it can walk to (`_back_out_of_harm`, within `RETREAT_REACH` 5),
+even with a foe beside it -- the foe will follow, and it fights better out
+of the cloud. Boxed in with nothing clear in reach, it holds. The log says
+"The risen cave bear backs out of the poison." once a floor, so the ally
+teaches the scenario. And on its way to you or to a quarry it goes ROUND
+the purple and its cloud (`_safe_step_toward`): the ally's own breadth-
+first walk (`_ally_walk`) treats harmful ground as a wall, because the
+shared pathfinder's careful grid routes round fungus SQUARES only and a
+route that hugs the purple is in the cloud every step -- the first version
+had the ally stepping in and backing out forever at the edge (caught by
+the test). With no clear way at all it comes as near as clear ground
+allows and waits at the cloud's edge: an ally will not follow you through
+the poison. Risen enemies are untouched: the red walks them. Test:
+`_test_allies_back_out_of_the_poison`.
+- **Next (Brad, for 2026-10-05): allies wash themselves.** Once poisoned
+  (`Entity.poisoned` ticking after it has left the cloud), an ally with
+  water in reach walks into it and the wash clears the poison, as `_wash`
+  already does for anything standing in WATER. The same `_ally_walk` with
+  a goal of "a WATER cell", a reach of a few steps, and the poison's
+  remaining turns against the walk: not worth three steps for one tick.
+
 **Any body can be buried -- BUILT 2026-10-04 (Legion).** Brad killed a
 rat with the shovel in his pack and found no way to bury it: the shovel dug
 only the red's dead, by design ("left for the rats -- digging them earns

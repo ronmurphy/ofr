@@ -205,6 +205,7 @@ func _initialize() -> void:
 	_test_the_bone_ally()
 	_test_the_wild_are_no_ones_enemy()
 	_test_hunters_eat_the_wild()
+	_test_allies_back_out_of_the_poison()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -14952,6 +14953,86 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## AN ALLY STEPS OUT OF THE POISON ON ITS OWN (Brad, 2026-10-04, after a
+## bear ally died in the purple's cloud while he stood still).
+func _test_allies_back_out_of_the_poison() -> void:
+	var gs := _arena(21, 11)
+	gs.player.x = 3
+	gs.player.y = 5
+	gs.entities = [gs.player]
+	gs.map.set_all_visible()
+	var pal := _spawn(gs, "skeleton", 10, 5)
+	pal.faction = Entity.Faction.PLAYER
+	pal.name = "bone skeleton"
+	gs._set_fungus(Vector2i(11, 5), Tiles.FUNGUS_PURPLE)
+	check("precondition: the ally stands in the purple's cloud", gs.in_miasma(pal.x, pal.y)
+		and gs._harmful_ground(pal.x, pal.y))
+	gs._take_ai_turn(pal)
+	check("its turn: it steps clear of the cloud (%d,%d)" % [pal.x, pal.y],
+		not gs._harmful_ground(pal.x, pal.y))
+	check("  and the log says so", _log_says(gs, "backs out of the poison"))
+	# With a foe beside it in the cloud, it still steps clear first.
+	pal.x = 10
+	pal.y = 5
+	var orc := _spawn(gs, "orc", 10, 4)
+	var orc_hp := orc.hp
+	gs._take_ai_turn(pal)
+	check("beside a foe, it steps clear before it swings (%d,%d; orc %d/%d)"
+		% [pal.x, pal.y, orc.hp, orc_hp], not gs._harmful_ground(pal.x, pal.y) and orc.hp == orc_hp)
+	gs.entities.erase(orc)
+	# Boxed in by walls with the purple at the mouth: nothing clear in reach,
+	# so it holds -- and does not walk deeper in.
+	var box := _arena(21, 11)
+	box.player.x = 3
+	box.player.y = 5
+	box.entities = [box.player]
+	for y in range(1, 10):
+		for x in range(12, 20):
+			box.map.set_tile(x, y, Tiles.WALL)
+	box.map.set_tile(14, 5, Tiles.FLOOR)
+	box.map.set_tile(13, 5, Tiles.FLOOR)
+	box._set_fungus(Vector2i(13, 5), Tiles.FUNGUS_PURPLE)
+	box.pathfinder = Pathfinder.new(box.map)
+	var shut := _spawn(box, "skeleton", 14, 5)
+	shut.faction = Entity.Faction.PLAYER
+	check("precondition: in the cloud with nowhere clear in reach",
+		box.in_miasma(14, 5) and not box._back_out_of_harm(shut))
+	box._take_ai_turn(shut)
+	check("boxed in, it holds (%d,%d)" % [shut.x, shut.y], shut.x == 14 and shut.y == 5)
+	# And on the way to you it goes ROUND the purple and its cloud: a patch
+	# across the middle of the room, clear floor at the top and bottom.
+	var road := _arena(21, 9)
+	road.player.x = 3
+	road.player.y = 4
+	road.entities = [road.player]
+	for y in range(3, 6):
+		road._set_fungus(Vector2i(9, y), Tiles.FUNGUS_PURPLE)
+	var walker := _spawn(road, "skeleton", 15, 4)
+	walker.faction = Entity.Faction.PLAYER
+	var trod := false
+	for i in 24:
+		road._take_ai_turn(walker)
+		if road._harmful_ground(walker.x, walker.y):
+			trod = true
+	check("coming to heel, it never sets foot in the cloud (ends %d,%d)" % [walker.x, walker.y],
+		not trod and Los.steps(walker.x, walker.y, 3, 4) <= 1)
+	# No way round at all: it waits at the cloud's edge rather than wading in.
+	var wall := _arena(21, 9)
+	wall.player.x = 3
+	wall.player.y = 4
+	wall.entities = [wall.player]
+	for y in range(1, 8):
+		wall._set_fungus(Vector2i(9, y), Tiles.FUNGUS_PURPLE)
+	var waiter := _spawn(wall, "skeleton", 15, 4)
+	waiter.faction = Entity.Faction.PLAYER
+	trod = false
+	for i in 12:
+		wall._take_ai_turn(waiter)
+		if wall._harmful_ground(waiter.x, waiter.y):
+			trod = true
+	check("with no clear way to you, it waits at the edge and never wades in (%d,%d)"
+		% [waiter.x, waiter.y], not trod and waiter.x >= 11 and waiter.x <= 12)
 
 ## THEY HAVE TO EAT TOO (Brad, 2026-10-04): while unaware of you, a monster
 ## with an appetite hunts the wild, and eats the kill off the floor.
