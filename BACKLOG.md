@@ -1420,6 +1420,20 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**A bestiary page of its own (Brad, 2026-10-05, not asked for yet).** The
+legend's creature column grows by a row with every creature added, and it
+will keep being added to: the slime and the wolf took it past the window
+on 2026-10-05 and the rows now squeeze their pitch to fit (`LegendPanel.
+pitch_at`), which is a stopgap. The legend and the overview map are already
+pages of one reference (left/right, d-pad on a pad, Brad's Zelda-menu
+comparison); the bestiary becomes a third page in that cycle -- legend,
+bestiary, map reads as "what the symbols are, who lives here, where you
+are" -- or after the map. With a page of its own it can say more per
+creature than one line: both looks' glyphs, met or not, where it lives
+(the bands), wild / eats / pack, what it drops, the ring tells, and the
+run's own count of them met and killed. The legend's creature column then
+shrinks back to the marks and the kinds, and stops growing.
+
 **A minimap for the 3D view (Brad, 2026-09-28). BUILT the same night**,
 waiting on play: `Sidebar._draw_minimap`, drawn from the overview's own
 `MapPanel.draw_marks` so the two cannot disagree; terrain cached as a picture
