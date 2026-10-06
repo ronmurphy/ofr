@@ -4190,6 +4190,28 @@ func _eaters_about() -> bool:
 			return true
 	return false
 
+## What the cursor reads over a body still there to see: "a rabbit's body,
+## torn by a wolf" -- and what the red has made of it. Empty when no body
+## shows at the cell (rotted away, or the cell unseen).
+func body_lines_at(c: Vector2i) -> Array:
+	var out := []
+	if not map.is_visible(c.x, c.y):
+		return out
+	for b in bodies:
+		if int(b["x"]) != c.x or int(b["y"]) != c.y:
+			continue
+		if not BodyLook.showing(turns - int(b["turn"])):
+			continue
+		var who := String(b["e"].get("name", b["app"]))
+		var line := "%s's body" % who
+		var by := String(b.get("killed_by", ""))
+		if by != "":
+			line += ", " + by
+		out.append(line)
+		if bool(b.get("claimed", false)):
+			out.append("  the red has it: it will rise")
+	return out
+
 ## The WILD in sight that are not yet your enemy: listed by the sidebar,
 ## shootable, and nothing else -- they stop no journey and forbid no rest.
 func visible_wild() -> Array:
@@ -4555,7 +4577,35 @@ const DIG_NOISE := 6
 ## it dulls -- one raise banked at most, as with the gem.
 const BURIALS_TO_SHARPEN := 5
 
-func _lay_body(victim: Entity) -> void:
+## BODIES SAY WHO KILLED THEM (Brad, 2026-10-05; built 2026-10-06). The
+## phrase the cursor reads over a body: "torn by a wolf", "slain by you",
+## "choked by the miasma". A rabbit's bare body with a wolf in the cave was
+## the only tell that the wolf got there first; now the floor's history
+## can be read from its dead without having been witnessed.
+func _killed_by(victim: Entity, killer: Entity, cause: String) -> String:
+	if cause != "":
+		return cause
+	if killer == victim or killer == null:
+		return ""
+	if killer.is_player:
+		return "slain by you"
+	var who := killer.name
+	if killer.faction == Entity.Faction.PLAYER:
+		who = "your %s" % killer.name
+	elif killer.is_wild():
+		return "torn by %s" % _a_or_an(who)
+	elif killer.faction == Entity.Faction.RISEN:
+		return "slain by %s" % _a_or_an(who)
+	else:
+		who = _a_or_an(who)
+	return "slain by %s" % who
+
+static func _a_or_an(name: String) -> String:
+	if name.is_empty():
+		return name
+	return ("an %s" if name[0].to_lower() in ["a", "e", "i", "o", "u"] else "a %s") % name
+
+func _lay_body(victim: Entity, killed_by := "") -> void:
 	# A marked death takes its fungus with it. Purple: seeded as it falls, so
 	# it rots into purple with no carrier needed. Red: red grows under it, and
 	# if it is a body the red can raise, it is claimed on the spot.
@@ -4567,7 +4617,8 @@ func _lay_body(victim: Entity) -> void:
 	bodies.append({"x": victim.x, "y": victim.y, "app": String(victim.appearance),
 		"turn": turns, "corrupted": victim.corrupted, "e": victim.to_dict(),
 		"seeded": seeded, "claimed": claimed, "still": not can_rise,
-		"rises": turns + _hatch(victim.max_hp) if claimed else -1})
+		"rises": turns + _hatch(victim.max_hp) if claimed else -1,
+		"killed_by": killed_by})
 	if red and map.get_tile(at.x, at.y) != Tiles.FUNGUS_RED and pathfinder != null:
 		_set_fungus(at, Tiles.FUNGUS_RED)
 	# Your bone ally fell in the red: say how long, and what stops it.
@@ -4700,13 +4751,13 @@ func _grow_fungus() -> void:
 	# Acid, then the miasma: every creature breathes, flyers included.
 	for e in entities.duplicate():
 		if e.alive and not e.is_player and _acid_bites(e):
-			_settle_death(e, e)
+			_settle_death(e, e, "eaten by acid")
 	for e in entities.duplicate():
 		if e.alive and not e.is_player and _breathe(e):
 			if map.is_visible(e.x, e.y):
 				msg_log.add("The %s chokes on the miasma and dies." % e.name,
 					Color(0.65, 0.70, 0.85))
-			_settle_death(e, e)
+			_settle_death(e, e, "choked by the miasma")
 	# Careless walkers pay for it, and red marks them (flyers never touch it).
 	for e in entities.duplicate():
 		if not e.alive or e.is_player or e.flying:
@@ -4731,9 +4782,9 @@ func _grow_fungus() -> void:
 				msg_log.add("The %s dies in the %s fungus." % [e.name,
 					"purple" if t == Tiles.FUNGUS_PURPLE else "red"], Color(0.65, 0.70, 0.85))
 			# The fungus is the killer: no experience, but a body, loot and the
-			# rest of a death, as any other. It stands as its own killer here;
-			# the killer is only named on the player's death line.
-			_settle_death(e, e)
+			# rest of a death, as any other. It stands as its own killer here,
+			# with the fungus named for the body's record.
+			_settle_death(e, e, "burned by the %s" % ("purple" if t == Tiles.FUNGUS_PURPLE else "red"))
 
 ## The claimed dead get up when their time comes -- unless something is
 ## standing on them, in which case they wait. A few turns before, a body you
@@ -5763,7 +5814,7 @@ func _spring_trap(x: int, y: int, victim: Entity = null, scale := 1.0) -> void:
 	if victim.alive:
 		return
 	if not victim.is_player:
-		_settle_death(victim, victim)
+		_settle_death(victim, victim, "killed by a trap")
 		return
 	game_over = true
 	death_cause = "caught in a trap"
@@ -10829,7 +10880,10 @@ func protected_cell(c: Vector2i) -> bool:
 ## experience exactly as a swing does -- and writing a second copy of that here
 ## is the same mistake as a test that rebuilds a monster by hand. The copy
 ## looks right, drifts the first time any of it changes, and nothing says so.
-func _settle_death(victim: Entity, killer: Entity) -> void:
+## `cause`, when the killer is the victim itself, names what did it -- "the
+## miasma", "a trap" -- for the body's record (BODIES SAY WHO KILLED THEM,
+## Brad, 2026-10-05; built 2026-10-06).
+func _settle_death(victim: Entity, killer: Entity, cause := "") -> void:
 	if victim.is_player:
 		game_over = true
 		death_cause = "killed by a %s" % killer.name
@@ -10848,7 +10902,7 @@ func _settle_death(victim: Entity, killer: Entity) -> void:
 		# because a suspend in the five turns after a big kill must not
 		# quietly cost you the dig.
 		_remember_the_dead(victim)
-		_lay_body(victim)
+		_lay_body(victim, _killed_by(victim, killer, cause))
 		_rattle_the_ranks(victim)
 		_drop_loot(victim)
 		if victim.risen:

@@ -1214,6 +1214,10 @@ func _describe() -> Array:
 					out.append(_item_line(e.equipped[slot], 10.0))
 		for it in state.items_at(hovered.x, hovered.y):
 			out.append(_item_line(it, 0.0))
+		# The dead, and what killed them (2026-10-06): the floor's history,
+		# read from its bodies.
+		for line in state.body_lines_at(hovered):
+			out.append(line)
 	else:
 		out.append("(remembered)")
 	var tile := m.get_tile(hovered.x, hovered.y)

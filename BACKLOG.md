@@ -1324,12 +1324,16 @@ the poison. Risen enemies are untouched: the red walks them. Test:
   anything that wades, living or dead -- the miasma kills them as it kills
   the living, so the pool keeps your bear. Tests in
   `_test_allies_back_out_of_the_poison`.
-- **An idea from the same talk (Brad, 2026-10-05): bodies say who killed
-  them.** A rabbit's body with no haunch beside it is the only tell that a
-  wolf or a bear got there first. The body record could carry its killer,
-  and the cursor read "a rabbit, torn by a wolf" -- the floor's history
-  read from its bodies, the whole ecology visible without being witnessed.
-  Small; not asked for yet.
+- **Bodies say who killed them -- BUILT 2026-10-06 (Legion).** The body
+  record carries `killed_by` (`_killed_by` at `_settle_death`, saved): "torn
+  by a wolf" for a wild killer, "slain by you", "slain by your bone
+  skeleton", "slain by an orc", and for the floor's own killers the cause
+  the death path now names -- "choked by the miasma", "eaten by acid",
+  "burned by the red", "killed by a trap". The cursor, which never
+  described a body at all before, reads "rabbit's body, torn by a wolf"
+  while the body still shows (`body_lines_at`, `BodyLook.showing`), and
+  "the red has it: it will rise" under a claimed one. The floor's history,
+  read from its dead. Test: `_test_bodies_say_who_killed_them`.
 
 **Any body can be buried -- BUILT 2026-10-04 (Legion).** Brad killed a
 rat with the shovel in his pack and found no way to bury it: the shovel dug

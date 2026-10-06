@@ -215,6 +215,7 @@ func _initialize() -> void:
 	_test_drip_pools_in_the_caves()
 	_test_tending_the_fire_with_the_torch()
 	_test_animals_drink()
+	_test_bodies_say_who_killed_them()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15432,6 +15433,76 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## BODIES SAY WHO KILLED THEM (Brad, 2026-10-05): the cursor over a body
+## names its killer, so a cave's history can be read from its dead.
+func _test_bodies_say_who_killed_them() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 3
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	gs.map.set_all_visible()
+	gs.map.remember_visible()
+	gs.entities = [gs.player]
+	gs.bodies = []
+	var bar := Sidebar.new()
+	bar.state = gs
+	var read := func(c: Vector2i) -> String:
+		bar.hovered = c
+		var all := ""
+		for entry in bar._describe():
+			if entry is String:
+				all += String(entry) + "|"
+		return all
+	# A wolf's kill.
+	var bun := _spawn(gs, "rabbit", 10, 4)
+	var wolf := _spawn(gs, "wolf", 11, 4)
+	_kill(gs, bun, wolf)
+	check("a rabbit killed by a wolf: 'torn by a wolf'", read.call(Vector2i(10, 4)).contains("rabbit's body, torn by a wolf"),
+		read.call(Vector2i(10, 4)))
+	# Your own kill, and your ally's.
+	var gob := _spawn(gs, "goblin", 12, 4)
+	_kill(gs, gob, gs.player)
+	check("your kill: 'slain by you'", read.call(Vector2i(12, 4)).contains("goblin's body, slain by you"),
+		read.call(Vector2i(12, 4)))
+	var kob := _spawn(gs, "kobold", 13, 4)
+	var pal := _spawn(gs, "skeleton", 14, 4)
+	pal.faction = Entity.Faction.PLAYER
+	pal.name = "bone skeleton"
+	_kill(gs, kob, pal)
+	check("your ally's kill names it as yours", read.call(Vector2i(13, 4)).contains("slain by your bone skeleton"),
+		read.call(Vector2i(13, 4)))
+	# A monster's kill, and the article.
+	var orc := _spawn(gs, "orc", 15, 5)
+	var bun2 := _spawn(gs, "rabbit", 15, 4)
+	_kill(gs, bun2, orc)
+	check("an orc's kill: 'slain by an orc'", read.call(Vector2i(15, 4)).contains("slain by an orc"),
+		read.call(Vector2i(15, 4)))
+	# The floor's own killers.
+	var rat := _spawn(gs, "giant rat", 16, 4)
+	rat.hp = 1
+	rat.acid_turns = 1
+	gs._grow_fungus()
+	check("acid: 'eaten by acid'", not rat.alive and read.call(Vector2i(16, 4)).contains("eaten by acid"),
+		read.call(Vector2i(16, 4)))
+	# A body the red has claimed says so.
+	gs._set_fungus(Vector2i(17, 4), Tiles.FUNGUS_RED)
+	var kob2 := _spawn(gs, "kobold", 17, 5)
+	kob2.take_spores(&"red")
+	_kill(gs, kob2, gs.player)
+	check("a claimed body says the red has it", read.call(Vector2i(17, 5)).contains("the red has it"),
+		read.call(Vector2i(17, 5)))
+	# Rotted away, it is not described; unseen, not either.
+	gs.turns += GameState.BODY_ROT
+	check("a body rotted away is not described", not read.call(Vector2i(10, 4)).contains("body"))
+	gs.turns -= GameState.BODY_ROT
+	check("precondition: visible again it is", read.call(Vector2i(10, 4)).contains("body"))
+	# And the record travels with the save.
+	var saved := GameState.new(1)
+	saved.new_game()
+	check("the killer is saved with the body", saved.apply_dict(gs.to_dict())
+		and String(saved.bodies[0].get("killed_by", "")) == "torn by a wolf")
+	bar.free()
 
 ## ANIMALS DRINK (Brad, 2026-10-05): the first routine that is not about you.
 func _test_animals_drink() -> void:
