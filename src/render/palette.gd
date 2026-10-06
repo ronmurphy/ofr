@@ -230,6 +230,9 @@ const ALLY := Color("7fd69a")
 ## kobold. Not run through the tool's shared-glyph pass, which reads only the
 ## theme table's own colours -- this is a state tint, like ALLY.
 const WILD := Color("bfa22f")
+## The heart over a wolf that has turned to you (taming, 2026-10-06). A
+## popup, so no glyph shares it; a warm red apart from CRITICAL's blood.
+const TAMED := Color("ff5c7c")
 
 ## A creature that has given up and is running. Cool rather than hot, because
 ## it is the one alertness state that means you are winning.

@@ -1103,7 +1103,11 @@ const BESTIARY := [
 	 "speed": 130, "ai": &"pack", "flee": 0.15, "min_depth": 1, "threat": 6,
 	 "no_fade": true, "bands": {&"upper": 0.5, &"caves": 0.75},
 	 "caves": 2.0, "wild": true, "eats": true,
-	 "pack": {&"upper": 2, &"caves": 4}, "max_per_floor": 1},
+	 "pack": {&"upper": 2, &"caves": 4}, "max_per_floor": 1,
+	 ## TAMEABLE (Brad's design 2026-10-05; built 2026-10-06): a knucklebone,
+	 ## or haunches to the pack's count, held out at the bump warning turns
+	 ## the pack to your side. See _tame.
+	 "tame": true},
 	{"name": "kobold", "app": &"kobold", "hp": 6, "power": 3, "def": 0,
 	 "speed": 100, "ai": &"hunter", "flee": 0.25, "gear": 0.35, "min_depth": 1, "threat": 3, "caves": 1.5, "patrol": true, "scavenge": true, "eats": true},
 	{"name": "kobold slinger", "app": &"slinger", "hp": 5, "power": 3, "def": 0,
@@ -2774,6 +2778,128 @@ func _place_pick(at: Vector2i, pick: Dictionary, tier: int, remaining: int) -> i
 ## How far a struck wolf's pack turns with it.
 const PACK_REACH := 8
 
+## TAMING THE WOLVES (Brad's design 2026-10-05; built 2026-10-06). A pack on
+## your side, instead of a bone ally or the risen -- a way to play that
+## players will choose (the "jobs without names" note in BACKLOG). Two prices,
+## one choice: haunches to the pack's count (a pair's worth on the upper
+## floors, four in the caves; any haunch -- bear, rabbit, wolf -- counts), or
+## a knucklebone, which has another use and so is a real price too. Haunches
+## first when you have enough, the bone only when you do not. The pack turns
+## as one, the provocation loop run the other way, and a heart floats over
+## each (the `tamed` event). A tamed pack hunts for you (_ally_hunts), heals
+## only when hurt and only from meat lying about, follows you down the stairs
+## as any ally does, and by the fortress is chaff -- which is its decay.
+func _tameable(e: Entity) -> bool:
+	return e.alive and e.is_wild() and not e.provoked \
+		and bool(_bestiary_row(e.appearance).get("tame", false))
+
+## Haunches to the pack's count: a pair's on the upper floors, four in the caves.
+func _tame_price(e: Entity) -> int:
+	return _pack_size(_bestiary_row(e.appearance))
+
+func _knucklebone() -> Item:
+	for it in player.inventory:
+		if it.id == &"bone":
+			return it
+	return null
+
+## Every haunch you carry, in the satchel's shelves and the pack's stacks.
+func _haunches_carried() -> int:
+	var n := 0
+	var bag := _the_satchel()
+	if bag != null:
+		for row in bag.contents:
+			if _is_meat(row):
+				n += row.count
+	for it in player.inventory:
+		if _is_meat(it):
+			n += it.count
+	return n
+
+func _can_tame(e: Entity) -> bool:
+	return _haunches_carried() >= _tame_price(e) or _knucklebone() != null
+
+## One log line (about 95 characters), the fight's alternative named.
+func _tame_offer(e: Entity) -> String:
+	var price := _tame_price(e)
+	if _haunches_carried() >= price:
+		return "That is a %s. Move into it again to tame the pack with %d haunches; shoot to fight it." % [e.name, price]
+	return "That is a %s. Move into it again to tame the pack with the knucklebone; shoot to fight it." % e.name
+
+## `n` haunches spent: the satchel's shelves first, then the pack's stacks.
+func _spend_haunches(n: int) -> void:
+	var bag := _the_satchel()
+	if bag != null:
+		for row in bag.contents.duplicate():
+			if n <= 0:
+				break
+			if not _is_meat(row):
+				continue
+			var take := mini(row.count, n)
+			row.count -= take
+			n -= take
+			if row.count <= 0:
+				bag.contents.erase(row)
+	for it in player.inventory.duplicate():
+		while n > 0 and _is_meat(it) and player.inventory.has(it):
+			_spend_one(it)
+			n -= 1
+
+## The second move into a tameable animal with the price in your pack.
+func _tame(target: Entity) -> bool:
+	var price := _tame_price(target)
+	if _haunches_carried() >= price:
+		_spend_haunches(price)
+		msg_log.add("You throw down the %s. The pack eats, and is yours."
+			% ("haunch" if price == 1 else "haunches"), Color(0.70, 0.90, 0.78))
+	else:
+		var bone := _knucklebone()
+		if bone == null:
+			return false
+		_spend_one(bone)
+		msg_log.add("You hold out the knucklebone. The %s takes it, and the pack comes with it."
+			% target.name, Color(0.70, 0.90, 0.78))
+	_travel.clear()
+	for e in entities:
+		if e.alive and e.appearance == target.appearance and e.is_wild() and not e.provoked \
+				and Los.steps(e.x, e.y, target.x, target.y) <= PACK_REACH:
+			_turn_to_you(e)
+	_end_player_turn()
+	return true
+
+## One animal to your side: the provocation loop run the other way.
+func _turn_to_you(e: Entity) -> void:
+	e.faction = Entity.Faction.PLAYER
+	e.provoked = false
+	e.grudge = null
+	e.alertness = Entity.Alert.AWAKE
+	e.stance = Entity.Stance.LOOSE
+	e.drinking = 0
+	events.append({"kind": &"tamed", "to": Vector2i(e.x, e.y)})
+
+## THE PACK HUNTS FOR YOU. An ally with an appetite takes game within your
+## reach -- a rabbit's worth of fighting, never a bear -- and leaves the
+## haunch for you unless it is HURT: then it eats, and heals what the meat
+## would have healed you. The first ally that heals, and it is paid for with
+## your own larder; a well wolf never steals from it.
+func _ally_hunts(actor: Entity, range_out: int) -> bool:
+	var hurt := actor.hp < actor.max_hp
+	if hurt and _eat_here(actor):
+		return true
+	var prey := _prey_for(actor)
+	if prey != null and Los.steps(player.x, player.y, prey.x, prey.y) <= range_out:
+		if actor.is_adjacent(prey):
+			_attack(actor, prey)
+		else:
+			_safe_step_toward(actor, Vector2i(prey.x, prey.y))
+		return true
+	if hurt:
+		var meat := _meat_near(actor)
+		if meat.x >= 0 and Los.steps(player.x, player.y, meat.x, meat.y) <= range_out:
+			_safe_step_toward(actor, meat, true)
+			return true
+	return false
+
 ## A pack's size at a depth: a number, or a table by band name (a pair of
 ## wolves on the upper floors, four in the caves). One, for the packless.
 func _pack_size(entry: Dictionary, at_depth: int = -1) -> int:
@@ -4291,11 +4417,27 @@ func player_move(dx: int, dy: int) -> bool:
 		# 30 hp who walks into a bear by mistake would otherwise be dead in
 		# three of its hits. A rabbit is never worth the warning (power 0),
 		# and a provoked animal is your enemy already and gets none.
+		# TAMING (Brad's design 2026-10-05; built 2026-10-06). With the price
+		# in your pack -- haunches to the pack's count, or a knucklebone -- the
+		# first move into a tameable animal OFFERS instead of warning, and the
+		# same move again pays and turns the pack. To fight one while carrying
+		# the price, shoot or throw. Without the price, the warning names it.
+		if _tameable(target) and _can_tame(target):
+			if _meant != target:
+				_meant = target
+				msg_log.add(_tame_offer(target), Color(0.95, 0.72, 0.45))
+				return false
+			return _tame(target)
 		if target.is_wild() and not target.hostile_to(player) and target.power > 0 \
 				and _meant != target:
 			_meant = target
 			msg_log.add("That is a %s, and it has done nothing to you. Move into it again to pick the fight."
 				% target.name, Color(0.95, 0.72, 0.45))
+			# Its own line: the log panel holds about 95 characters, and a
+			# second sentence on the warning ran off its right edge.
+			if _tameable(target):
+				msg_log.add("%d haunches, or a knucklebone, would tame the pack instead."
+					% _tame_price(target), Color(0.95, 0.72, 0.45))
 			return false
 		_attack(player, target)
 		_end_player_turn()
@@ -9503,6 +9645,9 @@ func _ai_ally(actor: Entity, quarry: Entity) -> void:
 			return
 		_safe_step_toward(actor, Vector2i(quarry.x, quarry.y))
 		return
+	# A tamed pack hunts for you, within your reach (taming, 2026-10-06).
+	if actor.eats and _ally_hunts(actor, range_out):
+		return
 	# Nothing worth doing: come back. Stops at arm's length rather than trying
 	# to stand on you -- a companion that crowds the doorway you are backing
 	# through is a companion that gets you killed.
@@ -9536,9 +9681,12 @@ func _wade_to_water(actor: Entity, reach: int) -> bool:
 ## the pathfinder: its careful grid routes round fungus SQUARES, and a route
 ## that hugs the purple is in the cloud every step -- which had the ally
 ## stepping in and backing out, forever, at the edge (found by the test).
-func _safe_step_toward(actor: Entity, target: Vector2i) -> bool:
+## `onto` aims at the cell itself rather than arm's length of it: meat is
+## eaten standing on it, where a foe or you are reached beside.
+func _safe_step_toward(actor: Entity, target: Vector2i, onto := false) -> bool:
+	var near := 0 if onto else 1
 	return _ally_walk(actor, func(c: Vector2i) -> bool:
-		return Los.steps(c.x, c.y, target.x, target.y) <= 1, ALLY_WALK_REACH, true,
+		return Los.steps(c.x, c.y, target.x, target.y) <= near, ALLY_WALK_REACH, true,
 		target)
 
 ## How far an ally's own walk looks before settling for the nearest cell it

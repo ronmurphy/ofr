@@ -685,6 +685,31 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
+**Taming the wolves -- BUILT 2026-10-06 (Legion), waiting on play.** As
+built, from the design below: the wolf row carries `"tame": true`; with the
+price in your pack -- haunches to the pack's count (`_tame_price` =
+`_pack_size`: two on the upper floors, four in the caves; ANY haunch counts,
+bear and wolf included -- Brad's open question, answered yes), or a
+knucklebone -- the first move into an unstruck wolf OFFERS instead of
+warning ("Move into it again to throw down 4 haunches and tame the pack;
+shoot to fight it."), and the same move again pays and turns every wolf of
+its kind within `PACK_REACH` to your side (`_tame`, `_turn_to_you`: the
+provocation loop run the other way). Haunches first when you have enough,
+from the satchel's shelves then the pack (`_spend_haunches`); the bone only
+when you do not, since it raises a hero's shade. Without the price the
+warning names it. A HEART floats over each wolf that turns (the `tamed`
+event, the LEVEL UP popup's shape; `GlyphTheme.TAMED` = md-heart, added to
+the icon subset -- Brad may swap the glyph; `Palette.TAMED`). A tamed pack
+hunts for you within your reach (`_ally_hunts`: a rabbit's worth, never a
+bear) and leaves the haunch for you unless HURT -- then it eats and heals
+what the meat would have healed you: the first ally that heals, paid for
+from your larder; the ally's walk now steps ONTO meat (`_safe_step_toward`
+`onto`). Tamed wolves are allies in every other way: green, listed as
+standing with you, following you down, washing in pools, backing out of
+the purple, and chaff by the fortress -- the decay. Not built: a tamed
+wolf's warning colour (it takes the ally's). Test:
+`_test_taming_the_wolves`. The design, kept:
+
 **Taming the wolves (Brad, 2026-10-05 -- designed, not built; about half a
 day).** A pack on your side, instead of a bone ally or the risen. Brad can
 see players choosing it as their way to play (see "jobs without names",

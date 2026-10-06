@@ -38,6 +38,10 @@ const HEAVY_FIGURE := 0xF115D   # md-weight_lifter
 const ARMED_SMALL  := 0xF082C   # md-karate
 ## The trader. A figure holding something out, which is the whole job.
 const TRADER       := 0xF4CA    # oct-feed_person
+## The heart over a wolf that has turned to you (taming, 2026-10-06): the
+## popup's text in both views, which draw their text with this font as the
+## fallback. Brad's pick of heart when he has one; md-heart to start.
+const TAMED        := 0xF02D1   # md-heart
 const SACK         := 0xF0D2E   # md-sack
 
 ## Semantic id -> codepoint. Alternates are already in the font subset, so

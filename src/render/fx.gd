@@ -114,6 +114,12 @@ func add_events(evts: Array, popup_size: int) -> void:
 			list.append({"type": &"popup", "cell": to, "t": 0.0,
 				"text": "LEVEL UP", "colour": Palette.STAIRS, "size": popup_size})
 			continue
+		# A wolf turned to you: a heart over its head, the LEVEL UP popup's
+		# shape in the icon font's heart (taming, Brad's design 2026-10-05).
+		if e["kind"] == &"tamed":
+			list.append({"type": &"popup", "cell": to, "t": 0.0,
+				"text": String.chr(GlyphTheme.TAMED), "colour": Palette.TAMED, "size": popup_size})
+			continue
 
 		if e["kind"] == &"healed":
 			# This floats like damage feedback, but it is motion; the sidebar's

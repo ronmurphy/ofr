@@ -216,6 +216,7 @@ func _initialize() -> void:
 	_test_tending_the_fire_with_the_torch()
 	_test_animals_drink()
 	_test_bodies_say_who_killed_them()
+	_test_taming_the_wolves()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15433,6 +15434,133 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## TAMING THE WOLVES (Brad's design 2026-10-05): a pack on your side for
+## haunches to its count or a knucklebone; it hunts for you and heals only
+## when hurt, from meat lying about.
+func _test_taming_the_wolves() -> void:
+	var cave := _arena(24, 11)
+	cave.depth = 5
+	cave.player.x = 6
+	cave.player.y = 5
+	cave.player.inventory.clear()
+	cave.player.equipped.clear()
+	cave.entities = [cave.player]
+	cave.ground = []
+	cave.map.set_all_visible()
+	var row := _bestiary_entry("wolf")
+	check("precondition: the wolf is tameable, at the pack's count (%d in the caves)" % cave._pack_size(row),
+		bool(row.get("tame", false)) and cave._pack_size(row) == 4)
+	var leader := _spawn(cave, "wolf", 7, 5)
+	cave._spawn_pack(leader, row, 3)
+	var far := _spawn(cave, "wolf", 20, 9)
+	var pack := []
+	for e in cave.entities:
+		if e.appearance == &"wolf" and e != far:
+			pack.append(e)
+	check("precondition: a pack of four beside you, one far off", pack.size() == 4
+		and Los.steps(far.x, far.y, leader.x, leader.y) > GameState.PACK_REACH)
+	# Without the price, the warning names it.
+	check("without the price, the first move warns and names the price",
+		not cave.player_move(1, 0) and leader.is_wild() and not leader.provoked
+		and _log_says(cave, "4 haunches, or a knucklebone, would tame the pack instead."))
+	cave._meant = null
+	# Three haunches are not four.
+	for i in 3:
+		cave.give_item(Item.make(&"meat"))
+	check("precondition: three haunches carried", cave._haunches_carried() == 3 and not cave._can_tame(leader))
+	cave.give_item(Item.make(&"bear_meat"))
+	check("a bear's haunch counts: four now, and the pack can be tamed",
+		cave._haunches_carried() == 4 and cave._can_tame(leader))
+	var t0 := cave.turns
+	check("the first move into it OFFERS, at no cost", not cave.player_move(1, 0) and cave.turns == t0
+		and leader.is_wild() and _log_says(cave, "tame the pack with 4 haunches; shoot to fight it."))
+	check("  and every line of it fits the log (about 95 characters)",
+		"That is a wolf. Move into it again to tame the pack with 4 haunches; shoot to fight it.".length() <= 95
+		and "That is a wolf. Move into it again to tame the pack with the knucklebone; shoot to fight it.".length() <= 95)
+	cave.events.clear()
+	check("the second move pays and tames", cave.player_move(1, 0) and cave.turns == t0 + 1)
+	var turned := 0
+	for w in pack:
+		if w.faction == Entity.Faction.PLAYER and not w.provoked and w.grudge == null:
+			turned += 1
+	check("the whole pack turns to you (%d of 4)" % turned, turned == 4)
+	check("  the far wolf keeps its peace, wild", far.is_wild() and far.faction == Entity.Faction.WILD)
+	check("  the haunches are spent", cave._haunches_carried() == 0)
+	check("  the log says so", _log_says(cave, "The pack eats, and is yours."))
+	var hearts := 0
+	for ev in cave.events:
+		if ev["kind"] == &"tamed":
+			hearts += 1
+	check("  and a heart floats over each (%d)" % hearts, hearts == 4)
+	check("  they stand with you", cave.allies().size() == 4)
+	var fx := Fx.new()
+	fx.add_events(cave.events, 14)
+	var heart_popups := 0
+	for e in fx.list:
+		if e["type"] == &"popup" and e["text"] == String.chr(GlyphTheme.TAMED):
+			heart_popups += 1
+	check("  the views draw them as heart popups (%d)" % heart_popups, heart_popups == 4)
+	var icons: FontFile = load("res://assets/fonts/ofr_icons.ttf")
+	check("  and the heart is in the font we ship", icons.has_char(GlyphTheme.TAMED))
+
+	# The pack hunts for you: a rabbit within your reach, the haunch left.
+	var bun := _spawn(cave, "rabbit", 9, 5)
+	bun.hp = 1
+	var dog: Entity = pack[0]
+	dog.x = 8
+	dog.y = 5
+	var others := pack.slice(1)
+	for w in others:
+		cave.entities.erase(w)
+	cave._take_ai_turn(dog)
+	check("a tamed wolf takes the rabbit beside it", not bun.alive)
+	var haunch_lies := false
+	for it in cave.ground:
+		if it.id == &"meat":
+			haunch_lies = true
+	check("precondition: the haunch lies where the rabbit fell", haunch_lies)
+	dog.x = 9
+	dog.y = 5
+	cave._take_ai_turn(dog)
+	var still_lies := false
+	for it in cave.ground:
+		if it.id == &"meat":
+			still_lies = true
+	check("a well wolf leaves the haunch for you (and must)", dog.hp == dog.max_hp and still_lies)
+	# Well, it came back toward you; hurt, it goes back for the meat: a turn
+	# to reach it and a turn to eat.
+	dog.hp = dog.max_hp - 3
+	for i in 3:
+		cave._take_ai_turn(dog)
+	var eaten := true
+	for it in cave.ground:
+		if it.id == &"meat":
+			eaten = false
+	check("a hurt wolf goes back for it, eats and heals -- the first ally that heals, paid for (%d/%d)"
+		% [dog.hp, dog.max_hp], eaten and dog.hp > dog.max_hp - 3)
+	check("  a tamed wolf is saved as yours",
+		Entity.from_dict(dog.to_dict()).faction == Entity.Faction.PLAYER)
+
+	# The knucklebone pays when haunches cannot.
+	var den := _arena(24, 11)
+	den.depth = 2
+	den.player.x = 6
+	den.player.y = 5
+	den.player.inventory.clear()
+	den.player.equipped.clear()
+	den.entities = [den.player]
+	var bone := Item.make(&"bone")
+	den.give_item(bone)
+	var lead2 := _spawn(den, "wolf", 7, 5)
+	den._spawn_pack(lead2, row, den._pack_size(row) - 1)
+	check("precondition: a pair on an upper floor, no haunches, a knucklebone",
+		den._pack_size(row) == 2 and den._haunches_carried() == 0 and den._can_tame(lead2))
+	check("the offer names the bone", not den.player_move(1, 0)
+		and _log_says(den, "tame the pack with the knucklebone; shoot to fight it."))
+	check("and the second move spends it for the pair", den.player_move(1, 0)
+		and not den.player.inventory.has(bone) and den.allies().size() == 2
+		and _log_says(den, "The wolf takes it, and the pack comes with it."))
 
 ## BODIES SAY WHO KILLED THEM (Brad, 2026-10-05): the cursor over a body
 ## names its killer, so a cave's history can be read from its dead.
