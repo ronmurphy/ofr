@@ -1203,6 +1203,11 @@ func _describe() -> Array:
 				# a kit, and nothing about which of them was trying to kill him.
 				if e.faction == Entity.Faction.PLAYER and not e.is_player:
 					tag += "  (yours)"
+				# An animal up and about is not hunting you: say so, or a bear
+				# wandering past reads as one coming for you (the desktop's
+				# review, 2026-10-06).
+				elif e.is_wild() and not e.hostile_to(state.player):
+					tag += "  (wild)"
 				if e.regen > 0:
 					tag += " *"
 				out.append(tag)

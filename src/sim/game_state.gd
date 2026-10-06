@@ -1345,6 +1345,7 @@ func build_level() -> void:
 	reload_rng.seed = int(rng.seed) ^ (depth * 3571) ^ 0x51D6
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
 	trap_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0x7A9D
+	drink_rng.seed = int(rng.seed) ^ (depth * 5381) ^ 0xD121
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
@@ -4690,6 +4691,11 @@ var fungus_rng := RandomNumberGenerator.new()
 ## the floor (CLAUDE.md). Both saved.
 var hidden_traps: Dictionary = {}
 var trap_rng := RandomNumberGenerator.new()
+## Animals deciding to drink (2026-10-06): its own stream, because how many
+## draws a turn makes depends on how many animals are up, and on the main
+## rng that would move every later roll -- the seed-pinned-premise bug
+## (CLAUDE.md; caught in the desktop's review the same night). Saved.
+var drink_rng := RandomNumberGenerator.new()
 const SPOT_REACH := 3
 const SPOT_DARK := 0.12
 const SPOT_LIT := 0.60
@@ -8338,6 +8344,7 @@ func to_dict() -> Dictionary:
 		"reload_said": _reload_said,
 		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
 		"trap_rng": [str(trap_rng.seed), str(trap_rng.state)],
+		"drink_rng": [str(drink_rng.seed), str(drink_rng.state)],
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
 		"tending": tending,
@@ -8471,6 +8478,10 @@ func apply_dict(d: Dictionary) -> bool:
 	if traps_rng.size() == 2:
 		trap_rng.seed = str(traps_rng[0]).to_int()
 		trap_rng.state = str(traps_rng[1]).to_int()
+	var drinks_rng: Array = d.get("drink_rng", [])
+	if drinks_rng.size() == 2:
+		drink_rng.seed = str(drinks_rng[0]).to_int()
+		drink_rng.state = str(drinks_rng[1]).to_int()
 	hidden_traps.clear()
 	for key in d.get("hidden_traps", []):
 		var bits: PackedStringArray = String(key).split(",")
@@ -10428,13 +10439,13 @@ func _drinks(actor: Entity) -> bool:
 		actor.drinking -= 1
 		return true
 	if map.get_tile(actor.x, actor.y) == Tiles.WATER:
-		if actor.drinking == 0 and rng.randf() >= 0.5:
+		if actor.drinking == 0 and drink_rng.randf() >= 0.5:
 			return false
 		actor.drinking = DRINK_TURNS
 		if map.is_visible(actor.x, actor.y):
 			msg_log.add("%s drinks." % _called(actor, true), Color(0.62, 0.78, 0.90))
 		return true
-	if actor.drinking == 0 and rng.randf() >= DRINK_CHANCE:
+	if actor.drinking == 0 and drink_rng.randf() >= DRINK_CHANCE:
 		return false
 	var pool := _water_near(actor, DRINK_REACH)
 	if pool.x < 0:

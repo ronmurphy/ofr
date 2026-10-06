@@ -14638,6 +14638,20 @@ func _test_the_panel_says_whose_side() -> void:
 		if entry is String and String(entry).begins_with("B "):
 			said = String(entry)
 	check("but an ally is", said.contains("(yours)"), said)
+	var bruin := _spawn(gs, "cave bear", 10, 5)
+	bar.hovered = Vector2i(10, 5)
+	said = ""
+	for entry in bar._describe():
+		if entry is String and String(entry).begins_with("cave bear"):
+			said = String(entry)
+	check("an unstruck animal is marked wild, so it is not read as hunting you",
+		said.contains("(wild)"), said)
+	bruin.provoked = true
+	said = ""
+	for entry in bar._describe():
+		if entry is String and String(entry).begins_with("cave bear"):
+			said = String(entry)
+	check("  and once struck it is not", said != "" and not said.contains("(wild)"), said)
 	bar.free()
 
 ## Doors, noise, and what a rat can do that a person cannot.
@@ -15669,6 +15683,13 @@ func _test_animals_drink() -> void:
 		bear.alertness == Entity.Alert.AWAKE)
 	check("  and it heals nothing by it", bear.hp == bear.max_hp)
 	check("  a drink is saved mid-sip", Entity.from_dict(bear.to_dict()).drinking == bear.drinking)
+	# Its own stream: drinking never draws on the main rng.
+	var main_state := cave.rng.state
+	bear.drinking = 0
+	for i in 10:
+		cave._drinks(bear)
+	check("drinking never draws on the main rng (its own stream, saved)",
+		cave.rng.state == main_state and cave.to_dict().has("drink_rng"))
 	# A provoked bear has better things to do.
 	var angry := _spawn(cave, "cave bear", 11, 6)
 	angry.provoked = true

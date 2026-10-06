@@ -148,9 +148,10 @@ house the intro shows, and may draw players the dungeon alone would not.
   (3) the people -- retirees and gravestones from legends.json; (4) the
   Legends intro redone to show the real house. Every house screen measured
   in code and working on the pad from the start.
-- **Open for Brad:** the lot's size in cells; the recipe costs; whether the
-  house visit is offered at EVERY staircase or from the second floor on;
-  the portal's colour; what a retiree says.
+- **Open for Brad:** the lot's size in cells; the recipe costs; the
+  portal's colour; what a retiree says. **Answered 2026-10-06: the visit is
+  offered from FLOOR 2 ON** -- on floor 1 there is almost nothing to bring
+  home, and a new player's first staircase should just go down.
 
 **Then: a Dwarf Fortress direction — "which systems fit the game, and would be
 fun?"** Brad, 2026-09-28. Both views only DRAW, so this is simulation work.
@@ -1719,7 +1720,12 @@ the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
 **Rule: the minimap gives way** -- not drawn on a frame when the description
 would reach it. Information always wins.
 
-**Animals drink -- BUILT 2026-10-06 (Legion).** The first routine in the
+**Animals drink -- BUILT 2026-10-06 (Legion).** Its decisions draw on their
+own `drink_rng` since the desktop's review the same night (on the main rng
+the draw count depended on how many animals were up); and the cursor tags
+an unstruck animal "(wild)" so a wandering bear is not read as hunting
+you. The pack's rabbit hunt makes ordinary combat noise and can pull a red
+room's risen: left as the system working, watch it in play. The first routine in the
 dungeon that is not about you. An unbothered wild thing with a pool within
 `DRINK_REACH` (6) heads for it now and then (`DRINK_CHANCE` 0.12 a turn,
 and once decided it keeps walking: `Entity.drinking` below zero is thirst,
