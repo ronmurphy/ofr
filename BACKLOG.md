@@ -79,6 +79,79 @@ the breathe pass and Gabe's 3D view.
 **Next: small things, then play.** See "Next up" below: the new-player fixes from
 the 2026-09-26 playtest, David's background music, and the miasma.
 
+**THE NEXT BIG UPDATE: THE HOUSE -- the cosy update (Brad with Steph and
+Michelle, 2026-10-06; designed with the desktop session the same afternoon;
+not started).** A week of sessions, in slices that each ship alone. It
+came from the testers: both asked, every other day, whether the house in
+the Legends intro screenshots was "built in yet". Both play The Sims and
+Moonlighter. Brad's judgement: it adds cosy play to the game, explains the
+house the intro shows, and may draw players the dungeon alone would not.
+
+- **THE ONE RULE: the house TAKES and never GIVES.** Nothing carried out of
+  a run ever comes back into a run. The moment it does, every run starts
+  with the best gear ever found and the roguelike is gone (Moonlighter gets
+  away with it through the shop; we declined the money loop). So: an item
+  set down in the house becomes a DISPLAY PIECE, forever -- the first press
+  warns ("set here, it becomes a display piece and never comes back"), the
+  same press again does it (the bump warning's shape). Decorations,
+  trophies, pools, pillars, gardens, gravestones, retirees. A garden's
+  green fungus stays at home. Eating or healing AT HOME between floors
+  would be the first "give": not at first, and only ever on purpose.
+- **The visit (Michelle):** at the stairs, G asks house or next level. The
+  house sits BETWEEN floors, where build_level already runs, so the one-way
+  dungeon holds: no floor is revisited, nothing freezes mid-floor. A magic
+  door in the house, its own colour (a Diablo portal), brings you to the
+  NEXT level. The house is a small persistent map of its own, kept across
+  runs in a player-owned file (`house.json`; `use_scratch_files` must move
+  it FROM ITS FIRST COMMIT -- the gamepad.cfg lesson). Death keeps what
+  reached the house: a softer edge, the thing cosy players need.
+- **The lot, not a growing map:** a fixed lot about a third of a dungeon
+  floor, the starter house in the middle, the boundary wall fixed. The
+  house grows by building OUTWARD inside the lot; filling it is the cosy
+  endgame. One save shape, one renderer path, no resizing. One editing
+  rule: you may never wall yourself off from the portal door (a flood fill,
+  as mapgen already keeps stairs reachable). The testers WILL knock down the
+  starter walls and add rooms: wall and floor placement with the cursor,
+  blocks spent and refunded, is the editor.
+- **The builder's kit (Steph):** a floor-1 unique with shelves like the
+  forager's satchel, holding materials, not letters: rubble -> blocks (the
+  rubble's second use; flint was parked), SCRAP WOOD as a new ground
+  decoration like rubble on about every floor, so the player SEES wood (in
+  the fiction: the guards' logs, broken furniture, driftwood), and the
+  terrain edits we do already: water tiles, mud, pillars taken from the
+  floor you are leaving anyway.
+- **Recipes:** "this is what you have, so this is what you can build" -- a
+  table of costs (a table: 3 wood + 1 block; a basin: 6 blocks + 2 water;
+  Brad's numbers), in the TRADER SCREEN's shell: categories (walls,
+  furniture, garden, memorials), greyed where unaffordable, placed with the
+  cursor, pad filters on the shoulders. No crafting grid.
+- **The people:** a hero who escapes with the amulet RETIRES to the house,
+  an NPC you can see and who says a line about the run (the HERE box as
+  teacher). A hero who died gets a GRAVESTONE in the yard -- and that
+  removes them from the dungeon's grave pool (legends.json), so burying
+  your own history is a choice with a cost. Legends, graves and bone allies
+  meet in one place.
+- **Art:** no modelling week. Walls are geometry already; the pillar and
+  the stalagmite are primitives (a cylinder, a cone); furniture is eight or
+  ten more such shapes -- a slab on posts, a box, a pane, a low box with the
+  water material -- built once, reused by every recipe in the family's
+  colour, sized by the billboard table; icons for the picture look are
+  codepoints the full Nerd Font has (bed, table, chair, lamp, fence,
+  flower) -- a theme line, a size, a font rebuild. CLASSIC AND EXTENDED ARE
+  NOT SKIPPED: one furniture glyph per family in the family's colour is
+  nearly free and keeps the house usable by letters. Lower fidelity, never
+  absent. The 3D camera's rules hold in the house (Steph).
+- **Slices, each shippable:** (1) the visit -- stairs choice, the lot with
+  the starter house, the portal, the house file, the kit and scrap wood so
+  the first visit can gather; (2) building -- rubble, pillars, pools, mud,
+  planks placed; the recipe screen; the wall editor and the portal rule;
+  (3) the people -- retirees and gravestones from legends.json; (4) the
+  Legends intro redone to show the real house. Every house screen measured
+  in code and working on the pad from the start.
+- **Open for Brad:** the lot's size in cells; the recipe costs; whether the
+  house visit is offered at EVERY staircase or from the second floor on;
+  the portal's colour; what a retiree says.
+
 **Then: a Dwarf Fortress direction — "which systems fit the game, and would be
 fun?"** Brad, 2026-09-28. Both views only DRAW, so this is simulation work.
 Start as a brainstorm, not a build. The seed of it is already here, under "The
