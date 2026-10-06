@@ -9115,6 +9115,14 @@ func _update_awareness(actor: Entity) -> void:
 	var d := Los.steps(actor.x, actor.y, player.x, player.y)
 
 	if actor.alertness == Entity.Alert.AWAKE:
+		# AN ANIMAL THAT IS UP STAYS UP (2026-10-06). For a monster, awake
+		# means hunting you, and losing you means winding down to sleep. For
+		# an unstruck wild thing awake means up and about -- drinking,
+		# grazing, hunting rabbits -- and a bear that dozed off the moment you
+		# left its sight had no life of its own (found by the drinking test:
+		# one sip in two hundred turns). Struck, it is a hunter like any other.
+		if actor.is_wild() and not actor.provoked:
+			return
 		# Keep track of the player, or eventually lose the trail. Without this
 		# a woken monster would pursue across the whole level forever.
 		if d <= actor.notice_range * 2 and Los.clear(map, actor.x, actor.y, player.x, player.y):
@@ -10174,7 +10182,15 @@ func _meat_near(actor: Entity) -> Vector2i:
 ## being struck changes.
 func _ai_wild(actor: Entity) -> void:
 	if actor.ai == &"forager":
-		_ai_forager(actor, _what_scares(actor))
+		# Frightened first, as ever; else a drink, else the mushrooms.
+		var scare := _what_scares(actor)
+		if Los.steps(actor.x, actor.y, scare.x, scare.y) <= RABBIT_NOSE \
+				and Los.clear(map, actor.x, actor.y, scare.x, scare.y):
+			_ai_forager(actor, scare)
+			return
+		if _drinks(actor):
+			return
+		_ai_forager(actor, scare)
 		return
 	if actor.alertness != Entity.Alert.AWAKE:
 		return
@@ -10188,8 +10204,62 @@ func _ai_wild(actor: Entity) -> void:
 			and Los.clear(map, actor.x, actor.y, near.x, near.y) \
 			and _step_away(actor, near):
 		return
+	if _drinks(actor):
+		return
 	if rng.randf() < 0.5:
 		_step_random(actor)
+
+## ANIMALS DRINK (Brad, 2026-10-05; built 2026-10-06). The first routine
+## in the dungeon that is not about you: an unbothered wild thing with a
+## pool within DRINK_REACH heads for it now and then, stands at the water
+## with its head down for DRINK_TURNS, and goes back to its day. It gives
+## the drip pools a second job and the pre-run something to be found
+## doing. Purely life: it heals nothing and washes only what _wash would.
+const DRINK_REACH := 6
+const DRINK_CHANCE := 0.12
+const DRINK_TURNS := 2
+
+## True if the turn went on drinking, or on walking to the water for it.
+## `drinking` above zero is the sip in progress; BELOW zero is thirst -- it
+## has decided on the water and keeps walking until it stands in it (one
+## lucky roll a step was a random walk that never arrived). Thirst passes
+## if the water is gone from reach.
+func _drinks(actor: Entity) -> bool:
+	if actor.drinking > 0:
+		actor.drinking -= 1
+		return true
+	if map.get_tile(actor.x, actor.y) == Tiles.WATER:
+		if actor.drinking == 0 and rng.randf() >= 0.5:
+			return false
+		actor.drinking = DRINK_TURNS
+		if map.is_visible(actor.x, actor.y):
+			msg_log.add("%s drinks." % _called(actor, true), Color(0.62, 0.78, 0.90))
+		return true
+	if actor.drinking == 0 and rng.randf() >= DRINK_CHANCE:
+		return false
+	var pool := _water_near(actor, DRINK_REACH)
+	if pool.x < 0:
+		actor.drinking = 0
+		return false
+	actor.drinking = -1
+	_step_toward(actor, pool)
+	return true
+
+## The nearest water within `reach` in a clear line, or (-1, -1).
+func _water_near(actor: Entity, reach: int) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := reach + 1
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var c := Vector2i(actor.x + dx, actor.y + dy)
+			if not map.in_bounds(c.x, c.y) or map.get_tile(c.x, c.y) != Tiles.WATER:
+				continue
+			var d := Los.steps(actor.x, actor.y, c.x, c.y)
+			if d < best_d and entity_at(c.x, c.y) == null \
+					and Los.clear(map, actor.x, actor.y, c.x, c.y):
+				best = c
+				best_d = d
+	return best
 
 ## Whether a grudge still weighs: the thing is alive and not long gone. Not
 ## _can_see -- what struck you, you know the whereabouts of, dark or not;

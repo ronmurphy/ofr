@@ -338,6 +338,10 @@ var wail_cool: int = 0
 ## only user today, and it is the whole reason the rabbit is catchable: a thing
 ## faster than you that never stops is not a monster, it is scenery.
 var busy: int = 0
+## Turns left at the water's edge, head down (GameState._drinks); below
+## zero, thirst -- on its way to the water. A wild thing's; saved, so a bear
+## mid-drink is still drinking after a reload.
+var drinking: int = 0
 ## How much of the floor's fungus this has eaten. Drives both the meat it
 ## leaves and, at RABBIT_TURNS, what it becomes.
 var meal: int = 0
@@ -566,7 +570,7 @@ func to_dict() -> Dictionary:
 		"resists": resists, "weak_to": weak_to,
 		"chilled": chilled, "frozen": frozen, "acid": acid, "acid_turns": acid_turns,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
-		"busy": busy, "meal": meal,
+		"busy": busy, "meal": meal, "drinking": drinking,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -618,6 +622,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))
 	e.busy = int(d.get("busy", 0))
+	e.drinking = int(d.get("drinking", 0))
 	e.meal = int(d.get("meal", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)

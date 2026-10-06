@@ -214,6 +214,7 @@ func _initialize() -> void:
 	_test_the_desktops_review_points()
 	_test_drip_pools_in_the_caves()
 	_test_tending_the_fire_with_the_torch()
+	_test_animals_drink()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -15431,6 +15432,80 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## ANIMALS DRINK (Brad, 2026-10-05): the first routine that is not about you.
+func _test_animals_drink() -> void:
+	var cave := _arena(21, 9)
+	cave.player.x = 2
+	cave.player.y = 7
+	cave.entities = [cave.player]
+	cave.map.set_all_visible()
+	for y in range(1, 8):
+		cave.map.set_tile(5, y, Tiles.WALL)
+	cave.map.set_tile(15, 4, Tiles.WATER)
+	cave.pathfinder = Pathfinder.new(cave.map)
+	var bear := _spawn(cave, "cave bear", 11, 4)
+	check("precondition: an awake, unstruck bear with a pool four cells off",
+		bear.is_wild() and not bear.provoked and cave._water_near(bear, GameState.DRINK_REACH) == Vector2i(15, 4))
+	var drank := false
+	var reached := false
+	for i in 80:
+		cave._take_ai_turn(bear)
+		if cave.map.get_tile(bear.x, bear.y) == Tiles.WATER:
+			reached = true
+		if bear.drinking > 0:
+			drank = true
+			break
+	check("left to itself, it goes to the water and drinks (%d turns)" % 80, reached and drank
+		and _log_says(cave, "The cave bear drinks."))
+	bear.drinking = 0
+	var sips := 0
+	for i in 200:
+		cave._take_ai_turn(bear)
+		if bear.drinking == GameState.DRINK_TURNS:
+			sips += 1
+	check("  and over a long while it drinks now and then, not always (%d sips in 200)" % sips,
+		sips >= 3 and sips <= 80)
+	check("  an unstruck animal that is up stays up: it did not doze off out of your sight",
+		bear.alertness == Entity.Alert.AWAKE)
+	check("  and it heals nothing by it", bear.hp == bear.max_hp)
+	check("  a drink is saved mid-sip", Entity.from_dict(bear.to_dict()).drinking == bear.drinking)
+	# A provoked bear has better things to do.
+	var angry := _spawn(cave, "cave bear", 11, 6)
+	angry.provoked = true
+	var sipped := false
+	for i in 30:
+		cave._take_ai_turn(angry)
+		if angry.drinking > 0:
+			sipped = true
+	check("a bear that is hunting you never stops to drink", not sipped)
+	# A rabbit drinks too, when nothing frightens it; frightened, it runs.
+	var warren := _arena(21, 9)
+	warren.player.x = 2
+	warren.player.y = 7
+	warren.entities = [warren.player]
+	warren.map.set_all_visible()
+	for y in range(1, 8):
+		warren.map.set_tile(5, y, Tiles.WALL)
+	warren.map.set_tile(15, 4, Tiles.WATER)
+	warren.pathfinder = Pathfinder.new(warren.map)
+	var bun := _spawn(warren, "rabbit", 13, 4)
+	var bun_drank := false
+	for i in 120:
+		warren._take_ai_turn(bun)
+		if bun.drinking > 0:
+			bun_drank = true
+			break
+	check("a rabbit with nothing to fear drinks too", bun_drank)
+	bun.drinking = 0
+	bun.x = 14
+	bun.y = 4
+	# Beside it: in the dark a rabbit sees only at arm's length.
+	var gob := _spawn(warren, "goblin", 13, 4)
+	warren._take_ai_turn(bun)
+	check("but frightened, it runs rather than drinks (%d from the goblin)"
+		% Los.steps(bun.x, bun.y, gob.x, gob.y), bun.drinking == 0
+		and Los.steps(bun.x, bun.y, gob.x, gob.y) > 1)
 
 ## TENDING A FIRE WITH YOUR TORCH (Brad, 2026-10-05): the guards' job with
 ## their numbers; a dead brazier stays a paid problem.

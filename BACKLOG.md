@@ -1617,6 +1617,22 @@ the sidebar's 228 -- so it fits just above the help line and leaves ~11 lines.
 **Rule: the minimap gives way** -- not drawn on a frame when the description
 would reach it. Information always wins.
 
+**Animals drink -- BUILT 2026-10-06 (Legion).** The first routine in the
+dungeon that is not about you. An unbothered wild thing with a pool within
+`DRINK_REACH` (6) heads for it now and then (`DRINK_CHANCE` 0.12 a turn,
+and once decided it keeps walking: `Entity.drinking` below zero is thirst,
+above zero the sip), stands in the water for `DRINK_TURNS` (2) -- "The cave
+bear drinks." -- and goes back to its day. A rabbit drinks too when nothing
+frightens it; frightened, it runs first. A struck animal has better things
+to do; prey beats thirst for a bear. Heals nothing, washes only what
+`_wash` would. **And a rule it forced: an animal that is up stays up.** For
+a monster, awake means hunting you and losing you means winding down to
+sleep; an unstruck wild thing dozed off the moment you left its sight and
+had no life of its own (the test found one sip in two hundred turns). Now
+`_update_awareness` leaves an unprovoked wild thing awake once woken. This
+is the hinge the pre-run turns on: a floor's animals must be up to be found
+doing anything. Test: `_test_animals_drink`.
+
 **Drip pools in the caves, and a longer poison -- BUILT 2026-10-05 (Legion).**
 Brad, from play: poisoned by the miasma in a cave, no water anywhere near
 -- the HERE box's "water washes it off" was a promise the caves rarely kept
