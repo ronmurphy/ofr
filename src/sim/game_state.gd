@@ -1350,6 +1350,7 @@ func build_level() -> void:
 	trap_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0x7A9D
 	drink_rng.seed = int(rng.seed) ^ (depth * 5381) ^ 0xD121
 	nap_rng.seed = int(rng.seed) ^ (depth * 6829) ^ 0x5A9E
+	hunger_rng.seed = int(rng.seed) ^ (depth * 7253) ^ 0x4C6B
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
@@ -1522,8 +1523,37 @@ func build_level() -> void:
 	_keep_the_fire_clean()
 	pathfinder = Pathfinder.new(map)
 	_teach_the_slingers()
+	_set_appetites()
 	_prerun()
 	update_vision()
+
+## HUNGER, FOR THE MONSTERS AND THE ANIMALS (Brad, 2026-10-07). Not for
+## you: every way you heal outside a brazier is something swallowed, so you
+## live under hunger already (BACKLOG, Declined). For anything that `eats`,
+## `Entity.hunger` counts its turns since it last ate. Hungry (HUNGRY_AT), it
+## hunts game and goes to meat as every hunter did before; fed, it lets both
+## be -- so a bear that has had its rabbit leaves the next one alone for a
+## while, and a hungry den bear is worse to wake than a fed one
+## (DEN_FED_SCALE). It does not count during the pre-run (or everything
+## arrives starving), nor while an animal naps or a bear hibernates; eating
+## sets it back to nothing. Your allies hunt for YOU and keep no count.
+## Arrival: each eater dealt between nothing and HUNGER_START_MAX, so about
+## one in three arrives hungry.
+const HUNGER_START_MAX := 300
+
+func _set_appetites() -> void:
+	for e in entities:
+		if e.alive and e.eats and not e.is_player \
+				and e.faction != Entity.Faction.PLAYER:
+			e.hunger = hunger_rng.randi_range(0, HUNGER_START_MAX)
+
+## One turn of an eater's hunger (see _set_appetites).
+func _grow_hungry(actor: Entity) -> void:
+	if not actor.eats or actor.faction == Entity.Faction.PLAYER or _prerunning:
+		return
+	if actor.is_wild() and actor.alertness == Entity.Alert.ASLEEP:
+		return
+	actor.hunger += 1
 
 ## A FLOOR THAT WAS ALIVE BEFORE YOU ARRIVED (Brad and the Legion, 2026-10-04;
 ## built 2026-10-06). The floor gets PRERUN_TURNS quiet turns of its own life
@@ -4794,6 +4824,9 @@ var drink_rng := RandomNumberGenerator.new()
 ## reason as drinking -- the draws a turn depend on how many animals are up.
 ## Saved.
 var nap_rng := RandomNumberGenerator.new()
+## Each eater's appetite on arrival (2026-10-07): its own stream, as the
+## number of draws is the number of eaters on the floor. Saved.
+var hunger_rng := RandomNumberGenerator.new()
 const SPOT_REACH := 3
 const SPOT_DARK := 0.12
 const SPOT_LIT := 0.60
@@ -8458,6 +8491,7 @@ func to_dict() -> Dictionary:
 		"trap_rng": [str(trap_rng.seed), str(trap_rng.state)],
 		"drink_rng": [str(drink_rng.seed), str(drink_rng.state)],
 		"nap_rng": [str(nap_rng.seed), str(nap_rng.state)],
+		"hunger_rng": [str(hunger_rng.seed), str(hunger_rng.state)],
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
 		"tending": tending,
@@ -8599,6 +8633,10 @@ func apply_dict(d: Dictionary) -> bool:
 	if naps_rng.size() == 2:
 		nap_rng.seed = str(naps_rng[0]).to_int()
 		nap_rng.state = str(naps_rng[1]).to_int()
+	var hungers_rng: Array = d.get("hunger_rng", [])
+	if hungers_rng.size() == 2:
+		hunger_rng.seed = str(hungers_rng[0]).to_int()
+		hunger_rng.state = str(hungers_rng[1]).to_int()
 	hidden_traps.clear()
 	for key in d.get("hidden_traps", []):
 		var bits: PackedStringArray = String(key).split(",")
@@ -8916,6 +8954,8 @@ func _take_ai_turn(actor: Entity) -> int:
 		_last_move_cost = Scheduler.ACTION_COST
 		_ai_risen(actor)
 		return _last_move_cost
+
+	_grow_hungry(actor)
 
 	# Regeneration ticks even while asleep, so a troll you wounded and fled
 	# from is whole again when you come back. That is the point of it.
@@ -10525,6 +10565,9 @@ const HUNT_REACH := 6
 ## got to the rabbits first has less meat in it. True of anything the player
 ## left lying as well. Answers whether the turn was spent.
 func _hunt(actor: Entity) -> bool:
+	# Fed, it lets game and meat be (hunger, _set_appetites).
+	if not actor.is_hungry():
+		return false
 	if _eat_here(actor):
 		return true
 	var prey := _prey_for(actor)
@@ -10580,6 +10623,7 @@ func _eat_here(actor: Entity) -> bool:
 		if it.x == actor.x and it.y == actor.y and _is_meat(it):
 			ground.erase(it)
 			actor.hp = mini(actor.max_hp, actor.hp + it.effective_magnitude())
+			actor.hunger = 0
 			if map.is_visible(actor.x, actor.y):
 				msg_log.add("The %s eats the %s." % [actor.name, it.name],
 					Color(0.85, 0.78, 0.55))
@@ -10704,6 +10748,9 @@ const DEN_SETTLE_TURNS := 3
 ## Index: steps away (0 unused). Beyond the end, no chance.
 const DEN_HUNT_CHANCE := [0.0, 0.25, 0.12]
 const DEN_TURN_CHANCE := [0.0, 0.40, 0.20]
+## A fed bear is slower to come out after anything (hunger; Brad: "a bear
+## WILL attack a person, especially if it is hungry").
+const DEN_FED_SCALE := 0.5
 
 ## The nearest awake thing within `reach` of `actor`: you (always awake,
 ## except during the pre-run, when you are not there) or any creature.
@@ -10755,6 +10802,8 @@ func _keeps_to_the_den(actor: Entity) -> bool:
 		if d >= table.size() or not Los.clear(map, actor.x, actor.y, e.x, e.y):
 			continue
 		var c: float = table[d]
+		if not actor.is_hungry():
+			c *= DEN_FED_SCALE
 		if c > chance:
 			chance = c
 			target = e

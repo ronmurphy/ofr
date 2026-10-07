@@ -94,6 +94,7 @@ func _initialize() -> void:
 	_test_rabbits_keep_to_the_warren()
 	_test_animals_nap()
 	_test_let_sleeping_bears_lie()
+	_test_hunger()
 	_test_guards_walk_their_own_beats()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
@@ -1210,6 +1211,121 @@ func _test_let_sleeping_bears_lie() -> void:
 	# Saved.
 	bear.den_quiet = 2
 	check("a den bear's quiet turns are saved", Entity.from_dict(bear.to_dict()).den_quiet == 2)
+
+## HUNGER, for the monsters and the animals (Brad, 2026-10-07): a fed eater
+## lets game and meat be, a hungry one hunts; it grows by the turn, not in
+## the pre-run or a nap; eating resets it; a floor deals appetites out.
+func _test_hunger() -> void:
+	# The same bear and rabbit, fed and then hungry.
+	var make := func(hunger: int) -> Array:
+		var gs := _arena(24, 11)
+		gs.player.x = 2
+		gs.player.y = 2
+		gs.entities = [gs.player]
+		var bear := _spawn(gs, "cave bear", 10, 5)
+		var bun := _spawn(gs, "rabbit", 11, 5)
+		bear.hunger = hunger
+		bun.hp = 1
+		return [gs, bear, bun]
+	var fed: Array = make.call(0)
+	var fbear: Entity = fed[1]
+	var fbun: Entity = fed[2]
+	check("precondition: a fed bear beside a rabbit it would take",
+		not fbear.is_hungry() and (fed[0] as GameState)._is_game(fbear, fbun)
+		and fbear.is_adjacent(fbun))
+	for i in 20:
+		(fed[0] as GameState)._take_ai_turn(fbear)
+	check("a fed bear lets the rabbit beside it be (20 turns)", fbun.alive)
+	var hungry: Array = make.call(Entity.HUNGRY_AT)
+	var hbear: Entity = hungry[1]
+	var hbun: Entity = hungry[2]
+	check("precondition: the same bear, hungry", hbear.is_hungry())
+	(hungry[0] as GameState)._take_ai_turn(hbear)
+	check("a hungry bear takes it", not hbun.alive)
+	# Eating resets it: the haunch it just made, underfoot.
+	var gs: GameState = hungry[0]
+	gs.ground.append(Item.make(&"meat"))
+	gs.ground[-1].x = hbear.x
+	gs.ground[-1].y = hbear.y
+	check("precondition: meat under a hungry bear",
+		hbear.is_hungry() and gs._is_meat(gs.ground[-1]))
+	gs._hunt(hbear)
+	check("eating sets its hunger back to nothing", hbear.hunger == 0)
+	# A fed kobold leaves meat where it lies.
+	var kob := _spawn(gs, "kobold", 4, 8)
+	kob.hunger = 0
+	var steak := Item.make(&"meat")
+	steak.x = 4
+	steak.y = 8
+	gs.ground.append(steak)
+	check("a fed kobold leaves meat underfoot", not gs._hunt(kob) and gs.ground.has(steak))
+	kob.hunger = Entity.HUNGRY_AT
+	check("  a hungry one eats it", gs._hunt(kob) and not gs.ground.has(steak))
+	# It grows by the turn; not in a nap, not in the pre-run, not for yours.
+	var h0 := hbear.hunger
+	for i in 10:
+		gs._grow_hungry(hbear)
+	check("an animal awake grows hungrier by the turn (%d -> %d)" % [h0, hbear.hunger],
+		hbear.hunger == h0 + 10)
+	hbear.alertness = Entity.Alert.ASLEEP
+	gs._grow_hungry(hbear)
+	check("  not while it naps", hbear.hunger == h0 + 10)
+	hbear.alertness = Entity.Alert.AWAKE
+	gs._prerunning = true
+	gs._grow_hungry(hbear)
+	gs._prerunning = false
+	check("  nor in the pre-run, or all would arrive starving", hbear.hunger == h0 + 10)
+	hbear.faction = Entity.Faction.PLAYER
+	gs._grow_hungry(hbear)
+	check("  nor for one of yours", hbear.hunger == h0 + 10)
+	# A fed den bear is slower to come out than a hungry one.
+	var out := [0, 0]
+	for which in 2:
+		for k in 20:
+			var den := _arena(21, 9)
+			den.player.x = 1
+			den.player.y = 1
+			den.nap_rng.seed = 6600 + k
+			var b := _spawn(den, "cave bear", 10, 4)
+			b.denned = true
+			b.hunger = 0 if which == 0 else Entity.HUNGRY_AT
+			var r := _spawn(den, "rabbit", 11, 4)
+			den.entities = [den.player, b, r]
+			for i in 6:
+				den._take_ai_turn(b)
+				if not b.denned:
+					out[which] += 1
+					break
+	check("a hungry den bear comes out sooner than a fed one (fed %d, hungry %d of 20)"
+		% [out[0], out[1]], out[1] > out[0] and out[1] >= 12)
+	# A floor deals appetites: some hungry, some fed, the same every time.
+	var eaters := 0
+	var hungry_n := 0
+	var first: Array = []
+	var again: Array = []
+	for i in 6:
+		for pass_n in 2:
+			var f := GameState.new(88100 + i)
+			f.new_game()
+			f.depth = 5
+			f.build_level()
+			for e in f.entities:
+				if e.alive and e.eats and not e.is_player:
+					if pass_n == 0:
+						eaters += 1
+						if e.is_hungry():
+							hungry_n += 1
+						first.append(e.hunger)
+					else:
+						again.append(e.hunger)
+	check("precondition: cave floors have eaters (%d on 6)" % eaters, eaters >= 20)
+	check("about one in three arrives hungry (%d of %d)" % [hungry_n, eaters],
+		hungry_n * 6 >= eaters and hungry_n * 2 <= eaters)
+	check("  dealt the same from the same seed", first == again)
+	# Saved.
+	hbear.hunger = 123
+	check("hunger is saved", Entity.from_dict(hbear.to_dict()).hunger == 123)
+	check("  and so is its stream", gs.to_dict().has("hunger_rng"))
 
 ## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
@@ -15038,13 +15154,22 @@ func _test_the_panel_says_whose_side() -> void:
 		if entry is String and String(entry).begins_with("cave bear"):
 			said = String(entry)
 	check("an unstruck animal is marked wild, so it is not read as hunting you",
-		said.contains("(wild)"), said)
+		said.contains("(wild"), said)
+	# Hunger (2026-10-07): a hungry one says so, a fed one does not.
+	check("precondition: this bear is hungry", bruin.is_hungry())
+	check("  a hungry animal says so: it hunts", said.contains("(wild, hungry)"), said)
+	bruin.hunger = 0
+	said = ""
+	for entry in bar._describe():
+		if entry is String and String(entry).begins_with("cave bear"):
+			said = String(entry)
+	check("  a fed one is only wild", said.contains("(wild)") and not said.contains("hungry"), said)
 	bruin.provoked = true
 	said = ""
 	for entry in bar._describe():
 		if entry is String and String(entry).begins_with("cave bear"):
 			said = String(entry)
-	check("  and once struck it is not", said != "" and not said.contains("(wild)"), said)
+	check("  and once struck it is not", said != "" and not said.contains("(wild"), said)
 	bar.free()
 
 ## Doors, noise, and what a rat can do that a person cannot.

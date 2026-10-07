@@ -65,6 +65,10 @@ func hostile_to(other: Entity) -> bool:
 				return beast.provoked
 	return faction != other.faction
 
+## Hungry enough to hunt (see `hunger`).
+func is_hungry() -> bool:
+	return eats and hunger >= HUNGRY_AT
+
 func is_wild() -> bool:
 	return faction == Faction.WILD
 
@@ -355,6 +359,13 @@ var drinking: int = 0
 ## game or after you; out, it is an ordinary animal again
 ## (GameState._keeps_to_the_den). Saved.
 var denned := false
+## HUNGER (Brad, 2026-10-07): turns since it last ate, for anything that
+## `eats`. At HUNGRY_AT it hunts game and goes to meat; below, it lets both
+## be. Hungry by default, so a creature made outside a floor build (a test,
+## an old save) behaves as every hunter did before hunger existed; a floor
+## deals out real appetites (GameState._set_appetites). Saved.
+const HUNGRY_AT := 200
+var hunger: int = HUNGRY_AT
 ## Turns a woken den bear has had nothing near it; at DEN_SETTLE_TURNS it
 ## goes back to sleep in the den (Brad, 2026-10-07). Saved.
 var den_quiet: int = 0
@@ -586,7 +597,7 @@ func to_dict() -> Dictionary:
 		"resists": resists, "weak_to": weak_to,
 		"chilled": chilled, "frozen": frozen, "acid": acid, "acid_turns": acid_turns,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
-		"busy": busy, "meal": meal, "drinking": drinking, "denned": denned, "den_quiet": den_quiet,
+		"busy": busy, "meal": meal, "drinking": drinking, "denned": denned, "den_quiet": den_quiet, "hunger": hunger,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -642,6 +653,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.drinking = int(d.get("drinking", 0))
 	e.denned = bool(d.get("denned", false))
 	e.den_quiet = int(d.get("den_quiet", 0))
+	e.hunger = int(d.get("hunger", HUNGRY_AT))
 	e.meal = int(d.get("meal", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)

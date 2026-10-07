@@ -1207,7 +1207,8 @@ func _describe() -> Array:
 				# wandering past reads as one coming for you (the desktop's
 				# review, 2026-10-06).
 				elif e.is_wild() and not e.hostile_to(state.player):
-					tag += "  (wild)"
+					# Hungry, it hunts -- and a hungry den bear is worse to wake.
+					tag += "  (wild, hungry)" if e.is_hungry() else "  (wild)"
 				if e.regen > 0:
 					tag += " *"
 				out.append(tag)

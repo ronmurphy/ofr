@@ -1464,6 +1464,30 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
   - The general nap rule is unchanged: an ordinary sleeper wakes half the
     time when something passes beside it. Test:
     `_test_let_sleeping_bears_lie`.
+- **Hunger, for the monsters and the animals -- BUILT 2026-10-07 (Legion).**
+  Not for the player (Declined). Anything that `eats` keeps
+  `Entity.hunger`, its turns since it last ate (saved). The eaters are the
+  wolf, the kobold, the kobold slinger, the goblin, the orc, the ogre and
+  the cave bear.
+  - **Fed or hungry.** Hungry (`Entity.HUNGRY_AT`, 200), it hunts game and
+    goes to meat as every hunter did before. Fed, `_hunt` lets both be. So
+    a bear that has had its rabbit leaves the next one alone for a while,
+    and your meat on the floor is safe from a fed goblin.
+  - **When it grows.** One a turn (`_grow_hungry`), except during the
+    pre-run (or everything would arrive starving), while an animal naps or
+    a bear hibernates, and for your allies, who hunt for you. Monsters
+    count while unaware of you, since their "asleep" means only that.
+  - **Eating** sets it back to nothing.
+  - **Arrival.** `_set_appetites` deals each eater 0 to `HUNGER_START_MAX`
+    (300) on its own `hunger_rng`, saved, so about one in three arrives
+    hungry (18 of 57 on six cave floors).
+  - **The den bear.** A fed one is half as quick to come out
+    (`DEN_FED_SCALE`).
+  - **Seeing it.** The panel's tag reads "(wild, hungry)".
+  - **Defaults.** A creature made outside a floor build (a test, an old
+    save) defaults to hungry, which is how every hunter behaved before.
+  Test: `_test_hunger` (mutation: without the fed gate in `_hunt`, three
+  checks fail).
 - **The warren: rabbits out of the fortress -- BUILT 2026-10-07 (desktop).**
   Brad: wild animals learned to avoid walls and garrisons, so a fortress
   should not have rabbits loose in it, any more than bears. Measured first:
@@ -1946,20 +1970,14 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
-- **Hunger for monsters and animals (Brad, 2026-10-07).** A hidden number
-  per creature, in the Dwarf Fortress spirit, built on what is already
-  there: rabbits eat fungus, hunters eat meat, animals drink. Hunger would
-  drive how often a hunter hunts, so a fed bear dozes and a hungry one
-  comes out of its den after whatever woke it, you included (scale
-  `DEN_HUNT_CHANCE` and `DEN_TURN_CHANCE` by it). Not for the player: see
-  Declined.
 - **The smaller monsters as a bear's meals (Brad, 2026-10-07).** A bear
   would take a kobold or a goblin as readily as a wolf. Today animals and
   monsters ignore each other until one strikes the other (`hostile_to`:
   WILD is nothing to MONSTER), so this opens animal-against-monster
   fighting: the kobold fights back, its friends join in, and the threat
-  ceiling and the pre-run's no-deaths rule both need checking. Pairs
-  naturally with hunger.
+  ceiling and the pre-run's no-deaths rule both need checking. Hunger is
+  built (2026-10-07), so "a kobold unlucky enough to wake a hungry sleeping
+  bear" needs only this.
 
 **The cat (Brad, 2026-10-07 -- shaped, not built).** A mouser. Every cat
 owner knows what it will do: go mousing, and very likely nothing else.
