@@ -1836,6 +1836,30 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**The cat (Brad, 2026-10-07 -- shaped, not built).** A mouser. Every cat
+owner knows what it will do: go mousing, and very likely nothing else.
+- **WILD, not an ally.** It hunts RATS and nothing but rats -- which slows
+  the red, since rats carry it. It runs from bears and wolves, is at peace
+  with rabbits (so a rabbit must not fear it the way it fears a wild thing
+  that eats -- `_what_scares` needs the exception), and keeps to its own
+  business unless struck, like any wild thing.
+- **It may follow you -- loosely.** A better chance than any other animal to
+  drift after the player, never in a line behind you, and far more likely
+  to wander off and fall asleep anywhere and not come back. It is the one
+  animal that NAPS: an exception to "an animal that is up stays up". Struck,
+  it stops following for good.
+- **Where:** commonest in the fortress and on floor 10, rare on the upper
+  floors and in the caves. The one animal a fortress has without the
+  warren's excuse -- castles really did keep cats loose as mousers. One a
+  floor at most fits `bands` (a per-band chance, set down once a floor).
+- **Taming later is a small step:** WILD to your side, and it keeps every
+  habit above -- the one companion that does not obey.
+- **Depends on:** the rat being WILD (the Legion's short session 6), or a
+  cat-only prey rule that takes the giant rat whatever its faction.
+- **Look:** `f` in classic (free; NetHack's feline); `md-cat` (U+F011B) in
+  the full Nerd Font for the picture look -- a theme line, a size, and a
+  rebuild of the icon subset.
+
 **The latched gate (Brad, 2026-10-07 -- an option, not asked for).** A door
 variant that NOTHING but you gets past: no opener opens it, no rat squeezes
 under it, no bear smashes it -- the only door in the game that holds. It
