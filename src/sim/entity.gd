@@ -342,6 +342,11 @@ var busy: int = 0
 ## zero, thirst -- on its way to the water. A wild thing's; saved, so a bear
 ## mid-drink is still drinking after a reload.
 var drinking: int = 0
+## A bear asleep in its den (Brad, 2026-10-07: they hibernate). It never
+## wakes on its own; noise wakes it -- the den's bones above all, which is
+## the den's whole design -- and once up it is an ordinary animal again.
+## Saved.
+var denned := false
 ## How much of the floor's fungus this has eaten. Drives both the meat it
 ## leaves and, at RABBIT_TURNS, what it becomes.
 var meal: int = 0
@@ -570,7 +575,7 @@ func to_dict() -> Dictionary:
 		"resists": resists, "weak_to": weak_to,
 		"chilled": chilled, "frozen": frozen, "acid": acid, "acid_turns": acid_turns,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
-		"busy": busy, "meal": meal, "drinking": drinking,
+		"busy": busy, "meal": meal, "drinking": drinking, "denned": denned,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -623,6 +628,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.wail_cool = int(d.get("wail_cool", 0))
 	e.busy = int(d.get("busy", 0))
 	e.drinking = int(d.get("drinking", 0))
+	e.denned = bool(d.get("denned", false))
 	e.meal = int(d.get("meal", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)

@@ -1349,6 +1349,7 @@ func build_level() -> void:
 	fungus_rng.seed = int(rng.seed) ^ (depth * 6151) ^ 0xF6A1
 	trap_rng.seed = int(rng.seed) ^ (depth * 7919) ^ 0x7A9D
 	drink_rng.seed = int(rng.seed) ^ (depth * 5381) ^ 0xD121
+	nap_rng.seed = int(rng.seed) ^ (depth * 6829) ^ 0x5A9E
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
@@ -1569,7 +1570,9 @@ func _prerun() -> void:
 	var living: Array = []
 	for e in entities:
 		if e.alive and e.is_wild() and not e.provoked:
-			e.alertness = Entity.Alert.AWAKE
+			# A bear in its den hibernates through it (2026-10-07).
+			if not e.denned:
+				e.alertness = Entity.Alert.AWAKE
 			living.append(e)
 	for _turn in prerun_turns:
 		for e in living:
@@ -2789,6 +2792,12 @@ func _place_the_wild(gen: MapGen) -> void:
 				continue
 			_place_pick(at, e, -1, WILD_UNPRICED)
 			if in_caves and e["app"] == &"bear":
+				# Asleep in its den (Brad, 2026-10-07: bears hibernate). The
+				# pre-run leaves it asleep, and the den's bones are its alarm.
+				var bruin: Entity = entity_at(at.x, at.y)
+				if bruin != null:
+					bruin.denned = true
+					bruin.alertness = Entity.Alert.ASLEEP
 				_make_a_den(area)
 			break
 
@@ -4780,6 +4789,10 @@ var trap_rng := RandomNumberGenerator.new()
 ## rng that would move every later roll -- the seed-pinned-premise bug
 ## (CLAUDE.md; caught in the desktop's review the same night). Saved.
 var drink_rng := RandomNumberGenerator.new()
+## Animals dozing off and waking (2026-10-07): its own stream for the same
+## reason as drinking -- the draws a turn depend on how many animals are up.
+## Saved.
+var nap_rng := RandomNumberGenerator.new()
 const SPOT_REACH := 3
 const SPOT_DARK := 0.12
 const SPOT_LIT := 0.60
@@ -8443,6 +8456,7 @@ func to_dict() -> Dictionary:
 		"fungus_rng": [str(fungus_rng.seed), str(fungus_rng.state)],
 		"trap_rng": [str(trap_rng.seed), str(trap_rng.state)],
 		"drink_rng": [str(drink_rng.seed), str(drink_rng.state)],
+		"nap_rng": [str(nap_rng.seed), str(nap_rng.state)],
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
 		"tending": tending,
@@ -8580,6 +8594,10 @@ func apply_dict(d: Dictionary) -> bool:
 	if drinks_rng.size() == 2:
 		drink_rng.seed = str(drinks_rng[0]).to_int()
 		drink_rng.state = str(drinks_rng[1]).to_int()
+	var naps_rng: Array = d.get("nap_rng", [])
+	if naps_rng.size() == 2:
+		nap_rng.seed = str(naps_rng[0]).to_int()
+		nap_rng.state = str(naps_rng[1]).to_int()
 	hidden_traps.clear()
 	for key in d.get("hidden_traps", []):
 		var bits: PackedStringArray = String(key).split(",")
@@ -10507,7 +10525,10 @@ func _ai_wild(actor: Entity) -> void:
 		_ai_forager(actor, scare)
 		return
 	if actor.alertness != Entity.Alert.AWAKE:
+		_stir(actor)
 		return
+	# Up and about: a den bear woken is an ordinary bear from now on.
+	actor.denned = false
 	# The food web (Brad, 2026-10-04): a bear hunts the rabbits, with the
 	# same hunt the goblins have, and eats what it brings down. Never a bear
 	# (heavy), never you (_prey_for looks only at the wild).
@@ -10520,8 +10541,47 @@ func _ai_wild(actor: Entity) -> void:
 		return
 	if _drinks(actor):
 		return
+	# Nothing to do: now and then, a nap.
+	if nap_rng.randf() < NAP_CHANCE:
+		actor.alertness = Entity.Alert.ASLEEP
+		return
 	if rng.randf() < 0.5:
 		_step_random(actor)
+
+## SOMETIMES SOMEONE JUST NEEDS A NAP (Brad, 2026-10-07). After the pre-run
+## woke every animal and "an animal that is up stays up" kept them so, 150
+## turns of wandering left none of them where the floor put them -- and a
+## cave bear walked off from the den whose bones were meant to wake it. Now
+## an unstruck animal with nothing to do may doze off where it stands; it may
+## wake on its own after a while; an awake creature passing beside it may
+## wake it; noise and you wake it as they wake anything. If it does not wake,
+## it does not. Not a rabbit: a forager is always about its mushrooms. Not a
+## den bear on its own: it hibernates until something wakes it.
+## The numbers: a nap about every hundred idle turns, lasting about forty.
+const NAP_CHANCE := 0.01
+const WAKE_CHANCE := 0.025
+## The chance a turn that an awake creature beside a sleeper wakes it.
+const PASSERBY_WAKE := 0.5
+
+## A sleeping animal's turn: perhaps it wakes. Never a den bear on its own.
+func _stir(actor: Entity) -> void:
+	if actor.alertness != Entity.Alert.ASLEEP:
+		return
+	var passer := false
+	for e in entities:
+		if e == actor or e.is_player or not e.alive or e.alertness != Entity.Alert.AWAKE:
+			continue
+		if e.is_adjacent(actor):
+			passer = true
+			break
+	if passer:
+		if nap_rng.randf() < PASSERBY_WAKE:
+			actor.alertness = Entity.Alert.AWAKE
+		return
+	if actor.denned:
+		return
+	if nap_rng.randf() < WAKE_CHANCE:
+		actor.alertness = Entity.Alert.AWAKE
 
 ## ANIMALS DRINK (Brad, 2026-10-05; built 2026-10-06). The first routine
 ## in the dungeon that is not about you: an unbothered wild thing with a

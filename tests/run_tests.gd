@@ -92,6 +92,7 @@ func _initialize() -> void:
 	_test_the_slime()
 	_test_the_wolf_pack()
 	_test_rabbits_keep_to_the_warren()
+	_test_animals_nap()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
 	_test_threat_ceiling_holds_on_the_climb()
@@ -905,6 +906,96 @@ func _test_the_wolf_pack() -> void:
 		pairs >= 6 and odd_packs == 0)
 	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
 		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## SOMETIMES SOMEONE JUST NEEDS A NAP (Brad, 2026-10-07). A bear in its den
+## hibernates: the pre-run leaves it asleep, it never wakes on its own, and
+## noise -- the den's bones -- wakes it. Other animals with nothing to do doze
+## off now and then, wake on their own, or are woken by something passing.
+## A rabbit is always about its mushrooms.
+func _test_animals_nap() -> void:
+	# A cave floor, the pre-run on: a den bear is asleep when you arrive.
+	var was := GameState.prerun_turns
+	GameState.prerun_turns = GameState.PRERUN_TURNS
+	var denned := 0
+	var asleep_in_den := 0
+	for i in 12:
+		var f := GameState.new(77700 + i)
+		f.new_game()
+		f.depth = 5
+		f.build_level()
+		for e in f.entities:
+			if e.alive and e.appearance == &"bear" and e.denned:
+				denned += 1
+				if e.alertness == Entity.Alert.ASLEEP:
+					asleep_in_den += 1
+	GameState.prerun_turns = was
+	check("precondition: cave floors have bears in dens (%d in 12)" % denned, denned >= 4)
+	check("a bear in its den is asleep when you arrive (%d of %d)" % [asleep_in_den, denned],
+		asleep_in_den * 4 >= denned * 3)
+	# In an arena: a den bear never wakes on its own, however long.
+	var gs := _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	gs.entities = [gs.player]
+	var bear := _spawn(gs, "cave bear", 15, 6)
+	bear.denned = true
+	bear.alertness = Entity.Alert.ASLEEP
+	for i in 300:
+		gs._take_ai_turn(bear)
+	check("left alone, a den bear sleeps on (300 turns)",
+		bear.alertness == Entity.Alert.ASLEEP and bear.x == 15 and bear.y == 6)
+	# Its bones: a noise in the den wakes it (and must).
+	gs._make_noise(Vector2i(14, 6), 7, &"bones")
+	check("a noise in the den wakes it", bear.alertness != Entity.Alert.ASLEEP)
+	gs._take_ai_turn(bear)
+	check("  and once up it is an ordinary bear", not bear.denned)
+	# An ordinary animal: it naps now and then, and wakes on its own.
+	var wolf := _spawn(gs, "wolf", 4, 6)
+	wolf.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, wolf]
+	var naps := 0
+	var wakes := 0
+	var asleep_turns := 0
+	var last := wolf.alertness
+	for i in 1500:
+		gs._take_ai_turn(wolf)
+		if wolf.alertness == Entity.Alert.ASLEEP:
+			asleep_turns += 1
+		if last == Entity.Alert.AWAKE and wolf.alertness == Entity.Alert.ASLEEP:
+			naps += 1
+		if last == Entity.Alert.ASLEEP and wolf.alertness == Entity.Alert.AWAKE:
+			wakes += 1
+		last = wolf.alertness
+	check("an idle wolf dozes off now and then (%d naps in 1500 turns)" % naps, naps >= 3)
+	check("  and wakes on its own (%d)" % wakes, wakes >= 2)
+	check("  and is up more than it sleeps (%d of 1500 asleep)" % asleep_turns, asleep_turns < 750)
+	# A passer-by wakes a sleeper.
+	wolf.alertness = Entity.Alert.ASLEEP
+	var passer := _spawn(gs, "wolf", wolf.x + 1, wolf.y)
+	passer.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, wolf, passer]
+	var woke := false
+	for i in 10:
+		gs._stir(wolf)
+		if wolf.alertness == Entity.Alert.AWAKE:
+			woke = true
+			break
+	check("precondition: something awake stands beside it", passer.is_adjacent(wolf))
+	check("an awake creature passing beside a sleeper wakes it", woke)
+	# A rabbit never naps.
+	var bun := _spawn(gs, "rabbit", 10, 2)
+	bun.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, bun]
+	var dozed := false
+	for i in 500:
+		gs._take_ai_turn(bun)
+		if bun.alertness == Entity.Alert.ASLEEP:
+			dozed = true
+	check("a rabbit never naps: it is about its mushrooms", not dozed)
+	# Its own stream, saved; the den is saved.
+	check("naps draw on their own stream, saved", gs.to_dict().has("nap_rng"))
+	bear.denned = true
+	check("a den bear is saved as one", Entity.from_dict(bear.to_dict()).denned)
 
 ## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
@@ -15620,14 +15711,16 @@ func _test_the_floor_was_alive_before_you() -> void:
 				and Los.steps(e.x, e.y, one.player.x, one.player.y) <= 1:
 			hunting += 1
 	check("nothing hostile waits at your feet when you arrive", hunting == 0)
+	# Up and about -- or napping (2026-10-07): most of a floor's animals are
+	# awake when you arrive, some doze. A bear in its den sleeps.
 	var up := 0
 	var wild := 0
 	for e in one.entities:
-		if e.alive and e.is_wild():
+		if e.alive and e.is_wild() and not e.denned:
 			wild += 1
 			if e.alertness == Entity.Alert.AWAKE:
 				up += 1
-	check("the animals are up and about (%d of %d)" % [up, wild], wild == 0 or up == wild)
+	check("most of the animals are up and about (%d of %d)" % [up, wild], wild == 0 or up * 2 >= wild)
 
 ## TAMING THE WOLVES (Brad's design 2026-10-05): a pack on your side for
 ## haunches to its count or a knucklebone; it hunts for you and heals only
@@ -15853,14 +15946,20 @@ func _test_animals_drink() -> void:
 		and _log_says(cave, "The cave bear drinks."))
 	bear.drinking = 0
 	var sips := 0
+	var up_turns := 0
 	for i in 200:
 		cave._take_ai_turn(bear)
 		if bear.drinking == GameState.DRINK_TURNS:
 			sips += 1
+		if bear.alertness == Entity.Alert.AWAKE:
+			up_turns += 1
 	check("  and over a long while it drinks now and then, not always (%d sips in 200)" % sips,
 		sips >= 3 and sips <= 80)
-	check("  an unstruck animal that is up stays up: it did not doze off out of your sight",
-		bear.alertness == Entity.Alert.AWAKE)
+	# It may nap now (2026-10-07), but it does not doze off the moment you
+	# leave its sight, as it did before "up stays up": up most of the time.
+	check("  an unstruck animal is up most of the time, naps or not (%d of 200 turns)" % up_turns,
+		up_turns >= 100)
+	bear.alertness = Entity.Alert.AWAKE
 	check("  and it heals nothing by it", bear.hp == bear.max_hp)
 	check("  a drink is saved mid-sip", Entity.from_dict(bear.to_dict()).drinking == bear.drinking)
 	# Its own stream: drinking never draws on the main rng.

@@ -1354,6 +1354,25 @@ returning", the letter, the click and the pad's use all go to the forge
 with its choice of weapon (`_use_item` routes to `_merge_item`), and
 `player_use` binds. At a LIT brazier, or with nothing to hold it, the
 gem's own use stands as before. Test: `_test_the_embers_come_first`.
+- **Naps, and bears that hibernate -- BUILT 2026-10-07 (desktop).** Found
+  the same morning: the pre-run woke every animal and "an animal that is up
+  stays up" kept them so, which broke the cave bear's DEN -- its bones (noise
+  7) were designed to wake the bear whose den it is, and the bear was
+  already up and gone. Brad's call, wider: let animals go back to sleep.
+  As built: a bear set down in a cave is DENNED (`Entity.denned`, saved) and
+  placed asleep; the pre-run leaves it asleep; it never wakes on its own;
+  noise and you wake it as anything; once up it is an ordinary bear.
+  Every other unstruck animal with nothing to do may doze off where it
+  stands (`NAP_CHANCE` 0.01 an idle turn), wakes on its own (`WAKE_CHANCE`
+  0.025, naps of about forty turns), and an awake creature beside a sleeper
+  wakes it half the time (`_stir`, `PASSERBY_WAKE`). Rabbits never nap --
+  a forager is always about its mushrooms. Draws on its own `nap_rng`,
+  saved. Measured on arrival (`tools/probes/nap_probe.gd`): about one
+  animal in seven napping, every den bear asleep. Monsters already wind
+  down to sleep when they lose you; patrolling guards were left awake (a
+  guard who naps stops tending the fires -- a difficulty call for Brad).
+  Test: `_test_animals_nap` (mutations: the pre-run waking den bears, or a
+  den bear waking on its own, both fail it).
 - **The warren: rabbits out of the fortress -- BUILT 2026-10-07 (desktop).**
   Brad: wild animals learned to avoid walls and garrisons, so a fortress
   should not have rabbits loose in it, any more than bears. Measured first:
