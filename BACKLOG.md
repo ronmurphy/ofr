@@ -1288,6 +1288,28 @@ returning", the letter, the click and the pad's use all go to the forge
 with its choice of weapon (`_use_item` routes to `_merge_item`), and
 `player_use` binds. At a LIT brazier, or with nothing to hold it, the
 gem's own use stands as before. Test: `_test_the_embers_come_first`.
+- **The warren: rabbits out of the fortress -- BUILT 2026-10-07 (desktop).**
+  Brad: wild animals learned to avoid walls and garrisons, so a fortress
+  should not have rabbits loose in it, any more than bears. Measured first:
+  without a rule every fortress floor had 2 to 5. As built, the rabbit row
+  carries `"not_in": [&"fortress"]` -- the ORDINARY roll never buys one in
+  either fortress (7-9, 11-13); every other floor, floor 10 included, is
+  exactly as it was (unlike `bands`, which would have made the rabbit one a
+  floor and starved the caves). The way in is the garrison's own: a new vault
+  marker `r` (a rabbit, wild, outside the budget; in `Vault.CONTENTS`, the
+  linter, the vault editor's palette and the README) and the vault
+  `the_warren.txt` (fortress band, 9x8, three rabbits, a water trough, the
+  butcher's bones by the door; NO mushrooms -- two make a killer rabbit at
+  this depth). Measured (`tools/probes/warren_probe.gd`, 40 seeds a depth):
+  the warren is on 12-33% of fortress floors, every fortress rabbit is a
+  warren rabbit, and after the pre-run the median rabbit is 4 cells from
+  where it was drawn, a quarter more than 6 (every creature passes a door:
+  rats squeeze, bears smash, the rest open; rabbits keeping to a room would
+  want a leash, not built). Bats have faded out by these depths, so the
+  warren is now the fortress's only animal life -- and its pre-run nearly
+  free. The garrison's hunters may well eat the larder. Test:
+  `_test_rabbits_keep_to_the_warren` (a mutation without the rule fails four
+  checks).
 - **Trained animals (Brad, 2026-10-05 -- designed, not built).** Reusable
   variants from two changes, the faction and the colour: a KOBOLD WOLF
   RIDER and a GOBLIN BEAR RIDER use the animal's icon and ascii in the
@@ -1747,6 +1769,39 @@ shape to aim at.
 ---
 
 ## Ideas, not yet designed
+
+**Gems on any host, with a different effect there (Brad, 2026-10-07 -- an
+idea with a shape, not built).** Today each element has ONE host family
+(`Item.ELEMENTS[...]["hosts"]`: fire any weapon, frost and leech melee,
+returning bows, bulwark/mirror/boss shields, road/veil/lantern armour). Brad:
+let a gem go into a host outside its family and do something CLOSE ENOUGH
+there -- not a 1:1 parallel, which would never come out clean. Mostly an
+if-then on the host and reused effect code, and it would roughly triple what
+the gems can do. His two examples, both of which reuse code that exists:
+- **The gem of the boss on a BLUNT weapon: knockback.** On a shield it is the
+  bash (twice its tier in damage); on a mace or hammer the blow SHOVES
+  (`_attack`'s knockback and `_shove`, built for the cave bear and the cave
+  giant -- walls stop it). The crossover is the point: a shove into a pit
+  sends the thing a floor down, angry (strand 5); onto a found trap springs
+  it; into the purple poisons it; into water washes it. Every hazard on a
+  floor becomes a weapon. It also gives the fortress back a knockback threat
+  when an orc carries one (no knockback creature lives there since the bear
+  left).
+- **Returning on a THROWN weapon: Stormbreaker.** A war axe holding the
+  returning gem, thrown from the throw menu (weapons already have throw
+  ranges), comes back to your hand after a few turns -- the bow's returning
+  timer (`_tick_returning`, `GEM_RETURN_STEPS`) pulling the one weapon
+  instead of the arrows on the floor. More damage than an arrow, and you are
+  empty-handed until it lands back: the offset is the wait.
+**What it needs, when designed in full:** a second table, element x host
+family -> effect, beside `ELEMENTS` (which stays append-only: its ORDER is
+load-bearing for found magic); `accepts_element` and `_default_host` asking
+that table; the pack's hint and the HERE box naming the effect ON THAT HOST
+("set into war axe: it comes back"), one predicate as `gem_sets_here` is;
+and found magic left alone at first -- cross-host effects only by the forge,
+so no seed moves and no found item rolls a combination nobody has played.
+Pick two or three combinations to start (Brad's two are the natural pair),
+play them, then grow the table.
 
 **Tomorrow's order (set 2026-10-05 night, for 2026-10-06):** animals drink
 at the pools (half an hour), bodies say who killed them (forty minutes),

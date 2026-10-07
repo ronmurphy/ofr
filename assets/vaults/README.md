@@ -131,6 +131,8 @@ Contents:
 | `)` | a weapon |
 | `[` | armour |
 | `}` | a launcher -- sling or bow |
+| `(` | a sack |
+| `r` | a rabbit, wild, outside the threat budget. The only way a rabbit is found in a fortress (`the_warren.txt`) |
 
 Everything is optional. A vault made only of terrain is perfectly good -- an
 interesting shape is content.

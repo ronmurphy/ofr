@@ -91,6 +91,7 @@ func _initialize() -> void:
 	_test_the_wild_are_not_the_budget()
 	_test_the_slime()
 	_test_the_wolf_pack()
+	_test_rabbits_keep_to_the_warren()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
 	_test_threat_ceiling_holds_on_the_climb()
@@ -904,6 +905,71 @@ func _test_the_wolf_pack() -> void:
 		pairs >= 6 and odd_packs == 0)
 	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
 		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
+## ordinary roll never puts a rabbit in one, going down or coming up; the
+## garrison's warren vault, with its `r` markers, is the only way in. The
+## caves keep every rabbit they had.
+func _test_rabbits_keep_to_the_warren() -> void:
+	var gs := _arena(15, 9)
+	var rabbits_at := func(tier: int) -> int:
+		var n := 0
+		for i in 300:
+			var pick := gs._roll_monster(GameState.WILD_UNPRICED, tier, true)
+			if not pick.is_empty() and pick["name"] == "rabbit":
+				n += 1
+		return n
+	check("precondition: the animal roll buys rabbits in the caves (%d of 300)" % rabbits_at.call(5),
+		rabbits_at.call(5) > 0)
+	check("never in the fortress going down (%d of 300)" % rabbits_at.call(8), rabbits_at.call(8) == 0)
+	check("nor in the fortress coming up (%d of 300)" % rabbits_at.call(12), rabbits_at.call(12) == 0)
+	check("and floor 10 keeps its rabbits (%d of 300)" % rabbits_at.call(10), rabbits_at.call(10) > 0)
+	# The marker: a rabbit where the author put it, wild, and only one a cell.
+	var gen := MapGen.new(gs.rng)
+	gen.vault_contents = [{"ch": "r", "pos": Vector2i(6, 4)}, {"ch": "r", "pos": Vector2i(6, 4)}]
+	var before := gs.entities.size()
+	gs._place_vault_contents(gen)
+	var kept: Entity = gs.entity_at(6, 4)
+	check("an r marker sets a wild rabbit down where it was drawn (and must)",
+		kept != null and kept.appearance == &"rabbit" and kept.is_wild())
+	check("  and a second marker on a taken cell places nothing", gs.entities.size() == before + 1)
+	# The vault itself: the fortress's, both halves, rabbits and no mushrooms
+	# (two make a killer rabbit at this depth).
+	var warren: Vault = null
+	for v in Vault.load_all():
+		if v.name == "the warren":
+			warren = v
+	var marks := 0
+	var mushrooms := 0
+	if warren != null:
+		for row in warren.rows:
+			marks += row.count("r")
+			mushrooms += row.count("*")
+	check("the warren is a fortress vault with rabbits and no mushrooms (%d rabbits)" % marks,
+		warren != null and warren.suits(Bands.FORTRESS) and not warren.suits(Bands.CAVES)
+		and marks >= 2 and mushrooms == 0)
+	# Built fortress floors: a floor has the warren's rabbits or none at all.
+	# (Seeds chosen so some floors have the warren; if mapgen's draws change,
+	# re-probe for a seed range that still holds one -- CLAUDE.md.)
+	var with_warren := 0
+	var stray := []
+	for i in 16:
+		var f := GameState.new(99800 + i)
+		f.new_game()
+		f.ascending = i % 2 == 1
+		f.depth = 8 if i % 2 == 0 else 7
+		f.build_level()
+		var n := 0
+		for e in f.entities:
+			if e.alive and e.appearance == &"rabbit":
+				n += 1
+		if n == marks:
+			with_warren += 1
+		elif n != 0:
+			stray.append("seed %d: %d rabbits" % [99800 + i, n])
+	check("precondition: some of 16 fortress floors have the warren (%d)" % with_warren, with_warren >= 2)
+	check("every fortress rabbit is a warren rabbit: a floor has its %d or none" % marks,
+		stray.is_empty(), str(stray))
 
 ## THE EMBERS COME FIRST (Brad's play, 2026-10-05): at a guttering brazier
 ## with a bow in hand, pressing a gem of returning SETS it; it was crushed
@@ -2274,6 +2340,12 @@ func _test_the_red_raises_the_dead() -> void:
 	g.new_game()
 	g.depth = 7
 	g.build_level()
+	# Centred on the map, not on wherever this seed starts you: the start
+	# moved to the map's left edge when the warren joined the fortress's
+	# vaults (2026-10-07; it was (21, 22), now (5, 8)), and the rot cell at
+	# the end of this test fell off the map.
+	g.player.x = g.map.width / 2
+	g.player.y = g.map.height / 2
 	var o := Vector2i(g.player.x, g.player.y)
 	for dy in range(-6, 7):
 		for dx in range(-9, 10):
@@ -2516,6 +2588,7 @@ func _test_the_red_raises_the_dead() -> void:
 	# The tell keeps its promise: a purple-marked body rots PURPLE, even where
 	# the floor's table leans red; an unmarked one rolls the table.
 	var rot_at := Vector2i(o.x - 6, o.y - 5)
+	check("precondition: the rot cell is on the map", g.map.in_bounds(rot_at.x, rot_at.y))
 	g.entities = [g.player]
 	g.turns += 100  # "seeded ROOT turns ago" must not be a negative turn
 	var rotted := {"purple": [], "plain": []}

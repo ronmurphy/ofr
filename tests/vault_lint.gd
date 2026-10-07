@@ -18,7 +18,7 @@ const TERRAIN := {
 	"n": "grave", "C": "chest",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
-	")": "weapon", "[": "armour", "}": "launcher", "(": "sack"}
+	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit"}
 ## Cells an actor can occupy. Doors count -- they open. Shrines too: they are
 ## stood upon, not bumped into. Braziers and pillars are NOT.
 ##

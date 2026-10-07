@@ -1212,6 +1212,9 @@ const BESTIARY := [
 	 # took early floors down to a third of a rabbit each -- and the descent is
 	 # precisely where meat has to teach itself before the climb needs it.
 	 "max_per_floor": 2, "weight": 0.35, "min_depth": 1, "threat": 3,
+	 # Never rolled in a fortress, going down or coming up; the warren vault
+	 # is the only way in (Brad, 2026-10-07; see _roll_monster).
+	 "not_in": [&"fortress"],
 	 # Commoner in caves, and the reason is the loot rather than the fiction.
 	 # Trading rooms for caverns costs the band its potions -- they are rolled
 	 # per room like everything else -- and meat is what the terrain offers
@@ -3308,6 +3311,11 @@ func _place_vault_contents(gen: MapGen) -> void:
 					Item.Slot.ARMOR, enchant_rng), at)
 			"}":
 				_drop_item_at(_roll_launcher(), at)
+			"r":
+				# A rabbit of the garrison's warren (Brad, 2026-10-07): the one
+				# way a rabbit is found in a fortress. Wild like any rabbit and
+				# never spent from the budget -- an animal is nobody's enemy.
+				_place_kept(at, &"rabbit")
 			"(":
 				# A sack, placed rather than rolled. The sack decides its own
 				# contents when opened -- see _open_sack -- so an author is
@@ -3315,6 +3323,16 @@ func _place_vault_contents(gen: MapGen) -> void:
 				# it is. That keeps a hand-drawn room from handing out a
 				# specific prize the tables would never have given it.
 				_drop_item_at(Item.make(&"sack"), at)
+
+## One creature of a named kind at a vault cell, if the cell will take it.
+## The kind is the author's choice, not a roll: no draw on any stream.
+func _place_kept(at: Vector2i, app: StringName) -> void:
+	var row := _bestiary_row(app)
+	if row.is_empty() or not _can_rest_on(at.x, at.y) or entity_at(at.x, at.y) != null:
+		return
+	if at == stairs or at == Vector2i(player.x, player.y):
+		return
+	_place_pick(at, row, -1, WILD_UNPRICED)
 
 ## Vault loot goes where the author put it -- unless a later pass turned that
 ## cell into a hazard, in which case it is nudged to a neighbour rather than
@@ -3377,6 +3395,14 @@ func _roll_monster(remaining: int, tier: int = -1, wild_only := false) -> Dictio
 		# is a floor feature, on the floor or not by _roll_the_wild and set
 		# down by _place_the_wild -- never a share of this roll.
 		if e.has("bands"):
+			continue
+		# NOT IN THESE BANDS, by the ordinary roll (Brad, 2026-10-07): a wild
+		# thing that has no business there. The rabbit keeps out of both
+		# fortresses -- wild animals learned to avoid walls and garrisons --
+		# and comes into one only as the garrison's own, in a warren vault
+		# (the `r` marker). Unlike `bands`, the rest of its floors are left
+		# exactly as they were: the caves keep every rabbit they had.
+		if e.has("not_in") and (e["not_in"] as Array).has(Bands.NAMES[Bands.of(here)]):
 			continue
 		# Ascent-only things, gated separately from the tier ladder.
 		#

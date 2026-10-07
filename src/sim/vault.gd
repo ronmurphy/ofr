@@ -50,7 +50,7 @@ const TERRAIN := {
 ## draws as `¤`, which is not on a keyboard and has no business in a file
 ## people hand-edit. `(` is free in both namespaces and reads as the open mouth
 ## of one.
-const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "("]
+const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "(", "r"]
 
 var name := "vault"
 var weight := 8

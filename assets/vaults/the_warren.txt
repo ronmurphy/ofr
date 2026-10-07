@@ -1,0 +1,21 @@
+name: the warren
+weight: 8
+min_depth: 7
+max_depth: 9
+rotate: yes
+terrain: fixed
+band: fortress
+# The garrison's rabbits (Brad, 2026-10-07). Wild things keep out of a
+# fortress; these were brought in, for the pot. The only way a rabbit is
+# found in either fortress. No mushrooms on purpose: two make a killer
+# rabbit at this depth, and the garrison keeps them fed on scraps (the
+# bones by the door are the butcher's corner -- loud underfoot).
+LAYOUT
+####+####
+#,,.....#
+#,..r...#
+#.....r.#
+#~~.....#
+#~~..r..#
+#.......#
+#########
