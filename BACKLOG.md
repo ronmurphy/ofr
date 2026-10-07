@@ -141,6 +141,16 @@ house the intro shows, and may draw players the dungeon alone would not.
   NOT SKIPPED: one furniture glyph per family in the family's colour is
   nearly free and keeps the house usable by letters. Lower fidelity, never
   absent. The 3D camera's rules hold in the house (Steph).
+- **The house never draws on the run's random stream (2026-10-06).** The
+  house is visited between floors, which makes it the natural place to
+  build the NEXT floor ahead -- a staircase costs about a third of a second
+  on the desktop (floor 130-170 ms, the pre-run 170-260 ms;
+  `tools/probes/prerun_cost_probe.gd`), more in a browser -- so the cost
+  hides behind something the player is enjoying (Brad's preload idea).
+  That is only safe if nothing in the house touches `rng` or any run
+  stream: then a floor built early is exactly the floor the stairs would
+  have built, and every seed still reproduces. The house gets its own rng,
+  or none.
 - **Slices, each shippable:** (1) the visit -- stairs choice, the lot with
   the starter house, the portal, the house file, the kit and scrap wood so
   the first visit can gather; (2) building -- rubble, pillars, pools, mud,
