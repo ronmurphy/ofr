@@ -12126,6 +12126,33 @@ func _test_meat_keeps_its_worth() -> void:
 			== GameState.MEAT_BASE + int(floor(9.0 / GameState.MEAT_PER_DEPTH)))
 	check("  and it never stacks with a rabbit's", wolf_cut != null and not haunch.stacks_with(wolf_cut))
 	check("  a hunter eats it like any haunch", GameState._is_meat(wolf_cut))
+	# INTO THE SATCHEL FIRST (Brad, 2026-10-05; shown by a probe that day,
+	# owed a test until 2026-10-07): picked up, a wolf's haunch goes on its
+	# own shelf in the satchel and the pack is not touched; a rabbit's
+	# beside it takes a shelf of its own.
+	var sack := Item.make(&"satchel")
+	gs.give_item(sack)
+	wolf_cut.x = gs.player.x
+	wolf_cut.y = gs.player.y
+	var pack_n := gs.player.pack_count()
+	check("precondition: a satchel with a shelf for the haunch of wolf, under your feet",
+		gs._the_satchel() == sack and sack.satchel_takes(wolf_cut)
+		and gs.ground.has(wolf_cut) and sack.satchel_count() == 0)
+	check("a haunch of wolf picked up goes into the satchel",
+		gs.player_pickup() and not gs.ground.has(wolf_cut) and sack.satchel_count() == 1
+		and sack.contents[0].id == &"wolf_meat")
+	check("  and the pack is not touched (%d -> %d)" % [pack_n, gs.player.pack_count()],
+		gs.player.pack_count() == pack_n)
+	var shelf_cut := Item.make(&"meat")
+	shelf_cut.x = gs.player.x
+	shelf_cut.y = gs.player.y
+	gs.ground.append(shelf_cut)
+	gs.player_pickup()
+	check("  a rabbit's haunch beside it takes its own shelf",
+		sack.contents.size() == 2 and sack.satchel_count() == 2)
+	gs.ground.erase(shelf_cut)
+	gs.player.inventory.erase(sack)
+	gs.player.equipped.erase(Item.Slot.OFFHAND)
 	gs.ground.erase(wolf_cut)
 	gs.entities.erase(wolf)
 	var want := GameState.MEAT_BASE + 2 + int(floor(9.0 / GameState.MEAT_PER_DEPTH))
