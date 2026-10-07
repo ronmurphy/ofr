@@ -1785,6 +1785,14 @@ animals; vault authors get a letter for it. **Keep the look, add the
 words:** the rule "every interaction leaves a trace the player can SEE"
 means a rat stopping dead at an ordinary-looking door needs explaining, so
 the cursor and the HERE box name it "a latched gate".
+**Refined the same day (Brad, desktop's suggestion):** its OWN COLOUR in
+both views -- the tell, seen before it is read. And ANIMAL-PROOF, not
+bear-proof: a latch stops whatever cannot work a latch. No animal opens it
+(rabbits, rats, wolves, bats stay their side -- the whole job of a pen
+gate); anything with hands does (the garrison's goblins walking in to eat
+the larder is a feature); a bear still smashes it as it smashes any door --
+a gate is a fence, not a vault door. A truly unbreakable door, if ever
+wanted (a boss's vault), is a separate thing.
 
 **Gems on any host, with a different effect there (Brad, 2026-10-07 -- an
 idea with a shape, not built).** Today each element has ONE host family
