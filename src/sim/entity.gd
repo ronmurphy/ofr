@@ -196,6 +196,12 @@ var acid_turns := 0
 var patrols := false
 ## Which post on the circuit it is walking towards.
 var patrol_at: int = 0
+## Its own BEAT: the stretch of the round from post `beat_lo` to `beat_hi`,
+## walked back and forth (`patrol_dir`, +1 or -1). hi <= lo means no beat --
+## the whole round, as before 2026-10-07 (a save from before then). Saved.
+var beat_lo: int = 0
+var beat_hi: int = 0
+var patrol_dir: int = 1
 
 ## TRAFFIC. The cell this creature last meant to step into, and the turn it
 ## meant to. Written by every pathfinding step, moved or blocked, so a friend
@@ -591,6 +597,7 @@ func to_dict() -> Dictionary:
 		"heard": [heard.x, heard.y],
 		"leash": [leash.position.x, leash.position.y, leash.size.x, leash.size.y],
 		"patrols": patrols, "patrol_at": patrol_at,
+		"beat_lo": beat_lo, "beat_hi": beat_hi, "patrol_dir": patrol_dir,
 		"scavenges": scavenges, "eats": eats, "shaken": shaken,
 		"pursue_turns": pursue_turns,
 		"want": [want.x, want.y], "want_turn": want_turn,
@@ -674,6 +681,9 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.shut_behind = Vector2i(int(shut[0]), int(shut[1]))
 	e.travel_rooms = int(d.get("travel_rooms", 0))
 	e.patrol_at = int(d.get("patrol_at", 0))
+	e.beat_lo = int(d.get("beat_lo", 0))
+	e.beat_hi = int(d.get("beat_hi", 0))
+	e.patrol_dir = int(d.get("patrol_dir", 1))
 	# MIGRATION, and it has to be here rather than left to the default.
 	#
 	# `Alert.PATROL` shipped for one evening as a fourth alertness, so saves

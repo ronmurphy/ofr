@@ -93,6 +93,7 @@ func _initialize() -> void:
 	_test_the_wolf_pack()
 	_test_rabbits_keep_to_the_warren()
 	_test_animals_nap()
+	_test_guards_walk_their_own_beats()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
 	_test_threat_ceiling_holds_on_the_climb()
@@ -906,6 +907,101 @@ func _test_the_wolf_pack() -> void:
 		pairs >= 6 and odd_packs == 0)
 	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
 		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## EACH GUARD WALKS ITS OWN BEAT (2026-10-07): on one shared round the guards
+## formed convoys (Brad's "lines of four"); now the round is dealt out in
+## stretches, walked back and forth, and they stay spread.
+func _test_guards_walk_their_own_beats() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	var posts := [Vector2i(3, 4), Vector2i(8, 4), Vector2i(13, 4), Vector2i(18, 4)]
+	gs.patrol_route = posts.duplicate()
+	var guard := _spawn(gs, "kobold", 8, 4)
+	guard.activity = Entity.Activity.PATROLLING
+	guard.alertness = Entity.Alert.ASLEEP
+	gs.entities = [gs.player, guard]
+	gs._assign_beats()
+	check("precondition: a lone guard is dealt the whole round as its beat",
+		guard.beat_lo == 0 and guard.beat_hi == 3, "%d..%d" % [guard.beat_lo, guard.beat_hi])
+	# Its own stretch, back and forth, and nowhere else.
+	guard.beat_lo = 1
+	guard.beat_hi = 2
+	guard.patrol_at = 1
+	guard.patrol_dir = 1
+	var reached_far := false
+	var back_again := false
+	var strayed := false
+	for i in 60:
+		gs._ai_patrol(guard)
+		var at := Vector2i(guard.x, guard.y)
+		if at == posts[2]:
+			reached_far = true
+		elif at == posts[1] and reached_far:
+			back_again = true
+		if at.x < 7 or at.x > 14:
+			strayed = true
+	check("it walks to the far end of its beat and back (and must)", reached_far and back_again)
+	check("  and never past either end", not strayed)
+	check("  its beat is saved", Entity.from_dict(guard.to_dict()).beat_hi == 2
+		and Entity.from_dict(guard.to_dict()).beat_lo == 1)
+	# A guard from a save before beats walks the whole round, as it did.
+	guard.beat_lo = 0
+	guard.beat_hi = 0
+	guard.patrol_at = 0
+	var visited := {}
+	for i in 120:
+		gs._ai_patrol(guard)
+		visited[guard.patrol_at] = true
+	check("with no beat it walks the whole round (%d posts)" % visited.size(), visited.size() == 4)
+	# Real fortress floors: the round dealt out, and the guards stay spread.
+	var floors := 0
+	var dealt_ok := true
+	var crowded := 0
+	var counted := 0
+	var most := 0
+	for i in 8:
+		var f := GameState.new(55000 + i)
+		f.new_game()
+		f.depth = 7 + (i % 3)
+		f.build_level()
+		var guards: Array = []
+		for e in f.entities:
+			if e.alive and not e.is_player and e.patrols and e.faction != Entity.Faction.NEUTRAL \
+					and e.activity == Entity.Activity.PATROLLING:
+				guards.append(e)
+		if guards.size() < 2 or f.patrol_route.size() < 2:
+			continue
+		floors += 1
+		var covered := {}
+		for e in guards:
+			if not (e.beat_lo < e.beat_hi and e.beat_hi < f.patrol_route.size()):
+				dealt_ok = false
+			for k in range(e.beat_lo, e.beat_hi + 1):
+				covered[k] = true
+		if covered.size() != f.patrol_route.size():
+			dealt_ok = false
+		for t in 300:
+			for e in guards:
+				f._ai_patrol(e)
+		for e in guards:
+			counted += 1
+			for o in guards:
+				if o != e and Los.steps(e.x, e.y, o.x, o.y) <= 2:
+					crowded += 1
+					break
+		for r in f.room_rects:
+			var n := 0
+			for e in guards:
+				if r.has_point(Vector2i(e.x, e.y)):
+					n += 1
+			most = maxi(most, n)
+	check("precondition: fortress floors with two or more guards (%d of 8)" % floors, floors >= 5)
+	check("every guard has a beat on the round, and together they cover it", dealt_ok)
+	var share := float(crowded) / maxf(1.0, float(counted))
+	check("after 300 turns of rounds they walk apart: %.0f%% within two cells of another (was 64%%)"
+		% (100.0 * share), share <= 0.40)
+	check("  and no room holds more than four of them (%d)" % most, most <= 4)
 
 ## SOMETIMES SOMEONE JUST NEEDS A NAP (Brad, 2026-10-07). A bear in its den
 ## hibernates: the pre-run leaves it asleep, it never wakes on its own, and

@@ -529,6 +529,29 @@ raising kobolds; sleepers drawn to lit braziers; monsters wielding what they
 find; trader gossip; a nemesis from the morgue. Every one must leave a trace
 the player can SEE.
 
+**Guards walk their own beats -- BUILT 2026-10-07 (desktop).** The bunching
+Brad had seen for weeks ("lines of four"; the first pre-run's seven guards
+in one room) was not the traffic code. Every guard started its round at post
+0, and on one shared one-way round anything that costs the guard in front a
+turn -- a door shut behind it, a fire stoked, a sleeper stepped round -- lets
+the one behind close up, and nothing ever opens the gap again: every guard
+ends in one convoy. Measured (`tools/probes/patrol_bunch_probe.gd`, 23
+fortress floors, 300 turns of rounds): 64% of guards walking within two
+cells of another, up to seven in one room. Starting each at its nearest post
+only moved that to about half. As built: the round is DEALT OUT
+(`_assign_beats`, after the floor is placed and whenever the round is
+re-laid) -- the guards, in order of their nearest post, get consecutive
+stretches of at least two posts, and walk their stretch back and forth
+(`Entity.beat_lo`/`beat_hi`/`patrol_dir`, saved; a save from before has no
+beat and walks the whole round as before). After: 19-26% within two cells,
+at most four in a room. No draw. The reroute-after-waiting below was never
+built (the traffic code says so: it is flanking); the "sometimes fires" Brad
+saw was a creature stepping round a friend where there is room to, which a
+corridor never has. Note for the house's rested pre-run: guards passing
+through full rooms still put a room over its ceiling for a moment, so its
+arrival check is needed either way. Test: `_test_guards_walk_their_own_beats`
+(with beats switched off it fails at 66%).
+
 **The combat update.** Tactics in the spirit of AD&D 2nd edition.
 - Creatures get a FACING (the traffic intent `Entity.want` can supply it).
   Flanking does +1; attacking from behind does +2, and the shield may not count.
@@ -749,6 +772,17 @@ in its own entry.
 10. **Rename `Entity.charges` -> `dash`** (Ideas): a bull-rush flag that
    reads as brazier charges. Grep every use first, saved games included
    (read the old key as well as the new).
+
+11. **Combat flanking** (the combat update, Roadmap; Brad asked for it on
+   this list 2026-10-07, now that facing exists): creatures get a FACING --
+   `Entity.facing` exists but only the player's is ever set; `Entity.want`,
+   the traffic intent, can supply it. A blow from the side does +1, from
+   behind +2, and the shield may not count from behind. It works both ways
+   -- packs will flank you. Probably two nights: the facing and the bonus
+   first, with a test that walks round a monster; then, its own night,
+   monsters that tire of a queue looking for another way round (flanking on
+   purpose -- see the beats entry above the combat update for why it was
+   held back).
 
 **Waiting on Brad, not code:** the trader's numbers (from play); the right
 stick in Firefox on itch (a test); David's music in the web build (a

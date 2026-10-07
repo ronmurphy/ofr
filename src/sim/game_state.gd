@@ -1486,6 +1486,7 @@ func build_level() -> void:
 		_populate_cave(region)
 	_place_the_wild(gen)
 	_place_vault_contents(gen)
+	_assign_beats()
 	_place_first_gem()
 	_place_the_satchel()
 	_place_chest()
@@ -9101,6 +9102,27 @@ func _set_the_watch(m: Entity) -> void:
 	var chance: float = PATROL_CHANCE.get(Bands.of(effective_depth()), 0.35)
 	if rng.randf() < chance:
 		m.activity = Entity.Activity.PATROLLING
+		m.patrol_at = _nearest_post(Vector2i(m.x, m.y))
+
+## THE GUARD STARTS AT ITS NEAREST POST (2026-10-07). Every guard used to start
+## its round at post 0, so every guard on the floor walked to the same brazier
+## first and then the same round in the same order: they converged and walked
+## as a convoy -- Brad's "lines of four", and the seven guards the first
+## pre-run piled into one room. Measured over 300 turns of rounds on fortress
+## floors: 15 of 23 floors ended with a room over its threat ceiling, the
+## worst by 102. Starting each at the post nearest where it was placed spreads
+## them round the circuit, and walking the same way at the same pace they
+## stay spread. Nearest by steps, the lowest index on a tie: no draw.
+func _nearest_post(at: Vector2i) -> int:
+	var best := 0
+	var best_d := 1 << 30
+	for i in patrol_route.size():
+		var post: Vector2i = patrol_route[i]
+		var d := Los.steps(at.x, at.y, post.x, post.y)
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
 
 ## How far a scavenger will go out of its way for something lying on the floor.
 ##
@@ -9246,6 +9268,59 @@ func _lay_the_beat() -> void:
 		here = posts[best]
 		patrol_route.append(here)
 		posts.remove_at(best)
+	# A round re-laid mid-floor (a fire spent at the forge) re-deals the beats.
+	_assign_beats()
+
+## EACH GUARD WALKS ITS OWN BEAT (2026-10-07). On one shared one-way round the
+## guards formed convoys whatever they started from: anything that costs the
+## guard in front a turn -- a door shut behind it, a fire stoked, a sleeper
+## stepped round -- lets the one behind close up, and nothing ever opens the
+## gap again, so every guard on the round ends in one line (Brad's "lines of
+## four"; the first pre-run's seven guards in one room). Measured over 300
+## turns on fortress floors: two guards in three walking within two cells of
+## another, up to seven in one room, 15 floors of 23 with a room over its
+## ceiling. Starting each at its nearest post only moved that to one in two.
+## So the round is dealt out: the guards, in order of the post nearest each,
+## get consecutive stretches of it, at least two posts each, and walk their
+## stretch back and forth. Two guards meet only at the ends of their beats.
+## No draw: the deal is fixed by where they stand.
+func _assign_beats() -> void:
+	var size := patrol_route.size()
+	if size < 2:
+		return
+	var guards: Array = []
+	for e in entities:
+		# Only what walks a round: the trader is marked as patrolling too, but
+		# a neutral takes no turns at all.
+		if e.alive and not e.is_player and e.patrols \
+				and e.faction != Entity.Faction.NEUTRAL \
+				and e.activity == Entity.Activity.PATROLLING:
+			guards.append(e)
+	if guards.is_empty():
+		return
+	var near := {}
+	for e in guards:
+		near[e] = _nearest_post(Vector2i(e.x, e.y))
+	# Stable on ties: the order the floor placed them in.
+	var order: Array = []
+	for i in guards.size():
+		order.append(i)
+	order.sort_custom(func(a, b):
+		var na: int = near[guards[a]]
+		var nb: int = near[guards[b]]
+		return na < nb or (na == nb and a < b))
+	var n := guards.size()
+	for k in n:
+		var e: Entity = guards[order[k]]
+		var lo := int(k * size / n)
+		var hi := maxi(lo + 1, int((k + 1) * size / n) - 1)
+		if hi >= size:
+			hi = size - 1
+			lo = mini(lo, hi - 1)
+		e.beat_lo = lo
+		e.beat_hi = hi
+		e.patrol_dir = 1
+		e.patrol_at = clampi(int(near[e]), lo, hi)
 
 ## TENDING A FIRE WITH YOUR TORCH (Brad, 2026-10-05). The guards' job, handed
 ## to you with their numbers: a brazier still lit but low (at most
@@ -9340,12 +9415,23 @@ func _ai_patrol(actor: Entity) -> void:
 		return
 	if patrol_route.is_empty():
 		return
-	var goal: Vector2i = patrol_route[actor.patrol_at % patrol_route.size()]
+	var size := patrol_route.size()
+	# Its own beat, back and forth (see _assign_beats); no beat, the round.
+	var beat := actor.beat_hi > actor.beat_lo and actor.beat_hi < size
+	var goal: Vector2i = patrol_route[actor.patrol_at % size]
 	# Arrived: take the next post. Done before moving, so a guard that starts
 	# its life standing on a brazier still sets off.
 	if Vector2i(actor.x, actor.y) == goal:
-		actor.patrol_at = (actor.patrol_at + 1) % patrol_route.size()
-		goal = patrol_route[actor.patrol_at]
+		if beat:
+			if actor.patrol_at >= actor.beat_hi:
+				actor.patrol_dir = -1
+			elif actor.patrol_at <= actor.beat_lo:
+				actor.patrol_dir = 1
+			actor.patrol_at = clampi(actor.patrol_at + actor.patrol_dir,
+				actor.beat_lo, actor.beat_hi)
+		else:
+			actor.patrol_at = (actor.patrol_at + 1) % size
+		goal = patrol_route[actor.patrol_at % size]
 	_step_toward(actor, goal)
 
 ## How far the dead see with no light at all.
