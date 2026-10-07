@@ -1994,6 +1994,24 @@ shape to aim at.
   ceiling and the pre-run's no-deaths rule both need checking. Hunger is
   built (2026-10-07), so "a kobold unlucky enough to wake a hungry sleeping
   bear" needs only this.
+- **And the other way: monsters hunting big game together (Brad,
+  2026-10-07).** Monster hunters already hunt game alone (`_prey_for`):
+  anything wild, no bigger than the hunter by threat, never heavy. So an
+  orc (threat 10) takes a lone wolf (6) and a goblin (5) takes a rabbit,
+  but nothing hunts a bear, and a wolf pack is fought one wolf at a time.
+  Brad: going after a bear, and especially a wolf pack, should be a group
+  effort. The shape to design:
+  - **A hunting party.** Hungry hunters near each other pool their threat
+    against game that no one of them could take alone: a bear (heavy, 17)
+    or a pack (counted as the pack, not one wolf).
+  - **No party, no hunt.** A lone goblin leaves the bear alone, as now.
+  - **The quarry fights back.** Its grudge already lands on whoever struck
+    it, and its pack joins in (PACK_REACH).
+  - **Same mechanism as the bear's meals.** Both are WILD-against-MONSTER
+    fighting, so they belong in one session: who counts as prey on each
+    side, how a party forms and holds together, and what the threat
+    ceiling and the pre-run's no-deaths rule make of floors where monsters
+    and animals kill each other.
 
 **The cat (Brad, 2026-10-07 -- shaped, not built).** A mouser. Every cat
 owner knows what it will do: go mousing, and very likely nothing else.
