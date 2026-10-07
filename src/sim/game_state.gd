@@ -10548,15 +10548,7 @@ func _prey_for(actor: Entity) -> Entity:
 	var best: Entity = null
 	var best_d := HUNT_REACH + 1
 	for e in entities:
-		if not e.alive or not e.is_wild() or e.heavy or e.threat > actor.threat:
-			continue
-		# Never its own kind. A wolf is threat 6 like its packmates, and
-		# without this the pack ate itself: of 97 wolves found dead on cave
-		# floors while the player waited, 65 had a wolf's teeth in them
-		# (probe, Brad's "three of four dead when I arrived", 2026-10-05).
-		if e.appearance == actor.appearance:
-			continue
-		if e.flying and actor.ai != &"ranged":
+		if not _is_game(actor, e):
 			continue
 		if not _can_see(actor, e):
 			continue
@@ -10565,6 +10557,20 @@ func _prey_for(actor: Entity) -> Entity:
 			best = e
 			best_d = d
 	return best
+
+## Whether `e` is game for this hunter at all, wherever it stands.
+func _is_game(actor: Entity, e: Entity) -> bool:
+	if not e.alive or not e.is_wild() or e.heavy or e.threat > actor.threat:
+		return false
+	# Never its own kind. A wolf is threat 6 like its packmates, and
+	# without this the pack ate itself: of 97 wolves found dead on cave
+	# floors while the player waited, 65 had a wolf's teeth in them
+	# (probe, Brad's "three of four dead when I arrived", 2026-10-05).
+	if e.appearance == actor.appearance:
+		return false
+	if e.flying and actor.ai != &"ranged":
+		return false
+	return true
 
 ## Meat underfoot goes down the hunter's throat: gone from the floor, and
 ## it heals what it would have healed you (the first monster that heals by
@@ -10613,7 +10619,10 @@ func _ai_wild(actor: Entity) -> void:
 	if actor.alertness != Entity.Alert.AWAKE:
 		_stir(actor)
 		return
-	# Up and about: a den bear woken is an ordinary bear from now on.
+	# A den bear woken watches what woke it: back to sleep, or after it.
+	if actor.denned and _keeps_to_the_den(actor):
+		return
+	# Up and about: a den bear that left is an ordinary bear from now on.
 	actor.denned = false
 	# The food web (Brad, 2026-10-04): a bear hunts the rabbits, with the
 	# same hunt the goblins have, and eats what it brings down. Never a bear
@@ -10653,6 +10662,16 @@ const PASSERBY_WAKE := 0.5
 func _stir(actor: Entity) -> void:
 	if actor.alertness != Entity.Alert.ASLEEP:
 		return
+	if actor.denned:
+		# Hibernating: never on its own, but anything that comes too close
+		# wakes it, for certain.
+		if _nearest_waker(actor, DEN_WAKE_REACH) != null:
+			actor.alertness = Entity.Alert.AWAKE
+			actor.den_quiet = 0
+			if map.is_visible(actor.x, actor.y):
+				msg_log.add("The %s stirs in its den." % actor.name,
+					Color(0.95, 0.72, 0.45))
+		return
 	var passer := false
 	for e in entities:
 		if e == actor or e.is_player or not e.alive or e.alertness != Entity.Alert.AWAKE:
@@ -10664,10 +10683,96 @@ func _stir(actor: Entity) -> void:
 		if nap_rng.randf() < PASSERBY_WAKE:
 			actor.alertness = Entity.Alert.AWAKE
 		return
-	if actor.denned:
-		return
 	if nap_rng.randf() < WAKE_CHANCE:
 		actor.alertness = Entity.Alert.AWAKE
+
+## LET SLEEPING BEARS LIE (Brad, 2026-10-07). Waking a bear, on purpose or
+## by accident, is not a good thing. Anything that comes within
+## DEN_WAKE_REACH of a bear asleep in its den wakes it -- a wolf, a goblin,
+## you -- as do noise and a blow. Up, it stays in the den and watches. If
+## something it could eat is close, or you are, it may come out after it,
+## the likelier the closer: DEN_HUNT_CHANCE a turn for game, DEN_TURN_CHANCE
+## for you, by distance. Out, it is an ordinary bear; coming for you, it is
+## your enemy as if you had struck it. If nothing is within DEN_SETTLE_REACH
+## for DEN_SETTLE_TURNS, it goes back to sleep in the den. A monster that
+## is not game (a kobold) wakes it but is not yet a meal: animals and
+## monsters do not fight unless struck (the backlog has the idea). In the
+## pre-run you are not on the floor yet, and count for nothing.
+const DEN_WAKE_REACH := 2
+const DEN_SETTLE_REACH := 4
+const DEN_SETTLE_TURNS := 3
+## Index: steps away (0 unused). Beyond the end, no chance.
+const DEN_HUNT_CHANCE := [0.0, 0.25, 0.12]
+const DEN_TURN_CHANCE := [0.0, 0.40, 0.20]
+
+## The nearest awake thing within `reach` of `actor`: you (always awake,
+## except during the pre-run, when you are not there) or any creature.
+func _nearest_waker(actor: Entity, reach: int) -> Entity:
+	var best: Entity = null
+	var best_d := reach + 1
+	for e in entities:
+		if e == actor or not e.alive:
+			continue
+		if e.is_player:
+			if _prerunning:
+				continue
+		elif e.alertness != Entity.Alert.AWAKE:
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if d < best_d:
+			best = e
+			best_d = d
+	return best
+
+## A woken den bear's turn. True: it stayed (watching, or back to sleep).
+## False: it has come out, an ordinary bear, and the caller carries on.
+func _keeps_to_the_den(actor: Entity) -> bool:
+	if _nearest_waker(actor, DEN_SETTLE_REACH) == null:
+		actor.den_quiet += 1
+		if actor.den_quiet >= DEN_SETTLE_TURNS:
+			actor.den_quiet = 0
+			actor.alertness = Entity.Alert.ASLEEP
+		return true
+	actor.den_quiet = 0
+	# The likeliest draw: the closest thing it would come out for.
+	var target: Entity = null
+	var chance := 0.0
+	for e in entities:
+		if e == actor or not e.alive:
+			continue
+		var table: Array
+		if e.is_player:
+			if _prerunning:
+				continue
+			table = DEN_TURN_CHANCE
+		elif _is_game(actor, e):
+			table = DEN_HUNT_CHANCE
+		else:
+			continue
+		# A bear goes by its nose: dark is no hiding place this close, but
+		# a wall between is.
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if d >= table.size() or not Los.clear(map, actor.x, actor.y, e.x, e.y):
+			continue
+		var c: float = table[d]
+		if c > chance:
+			chance = c
+			target = e
+	if target == null or nap_rng.randf() >= chance:
+		return true
+	actor.denned = false
+	if target.is_player:
+		# As if you had struck it: your enemy for good.
+		actor.provoked = true
+		actor.grudge = player
+		actor.last_seen = Vector2i(player.x, player.y)
+		actor.lost_turns = 0
+		if map.is_visible(actor.x, actor.y):
+			msg_log.add("The %s rises from its den and comes for you!" % actor.name,
+				Color(0.95, 0.40, 0.35))
+		# Rising is its turn; from the next it is a hunter like any other.
+		return true
+	return false
 
 ## ANIMALS DRINK (Brad, 2026-10-05; built 2026-10-06). The first routine
 ## in the dungeon that is not about you: an unbothered wild thing with a

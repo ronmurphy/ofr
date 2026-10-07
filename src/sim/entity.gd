@@ -350,9 +350,14 @@ var busy: int = 0
 var drinking: int = 0
 ## A bear asleep in its den (Brad, 2026-10-07: they hibernate). It never
 ## wakes on its own; noise wakes it -- the den's bones above all, which is
-## the den's whole design -- and once up it is an ordinary animal again.
-## Saved.
+## the den's whole design -- and so does anything within two steps. Up, it
+## watches from the den and settles back to sleep, unless it comes out after
+## game or after you; out, it is an ordinary animal again
+## (GameState._keeps_to_the_den). Saved.
 var denned := false
+## Turns a woken den bear has had nothing near it; at DEN_SETTLE_TURNS it
+## goes back to sleep in the den (Brad, 2026-10-07). Saved.
+var den_quiet: int = 0
 ## How much of the floor's fungus this has eaten. Drives both the meat it
 ## leaves and, at RABBIT_TURNS, what it becomes.
 var meal: int = 0
@@ -581,7 +586,7 @@ func to_dict() -> Dictionary:
 		"resists": resists, "weak_to": weak_to,
 		"chilled": chilled, "frozen": frozen, "acid": acid, "acid_turns": acid_turns,
 		"wail_radius": wail_radius, "wail_cool": wail_cool,
-		"busy": busy, "meal": meal, "drinking": drinking, "denned": denned,
+		"busy": busy, "meal": meal, "drinking": drinking, "denned": denned, "den_quiet": den_quiet,
 		"flee_below": flee_below,
 		"fleeing": fleeing, "regen": regen, "alertness": alertness,
 		"notice_range": notice_range, "last_seen": [last_seen.x, last_seen.y],
@@ -636,6 +641,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.busy = int(d.get("busy", 0))
 	e.drinking = int(d.get("drinking", 0))
 	e.denned = bool(d.get("denned", false))
+	e.den_quiet = int(d.get("den_quiet", 0))
 	e.meal = int(d.get("meal", 0))
 	e.flee_below = float(d.get("flee_below", 0.0))
 	e.fleeing = d.get("fleeing", false)

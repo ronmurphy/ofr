@@ -1437,6 +1437,33 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
   guard who naps stops tending the fires -- a difficulty call for Brad).
   Test: `_test_animals_nap` (mutations: the pre-run waking den bears, or a
   den bear waking on its own, both fail it).
+- **Let sleeping bears lie -- BUILT 2026-10-07 (Legion).** Brad, on the
+  naps entry above: waking a bear, on purpose or by accident, is not a good
+  thing -- a bear WILL attack a person, especially a hungry one. As built
+  (`_stir`, `_keeps_to_the_den`):
+  - **Waking.** Anything awake within `DEN_WAKE_REACH` (2) of a den bear
+    wakes it, for certain: a wolf, a goblin, a kobold, you. Noise and blows
+    still wake it too. During the pre-run you are not on the floor yet, so
+    you count for nothing.
+  - **Watching.** Once up, it stays in the den. Each turn something it would
+    come out for is close, it may: game at `DEN_HUNT_CHANCE` (1 in 4 beside
+    it, 1 in 8 at two cells), you at `DEN_TURN_CHANCE` (2 in 5, 1 in 5). It
+    goes by its nose: dark does not hide you at that range, but a wall does.
+  - **Out.** After game, it is an ordinary bear. After you, it is your
+    enemy, exactly as if you had struck it ("The cave bear rises from its
+    den and comes for you!").
+  - **Back to sleep.** With nothing within `DEN_SETTLE_REACH` (4) for
+    `DEN_SETTLE_TURNS` (3), it sleeps again, still in its den
+    (`Entity.den_quiet`, saved). So the den's bones, rattled from across
+    the room, now wake the bear and let it settle. They used to turn it
+    into an ordinary bear for good.
+  - **What is not yet a meal.** A kobold wakes it but is not game, because
+    animals and monsters do not fight unless one strikes the other. Brad's
+    idea of the smaller monsters as a bear's meals is under Ideas, next to
+    animal hunger, which would scale these chances.
+  - The general nap rule is unchanged: an ordinary sleeper wakes half the
+    time when something passes beside it. Test:
+    `_test_let_sleeping_bears_lie`.
 - **The warren: rabbits out of the fortress -- BUILT 2026-10-07 (desktop).**
   Brad: wild animals learned to avoid walls and garrisons, so a fortress
   should not have rabbits loose in it, any more than bears. Measured first:
@@ -1919,6 +1946,21 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+- **Hunger for monsters and animals (Brad, 2026-10-07).** A hidden number
+  per creature, in the Dwarf Fortress spirit, built on what is already
+  there: rabbits eat fungus, hunters eat meat, animals drink. Hunger would
+  drive how often a hunter hunts, so a fed bear dozes and a hungry one
+  comes out of its den after whatever woke it, you included (scale
+  `DEN_HUNT_CHANCE` and `DEN_TURN_CHANCE` by it). Not for the player: see
+  Declined.
+- **The smaller monsters as a bear's meals (Brad, 2026-10-07).** A bear
+  would take a kobold or a goblin as readily as a wolf. Today animals and
+  monsters ignore each other until one strikes the other (`hostile_to`:
+  WILD is nothing to MONSTER), so this opens animal-against-monster
+  fighting: the kobold fights back, its friends join in, and the threat
+  ceiling and the pre-run's no-deaths rule both need checking. Pairs
+  naturally with hunger.
+
 **The cat (Brad, 2026-10-07 -- shaped, not built).** A mouser. Every cat
 owner knows what it will do: go mousing, and very likely nothing else.
 - **WILD, not an ally.** It hunts RATS and nothing but rats -- which slows
@@ -2201,6 +2243,13 @@ brazier charges in every reader's head.
 ---
 
 ## Declined, and why
+
+- **Hunger for the player.** Brad, 2026-10-07: every way to heal outside a
+  brazier is eating or drinking something (fungus, meat, a potion), so the
+  player already lives under a hunger system in all but name. A visible
+  clock on a one-way dungeon, with caves that are sparse on purpose, would
+  mostly punish what the game already rewards, and it is one less system
+  to design. Hunger belongs to the monsters and animals (Ideas).
 
 - **Money as a currency.** Needs prices for everything, then needs protecting
   from farming. Trade sidesteps both.

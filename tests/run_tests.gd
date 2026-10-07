@@ -93,6 +93,7 @@ func _initialize() -> void:
 	_test_the_wolf_pack()
 	_test_rabbits_keep_to_the_warren()
 	_test_animals_nap()
+	_test_let_sleeping_bears_lie()
 	_test_guards_walk_their_own_beats()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
@@ -1043,8 +1044,13 @@ func _test_animals_nap() -> void:
 	# Its bones: a noise in the den wakes it (and must).
 	gs._make_noise(Vector2i(14, 6), 7, &"bones")
 	check("a noise in the den wakes it", bear.alertness != Entity.Alert.ASLEEP)
-	gs._take_ai_turn(bear)
-	check("  and once up it is an ordinary bear", not bear.denned)
+	# With nothing near it, it goes back to sleep in the den (2026-10-07;
+	# it used to come out an ordinary bear -- see _keeps_to_the_den).
+	for i in GameState.DEN_SETTLE_TURNS:
+		gs._take_ai_turn(bear)
+	check("  and with nothing near, it settles back to sleep in its den",
+		bear.alertness == Entity.Alert.ASLEEP and bear.denned
+		and bear.x == 15 and bear.y == 6)
 	# An ordinary animal: it naps now and then, and wakes on its own.
 	var wolf := _spawn(gs, "wolf", 4, 6)
 	wolf.alertness = Entity.Alert.AWAKE
@@ -1092,6 +1098,118 @@ func _test_animals_nap() -> void:
 	check("naps draw on their own stream, saved", gs.to_dict().has("nap_rng"))
 	bear.denned = true
 	check("a den bear is saved as one", Entity.from_dict(bear.to_dict()).denned)
+
+## LET SLEEPING BEARS LIE (Brad, 2026-10-07): anything within
+## DEN_WAKE_REACH wakes a den bear, you included; up, it watches, and may come
+## out after game or after you, or settles back to sleep when all is quiet.
+func _test_let_sleeping_bears_lie() -> void:
+	var den_bear := func(gs: GameState) -> Entity:
+		var b := _spawn(gs, "cave bear", 10, 4)
+		b.denned = true
+		b.alertness = Entity.Alert.ASLEEP
+		return b
+	var gs := _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	var bear: Entity = den_bear.call(gs)
+	# Something awake three steps off does not wake it; at two it does.
+	var wolf := _spawn(gs, "wolf", 13, 4)
+	wolf.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, bear, wolf]
+	for i in 50:
+		gs._take_ai_turn(bear)
+	check("precondition: a wolf three steps from the den, awake",
+		Los.steps(bear.x, bear.y, wolf.x, wolf.y) == 3 and wolf.alertness == Entity.Alert.AWAKE)
+	check("a wolf three steps off does not wake a den bear (50 turns)",
+		bear.alertness == Entity.Alert.ASLEEP)
+	wolf.x = 12
+	gs._take_ai_turn(bear)
+	check("a wolf two steps off wakes it, for certain",
+		bear.alertness == Entity.Alert.AWAKE)
+	# A kobold wakes it too, but is not game: it watches, and stays.
+	gs = _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	bear = den_bear.call(gs)
+	var kob := _spawn(gs, "kobold", 12, 4)
+	kob.alertness = Entity.Alert.AWAKE
+	gs.entities = [gs.player, bear, kob]
+	gs._take_ai_turn(bear)
+	check("a kobold two steps off wakes it", bear.alertness == Entity.Alert.AWAKE)
+	for i in 40:
+		gs._take_ai_turn(bear)
+	check("  but a kobold is no meal yet: it watches from its den (40 turns)",
+		bear.denned and bear.alertness == Entity.Alert.AWAKE
+		and bear.x == 10 and bear.y == 4 and kob.alive)
+	# The kobold goes: quiet for DEN_SETTLE_TURNS, it sleeps again.
+	gs.entities = [gs.player, bear]
+	for i in GameState.DEN_SETTLE_TURNS - 1:
+		gs._take_ai_turn(bear)
+	check("  not asleep before DEN_SETTLE_TURNS of quiet",
+		bear.alertness == Entity.Alert.AWAKE)
+	gs._take_ai_turn(bear)
+	check("  and asleep in its den after them",
+		bear.alertness == Entity.Alert.ASLEEP and bear.denned)
+	# A rabbit beside it is game: the bear comes out after it.
+	var hunted := 0
+	var tries := 0
+	for k in 10:
+		gs = _arena(21, 9)
+		gs.player.x = 1
+		gs.player.y = 1
+		gs.nap_rng.seed = 4400 + k
+		bear = den_bear.call(gs)
+		var bun := _spawn(gs, "rabbit", 11, 4)
+		bun.alertness = Entity.Alert.AWAKE
+		gs.entities = [gs.player, bear, bun]
+		tries += 1
+		for i in 30:
+			gs._take_ai_turn(bear)
+			if not bear.denned:
+				hunted += 1
+				break
+	check("a rabbit beside the den: the bear comes out after it (%d of %d)" % [hunted, tries],
+		hunted >= 8)
+	# You, two steps off: it wakes, and may come for you as if struck.
+	var turned := 0
+	var logged := false
+	for k in 10:
+		gs = _arena(21, 9)
+		gs.nap_rng.seed = 5500 + k
+		bear = den_bear.call(gs)
+		gs.player.x = 8
+		gs.player.y = 4
+		gs.entities = [gs.player, bear]
+		gs._take_ai_turn(bear)
+		if k == 0:
+			check("you two steps off wake a den bear", bear.alertness == Entity.Alert.AWAKE)
+			check("  and the log says so", _log_says(gs, "stirs in its den"))
+		for i in 30:
+			if bear.provoked:
+				break
+			gs._take_ai_turn(bear)
+		if bear.provoked and bear.grudge == gs.player and bear.hostile_to(gs.player):
+			turned += 1
+			if _log_says(gs, "comes for you"):
+				logged = true
+	check("waking a bear is not a good thing: it comes for you (%d of 10)" % turned, turned >= 8)
+	check("  and the log says so", logged)
+	# During the pre-run you are not on the floor: you wake nothing.
+	gs = _arena(21, 9)
+	bear = den_bear.call(gs)
+	gs.player.x = 9
+	gs.player.y = 4
+	gs.entities = [gs.player, bear]
+	gs._prerunning = true
+	gs._stir(bear)
+	gs._prerunning = false
+	check("in the pre-run, you beside the den wake nothing",
+		bear.alertness == Entity.Alert.ASLEEP)
+	gs._stir(bear)
+	check("  and out of it, the same place wakes it", bear.alertness == Entity.Alert.AWAKE)
+	# Saved.
+	bear.den_quiet = 2
+	check("a den bear's quiet turns are saved", Entity.from_dict(bear.to_dict()).den_quiet == 2)
 
 ## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
