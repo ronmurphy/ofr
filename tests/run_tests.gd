@@ -15468,11 +15468,12 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 ## PRERUN_TURNS quiet turns before you are placed -- and Brad's rule, nobody
 ## dies, holds: same creatures, same threat, same main rng, nothing said.
 func _test_the_floor_was_alive_before_you() -> void:
-	var build := func(seed_value: int, depth: int, turns: int) -> GameState:
+	var build := func(seed_value: int, depth: int, turns: int, climbing: bool) -> GameState:
 		var was := GameState.prerun_turns
 		GameState.prerun_turns = turns
 		var g := GameState.new(seed_value)
 		g.new_game()
+		g.ascending = climbing
 		g.depth = depth
 		g.build_level()
 		GameState.prerun_turns = was
@@ -15491,10 +15492,29 @@ func _test_the_floor_was_alive_before_you() -> void:
 		return {"alive": alive, "threat": threat, "at": at, "n": g.entities.size()}
 	var moved_floors := 0
 	var bad := []
+	# Eight floors going down, and two on the CLIMB (Brad, 2026-10-06: the
+	# ascent plays differently) -- its caves and upper floors, effective 15
+	# and 18, where the wolves and the bears live again.
+	var floors := []
 	for i in 8:
-		var depth := 2 + (i % 5)
-		var still: GameState = build.call(80000 + i, depth, 0)
-		var lived: GameState = build.call(80000 + i, depth, GameState.PRERUN_TURNS)
+		floors.append([80000 + i, 2 + (i % 5), false])
+	floors.append([80100, 5, true])
+	floors.append([80101, 2, true])
+	var climb_animals := 0
+	var climb_moved := 0
+	var on_the_climb := 0
+	for f in floors:
+		var i: int = f[0]
+		var depth: int = f[1]
+		var up: bool = f[2]
+		var still: GameState = build.call(i, depth, 0, up)
+		var lived: GameState = build.call(i, depth, GameState.PRERUN_TURNS, up)
+		if up:
+			if lived.effective_depth() > GameState.MAX_DEPTH:
+				on_the_climb += 1
+			for e in lived.entities:
+				if e.alive and e.is_wild():
+					climb_animals += 1
 		var a: Dictionary = census.call(still)
 		var b: Dictionary = census.call(lived)
 		if a["n"] != b["n"]:
@@ -15509,12 +15529,17 @@ func _test_the_floor_was_alive_before_you() -> void:
 			bad.append("the pre-run spoke on seed %d" % i)
 		if a["at"] != b["at"]:
 			moved_floors += 1
-	check("nobody dies, no threat changes, the main rng never moves, nothing is said (8 floors)",
-		bad.is_empty(), str(bad))
-	check("and the floor has moved: creatures are not where they were placed (%d of 8)" % moved_floors,
-		moved_floors >= 6)
-	var one: GameState = build.call(80003, 5, GameState.PRERUN_TURNS)
-	var two: GameState = build.call(80003, 5, GameState.PRERUN_TURNS)
+			if up:
+				climb_moved += 1
+	check("precondition: two floors really are on the climb (%d), and carry animals (%d)"
+		% [on_the_climb, climb_animals], on_the_climb == 2 and climb_animals >= 4)
+	check("nobody dies, no threat changes, the main rng never moves, nothing is said (%d floors, two on the climb)"
+		% floors.size(), bad.is_empty(), str(bad))
+	check("and the floor has moved: creatures are not where they were placed (%d of %d)"
+		% [moved_floors, floors.size()], moved_floors >= floors.size() - 2)
+	check("  on the climb too (%d of 2)" % climb_moved, climb_moved == 2)
+	var one: GameState = build.call(80003, 5, GameState.PRERUN_TURNS, false)
+	var two: GameState = build.call(80003, 5, GameState.PRERUN_TURNS, false)
 	check("the same seed lives the same pre-run", census.call(one)["at"] == census.call(two)["at"])
 	var hunting := 0
 	for e in one.entities:
