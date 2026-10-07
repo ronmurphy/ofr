@@ -668,9 +668,13 @@ Waiting on play. Open:
 
 While Brad is on the pet-sitting job (to about late October), the Legion
 session gets the evenings between the pets' medicines: about an hour or two
-of work a night. These are sized for that, ONE A NIGHT, in this order unless
-Brad says otherwise. Big themes (the house, gems on any host, the spider,
-the bestiary page) wait for Brad and the desktop.
+of work a night. These are sized for that, in this order unless Brad says
+otherwise. **Aim for TWO a night; one is fine** -- a night can go to one
+long run (the pre-run's first versions took the suite to 53 and then 38
+minutes). When the list is short of time, the free model's open jobs in
+`SMALL_TASKS.md` are add-ons of the same size. Big themes (the house, gems
+on any host -- an effects discussion with Brad first -- the spider, the
+bestiary page) wait for Brad and the desktop.
 
 **How a night goes:** pull first (the desktop pushes in the mornings and at
 night); message the desktop session when the Legion boots; read the item's
