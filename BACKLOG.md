@@ -153,6 +153,36 @@ house the intro shows, and may draw players the dungeon alone would not.
   stream: then a floor built early is exactly the floor the stairs would
   have built, and every seed still reproduces. The house gets its own rng,
   or none.
+- **SLEEP (Brad, 2026-10-07 -- decided).** Sleeping is what you do in a
+  house, and sleep is expected to heal, so the one rule is reworded rather
+  than dropped: **the house gives what a home gives** -- rest (some
+  healing, once a visit), safety while you are in it, a place for the dead
+  -- and never gear back into a run.
+  - **Healing:** about a SIXTH of your maximum hit points -- 5 at level 1
+    (30 hp), 8 at level 5, 12-13 at level 10. Brad first said "5 per
+    player level"; the desktop pointed out that grows as fast as max hp
+    does (a half at level 5, two thirds at level 10), and a sixth is what
+    he described wanting. Some healing, never a lot, never a full heal.
+  - **The world only moves while you sleep.** Decorating and the rest cost
+    the dungeon nothing.
+  - **The dungeon's side of the trade -- the wandering monster check.** A
+    rest gives the NEXT floor 200 more pre-run turns, and in those turns
+    monsters as well as animals move (today's pre-run is animals only).
+    Guard: every room within its threat ceiling when you arrive -- the
+    reason monsters were cut from the pre-run was patrollers bunching (81
+    threat in a room with a ceiling of 24).
+  - **Fires burn down** in those turns, and the guards walk their rounds
+    and feed them as they do in play (`_tend_the_fire`): fires near a living
+    watch stay lit, fires whose watch is dead go cold.
+  - **The red and the purple spread** in those turns -- but no room more
+    than about HALF covered: walking into a room that is nothing but fungus
+    is not the point.
+  - **Scavengers arm themselves** from what lies about -- inside the same
+    ceiling guard, since gear raises a monster's threat.
+  - **Cost:** monsters outnumber animals several times over, so a rested
+    pre-run is perhaps a second or two of building on the desktop, more in
+    a browser -- hidden behind the house by building the next floor while
+    you are there (the rule above: the house draws on no run stream).
 - **Slices, each shippable:** (1) the visit -- stairs choice, the lot with
   the starter house, the portal, the house file, the kit and scrap wood so
   the first visit can gather; (2) building -- rubble, pillars, pools, mud,
