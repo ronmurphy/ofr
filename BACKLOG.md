@@ -1770,6 +1770,22 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**The latched gate (Brad, 2026-10-07 -- an option, not asked for).** A door
+variant that NOTHING but you gets past: no opener opens it, no rat squeezes
+under it, no bear smashes it -- the only door in the game that holds. It
+draws exactly as a door in classic and 3D. First use: the warren, whose
+rabbits today start in the room and wander (a door stops no creature; after
+the pre-run a quarter are more than 6 cells out). Shape, from the desktop:
+a second door tile (closed and open), a wall to monster pathfinding and a
+door to yours; opened by you it is an ordinary open doorway, so a gate left
+open lets the rabbits out, and a guard shutting it behind them latches it
+again. More uses: kennels for the houndmaster's wolves (penned until he or
+you lets them out), the oubliette's cells, pens at the house for tamed
+animals; vault authors get a letter for it. **Keep the look, add the
+words:** the rule "every interaction leaves a trace the player can SEE"
+means a rat stopping dead at an ordinary-looking door needs explaining, so
+the cursor and the HERE box name it "a latched gate".
+
 **Gems on any host, with a different effect there (Brad, 2026-10-07 -- an
 idea with a shape, not built).** Today each element has ONE host family
 (`Item.ELEMENTS[...]["hosts"]`: fire any weapon, frost and leech melee,
