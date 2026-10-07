@@ -1517,7 +1517,65 @@ func build_level() -> void:
 	_keep_the_fire_clean()
 	pathfinder = Pathfinder.new(map)
 	_teach_the_slingers()
+	_prerun()
 	update_vision()
+
+## A FLOOR THAT WAS ALIVE BEFORE YOU ARRIVED (Brad and the Legion, 2026-10-04;
+## built 2026-10-06). The floor gets PRERUN_TURNS quiet turns of its own life
+## before you are placed in it: rabbits graze and drink, guards walk their
+## rounds and tend their fires, wolves and bears go about their day, a slime
+## gathers what lies about. You walk into a result, not a fresh board -- the
+## one shape of off-screen life that pays off within a single visit, since
+## the dungeon is one-way.
+##
+## ONLY THE ANIMALS (the same evening). The first version gave every
+## creature the turns, and the suite caught what that does: seven patrollers
+## walked one round for 150 turns and bunched in a guard room at 81 threat
+## against a ceiling of 24 -- the survivability promise broken on arrival.
+## So hostile monsters stay exactly where placed (the ceiling bought each
+## room as it is) and start their rounds when you arrive, as they always
+## have; the wild -- which no ceiling counts -- live their 150 turns.
+##
+## BRAD'S RULE: NOBODY DIES IN THE PRE-RUN. While it runs, an attack lands
+## nothing, noise carries nowhere, nothing notices you, scavengers take no
+## gear (that would raise a floor's threat past its ceiling), no rabbit turns
+## killer, the fungus does not grow and fires do not age (`turns` does not
+## move). So the threat on the floor is exactly what mapgen budgeted, only
+## rearranged, and the ceiling promise holds untouched. Monsters already
+## hunting you are left out, so nothing gathers at your feet. It draws on
+## its own rng, swapped in for the run, so no other roll moves; what it would
+## have said or shown is thrown away.
+const PRERUN_TURNS := 150
+## The turns a floor actually runs. A static only so the suite can build the
+## same floor with and without it, to prove the pre-run changes nothing it
+## must not; play never touches it.
+static var prerun_turns := PRERUN_TURNS
+var _prerunning := false
+var prerun_rng := RandomNumberGenerator.new()
+
+func _prerun() -> void:
+	if prerun_turns <= 0:
+		return
+	prerun_rng.seed = int(rng.seed) ^ (effective_depth() * 9157) ^ 0x9E1A
+	var main := rng
+	rng = prerun_rng
+	var said: Array = msg_log.entries.duplicate(true)
+	_prerunning = true
+	# The animals are up: a floor's wild things must be awake to be found
+	# doing anything (and once up they stay up -- _update_awareness).
+	var living: Array = []
+	for e in entities:
+		if e.alive and e.is_wild() and not e.provoked:
+			e.alertness = Entity.Alert.AWAKE
+			living.append(e)
+	for _turn in prerun_turns:
+		for e in living:
+			if e.alive:
+				_take_ai_turn(e)
+	_prerunning = false
+	rng = main
+	msg_log.entries = said
+	events.clear()
 
 ## On the first floor a reloading kind appears -- on the way down -- it
 ## reloads for exactly one turn after every shot: a teaching floor. Whatever
@@ -6046,7 +6104,7 @@ func player_disarm() -> bool:
 ## the day a monster first struck something that was not the player).
 func _make_noise(at: Vector2i, radius: int, cause: StringName = &"step",
 		by: Entity = null) -> void:
-	if radius <= 0:
+	if radius <= 0 or _prerunning:
 		return
 	# Made in a frozen room, it carries nowhere (the gem of frost).
 	if _muffled(at):
@@ -9002,6 +9060,9 @@ const SCAVENGE_REACH := 6
 ##
 ## Answers whether it spent the turn.
 func _scavenge(actor: Entity) -> bool:
+	# Not in the pre-run: gear taken up raises threat past the ceiling.
+	if _prerunning:
+		return false
 	var here := _better_item_at(actor, Vector2i(actor.x, actor.y))
 	if here != null:
 		ground.erase(here)
@@ -9316,6 +9377,9 @@ func _foe_for(actor: Entity, without_you := false) -> Entity:
 	return best
 
 func _update_awareness(actor: Entity) -> void:
+	# Nothing notices you before you are there (the pre-run).
+	if _prerunning:
+		return
 	var d := Los.steps(actor.x, actor.y, player.x, player.y)
 
 	if actor.alertness == Entity.Alert.AWAKE:
@@ -10604,8 +10668,11 @@ func _ai_forager(actor: Entity, foe: Entity) -> void:
 func _nearest_fungus(actor: Entity) -> Vector2i:
 	var best := Vector2i(-1, -1)
 	var best_d := RABBIT_NOSE + 1
-	for y in map.height:
-		for x in map.width:
+	# Only within the nose's reach: nothing further is ever accepted, and the
+	# whole-map scan this was cost 3 ms a rabbit a turn -- nine-tenths of the
+	# pre-run (profiled 2026-10-06). Same row order, so ties fall the same way.
+	for y in range(maxi(0, actor.y - RABBIT_NOSE), mini(map.height, actor.y + RABBIT_NOSE + 1)):
+		for x in range(maxi(0, actor.x - RABBIT_NOSE), mini(map.width, actor.x + RABBIT_NOSE + 1)):
 			if map.get_tile(x, y) != Tiles.FUNGUS:
 				continue
 			# Not one somebody is standing on. This picked the nearest mushroom
@@ -10642,6 +10709,9 @@ func _rabbit_swallows(actor: Entity) -> void:
 
 ## What it becomes. Still frail -- it simply stops running.
 func _rabbit_turns(actor: Entity) -> void:
+	# Not in the pre-run: a killer rabbit is threat the ceiling never bought.
+	if _prerunning:
+		return
 	actor.name = "killer rabbit"
 	actor.appearance = &"killer_rabbit"
 	actor.ai = &"hunter"
@@ -11085,6 +11155,9 @@ func _called(e: Entity, capital: bool) -> String:
 
 func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 		power_override: int = -1) -> void:
+	# Nobody dies in the pre-run (Brad's rule): a hunt there is only a chase.
+	if _prerunning:
+		return
 	var atk := attacker.total_power() if power_override < 0 else power_override
 
 	# Swinging a bow is not fighting. Without this an archer has no reason to

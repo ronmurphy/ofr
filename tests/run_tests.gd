@@ -10,6 +10,13 @@ var _passed := 0
 var _failed := 0
 
 func _initialize() -> void:
+	# THE PRE-RUN IS OFF for the suite's floors (2026-10-06). It is a tenth of
+	# a second at a staircase, and the suite builds thousands of floors: on,
+	# the suite went from 15 minutes to 38. Nothing the generation tests check
+	# can move under it -- it never touches a wall and never moves a hostile
+	# monster -- and _test_the_floor_was_alive_before_you switches it on and
+	# proves its invariants. Measured per test before deciding (CLAUDE.md).
+	GameState.prerun_turns = 0
 	# Point the save and the death log somewhere harmless BEFORE anything runs.
 	#
 	# This suite writes real files: the suspend tests call clear_suspend() and
@@ -217,6 +224,7 @@ func _initialize() -> void:
 	_test_animals_drink()
 	_test_bodies_say_who_killed_them()
 	_test_taming_the_wolves()
+	_test_the_floor_was_alive_before_you()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
 	_test_meat_keeps_its_worth()
@@ -499,7 +507,9 @@ func _test_monsters_start_asleep() -> void:
 			neutrals += 1
 			continue
 		total += 1
-		if e.alertness != Entity.Alert.ASLEEP:
+		# The animals are up on arrival, on purpose (the pre-run, 2026-10-06):
+		# a wild thing is no monster and is nobody's enemy unstruck.
+		if e.alertness != Entity.Alert.ASLEEP and not e.is_wild():
 			awake += 1
 	check("the level has monsters to check", total > 0, "%d" % total)
 	check("and at most one neutral on the floor (%d)" % neutrals, neutrals <= 1)
@@ -15448,6 +15458,73 @@ func _test_the_wild_are_no_ones_enemy() -> void:
 	trader.faction = Entity.Faction.NEUTRAL
 	check("the trader is still nobody's: not fair game, not swappable",
 		not den._fair_game(trader) and not bear.hostile_to(trader))
+
+## A FLOOR THAT WAS ALIVE BEFORE YOU ARRIVED (2026-10-06): the floor lives
+## PRERUN_TURNS quiet turns before you are placed -- and Brad's rule, nobody
+## dies, holds: same creatures, same threat, same main rng, nothing said.
+func _test_the_floor_was_alive_before_you() -> void:
+	var build := func(seed_value: int, depth: int, turns: int) -> GameState:
+		var was := GameState.prerun_turns
+		GameState.prerun_turns = turns
+		var g := GameState.new(seed_value)
+		g.new_game()
+		g.depth = depth
+		g.build_level()
+		GameState.prerun_turns = was
+		return g
+	var census := func(g: GameState) -> Dictionary:
+		var alive := 0
+		var threat := 0
+		var at := []
+		for e in g.entities:
+			if e.is_player:
+				continue
+			if e.alive:
+				alive += 1
+				threat += e.threat
+			at.append(Vector2i(e.x, e.y))
+		return {"alive": alive, "threat": threat, "at": at, "n": g.entities.size()}
+	var moved_floors := 0
+	var bad := []
+	for i in 8:
+		var depth := 2 + (i % 5)
+		var still: GameState = build.call(80000 + i, depth, 0)
+		var lived: GameState = build.call(80000 + i, depth, GameState.PRERUN_TURNS)
+		var a: Dictionary = census.call(still)
+		var b: Dictionary = census.call(lived)
+		if a["n"] != b["n"]:
+			bad.append("creature count on seed %d" % i)
+		if a["alive"] != b["alive"]:
+			bad.append("deaths on seed %d (%d -> %d)" % [i, a["alive"], b["alive"]])
+		if a["threat"] != b["threat"]:
+			bad.append("threat on seed %d (%d -> %d)" % [i, a["threat"], b["threat"]])
+		if still.rng.state != lived.rng.state:
+			bad.append("main rng moved on seed %d" % i)
+		if still.msg_log.entries.size() != lived.msg_log.entries.size() or not lived.events.is_empty():
+			bad.append("the pre-run spoke on seed %d" % i)
+		if a["at"] != b["at"]:
+			moved_floors += 1
+	check("nobody dies, no threat changes, the main rng never moves, nothing is said (8 floors)",
+		bad.is_empty(), str(bad))
+	check("and the floor has moved: creatures are not where they were placed (%d of 8)" % moved_floors,
+		moved_floors >= 6)
+	var one: GameState = build.call(80003, 5, GameState.PRERUN_TURNS)
+	var two: GameState = build.call(80003, 5, GameState.PRERUN_TURNS)
+	check("the same seed lives the same pre-run", census.call(one)["at"] == census.call(two)["at"])
+	var hunting := 0
+	for e in one.entities:
+		if not e.is_player and e.alive and e.hostile_to(one.player) \
+				and Los.steps(e.x, e.y, one.player.x, one.player.y) <= 1:
+			hunting += 1
+	check("nothing hostile waits at your feet when you arrive", hunting == 0)
+	var up := 0
+	var wild := 0
+	for e in one.entities:
+		if e.alive and e.is_wild():
+			wild += 1
+			if e.alertness == Entity.Alert.AWAKE:
+				up += 1
+	check("the animals are up and about (%d of %d)" % [up, wild], wild == 0 or up == wild)
 
 ## TAMING THE WOLVES (Brad's design 2026-10-05): a pack on your side for
 ## haunches to its count or a knucklebone; it hunts for you and heals only

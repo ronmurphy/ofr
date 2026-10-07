@@ -10,6 +10,8 @@ extends "res://tests/run_tests.gd"
 ## result is the usual tally; grep it for SCRIPT ERROR as always (CLAUDE.md).
 func _initialize() -> void:
 	GameState.use_scratch_files("tests")
+	# As in the suite: floors build without the pre-run (run_tests.gd).
+	GameState.prerun_turns = 0
 	var names := OS.get_cmdline_user_args()
 	if names.is_empty():
 		print("usage: godot --headless --path . -s tools/run_one_test.gd -- _test_name ...")

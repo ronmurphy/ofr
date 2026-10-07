@@ -1447,6 +1447,67 @@ dullness after a raise keeps its teeth; the tip reads "dull: a gem, or N
 more red graves". With a plain body and the red's dead both in reach, the
 red's dead is dug first. Tests in `_test_the_undertakers_pay`.
 
+**A floor alive before you arrive -- BUILT 2026-10-06 (Legion), animals
+only.** `GameState._prerun`, at the end of `build_level`: the floor's WILD
+things (awake on arrival) live `PRERUN_TURNS` (150) quiet turns before you
+are placed -- grazing, drinking, wolves and bears about their day, the
+rabbits eating some of the green. Brad's rule is enforced, not hoped for:
+while it runs `_attack` lands nothing, `_make_noise` carries nowhere,
+`_update_awareness` notices no one, `_scavenge` takes nothing, no rabbit
+turns killer; the fungus does not grow and fires do not age (`turns` does
+not move); it draws on `prerun_rng`, swapped in, so the main rng ends
+where it would have; the log and events it made are thrown away. Test:
+`_test_the_floor_was_alive_before_you` (8 floors built with and without:
+same creatures, same threat, same main rng, nothing said; the creatures
+moved; reproducible; nothing hostile at your feet).
+
+**WHY ONLY THE ANIMALS, AND WHY THE SUITE SKIPS IT (Brad asked for the
+reasoning to be kept, 2026-10-06).** Three versions were tried the same
+evening, each measured:
+
+1. **Every creature takes the 150 turns** (animals AND hostile monsters).
+   - A floor built in about 1.0-1.3 seconds instead of 0.15-0.2.
+   - The full suite took **53 minutes** (from 13-15) and failed five
+     checks: "every monster starts asleep" (the animals, now awake on
+     purpose) and four threat-ceiling checks -- 93 rooms over their
+     ceiling on the descent, 141 on the climb, the worst 107 over.
+   - The cause of the ceiling breaches, probed: PATROLLERS. Seven guards
+     walked the same round for 150 turns and bunched in one guard room at
+     81 threat against a ceiling of 24. In play their rounds spread them
+     as you move; on arrival that room broke the survivability promise
+     ("the room you walk into can be beaten").
+   - Profiling also found a real cost in normal play: the rabbit's
+     mushroom search scanned the whole map every turn (3 ms a rabbit a
+     turn, nine-tenths of the pre-run). Bounded to its nose (`RABBIT_NOSE`)
+     -- the same answer for a fraction of the work, in play too.
+
+2. **Only the animals take the turns** (hostile monsters stay placed).
+   - Zero rooms over their ceiling (from 20 in the same probe): the
+     ceiling bought each room as it is, and no ceiling counts the wild.
+   - Guards start their rounds when you arrive, as they always have. What
+     is lost: "the guards walked their rounds before you came".
+   - The suite passed (2983 / 0 / 0) but still took **38 minutes**. Timed
+     per test, with and without, in parallel: ALL the slowdown sat in the
+     tests that build hundreds of floors -- connectivity 97 s -> 231 s,
+     the room ceilings 82 s -> 188 s, the climb's ceilings 46 s -> 107 s,
+     spawn points, cave reachability. The pre-run alone costs about a
+     tenth of a second a floor (70-160 ms, measured on its own across the
+     bands), and those tests build thousands of floors.
+
+3. **Animals only in the game; OFF for the suite's floors** (as built).
+   - `GameState.prerun_turns` is 0 in `run_tests.gd` and `run_one_test.gd`.
+     Nothing the generation tests check can move under the pre-run: it
+     never touches a wall and never moves a hostile monster.
+   - `_test_the_floor_was_alive_before_you` switches it on (and restores
+     what it found) and proves the invariants on eight floors.
+   - The suite: **16 minutes**, 2983 / 0 / 0. In the game: a tenth of a
+     second at each staircase, and the floor's animals are already up,
+     spread out and about their day when you arrive.
+
+The lesson, in CLAUDE.md: anything added to `build_level` is paid thousands
+of times by the suite; time it per test with and without, not with a small
+probe (an 8-floor probe had called version 1's cost "about nothing").
+
 **A floor that was alive before you arrived (Brad and the Legion,
 2026-10-04 -- an idea, not scheduled).** Run a few hundred quiet turns of
 the ecology at `build_level` before the player is placed: rabbits have
