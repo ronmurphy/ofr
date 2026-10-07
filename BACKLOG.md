@@ -589,6 +589,22 @@ a static path that use_scratch_files() moves, from its first commit;
 itch downloads it through Platform.hand_over, like the morgue; the pad watch
 and other overlays left out of the picture.
 
+**To check in play (Brad, 2026-10-07).**
+- **Seen working:** the slime ate an item, and dropped it when killed.
+- **Not yet seen: the den bears and hunger** (cd4bd76 and the hunger
+  commit). Brad checks them on his next fresh run, after the current one
+  ends. The current run cannot show them: it was resumed from a save made
+  before today's code, so its floors have no dens and no dealt appetites,
+  and he is past the caves (depth 7, fortress). What to look for at depths
+  4 to 6 (14 to 16 on the climb):
+  - a bear asleep among bones in a cave;
+  - its tag reading "(wild, hungry)" or "(wild)";
+  - stepping within 2 cells: "stirs in its den";
+  - and maybe "rises from its den and comes for you!".
+- **Why this run matters:** Brad is playing it to unlock the Legends Run
+  (the title row appears once the morgue holds an escape; see 8 below), so
+  the unlock is there to test with when the Legends code is built.
+
 **1. Small fixes from the 2026-09-26 playtest** (see PLAYTESTS.md):
 - **The `?` hint** in bold and colour on floors 1–2, back to normal after that or
   once the legend has been opened. Neither teen found the controls alone.
