@@ -7229,9 +7229,23 @@ func actions_here() -> Array:
 				continue
 			var said := gem_use_here(gem)
 			if said != "":
-				out.append([KEY_I, said])
+				out.append([KEY_I, pack_row(said)])
 				break
 	return out
+
+## The HERE box's row for something the PACK does (Brad, 2026-10-06: "set the
+## gem of frost" by the i key read as a thing to do on the map, with the
+## pack shut). Prefixed so the row says where it happens; the pack's own
+## hint keeps the bare words (gem_use_here). The box clips at about
+## HERE_ROW_CHARS: past it the gem's label gives way ("thirst: drink the
+## risen kobold slinger (+12)" -> "pack: drink ..."), keeping the act and
+## its number.
+const HERE_ROW_CHARS := 42
+static func pack_row(said: String) -> String:
+	var row := "pack: " + said
+	if row.length() > HERE_ROW_CHARS and said.contains(": "):
+		row = "pack: " + said.substr(said.find(": ") + 2)
+	return row
 
 ## What a carried gem would do from this square, in the HERE box's words, or
 ## "" when it has no use here. The gems thrown or used anywhere (boss, frost,

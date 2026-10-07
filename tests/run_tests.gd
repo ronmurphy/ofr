@@ -12114,7 +12114,12 @@ func _test_the_sidebar_says_what_is_here() -> void:
 	var crag_rows := gs.actions_here()
 	check("beside a pit the crag is offered, by the pack key",
 		crag_rows.size() == 1 and int(crag_rows[0][0]) == KEY_I
-		and String(crag_rows[0][1]) == "crag: fill the pit", str(crag_rows))
+		and String(crag_rows[0][1]) == "pack: crag: fill the pit", str(crag_rows))
+	# Said as the pack's (Brad, 2026-10-06), and always inside the box.
+	check("the row says it is the pack's, and the longest gem row still fits",
+		GameState.pack_row("thirst: drink risen kobold slinger (+12)") == "pack: drink risen kobold slinger (+12)"
+		and GameState.pack_row("thirst: drink risen kobold slinger (+12)").length() <= GameState.HERE_ROW_CHARS
+		and GameState.pack_row("set the gem of frost") == "pack: set the gem of frost")
 	var pack := InventoryPanel.new()
 	pack.state = gs
 	check("and in the pack's own words",
@@ -12135,7 +12140,7 @@ func _test_the_sidebar_says_what_is_here() -> void:
 			"still": false, "rises": -1}]
 		for row in bar.rows():
 			var text := String(row[1])
-			if not text.begins_with("thirst"):
+			if not text.contains("drink"):
 				continue
 			drinks += 1
 			var w := face.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, bar.font_size).x
