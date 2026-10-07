@@ -52,4 +52,6 @@ func _run() -> void:
 	for i in 6:
 		await process_frame
 	root.get_texture().get_image().save_png(out)
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

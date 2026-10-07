@@ -28,4 +28,6 @@ func _run() -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	vp.get_texture().get_image().save_png(OS.get_environment("SHOT_OUT"))
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

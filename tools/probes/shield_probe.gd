@@ -48,4 +48,6 @@ func _initialize() -> void:
 				dealt + returned - taken])
 		print("  " + "-".repeat(56))
 	print("\n  net = what you dealt, plus what came back, minus what you took.")
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

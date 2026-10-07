@@ -29,4 +29,6 @@ func _initialize() -> void:
 			parts.append("%d/%d|%s|%s" % [seed, d,
 				",".join(items), ",".join(mobs)])
 	print("FINGERPRINT ", "|".join(parts).sha256_text())
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

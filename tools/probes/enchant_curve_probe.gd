@@ -90,4 +90,6 @@ func _initialize() -> void:
 		% [100.0 * run_magic / maxf(run_equip, 0.001)])
 	print("    descent (1-10)           %.1f" % descent)
 	print("    climb   (11-19)          %.1f" % climb)
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

@@ -29,4 +29,6 @@ func _initialize() -> void:
 			wolves += n
 			bears += b
 		print("%9d %-9s %5d/%d  %6.2f  %5d/%d  %6.2f" % [eff, Bands.NAMES[Bands.of(eff)], wolf_floors, SEEDS, float(wolves) / SEEDS, bear_floors, SEEDS, float(bears) / SEEDS])
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

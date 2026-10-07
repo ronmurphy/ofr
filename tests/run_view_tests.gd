@@ -71,6 +71,15 @@ func _initialize() -> void:
 		settings_after = FileAccess.get_file_as_string("user://settings.cfg")
 	check("the player's settings.cfg is untouched",
 		settings_after == settings_before or not had_settings)
+	# Its own scratch files go when it does (2026-10-07): every quick run
+	# left scratch_view_tests_settings.cfg and _bestiary.txt in the player's
+	# save folder, the same litter the full suite's loops were cleared of.
+	GameState.clear_scratch_files()
+	var left := []
+	for f in DirAccess.get_files_at("user://"):
+		if f.begins_with("scratch_view_tests_"):
+			left.append(f)
+	check("and it leaves none of its own scratch files behind", left.is_empty(), str(left))
 	print("\n%d passed, %d failed" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
 

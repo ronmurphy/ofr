@@ -143,9 +143,11 @@ house the intro shows, and may draw players the dungeon alone would not.
   absent. The 3D camera's rules hold in the house (Steph).
 - **The house never draws on the run's random stream (2026-10-06).** The
   house is visited between floors, which makes it the natural place to
-  build the NEXT floor ahead -- a staircase costs about a third of a second
-  on the desktop (floor 130-170 ms, the pre-run 170-260 ms;
-  `tools/probes/prerun_cost_probe.gd`), more in a browser -- so the cost
+  build the NEXT floor ahead -- a staircase costs about a fifth of a second
+  on the desktop (floor 65-105 ms, the pre-run 55-150 ms;
+  `tools/probes/prerun_cost_probe.gd`, corrected 2026-10-07: its first
+  version timed new_game's own floor-1 build too and reported double), more
+  in a browser -- so the cost
   hides behind something the player is enjoying (Brad's preload idea).
   That is only safe if nothing in the house touches `rng` or any run
   stream: then a floor built early is exactly the floor the stairs would
@@ -687,13 +689,18 @@ headless or windowed, and even after stopping the player in `_exit_tree`.
 Engine-side; the process is ending anyway. The quick suite now prints this one
 warning after its tally; it is not a failure.
 
-**Test litter in the player's save folder (day-7 job).** Three tests switch to
-their own scratch tag inside a loop -- `use_scratch_files("bearfit%d")`
-(run_tests.gd ~703), `"pity%d_%d"` (~7900) and a `reach` one -- and never call
-`clear_scratch_files()`, so every suite run leaves `scratch_bearfit39_*`,
-`scratch_pity59_4_*` and `scratch_reach29_5_*` files behind (now one more each,
-legends.json). Harmless, but it is litter in a player-owned folder. Clear and
-restore the suite's own tag after each loop.
+**Test litter in the player's save folder -- FIXED.** The full suite's three
+loops (`bearfit`, `pity`, `reach`) clear their scratch tags now. Found still
+littering on 2026-10-07 and fixed the same morning (desktop): the QUICK suite
+left `scratch_view_tests_settings.cfg` and `_bestiary.txt` on every run, and
+19 of the 41 probes that call `use_scratch_files` never cleared theirs. The
+quick suite now clears at its end and checks that nothing of its own is left
+(a mutation without the clear fails it); every probe calls
+`GameState.clear_scratch_files()` before `quit()` (the screenshot probes write
+to `SHOT_OUT`, outside the folder, so nothing they make is lost). **For any
+new probe: clear before quit.** A probe killed by a timeout never reaches
+its clear, so an interrupted run can still leave one file; it is a
+`scratch_` file, safe to delete.
 
 **The mirror tell -- BUILT 2026-10-04 (Legion), waiting on play.** What was
 built, from the shape below: `CreatureMarks.outline` is the one answer both

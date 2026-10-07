@@ -39,4 +39,6 @@ func _initialize() -> void:
 			hostile / SEEDS, wild / SEEDS, lost, float(bats) / SEEDS, float(rabbits) / SEEDS,
 			float(bears) / SEEDS])
 	GameState.clear_scratch_files()
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

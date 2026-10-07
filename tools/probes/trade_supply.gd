@@ -48,4 +48,6 @@ func _initialize() -> void:
 		var power := int(data.get("power", 0)) + int(data.get("defense", 0))
 		print("  %-18s %6.1f %6d %6d   power/def %d" % [
 			id, float(total) / RUNS, hi, lo, power])
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

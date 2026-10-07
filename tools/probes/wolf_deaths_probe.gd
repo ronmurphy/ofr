@@ -48,4 +48,6 @@ func _initialize() -> void:
 	print("packs %d, wolves %d, dead after %d turns: %d (on %d floors)" % [packs, wolves_seen, TURNS, dead, floors_with_dead])
 	for k in killers:
 		print("  %-28s %d" % [k, killers[k]])
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

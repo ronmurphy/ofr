@@ -42,4 +42,6 @@ func _initialize() -> void:
 	print("\n  shields found on the floor over %d floors: %d" % [RUNS, shields])
 	print("    carrying the bulwark: %d" % bulwarks)
 	print("    carrying anything else: %d  (must be 0 -- nothing else fits)" % other)
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

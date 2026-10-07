@@ -77,4 +77,6 @@ func _initialize() -> void:
 	print("    state.trader still set : %d of %d kills" % [still_listed, shot])
 	print("\n    the legend row is drawn unconditionally, so after any of the")
 	print("    above it still reads \"a trader -- first floor of a band\".")
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

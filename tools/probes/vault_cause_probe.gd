@@ -53,4 +53,6 @@ func _initialize() -> void:
 		print("    %-9s %.3f   %+.1f sigma from %.2f" % [
 			half, rate, (rate - P) / sd3, P])
 	print("\n  if both halves sit inside 2 sigma, the thread closes.")
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

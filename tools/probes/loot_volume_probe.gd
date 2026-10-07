@@ -92,4 +92,6 @@ func _initialize() -> void:
 		print("    at %d%%: %.1f magical over ten floors" % [
 			int(rate * 100), total * rate])
 
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

@@ -5,13 +5,21 @@ extends SceneTree
 ## builds (nobody dies, threat unchanged, main rng untouched). Scratch files.
 ##   godot --headless --path . -s tools/probes/prerun_cost_probe.gd
 const SEEDS := 6
+## Returns the floor and the milliseconds its OWN build took. new_game()
+## builds floor 1 itself, so it runs with the pre-run off and is not timed:
+## the first version of this probe timed both builds and reported the
+## pre-run at about twice its real cost (170-260 ms; corrected 2026-10-07).
+var last_ms := 0.0
 func _build(seed_value: int, eff: int, turns: int) -> GameState:
-	GameState.prerun_turns = turns
+	GameState.prerun_turns = 0
 	var g := GameState.new(seed_value)
 	g.new_game()
 	g.ascending = eff > 10
 	g.depth = eff if eff <= 10 else 20 - eff
+	GameState.prerun_turns = turns
+	var t0 := Time.get_ticks_usec()
 	g.build_level()
+	last_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	return g
 func _census(g: GameState) -> Array:
 	var alive := 0
@@ -32,13 +40,10 @@ func _initialize() -> void:
 		var broken := 0
 		for i in SEEDS:
 			var s := 88000 + eff * 100 + i
-			var t0 := Time.get_ticks_usec()
 			var a := _build(s, eff, 0)
-			var t1 := Time.get_ticks_usec()
+			off_ms += last_ms
 			var b := _build(s, eff, GameState.PRERUN_TURNS)
-			var t2 := Time.get_ticks_usec()
-			off_ms += (t1 - t0) / 1000.0
-			on_ms += (t2 - t1) / 1000.0
+			on_ms += last_ms
 			for e in b.entities:
 				if e.alive and e.is_wild():
 					animals += 1
@@ -50,4 +55,6 @@ func _initialize() -> void:
 			off_ms / SEEDS, on_ms / SEEDS, pre, float(animals) / SEEDS, broken, SEEDS])
 	print("worst pre-run cost per floor: %.0f ms" % worst)
 	GameState.prerun_turns = GameState.PRERUN_TURNS
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

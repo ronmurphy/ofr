@@ -90,4 +90,6 @@ func _initialize() -> void:
 				hostile += 1
 		print("\n  things hostile to the trader (want 0): %d" % hostile)
 
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

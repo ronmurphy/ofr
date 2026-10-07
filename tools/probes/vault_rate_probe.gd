@@ -47,4 +47,6 @@ func _initialize() -> void:
 	print("\n  whole dungeon: %.0f%% of floors have no authored room"
 		% [100.0 * barren / floors])
 	print("  the comment says roughly 30%")
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()

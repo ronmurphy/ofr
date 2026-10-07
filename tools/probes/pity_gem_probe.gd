@@ -90,6 +90,8 @@ func _initialize() -> void:
 		print("    %-12s kind=GEM element=%s  -> tinted: %s"
 			% [g.name, g.element, "yes" if g.element != &"" else "no"])
 
+	# Leave nothing in the player's save folder (2026-10-07).
+	GameState.clear_scratch_files()
 	quit()
 
 func _has_gem(gs: GameState) -> bool:
