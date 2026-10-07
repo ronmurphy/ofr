@@ -344,7 +344,12 @@ task list only.
   Also check the precondition: that the crawl actually grew a square in your
   test (a body in reach, a red square beside the path, no brazier near).
 
-- [ ] **The quick suite's leftover files**
+- [x] **The quick suite's leftover files**
+  Done 2026-10-07 (desktop session, f4204ae): `tests/run_view_tests.gd` calls
+  `GameState.clear_scratch_files()` at its end and checks that no
+  `scratch_view_tests_` file is left (a mutation without the clear fails
+  it); every probe in `tools/probes` clears before it quits as well. Quick
+  suite 395 passed, 0 failed, 0 script errors.
   `tests/run_view_tests.gd` calls `GameState.use_scratch_files("view_tests")`
   (near line 21) and never cleans up, so every quick run leaves
   `scratch_view_tests_bestiary.txt` and `scratch_view_tests_settings.cfg` in

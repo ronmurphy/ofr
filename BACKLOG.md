@@ -664,6 +664,68 @@ Waiting on play. Open:
 
 ---
 
+## Short sessions -- the Legion's nights (set 2026-10-07)
+
+While Brad is on the pet-sitting job (to about late October), the Legion
+session gets the evenings between the pets' medicines: about an hour or two
+of work a night. These are sized for that, ONE A NIGHT, in this order unless
+Brad says otherwise. Big themes (the house, gems on any host, the spider,
+the bestiary page) wait for Brad and the desktop.
+
+**How a night goes:** pull first (the desktop pushes in the mornings and at
+night); message the desktop session when the Legion boots; read the item's
+full entry further down this file before starting; single tests while
+working, the full suite at the end; commit and push with no attribution
+line; mark the item done HERE with the commit and the tally, and as-built
+in its own entry.
+
+1. **The latched gate** (Ideas, 2026-10-07): a door no animal passes, its
+   own colour, opened by hands, smashed by a bear; a wall to monster
+   pathfinding, a door to yours; "a latched gate" under the cursor and in
+   the HERE box; a vault letter for it. Then put one on the warren
+   (`assets/vaults/the_warren.txt`) and re-run `tools/probes/warren_probe.gd`:
+   the rabbits should stay home.
+2. **The riders** (Trained animals): the kobold wolf rider and the goblin
+   bear rider -- the animal's glyph and stats in the MONSTER's colour,
+   MONSTER faction, attacking on sight; fortress floors. Two bestiary rows
+   and the colour; the art reference regenerated.
+3. **The houndmaster** (Trained animals): an orc or an ogre (Brad's pick)
+   with two or three hounds of the wolf's kind in the master's colour,
+   MONSTER, via `_spawn_pack`; a kennel vault with a latched gate (item 1).
+4. **The master falls, the hounds go wild** -- ASK BRAD FIRST (the desktop's
+   suggestion, not yet his yes): on the master's death the survivors turn
+   WILD, the provocation loop run backwards (`_turn_to_you` is the model).
+5. **Fire as a fear** (the wild creatures update): a lit torch keeps an
+   unstruck animal back; read the entry for the wolves' "cornered by flame"
+   rule and the bear's exception before starting.
+6. **The rat goes WILD** (the wild creatures update): with the threat
+   ceiling re-measured before and after (`tools/probes/threat_wild_probe.gd`)
+   -- the slime now fills floors 1-2, which was the condition.
+7. **Throwing a fungus roots it where it lands** (the satchel's entry):
+   throwing exists; the rooting is `player_drop_from_satchel`'s rule
+   (open floor only), applied at the landing cell.
+8. **The marked brazier drawn as marked** (the gem of returning): both
+   views; nothing changes in the sim.
+9. **The rabbit's mushroom search from a list** (desktop profile,
+   2026-10-07): a rabbit's turn checks 841 cells for a mushroom; keep the
+   floor's mushroom cells in a list kept current wherever a FUNGUS tile is
+   set or cleared, and search that, with exactly the same choices (row
+   order, nearest, not one somebody stands on). A test comparing the old
+   search with the new on random floors and positions.
+10. **Rename `Entity.charges` -> `dash`** (Ideas): a bull-rush flag that
+   reads as brazier charges. Grep every use first, saved games included
+   (read the old key as well as the new).
+
+**Waiting on Brad, not code:** the trader's numbers (from play); the right
+stick in Firefox on itch (a test); David's music in the web build (a
+listen); the frozen room's rule (b); the spider's bite and provocation;
+which heart glyph over a tamed wolf.
+
+**For the desktop at night:** reviewing what the Legion pushed; the open
+question in CLAUDE.md (descent caves place vaults above p=0.25 and the
+climb's below -- instrument `wanted` against what is placed); the house's
+first slice written as a full design.
+
 ## For the free model
 
 Small, self-contained jobs for the free model live in **`SMALL_TASKS.md`**,
