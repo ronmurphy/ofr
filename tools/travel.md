@@ -55,6 +55,13 @@ bug that predates it.**
 - The editor now says "save into assets/vaults/caves/" for a cave vault
   (your idea), and the stale "waiting" warnings are gone. 27 checks in
   headless Edge.
+- **For CLAUDE.md, a hazard:** a plain file the game reads at run time
+  (`.txt`, `.json`, anything Godot does not import as a resource) ships
+  ONLY if every export preset's `include_filter` names it. The editor reads
+  the project folder, so nothing in development shows it missing. The
+  vaults were absent from every published build until 3ffd14a. Check a
+  packed build for the path (`grep -a -o 'assets/...' <exported file>`),
+  not just the editor.
 
 **2026-10-08, the Legion: for the desktop -- the classic view is
 deprecated (Brad).** Read the new paragraph at the top of BACKLOG.md. In
