@@ -32,6 +32,62 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-08, the desktop: for CLAUDE.md -- two hazards that cost time
+today.** For the master copy (the Legion's until Brad's job ends); I will
+apply them here once Brad copies the file over.
+- **A `git add` naming a path that no longer exists adds NOTHING.** After
+  `git mv`, an add list still naming the old paths fails as a whole; with
+  its stderr hidden (`2>/dev/null`) the failure is silent, and the commit
+  takes only what was already staged. The desktop pushed 969123d holding
+  two renames and none of the content that way (fixed by 35d7c56). Never
+  hide a `git add`'s errors; read `git show --stat HEAD` before pushing.
+- **The vault editor has two copies of its tile table.**
+  `tools/build_vault_editor.py` REWRITES the page's `TILES` table (and the
+  embedded font and, since today, the `BESTIARY` line) from its own copy.
+  Edit the script's table, never only the page's. Run the script after
+  any change to `vault.gd`'s glyphs or to the icon font. It checks its
+  table against `vault.gd` and refuses to write a page that disagrees.
+  That is how the missing `v`, `;` and `r` were found today: the page had
+  lost them, and the script would not run. It now needs `godot` on the
+  PATH (it runs `tools/dump_bestiary.gd`).
+- Small, for the `:=` hazard's examples: a lambda's `.call()` is a Variant
+  too (`var g := build.call(...)` failed today; `var g: GameState = ...`).
+
+**2026-10-08, the desktop: for ADVICE.md -- a suggestion, Brad's call.**
+Its "Where the game stands (end of 2026-10-01)" and "the queue" sections
+are a week stale, and a queue copied into a hand-carried file goes stale
+again within a day. Suggest replacing them with pointers: the queue is
+BACKLOG.md's "Short sessions -- the Legion's nights", the big themes are
+its Roadmap (the house is held until Brad is back), notes between sessions
+are here in `tools/travel.md`. Also worth adding to its machine notes:
+on the laptop, web pages (the vault editor) can be tested with the screen
+locked in headless Edge with a throwaway profile:
+`microsoft-edge-stable --headless=new --user-data-dir=<scratch dir>
+--virtual-time-budget=4000 --dump-dom file://...` (or `--screenshot=...
+--window-size=1500,900`). The profile flag keeps Brad's own Edge untouched.
+
+**2026-10-08, the desktop: handoff -- what landed today, with tallies.**
+- 866c789 **every fungus grows on mud**, and the mud comes back when the
+  fungus goes (`mud_under`, `_bare_ground`). Full suite 3076 passed / 0
+  failed / 0 SCRIPT ERROR, 14 min; quick 395/0. Brad tests it tonight.
+- Everything after it, up to cc97ac7, is tools/, probes or docs only (no
+  src/ or tests/), so the tally should still be 3076:
+  86946f9 the caves' vault question answered, and `vault_rate_probe.gd`
+  builds a real climb; ad447a8 the CLAUDE.md list (now applied, above);
+  5149587 cave vaults designed, and a "test start" idea; c13dca7 / 9443466
+  / 969123d / 35d7c56 the vault editor: cave kind with generate cave,
+  categories, creatures by name from the game's bestiary (27 checks in
+  headless Edge); cc97ac7 the house file as a vault grid plus a list of
+  objects.
+- **For the Legion's list, item 12:** `tools/VAULTS_GAME_SIDE.md` has the
+  game side of the editor's new format, in two independent parts (cave
+  vaults; creatures by name). Vaults using either wait in
+  `tools/vaults_waiting/`; the linter fails a digit today.
+- **Waiting on Brad's play, not for tonight:** the red finding its way
+  round obstacles (designed in BACKLOG, after the mud is played); moving
+  an idle wild animal's random step off the main rng (a seed-pinned
+  hazard, like drinking was); the test start.
+
 **2026-10-08, the Legion: CLAUDE.md edits applied -- DONE (the Legion).**
 The desktop's list (it was in BACKLOG.md, ad447a8) is now in the Legion's
 copy of CLAUDE.md, which Brad copies to the laptop:
