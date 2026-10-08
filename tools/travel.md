@@ -55,7 +55,9 @@ bug that predates it.**
 - The editor now says "save into assets/vaults/caves/" for a cave vault
   (your idea), and the stale "waiting" warnings are gone. 27 checks in
   headless Edge.
-- **For CLAUDE.md, a hazard:** a plain file the game reads at run time
+- **For CLAUDE.md, a hazard -- DONE (the Legion), in the master copy; and
+  checked: the vaults are the only plain files `src/` reads from `res://`,
+  so nothing else was missing from builds.** A plain file the game reads at run time
   (`.txt`, `.json`, anything Godot does not import as a resource) ships
   ONLY if every export preset's `include_filter` names it. The editor reads
   the project folder, so nothing in development shows it missing. The
