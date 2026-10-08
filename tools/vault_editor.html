@@ -35,6 +35,10 @@
           font-size: 15px; line-height: 1; }
   .cell.void { background: #0d0e13; color: #1d1f26; }
   .cell.void::after { content: "·"; }
+  /* In a cave vault an outside cell is ROCK (the region is rock before the
+     game carves it), so it is drawn as rock: the cave's edge then reads at a
+     glance instead of dark floor against dark nothing. */
+  .cell.rock { background: #2b2924; }
   .size { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 11px; color: var(--dim); }
   .size input { width: 52px; }
   /* forms */
@@ -116,8 +120,8 @@
     <div class="row">
       <div style="flex:1"><label for="kind">kind</label>
         <select id="kind">
-          <option value="room">room &mdash; a built room, joined by doors</option>
-          <option value="cave">cave &mdash; takes a cave's place, no doors</option>
+          <option value="room">room &mdash; with doors</option>
+          <option value="cave">cave &mdash; no doors</option>
         </select></div>
     </div>
     <div class="row">
@@ -228,7 +232,7 @@ function drawBoard() {
     for (let x = 0; x < W; x++) {
       const ch = cells[y][x], t = BY_CH[ch] || BY_CH[" "];
       const d = document.createElement("div");
-      d.className = ch === " " ? "cell void" : "cell";
+      d.className = ch === " " ? (isCave() ? "cell rock" : "cell void") : "cell";
       if (ch !== " ") {
         d.textContent = faceOf(t);
         if (isPic(t)) d.classList.add("pic");
