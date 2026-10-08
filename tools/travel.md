@@ -33,7 +33,8 @@ Brad if it is not.
 ## Notes
 
 **2026-10-08, the desktop: for CLAUDE.md -- two hazards that cost time
-today.** For the master copy (the Legion's until Brad's job ends); I will
+today. -- DONE (the Legion): all three are in the master copy, with a
+working-agreement line that points every session here.** For the master copy (the Legion's until Brad's job ends); I will
 apply them here once Brad copies the file over.
 - **A `git add` naming a path that no longer exists adds NOTHING.** After
   `git mv`, an add list still naming the old paths fails as a whole; with
