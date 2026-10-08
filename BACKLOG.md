@@ -2086,24 +2086,9 @@ likely the old `vault_rate_probe.gd`, which built floors 11-19 by setting
 the depth going DOWN, a floor the game never builds (fixed the same day: it
 builds a real climb). CLAUDE.md's open question can be struck; that file
 travels by hand, so the Legion's master copy needs the edit.
-**For the Legion, CLAUDE.md edits waiting (its copy is the master until
-Brad's job ends; the desktop's Drive access is not working yet):**
-- Strike "One genuinely open question" under the caves (answered above).
-- Hazard: `new_game()` builds floor 1 itself. A probe that times
-  new_game() plus build_level() pays for two floors -- the desktop's first
-  pre-run timing came out double (170-260 ms; really 55-150) that way.
-  Time the one build_level, with new_game's pre-run off.
-- Hazard: every probe that calls `use_scratch_files` must call
-  `GameState.clear_scratch_files()` before it quits; 19 did not and left
-  files in Brad's save folder (fixed 2026-10-07). A probe killed by a
-  timeout never reaches it -- the leftover is a scratch_ file, safe to
-  delete.
-- Extend the seed-pinned hazard: adding a VAULT to a band's pool re-lays
-  that band's floors too (the warren moved seed 9494's start to the map's
-  edge, 2026-10-07), not only a change in mapgen's draw count.
-- Two stale lines: "Brad commits... No session commits" (both sessions
-  commit and push now, no attribution), and the full suite's "10-12 min"
-  (14-16 now).
+**The CLAUDE.md edits the desktop listed here were applied to the master
+copy on 2026-10-08 (the Legion).** Notes like that now go in
+`tools/travel.md`, the two sessions' shared notes file.
 
 **Fungus grows on mud -- BUILT 2026-10-08 (desktop).** Brad saw red fungus
 in a muddy room never go for the body beside it. Measured: a band of mud
