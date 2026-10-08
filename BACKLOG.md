@@ -868,6 +868,24 @@ rule now, MapMemory.strength_for, for both views.
 
 ## Known gaps
 
+**No vault ever reached an exported build -- FIXED 2026-10-08 (desktop).**
+Found reviewing the Legion's cave vaults: all three export presets were
+`export_filter="all_resources"` with an EMPTY include filter, and a vault
+is a plain `.txt` file, which Godot does not count as a resource. Read
+from the packed game itself (the Oct 5 builds): `src/sim/vault.gdc` was
+there, not one `assets/vaults/` path. So `Vault.load_all()` found an empty
+folder on itch, and players never met an authored room -- not the barracks,
+the shrines, the coliseum, the warren, or a cave vault -- while the editor,
+which reads the project folder, always had them. That is why Brad never saw
+it. Each preset now includes `assets/vaults/*.txt`; a test export to the
+scratch folder held all 21, `caves/test_cave.txt` included (Godot's `*`
+crosses folders). Guarded by `_test_vaults_ship_in_every_export` (with one
+preset's filter emptied it fails, naming the preset). **What it means for
+play:** the published game has run without vaults; the next published build
+is the first with them, and the fortress band especially (three or four
+vaults a floor) will play differently. Anything else that is not a Godot
+resource and must ship needs the same include line.
+
 **One leaked object at every quit since the music (harmless).** Godot reports
 an `AudioStreamGeneratorPlayback` leaked at exit whenever the generated music
 is playing when the program ends -- with the real audio driver, the dummy one,

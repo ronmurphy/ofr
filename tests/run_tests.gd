@@ -92,6 +92,7 @@ func _initialize() -> void:
 	_test_the_slime()
 	_test_the_wolf_pack()
 	_test_rabbits_keep_to_the_warren()
+	_test_vaults_ship_in_every_export()
 	_test_animals_nap()
 	_test_let_sleeping_bears_lie()
 	_test_hunger()
@@ -1392,6 +1393,55 @@ func _test_hunger() -> void:
 	hbear.hunger = 123
 	check("hunger is saved", Entity.from_dict(hbear.to_dict()).hunger == 123)
 	check("  and so is its stream", gs.to_dict().has("hunger_rng"))
+
+## THE VAULTS SHIP (2026-10-08). Every export preset was
+## `export_filter="all_resources"` with an empty include filter, and a vault is
+## a plain .txt file, which is not a resource: no vault file had ever reached
+## an exported build. The desktop found it reading the packed game -- the
+## scripts were there, not one assets/vaults/ path -- so on itch the barracks,
+## the shrines, the coliseum, the warren and every cave vault were never met,
+## while the editor, which reads the project folder, had them all along.
+## Each preset now includes `assets/vaults/*.txt`, and `*` crosses folders
+## (assets/vaults/caves/ ships too; checked in a test export).
+func _test_vaults_ship_in_every_export() -> void:
+	var presets := ConfigFile.new()
+	check("precondition: the export presets load", presets.load("res://export_presets.cfg") == OK)
+	var names := []
+	var missing := []
+	for section in presets.get_sections():
+		if not section.begins_with("preset.") or section.ends_with(".options"):
+			continue
+		var preset_name := String(presets.get_value(section, "name", section))
+		names.append(preset_name)
+		var filters := String(presets.get_value(section, "include_filter", "")).split(",")
+		var covered := false
+		for f in filters:
+			if f.strip_edges() == "assets/vaults/*.txt":
+				covered = true
+		if not covered:
+			missing.append(preset_name)
+	check("precondition: three export presets (%s)" % ", ".join(names), names.size() == 3)
+	check("every export includes the vault files", missing.is_empty(), str(missing))
+	# And the filter really covers every vault the game loads, subfolders too.
+	var paths := []
+	var dirs := ["res://assets/vaults/"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		var d := DirAccess.open(dir)
+		if d == null:
+			continue
+		for f in d.get_files():
+			if f.ends_with(".txt"):
+				paths.append(dir.trim_prefix("res://") + f)
+		for sub in d.get_directories():
+			dirs.append(dir + sub + "/")
+	var unmatched := []
+	for path in paths:
+		if not String(path).matchn("assets/vaults/*.txt"):
+			unmatched.append(path)
+	check("precondition: the vaults include one in a subfolder (%d files)" % paths.size(),
+		paths.size() >= 20 and paths.any(func(p): return String(p).count("/") > 2))
+	check("  and the filter matches every one of them, subfolders too", unmatched.is_empty(), str(unmatched))
 
 ## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
 ## ordinary roll never puts a rabbit in one, going down or coming up; the

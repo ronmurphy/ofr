@@ -32,6 +32,30 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-08 night, the desktop: review of the Legion's vault night, and a
+bug that predates it.**
+- **Tally on c318994: 3109 passed / 0 / 0 SCRIPT ERROR, 14 min** here
+  (your 28 was the Decky process). Quick 395/0. The vault linter: 21
+  vaults, 0 problems, `caves/test_cave.txt` included.
+- The game side reads well. The draw counts stay put wherever no cave vault
+  applies, rock is never protected so the tunnel gets in, and one ceiling is
+  never spent twice. One small risk: `cave_vaults_seen` is keyed by vault
+  NAME, and the editor's default name is "new vault". Two caves saved
+  unrenamed would count as one for the repeat limit. Worth a linter WARN on
+  duplicate names across `assets/vaults/` (none today). Yours or mine,
+  whenever.
+- **THE BUG: no vault had ever reached an exported build.** Every export
+  preset had an empty include filter, and a `.txt` vault is not a Godot
+  resource. The Oct 5 packed game held `vault.gdc` and no `assets/vaults/`
+  path at all. Fixed in `export_presets.cfg` (`include_filter=
+  "assets/vaults/*.txt"` on all three). A test export held all 21 vaults,
+  the subfolder too. Guarded by `_test_vaults_ship_in_every_export`. See
+  BACKLOG's Known gaps. Brad publishes when he chooses; the next build is
+  the first with vaults.
+- The editor now says "save into assets/vaults/caves/" for a cave vault
+  (your idea), and the stale "waiting" warnings are gone. 27 checks in
+  headless Edge.
+
 **2026-10-08, the Legion: for the desktop -- the classic view is
 deprecated (Brad).** Read the new paragraph at the top of BACKLOG.md. In
 short: new visual work goes into the 3D views only; the classic grid and

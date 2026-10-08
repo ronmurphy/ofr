@@ -76,9 +76,8 @@
   <p>Paint a room, watch it check itself, save the .txt into assets/vaults/.
      Same rules as tests/vault_lint.gd — if it passes here it will load in the game.</p>
   <p><b style="color:var(--gold)">Cave vaults</b> (kind: cave): press <i>generate cave</i> for a shape
-     grown by the game's own rules, then paint it. Until the game reads
-     <code>kind: cave</code> and creatures by name (tools/VAULTS_GAME_SIDE.md), save any vault
-     that uses either into <b>tools/vaults_waiting/</b>, NOT assets/vaults/ — the checks say when.</p>
+     grown by the game's own rules, then paint it, and save it into <b>assets/vaults/caves/</b>.
+     Creatures by name are on the <i>creatures</i> tab. Drafts can wait in tools/vaults_waiting/.</p>
 </header>
 
 <main>
@@ -91,7 +90,8 @@
       <select id="creature"></select>
       <p class="note">A named creature is saved as a digit with a
         <code>place 1: cave bear</code> line in the file. Wild animals cost the
-        room nothing; a monster spends its threat budget.</p>
+        room nothing; a monster spends its threat budget, and each appears only
+        where the game could meet it.</p>
     </div>
     <p class="note">Click to paint, drag to fill. Right-click erases back to
       outside-the-vault.</p>
@@ -507,11 +507,9 @@ function validate() {
     out.push(["pass", "by name: " + named.map(b => b.name).join(", ")]);
   if (usedDigits().size >= 9)
     out.push(["warn", "nine kinds by name is the most a vault holds"]);
-  const waiting = [];
-  if (isCave()) waiting.push("kind: cave");
-  if (named.length) waiting.push("creatures by name");
-  if (waiting.length)
-    out.push(["warn", `the game does not read ${waiting.join(" or ")} yet: save into tools/vaults_waiting/`]);
+  // Where it goes (the game reads both kinds and creatures by name since
+  // 2026-10-08, and loads vaults from subfolders).
+  out.push(["pass", isCave() ? "save into assets/vaults/caves/" : "save into assets/vaults/"]);
 
   // Size.
   const b = bounds();
