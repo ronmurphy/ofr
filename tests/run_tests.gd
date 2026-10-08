@@ -96,6 +96,7 @@ func _initialize() -> void:
 	_test_let_sleeping_bears_lie()
 	_test_hunger()
 	_test_guards_walk_their_own_beats()
+	_test_fungus_grows_on_mud()
 	_test_picking_a_fight_is_deliberate()
 	_test_the_embers_come_first()
 	_test_threat_ceiling_holds_on_the_climb()
@@ -909,6 +910,69 @@ func _test_the_wolf_pack() -> void:
 		pairs >= 6 and odd_packs == 0)
 	check("a bear can be on floor 1 now, on some floors, not most (%d of 12 floors, %d bears)"
 		% [where[1][1], bears_at_1], where[1][1] >= 1 and where[1][1] <= 7 and bears_at_1 == where[1][1])
+
+## FUNGUS GROWS ON MUD (Brad, 2026-10-08): the red stalled at the first band
+## of mud between it and a body, and never went for a body lying in mud. Now
+## every fungus may grow on mud, water still stops it, and the mud comes back
+## when the fungus goes.
+func _test_fungus_grows_on_mud() -> void:
+	var lay := func(between: int, body_on: int) -> GameState:
+		var g := _arena(21, 9)
+		g.player.x = 1
+		g.player.y = 1
+		g.entities = [g.player]
+		g.bodies = []
+		for y in range(1, 8):
+			for x in range(8, 13):
+				g.map.set_tile(x, y, between)
+		g.map.set_tile(13, 4, body_on)
+		g._set_fungus(Vector2i(7, 4), Tiles.FUNGUS_RED)
+		g.bodies = [{"x": 13, "y": 4, "app": "kobold", "turn": g.turns, "corrupted": false,
+			"e": {"name": "kobold", "max_hp": 6}, "seeded": -1, "claimed": false,
+			"still": false, "rises": -1}]
+		for i in 15:
+			g._crawl_red()
+		return g
+	var mud: GameState = lay.call(Tiles.MUD, Tiles.FLOOR)
+	check("the red crosses a band of mud to the body (and must)", bool(mud.bodies[0]["claimed"]))
+	var in_mud: GameState = lay.call(Tiles.FLOOR, Tiles.MUD)
+	check("  and goes for a body lying in mud", bool(in_mud.bodies[0]["claimed"]))
+	var wet: GameState = lay.call(Tiles.WATER, Tiles.FLOOR)
+	check("water still stops it", not bool(wet.bodies[0]["claimed"])
+		and wet.map.get_tile(8, 4) == Tiles.WATER)
+	# The mud comes back when the fungus goes: burned...
+	check("precondition: the red grew over mud on its way", mud.map.get_tile(9, 4) == Tiles.FUNGUS_RED
+		and mud.mud_under.has(Vector2i(9, 4)))
+	mud._burn_fungus(Vector2i(9, 4))
+	check("burn red that grew on mud and the mud is still there", mud.map.get_tile(9, 4) == Tiles.MUD)
+	mud._burn_fungus(Vector2i(7, 4))
+	check("  red on plain floor burns to plain floor", mud.map.get_tile(7, 4) == Tiles.FLOOR)
+	# ...eaten by a rabbit...
+	var g := _arena(15, 7)
+	g.player.x = 1
+	g.player.y = 1
+	g.map.set_tile(6, 3, Tiles.MUD)
+	g._set_fungus(Vector2i(6, 3), Tiles.FUNGUS)
+	var bun := _spawn(g, "rabbit", 6, 3)
+	g._rabbit_swallows(bun)
+	check("a rabbit eats green off mud and leaves the mud", g.map.get_tile(6, 3) == Tiles.MUD)
+	# ...and rooted from the satchel into mud, then picked again.
+	var bag := Item.make(&"satchel")
+	g.give_item(bag)
+	var shroom := Item.make(&"fungus")
+	bag.contents.append(shroom)
+	g.player.x = 6
+	g.player.y = 3
+	check("a fungus takes root in mud (and must)", g.player_drop_from_satchel(0)
+		and g.map.get_tile(6, 3) == Tiles.FUNGUS)
+	var saved := GameState.new(1)
+	saved.new_game()
+	check("  the mud under it is saved", saved.apply_dict(g.to_dict())
+		and saved.mud_under.has(Vector2i(6, 3)))
+	g.player.hp = g.player.max_hp - 5
+	check("precondition: hurt, so it may be eaten", g._eat_fungus())
+	check("  eat it and the mud is back", g.map.get_tile(6, 3) == Tiles.MUD
+		and not g.mud_under.has(Vector2i(6, 3)))
 
 ## EACH GUARD WALKS ITS OWN BEAT (2026-10-07): on one shared round the guards
 ## formed convoys (Brad's "lines of four"); now the round is dealt out in

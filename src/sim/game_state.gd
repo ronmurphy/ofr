@@ -1354,6 +1354,7 @@ func build_level() -> void:
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	scorched = {}
+	mud_under = {}
 	tending = {}
 	red_from = {}
 	withering = []
@@ -4948,10 +4949,32 @@ func _keep_the_fire_clean() -> void:
 			if Tiles.is_bad_fungus(map.get_tile(x, y)) and _near_fire(Vector2i(x, y)):
 				map.set_tile(x, y, Tiles.FUNGUS)
 
-## Where wrong fungus may take hold: plain floor, away from fire.
+## Where wrong fungus may take hold: plain floor or MUD, away from fire.
+## Mud since 2026-10-08 (Brad): fungus loves damp ground, and the red was
+## stalling at the first band of mud between it and a body -- measured, it
+## never moved -- with nothing on screen to say why. Water and fire stay the
+## barriers. What was mud is remembered under the fungus (`mud_under`), and
+## comes back when the fungus goes.
 func _fungus_can_grow(c: Vector2i) -> bool:
+	return _fungus_ground(c) and not _near_fire(c)
+
+## Ground any fungus may grow on, green included: plain floor or mud.
+func _fungus_ground(c: Vector2i) -> bool:
 	var t := map.get_tile(c.x, c.y)
-	return (t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR) and not _near_fire(c)
+	return t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR or t == Tiles.MUD
+
+## MUD UNDER FUNGUS (2026-10-08). The map is one layer, so a fungus grown on
+## mud replaces it; these are the fungus squares that were mud, so that
+## eating, picking, burning or withering the fungus gives the mud back
+## (_bare_ground) instead of leaving plain floor -- a garden bed stays a bed.
+## While fungus covers it the square walks as fungus, not as mud. One floor
+## only; saved.
+var mud_under: Dictionary = {}
+
+## Call just before fungus is set on `c`: remember it if it is mud.
+func _note_mud(c: Vector2i) -> void:
+	if map.get_tile(c.x, c.y) == Tiles.MUD:
+		mud_under[c] = true
 
 ## The colour a body grows on this floor: Brad's table without its green.
 ## Empty on floors 1-2, which have no wrong fungus at all.
@@ -4965,6 +4988,8 @@ func _body_fungus() -> int:
 		else Tiles.FUNGUS_RED
 
 func _set_fungus(c: Vector2i, t: int) -> void:
+	if Tiles.is_bad_fungus(t) or t == Tiles.FUNGUS:
+		_note_mud(c)
 	map.set_tile(c.x, c.y, t)
 	_cloud_turn = -1
 	pathfinder.set_fungus(c.x, c.y, Tiles.is_bad_fungus(t))
@@ -5307,6 +5332,8 @@ func _red_from_rows() -> Array:
 	return rows
 
 func _bare_ground(c: Vector2i) -> int:
+	if mud_under.erase(c):
+		return Tiles.MUD
 	return Tiles.CAVE_FLOOR if map.material_at(c.x, c.y) == Materials.CAVERN \
 		else Tiles.FLOOR
 
@@ -7539,9 +7566,7 @@ func _eat_fungus() -> bool:
 		return false
 	player.hp += 1
 	_queue_healing_cue(1)
-	map.set_tile(player.x, player.y,
-		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
-		else Tiles.FLOOR)
+	map.set_tile(player.x, player.y, _bare_ground(Vector2i(player.x, player.y)))
 	_gather_lights()
 	msg_log.add("You eat the fungus. It is bitter, and the glow goes out. (+1 hp)",
 		Color(0.62, 0.85, 0.68))
@@ -7584,9 +7609,7 @@ func _pick_fungus() -> bool:
 		bag.contents.append(stack)
 	else:
 		stack.absorb(picked)
-	map.set_tile(player.x, player.y,
-		Tiles.CAVE_FLOOR if map.material_at(player.x, player.y) == Materials.CAVERN
-		else Tiles.FLOOR)
+	map.set_tile(player.x, player.y, _bare_ground(Vector2i(player.x, player.y)))
 	_gather_lights()
 	msg_log.add("You pick the fungus. Its glow goes with it into the satchel (x%d)." % stack.count,
 		Color(0.62, 0.85, 0.68))
@@ -7624,14 +7647,15 @@ func player_drop_from_satchel(index: int) -> bool:
 	_travel.clear()
 	var item: Item = bag.contents[index]
 	if item.id == &"fungus":
-		var under := map.get_tile(player.x, player.y)
-		if under != Tiles.FLOOR and under != Tiles.CAVE_FLOOR:
+		# Plain floor or mud (2026-10-08: mud is a garden bed).
+		if not _fungus_ground(Vector2i(player.x, player.y)):
 			msg_log.add("It would not take root here.", Color(0.7, 0.6, 0.4))
 			return false
 		if item.count > 1:
 			item.count -= 1
 		else:
 			bag.contents.remove_at(index)
+		_note_mud(Vector2i(player.x, player.y))
 		map.set_tile(player.x, player.y, Tiles.FUNGUS)
 		_gather_lights()
 		msg_log.add("You set the fungus down. It takes root, and glows.", Color(0.62, 0.85, 0.68))
@@ -8499,6 +8523,7 @@ func to_dict() -> Dictionary:
 		"hunger_rng": [str(hunger_rng.seed), str(hunger_rng.state)],
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
+		"mud_under": _cells_to_strings(mud_under.keys()),
 		"tending": tending,
 		"red_from": _red_from_rows(),
 		"withering": withering.map(func(chain): return chain.map(
@@ -8647,6 +8672,11 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			hidden_traps[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
+	mud_under = {}
+	for key in d.get("mud_under", []):
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			mud_under[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
 	scorched = {}
 	var sc: Dictionary = d.get("scorched", {})
 	for k in sc:
@@ -10961,8 +10991,7 @@ func _slime_feeds(actor: Entity) -> bool:
 		return true
 	var at := Vector2i(actor.x, actor.y)
 	if map.get_tile(at.x, at.y) == Tiles.FUNGUS:
-		map.set_tile(at.x, at.y,
-			Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN else Tiles.FLOOR)
+		map.set_tile(at.x, at.y, _bare_ground(at))
 		_gather_lights()
 		actor.hp = mini(actor.max_hp, actor.hp + 1)
 		if map.is_visible(at.x, at.y):
@@ -11038,9 +11067,7 @@ func _nearest_fungus(actor: Entity) -> Vector2i:
 func _rabbit_swallows(actor: Entity) -> void:
 	if map.get_tile(actor.x, actor.y) != Tiles.FUNGUS:
 		return
-	map.set_tile(actor.x, actor.y,
-		Tiles.CAVE_FLOOR if map.material_at(actor.x, actor.y) == Materials.CAVERN
-		else Tiles.FLOOR)
+	map.set_tile(actor.x, actor.y, _bare_ground(Vector2i(actor.x, actor.y)))
 	# The same call the player's own mouthful makes. A fungus is a light as
 	# much as it is a hit point, and this is the half that actually stings.
 	_gather_lights()

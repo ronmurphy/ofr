@@ -1999,6 +1999,36 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**Fungus grows on mud -- BUILT 2026-10-08 (desktop).** Brad saw red fungus
+in a muddy room never go for the body beside it. Measured: a band of mud
+between the red and a body stopped the crawl dead, and a body lying in mud
+was never sought, because wrong fungus took hold on plain floor only and
+the crawl steps straight at the body (diagonal, then either axis) with no
+way round. Brad: every fungus should grow on mud (slower later, if wanted;
+and a muddy bed is where the house's green garden will grow). As built:
+`_fungus_ground` (plain floor or mud) for every fungus -- the red's crawl,
+trails, bodies rotting, and green taking root from the satchel; water and
+fire stay the barriers. The map is one layer, so fungus grown on mud
+replaces it; `mud_under` (saved) remembers those squares and `_bare_ground`
+gives the mud back when the fungus is eaten, picked, burned, withered or
+dissolved -- all five ways now go through it. While fungus covers mud the
+square walks as fungus, not as mud. Test: `_test_fungus_grows_on_mud` (with
+mud taken out of the rule, six checks fail).
+
+**The red finds its way -- designed, not built (Brad, 2026-10-08: "the more
+threatening thing for the player to see happen").** Today the crawl takes
+one square straight toward a body and stalls at anything it cannot grow on
+-- a pool, a pillar, a wall's corner. Shape, from the desktop: from each
+body, a breadth-first search over ground fungus can grow on (and existing
+red) out to the crawl's reach, finding the red nearest BY PATH; the red
+grows one square along that path each crawl tick (every 3 turns, as now).
+So it snakes round pools and pillars toward the dead, visibly. Doors are
+not ground it grows on, so a room's red stays in its room unless the
+doorway is open floor -- a natural containment worth keeping. Fixed
+neighbour order, no draws. Tests: round a pool, through a gap in a wall,
+never through a door, still one square a tick, still within reach. One
+feature at a time: play the mud change first.
+
 - **The smaller monsters as a bear's meals (Brad, 2026-10-07).** A bear
   would take a kobold or a goblin as readily as a wolf. Today animals and
   monsters ignore each other until one strikes the other (`hostile_to`:
