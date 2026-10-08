@@ -40,6 +40,18 @@ var protected: Dictionary = {}
 var rooms: Array[Rect2i] = []
 var archetypes: Array[int] = []
 var caves: Array[Rect2i] = []
+## CAVE VAULTS (Brad and the desktop, 2026-10-08; tools/VAULTS_GAME_SIDE.md).
+## The one placed this floor, if any: {"vault", "grid", "rect", "quarters",
+## "mirror"}. Its rect is also one of `caves`, so it is joined, given rock
+## walls and peopled like a grown cave; it is painted, not grown.
+var cave_vault_spots: Array = []
+## Set by GameState before generate: the cave vaults this run has already
+## met, name -> Array of [quarters, mirror]. Twice at most, the second time
+## turned differently (see _cave_vault_pool).
+var cave_seen: Dictionary = {}
+## Chosen in _reserve_vaults, placed in _reserve_caves.
+var _cave_pick: Vault = null
+var _cave_turn := [0, false]
 
 func _init(random: RandomNumberGenerator) -> void:
 	rng = random
@@ -49,6 +61,8 @@ func generate(map: DungeonMap) -> void:
 	archetypes.clear()
 	caves.clear()
 	vault_spots.clear()
+	cave_vault_spots.clear()
+	_cave_pick = null
 	vault_contents.clear()
 	protected.clear()
 	map.tiles.fill(Tiles.WALL)
@@ -199,11 +213,15 @@ func _reserve_vaults(map: DungeonMap) -> void:
 	var eligible: Array[Vault] = []
 	var total := 0
 	for v in library:
+		# A cave vault is never stamped as a room (see _cave_vault_pool).
+		if v.is_cave():
+			continue
 		if v.min_depth <= themed and v.max_depth >= themed and v.weight > 0 \
 				and v.suits(here):
 			eligible.append(v)
 			total += v.weight
-	if eligible.is_empty():
+	var cave_pool := _cave_vault_pool(here, themed)
+	if eligible.is_empty() and cave_pool.is_empty():
 		return
 
 	# Roughly three floors in ten have none. A vault that turns up every single
@@ -218,6 +236,14 @@ func _reserve_vaults(map: DungeonMap) -> void:
 		wanted = rng.randi_range(3, 4)
 	elif here == Bands.CAVES:
 		wanted = 0 if rng.randf() < 0.75 else 1
+		# THE CAVES PREFER A CAVE VAULT (2026-10-08). With one eligible, the
+		# band's vault (the same roll, so floors that place none draw the
+		# same) is a cave vault, and no masonry room is reserved in the
+		# caverns at all. With none, today's rooms stand.
+		if not cave_pool.is_empty():
+			if wanted > 0:
+				_pick_cave_vault(cave_pool)
+			wanted = 0
 	# Drawn WITHOUT replacement: a room this floor already has is off the table.
 	#
 	# The point of an authored room is that it is a find, and a find you meet
@@ -260,6 +286,51 @@ func _reserve_vaults(map: DungeonMap) -> void:
 			"vault": pick, "grid": grid,
 			"rect": Rect2i(at, box),
 		})
+
+## The cave vaults this floor may have: cave floors only (the caves band,
+## going down or coming up), in depth, and not met twice this run. Met once,
+## only if it can be turned, so the second meeting looks new.
+func _cave_vault_pool(here: int, themed: int) -> Array[Vault]:
+	var out: Array[Vault] = []
+	if here != Bands.CAVES:
+		return out
+	for v in library:
+		if not v.is_cave() or v.weight <= 0:
+			continue
+		if v.min_depth > themed or v.max_depth < themed:
+			continue
+		var met: Array = cave_seen.get(v.name, [])
+		if met.size() >= 2 or (met.size() == 1 and not v.may_rotate):
+			continue
+		out.append(v)
+	return out
+
+## Chooses this floor's cave vault and how it is turned. The turn is rolled
+## exactly as a room's is; if this run has met it turned that way, it steps
+## to the next turn it has not -- never a re-roll, so the number of draws
+## never depends on what the run remembers (CLAUDE.md, seed-pinned premises).
+func _pick_cave_vault(pool: Array[Vault]) -> void:
+	var total := 0
+	for v in pool:
+		total += v.weight
+	var pick := _weighted_vault(pool, total)
+	if pick == null:
+		return
+	var quarters := rng.randi_range(0, 3) if pick.may_rotate else 0
+	var mirror := pick.may_rotate and rng.randf() < 0.5
+	var met: Array = cave_seen.get(pick.name, [])
+	for _step in 8:
+		var used := false
+		for turn in met:
+			if int(turn[0]) == quarters and bool(turn[1]) == mirror:
+				used = true
+		if not used:
+			break
+		quarters = (quarters + 1) % 4
+		if quarters == 0:
+			mirror = not mirror
+	_cave_pick = pick
+	_cave_turn = [quarters, mirror]
 
 func _weighted_vault(pool: Array[Vault], total: int) -> Vault:
 	var pick := rng.randi_range(1, maxi(1, total))
@@ -326,6 +397,10 @@ func _stamp_vaults(map: DungeonMap) -> void:
 				elif Vault.CONTENTS.has(ch):
 					map.set_tile(cell.x, cell.y, Tiles.FLOOR)
 					vault_contents.append({"ch": ch, "pos": cell})
+				elif _named(spot, ch):
+					map.set_tile(cell.x, cell.y, Tiles.FLOOR)
+					vault_contents.append({"ch": "creature",
+						"name": spot["vault"].places[ch], "pos": cell})
 				else:
 					continue
 				if spot["vault"].fixed_terrain:
@@ -612,6 +687,10 @@ func _reserve_caves(map: DungeonMap) -> void:
 	var wanted := 1 if rng.randf() < 0.62 else 2
 	if Bands.is_caves(depth):
 		wanted = rng.randi_range(6, 7)
+	# The cave vault first, so a large one finds room; it is one of the
+	# floor's caves, so one fewer is grown.
+	if _cave_pick != null and _reserve_cave_vault(map):
+		wanted -= 1
 	for _i in wanted:
 		for _try in 40:
 			var w := rng.randi_range(CAVE_MIN.x, CAVE_MAX.x)
@@ -630,10 +709,97 @@ func _reserve_caves(map: DungeonMap) -> void:
 				caves.append(region)
 				break
 
+## Finds room for this floor's cave vault, turned as chosen, and claims its
+## box as the first cave region. False if it would not fit (then the floor
+## grows its caves as before).
+func _reserve_cave_vault(map: DungeonMap) -> bool:
+	var grid := _cave_pick.oriented(int(_cave_turn[0]), bool(_cave_turn[1]))
+	var w := 0
+	for r in grid:
+		w = maxi(w, String(r).length())
+	var box := Vector2i(w, grid.size())
+	if box.x > map.width - 3 or box.y > map.height - 3:
+		return false
+	for _try in 40:
+		var x := rng.randi_range(1, maxi(1, map.width - box.x - 2))
+		var y := rng.randi_range(1, maxi(1, map.height - box.y - 2))
+		var region := Rect2i(Vector2i(x, y), box)
+		var clear := true
+		for spot in vault_spots:
+			if region.grow(2).intersects(spot["rect"]):
+				clear = false
+		if clear:
+			caves.append(region)
+			cave_vault_spots.append({"vault": _cave_pick, "grid": grid,
+				"rect": region, "quarters": int(_cave_turn[0]),
+				"mirror": bool(_cave_turn[1])})
+			return true
+	return false
+
+## Is `ch` a creature-by-name marker this vault names (`place N: name`)? A
+## digit with no place line is left unbuilt, as any unknown glyph is; the
+## linter fails it.
+func _named(spot: Dictionary, ch: String) -> bool:
+	return Vault.NAMED.has(ch) and spot["vault"].places.has(ch)
+
+## The authored cave a region is, or an empty Dictionary for a grown one.
+func _cave_vault_at(region: Rect2i) -> Dictionary:
+	for spot in cave_vault_spots:
+		if spot["rect"] == region:
+			return spot
+	return {}
+
+## Paints a cave vault where a grown cave would be: `_` is cave floor, `#`
+## and a space stay rock, every other terrain letter is its tile (an
+## authored pit obeying allow_pits, as in _stamp_vaults), and a content
+## marker is cave floor with its entry in vault_contents. Fixed terrain is
+## protected so the later passes leave it as drawn -- but never its ROCK,
+## or the corridor that joins the cave could not tunnel in (_carve_h skips
+## protected ground). Its rim becomes stone in _naturalise_cave_walls, like
+## any cave's.
+func _paint_cave_vault(map: DungeonMap, spot: Dictionary) -> void:
+	var grid: Array = spot["grid"]
+	var at: Vector2i = spot["rect"].position
+	var fixed: bool = spot["vault"].fixed_terrain
+	for y in grid.size():
+		var row := String(grid[y])
+		for x in row.length():
+			var ch := row[x]
+			if ch == " " or ch == "#":
+				continue
+			var cell := at + Vector2i(x, y)
+			if not map.in_bounds(cell.x, cell.y):
+				continue
+			if Vault.TERRAIN.has(ch):
+				var tile: int = Vault.TERRAIN[ch]
+				if tile == Tiles.PIT and not allow_pits:
+					tile = Tiles.CAVE_FLOOR
+				map.set_tile(cell.x, cell.y, tile)
+			elif Vault.CONTENTS.has(ch):
+				map.set_tile(cell.x, cell.y, Tiles.CAVE_FLOOR)
+				vault_contents.append({"ch": ch, "pos": cell})
+			elif _named(spot, ch):
+				map.set_tile(cell.x, cell.y, Tiles.CAVE_FLOOR)
+				vault_contents.append({"ch": "creature",
+					"name": spot["vault"].places[ch], "pos": cell})
+			else:
+				continue
+			if fixed:
+				protected[cell] = true
+
 func _carve_caves(map: DungeonMap) -> void:
 	var gen := CaveGen.new(rng)
 	var kept: Array[Rect2i] = []
 	for region in caves:
+		var authored := _cave_vault_at(region)
+		if not authored.is_empty():
+			# Painted, not grown; the author and the linter promised it is
+			# one connected cave of at least 24 cells.
+			_paint_cave_vault(map, authored)
+			if not authored["vault"].fixed_terrain:
+				_scatter_cave_cover(map, region)
+			kept.append(region)
+			continue
 		var cells := gen.generate(region.size.x, region.size.y)
 		var painted := 0
 		for y in region.size.y:
@@ -892,6 +1058,11 @@ func _scatter_features(map: DungeonMap) -> void:
 		# rope without handing anyone a stockpile.
 		for _cell in (rng.randi_range(5, 11) if caveish else rng.randi_range(3, 7)):
 			var c := seed_cell + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+			# Never on a vault's drawn ground (2026-10-08, found by the cave
+			# vaults: a bed seeded in one painted over its floor). The draws
+			# are made either way, so no floor's later rolls move.
+			if protected.has(c):
+				continue
 			if map.get_tile(c.x, c.y) == Tiles.FLOOR \
 					or map.get_tile(c.x, c.y) == Tiles.CAVE_FLOOR:
 				map.set_tile(c.x, c.y, bed)

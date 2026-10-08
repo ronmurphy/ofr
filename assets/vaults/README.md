@@ -46,20 +46,49 @@ wall, so keep comments up top.
 ### kind: room or cave
 
 `kind: cave` marks a CAVE VAULT: drawn in cave floor (`_`) with rock (`#` or
-space) around it, no doors, at least 24 cells in one connected piece, for the
-cave band. The vault editor grows a starting shape with its *generate cave*
-button. **Not read by the game yet** (2026-10-08): keep cave vaults in
-`tools/vaults_waiting/` until `tools/VAULTS_GAME_SIDE.md` is done, or the
-game will place them as doorless rooms. A file with no `kind` is a room, as
-every vault here is today.
+space) around it, no doors, at least 24 cells in one connected piece, with
+`band: caves`. The vault editor grows a starting shape with its *generate
+cave* button. A file with no `kind` is a room, as every vault was before.
+
+Read by the game since 2026-10-08. What happens to one:
+- **Only on cave floors** (4-6 going down, 14-16 coming up), within its
+  `min_depth`/`max_depth`, read as the descent floor it mirrors.
+- **It takes the caves' vault.** A cave floor has a vault about one time in
+  four. While any cave vault is eligible, that vault is always a cave vault,
+  and no masonry room is placed in the caverns.
+- **Painted, not grown.** It replaces one of the floor's grown caves, cell for
+  cell: `_` cave floor, `#` and space rock, every other letter as in a room.
+  Its edge turns to cave stone like any cave's, and a tunnel joins it to the
+  rest of the floor (so: no doors).
+- **Peopled like a cave** -- monsters by the threat budget, animals, a bear
+  and its den -- unless you put `m` or `M` in it; then those are all its
+  monsters, so one ceiling is never spent twice. `r` and item markers work
+  as in a room.
+- **`terrain: fixed`** keeps it exactly as drawn (no stalagmites scattered,
+  no fungus beds, no drip pools on its ground); `random` lets the cave
+  passes decorate it.
+- **Twice a run at most**, and the second time turned or mirrored
+  differently. A `rotate: no` cave vault is met once a run.
+
+Check one with `godot --headless --script res://tests/vault_lint.gd --
+tools/vaults_waiting/` before moving it into `assets/vaults/`.
 
 ### place N: creatures by name
 
 `place 1: cave bear` puts that creature wherever a `1` is drawn -- any name
 from the game's bestiary, up to nine kinds a vault. The editor's creatures
-tab writes these for you. **Not read by the game yet** (2026-10-08): keep
-such vaults in `tools/vaults_waiting/` until `tools/VAULTS_GAME_SIDE.md`
-part 2 is done; the linter fails a digit today.
+tab writes these for you. Read by the game since 2026-10-08:
+- **Only where the game could meet it**: on a floor at least its own
+  depth, and a climb-only creature (the cave giant, the arch lich) only on
+  the climb from its floor. Elsewhere the square is plain floor.
+- **An animal** (rabbit, bat, wolf, cave bear) comes on top of the threat
+  budget, like `r`; a wolf brings its pack.
+- **A monster** spends the vault's budget like `m`, and is left out when
+  it costs more than is left -- the room is under-populated, never over.
+  The linter warns when a named monster is over the room ceiling at the
+  vault's `min_depth`.
+- The linter fails a digit with no `place` line, and a name the bestiary
+  does not have.
 
 ### band: which floors it belongs to
 
@@ -184,5 +213,7 @@ interesting shape is content.
 
 ## Status
 
-The **loader is not built yet** -- these files are inert until it is. The
-format above is settled, so anything authored now will work when it lands.
+The loader is built: every file here is read when the game starts, cave
+vaults and creatures by name included (2026-10-08). Run the linter after any
+change: `godot --headless --script res://tests/vault_lint.gd` (or add a
+folder after `--` to check one elsewhere).

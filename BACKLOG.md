@@ -814,7 +814,9 @@ in its own entry.
    purpose -- see the beats entry above the combat update for why it was
    held back).
 
-12. **The vault editor's new format, the game side** --
+12. **DONE 2026-10-08 (the Legion), both parts, in one day at Brad's call.**
+   Next is Brad's: draw cave vaults in the editor, lint them, move them into
+   `assets/vaults/`, and play. **The vault editor's new format, the game side** --
    `tools/VAULTS_GAME_SIDE.md`: part 1, cave vaults (vault.gd's kind, the
    linter, mapgen's cave slot, the run's repeat memory, tests); part 2,
    creatures by name (`place N: name`, budget rules, tests). The editor side
@@ -943,7 +945,9 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
-**Cave vaults (Brad and the desktop, 2026-10-08 -- designed, not built;
+**Cave vaults (Brad and the desktop, 2026-10-08 -- BUILT the same day by
+the Legion, with creatures by name; see the top of tools/VAULTS_GAME_SIDE.md
+for where the build differs from this design;
 a few hours, two pieces).** Authored set pieces for the cave band that ARE
 caves, not masonry rooms. Today a vault is a rectangle the caves keep clear
 of, joined by corridors like a room, and any vault without a band can land

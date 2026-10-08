@@ -1,5 +1,18 @@
 # Vaults -- the game side of the editor's new format
 
+**BUILT 2026-10-08 (the Legion), both parts.** Kept as the record of the
+design. Where it differs from the plan below:
+- Cave vaults: only their floor and features are `protected`, never their
+  rock, or the tunnel that joins the cave could not get in. A cave vault
+  with `m`/`M` (or a monster by name) is not also peopled by the roll, so
+  one ceiling is never spent twice. Fungus beds now skip protected ground
+  (rooms too). A placed cave vault counts as one of the floor's 6-7 caves.
+- Creatures by name: the digits are `Vault.NAMED`, apart from `CONTENTS`, so
+  `build_vault_editor.py` needed no change.
+- The linter takes a folder: `-- tools/vaults_waiting/`. It also learned
+  that `r` is a square you can stand on.
+- Tests: `_test_cave_vaults`, `_test_creatures_by_name`.
+
 Written 2026-10-08 by the desktop session, after updating
 `tools/vault_editor.html`. The editor now writes two things the game does not
 read yet: CAVE VAULTS (`kind: cave`, part 1) and CREATURES BY NAME (`place 1:

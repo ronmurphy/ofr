@@ -271,6 +271,8 @@ func _initialize() -> void:
 	_test_cave_bear()
 	_test_cave_giant()
 	_test_authored_pits_obey_the_rule()
+	_test_cave_vaults()
+	_test_creatures_by_name()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -5823,7 +5825,9 @@ func _test_vaults_are_placed_intact() -> void:
 				if vr.intersects(room):
 					overlaps += 1
 			for cave in gs.cave_regions:
-				if vr.intersects(cave):
+				# A cave vault IS one of the floor's caves (2026-10-08): its
+				# own region is not an overlap. Any other cave still is.
+				if vr.intersects(cave) and vr != cave:
 					overlaps += 1
 			# Authored terrain has to survive every later pass.
 			for y in range(vr.position.y, vr.end.y):
@@ -15874,6 +15878,272 @@ func _test_authored_pits_obey_the_rule() -> void:
 	check("and is solid ground on the way back up (%d)" % up, up == 0, "%d" % up)
 	check("the real vault library is put back",
 		GameState._vault_library.size() == real_library.size())
+
+## CAVE VAULTS (Brad and the desktop, 2026-10-08; tools/VAULTS_GAME_SIDE.md):
+## a `kind: cave` vault is painted in place of a grown cave on cave floors,
+## going down and coming up; it takes the band's vault so no masonry room
+## lands in a cavern; it is met twice a run at most, turned differently.
+## Synthetic vaults, as in _test_authored_pits_obey_the_rule: assets/ holds
+## no cave vault yet, so a test reading it would pass by finding nothing.
+const CAVE_PROBE_LAYOUT := "################\n####____########\n##________~~####\n#_____r_____~~##\n#____________###\n##___?_______###\n###____________#\n####_________###\n######____######\n################"
+
+func _cave_probe(rotate := true) -> Vault:
+	return Vault.parse("name: cave-probe\nkind: cave\nband: caves\nweight: 100\n"
+		+ "min_depth: 4\nmax_depth: 6\nrotate: %s\nterrain: fixed\nLAYOUT\n" % ("yes" if rotate else "no")
+		+ CAVE_PROBE_LAYOUT + "\n", "cave_probe")
+
+func _test_cave_vaults() -> void:
+	# Brad keeps cave vaults in assets/vaults/caves/ (2026-10-08): the loader
+	# reads every subfolder, so the library is every .txt under the folder.
+	var files := 0
+	var folders := ["res://assets/vaults/"]
+	var sub_files := 0
+	while not folders.is_empty():
+		var dir_path: String = folders.pop_back()
+		var d := DirAccess.open(dir_path)
+		if d == null:
+			continue
+		for f in d.get_files():
+			if String(f).ends_with(".txt"):
+				files += 1
+				if dir_path != "res://assets/vaults/":
+					sub_files += 1
+		for sub in d.get_directories():
+			folders.append(dir_path + sub + "/")
+	check("the vault library is every vault file, subfolders included (%d files, %d in subfolders)"
+		% [files, sub_files], Vault.load_all().size() == files)
+	var probe := _cave_probe()
+	check("a cave vault parses as a cave", probe != null and probe.is_cave())
+	check("  and a vault without a kind is a room, as every vault was",
+		not Vault.parse("name: r\nLAYOUT\n#.#\n", "r").is_cave())
+	# A room vault welcome anywhere, so the caves WOULD take it without the
+	# preference -- the rule under test has something to refuse.
+	var room := Vault.parse("name: room-probe\nweight: 100\nmin_depth: 1\n"
+		+ "max_depth: 19\nLAYOUT\n#####\n#...#\n#...#\n##+##\n", "room_probe")
+	var real_library := GameState._vault_library
+	var built := 0
+	var placed := 0
+	var rooms_in_caves := 0
+	var bad_cells := []
+	var walls_on_rim := 0
+	var unreachable := 0
+	var peopled := 0
+	var rabbits := 0
+	var climb_placed := 0
+	var first: GameState = null
+	for i in 40:
+		for climbing in [false, true]:
+			var gs := GameState.new(91000 + i)
+			gs.new_game()
+			GameState._vault_library = [probe, room] as Array[Vault]
+			gs.ascending = climbing
+			gs.depth = 5
+			gs.build_level()
+			built += 1
+			for n in gs.vault_names:
+				if n == "room-probe":
+					rooms_in_caves += 1
+			if not gs.cave_vaults_seen.has("cave-probe"):
+				continue
+			if climbing:
+				climb_placed += 1
+				continue
+			placed += 1
+			if first == null:
+				first = gs
+			var turn: Array = gs.cave_vaults_seen["cave-probe"][0]
+			var grid := probe.oriented(int(turn[0]), bool(turn[1]))
+			var rect := Rect2i()
+			for k in gs.vault_names.size():
+				if gs.vault_names[k] == "cave-probe":
+					rect = gs.vault_rects[k]
+			if not gs.cave_regions.has(rect):
+				bad_cells.append("its rect is not one of the floor's caves")
+			var goal := Vector2i(-1, -1)
+			for y in grid.size():
+				for x in String(grid[y]).length():
+					var ch := String(grid[y])[x]
+					var c := rect.position + Vector2i(x, y)
+					var t := gs.map.get_tile(c.x, c.y)
+					# A past hero's grave and its bones may lie on drawn ground,
+					# as they always could in a room vault (_place_graves): the
+					# morgue's history, not a pass rewriting the drawing. Seen
+					# only in the full suite, which has a morgue to draw on.
+					if ch == "_" and t != Tiles.CAVE_FLOOR and t != Tiles.GRAVE \
+							and t != Tiles.BONES:
+						bad_cells.append("%s: '_' is tile %d" % [c, t])
+					if ch == "~" and t != Tiles.WATER:
+						bad_cells.append("%s: '~' is tile %d" % [c, t])
+					if ch == "_":
+						goal = c
+						for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+							if gs.map.get_tile(c.x + d.x, c.y + d.y) == Tiles.WALL:
+								walls_on_rim += 1
+			# You can walk there from where you start.
+			var seen := {Vector2i(gs.player.x, gs.player.y): true}
+			var todo := [Vector2i(gs.player.x, gs.player.y)]
+			while not todo.is_empty():
+				var cur: Vector2i = todo.pop_back()
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+						Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+					var n: Vector2i = cur + d
+					if seen.has(n) or not gs.map.in_bounds(n.x, n.y):
+						continue
+					var t := gs.map.get_tile(n.x, n.y)
+					if gs.map.is_walkable(n.x, n.y) or t == Tiles.DOOR_CLOSED or t == Tiles.WATER:
+						seen[n] = true
+						todo.append(n)
+			if not seen.has(goal):
+				unreachable += 1
+			for e in gs.entities:
+				if e.alive and not e.is_player and rect.has_point(Vector2i(e.x, e.y)):
+					peopled += 1
+					if e.appearance == &"rabbit":
+						rabbits += 1
+	GameState._vault_library = real_library
+	check("the real vault library is put back",
+		GameState._vault_library.size() == real_library.size())
+	check("precondition: cave floors built, going down and coming up (%d)" % built, built == 80)
+	check("a cave vault is placed on about a quarter of cave floors going down (%d of 40)" % placed,
+		placed >= 4 and placed <= 18)
+	check("  and on the climb's caves too (%d of 40)" % climb_placed, climb_placed >= 4)
+	check("while a cave vault can be had, no masonry room lands in the caves (%d)" % rooms_in_caves,
+		rooms_in_caves == 0)
+	check("it is painted as drawn, one of the floor's caves", bad_cells.is_empty(), str(bad_cells.slice(0, 4)))
+	check("  its rim is cave stone, never masonry (%d walls)" % walls_on_rim, walls_on_rim == 0)
+	check("  you can walk into it from where you start (%d cut off)" % unreachable, unreachable == 0)
+	check("  it is peopled like a cave, and its rabbit marker holds a rabbit (%d in it, %d rabbits)"
+		% [peopled, rabbits], peopled > rabbits and rabbits >= 1)
+
+	# Met twice at most, the second time turned differently.
+	check("precondition: a floor that placed it", first != null)
+	if first != null:
+		var seed_of: int = 0
+		for i in 40:
+			var gs := GameState.new(91000 + i)
+			gs.new_game()
+			GameState._vault_library = [probe] as Array[Vault]
+			gs.depth = 5
+			gs.build_level()
+			if gs.cave_vaults_seen.has("cave-probe"):
+				seed_of = 91000 + i
+				break
+		var twice := GameState.new(seed_of)
+		twice.new_game()
+		GameState._vault_library = [probe] as Array[Vault]
+		twice.depth = 5
+		var met_turn: Array = []
+		twice.build_level()
+		met_turn = twice.cave_vaults_seen["cave-probe"][0]
+		# The same floor again, remembering that turn: placed, turned anew.
+		var redo := GameState.new(seed_of)
+		redo.new_game()
+		redo.cave_vaults_seen = {"cave-probe": [met_turn]}
+		redo.depth = 5
+		redo.build_level()
+		var second: Array = redo.cave_vaults_seen["cave-probe"]
+		check("met once, it comes again turned differently (%s then %s)" % [str(met_turn), str(second)],
+			second.size() == 2 and (int(second[1][0]) != int(met_turn[0])
+				or bool(second[1][1]) != bool(met_turn[1])))
+		# Met twice: never a third time.
+		var third := GameState.new(seed_of)
+		third.new_game()
+		third.cave_vaults_seen = {"cave-probe": [[0, false], [1, false]]}
+		third.depth = 5
+		third.build_level()
+		check("  met twice, never a third time", third.cave_vaults_seen["cave-probe"].size() == 2)
+		# A vault that cannot turn is met once only.
+		GameState._vault_library = [_cave_probe(false)] as Array[Vault]
+		var stiff := GameState.new(seed_of)
+		stiff.new_game()
+		stiff.cave_vaults_seen = {"cave-probe": [[0, false]]}
+		stiff.depth = 5
+		stiff.build_level()
+		check("  one that cannot be turned is met once only",
+			stiff.cave_vaults_seen["cave-probe"].size() == 1)
+		# Saved.
+		var back := GameState.new(1)
+		back.apply_dict(redo.to_dict())
+		check("what the run has met is saved",
+			back.cave_vaults_seen.get("cave-probe", []).size() == 2, str(back.cave_vaults_seen))
+	GameState._vault_library = real_library
+
+## CREATURES BY NAME (2026-10-08; tools/VAULTS_GAME_SIDE.md part 2):
+## `place 1: cave bear` and a 1 on the board. Placed only where the roll could
+## meet it; an animal on top of the budget, a monster within it or not at all.
+func _test_creatures_by_name() -> void:
+	var v := Vault.parse("name: named\nplace 1: cave bear\nplace 2: kobold\n"
+		+ "place x: rat\nLAYOUT\n#####\n#1.2#\n##+##\n", "named")
+	check("place lines parse to digit -> name",
+		v != null and v.places.get("1", "") == "cave bear" and v.places.get("2", "") == "kobold"
+		and v.places.size() == 2, str(v.places if v else {}))
+	# The game side, from what the stamp hands it.
+	var gs := _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	gs.depth = 5
+	var gen := MapGen.new(gs.rng)
+	gen.vault_contents = [
+		{"ch": "creature", "name": "cave bear", "pos": Vector2i(5, 4)},
+		{"ch": "creature", "name": "kobold", "pos": Vector2i(9, 4)},
+		{"ch": "creature", "name": "no such beast", "pos": Vector2i(12, 4)},
+	]
+	gs._place_vault_contents(gen)
+	var bear: Entity = gs.entity_at(5, 4)
+	var kob: Entity = gs.entity_at(9, 4)
+	check("a named animal is placed where drawn, wild",
+		bear != null and bear.appearance == &"bear" and bear.is_wild())
+	check("a named monster is placed where drawn",
+		kob != null and kob.name == "kobold" and kob.faction == Entity.Faction.MONSTER)
+	check("  and a name the bestiary lacks places nothing", gs.entity_at(12, 4) == null)
+	# The budget: a monster the room cannot afford is left out, the cheap
+	# one beside it is not.
+	check("precondition: an ogre (14) costs more than 5", int(gs._bestiary_row(&"ogre")["threat"]) > 5)
+	check("an unaffordable named monster is left out",
+		gs._place_named(Vector2i(5, 6), "ogre", 5) == 0 and gs.entity_at(5, 6) == null)
+	var cheap := gs._place_named(Vector2i(9, 6), "kobold", 5)
+	check("  the affordable one is placed, within what was left (%d)" % cheap,
+		cheap > 0 and cheap <= 5 and gs.entity_at(9, 6) != null)
+	check("an animal costs the budget nothing",
+		gs._place_named(Vector2i(13, 6), "rabbit", 0) == 0 and gs.entity_at(13, 6) != null)
+	# Where the roll could meet it.
+	gs.depth = 2
+	check("not above its depth: no cave troll on floor 2",
+		gs._place_named(Vector2i(5, 2), "cave troll", 999) == 0 and gs.entity_at(5, 2) == null)
+	gs.depth = 9
+	check("precondition: the cave giant is the climb's (ascent_from 14)",
+		int(gs._bestiary_row(&"giant").get("ascent_from", 0)) == 14)
+	check("an ascent-only creature is absent on the way down",
+		gs._place_named(Vector2i(7, 2), "cave giant", 999) == 0 and gs.entity_at(7, 2) == null)
+	gs.ascending = true
+	gs.depth = GameState.MAX_DEPTH * 2 - 14
+	check("  and present on the climb from its floor (effective %d)" % gs.effective_depth(),
+		gs._place_named(Vector2i(7, 2), "cave giant", 999) > 0 and gs.entity_at(7, 2) != null)
+	# Through the real generator: the digit is stamped, the creature stands
+	# in the vault.
+	var probe := Vault.parse("name: named-probe\nweight: 100\nmin_depth: 1\nmax_depth: 19\n"
+		+ "band: fortress\nrotate: no\nplace 1: cave bear\nLAYOUT\n"
+		+ "#######\n#.....#\n#..1..#\n#.....#\n###+###\n", "named_probe")
+	var real_library := GameState._vault_library
+	var stood := 0
+	var placed := 0
+	for i in 12:
+		var f := GameState.new(93000 + i)
+		f.new_game()
+		GameState._vault_library = [probe] as Array[Vault]
+		f.depth = 7
+		f.build_level()
+		for k in f.vault_names.size():
+			if f.vault_names[k] != "named-probe":
+				continue
+			placed += 1
+			for e in f.entities:
+				if e.alive and e.appearance == &"bear" and f.vault_rects[k].has_point(Vector2i(e.x, e.y)):
+					stood += 1
+					break
+	GameState._vault_library = real_library
+	check("precondition: the named vault was placed on fortress floors (%d)" % placed, placed >= 3)
+	check("the named bear stands in its vault each time (%d of %d)" % [stood, placed], stood == placed)
 
 func _test_cave_giant() -> void:
 	var gs := _arena(25, 11)

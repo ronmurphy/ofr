@@ -51,6 +51,12 @@ const TERRAIN := {
 ## people hand-edit. `(` is free in both namespaces and reads as the open mouth
 ## of one.
 const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "(", "r"]
+## CREATURES BY NAME (2026-10-08; tools/VAULTS_GAME_SIDE.md part 2): a digit
+## on the board places the creature its `place N: <bestiary name>` line names.
+## Kept apart from CONTENTS on purpose: tools/build_vault_editor.py checks
+## its tile table against TERRAIN and CONTENTS, and the editor draws these as
+## creature markers, not tiles.
+const NAMED := ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 var name := "vault"
 var weight := 8
@@ -64,6 +70,17 @@ var max_depth := 99
 ## and `stock_rooms` are general-purpose vaults whose names happen to contain
 ## "room", which is exactly the sort of thing a filename rule gets wrong.
 var band := &""
+
+## What it is: a ROOM (the default; every vault before 2026-10-08) or a CAVE
+## (`kind: cave`), which mapgen paints in place of a grown cavern instead of
+## stamping it as a room. In a cave vault `_` is cave floor, and `#` and a
+## space are both rock; no doors -- the cave connector tunnels in.
+var kind := &"room"
+## Digit -> bestiary name, from `place N: name` lines (see NAMED).
+var places: Dictionary = {}
+
+func is_cave() -> bool:
+	return kind == &"cave"
 
 var may_rotate := true
 var fixed_terrain := true
@@ -121,15 +138,26 @@ static func parse(text: String, source: String) -> Vault:
 	return v
 
 func _set_meta(key: String, value: String) -> void:
+	# "place 1: cave bear" -- the key carries the digit.
+	if key.begins_with("place "):
+		var digit := key.substr(6).strip_edges()
+		if NAMED.has(digit) and value.strip_edges() != "":
+			places[digit] = value.strip_edges()
+		return
 	match key:
 		"name": name = value
 		"weight": weight = maxi(0, value.to_int())
 		"min_depth": min_depth = value.to_int()
 		"max_depth": max_depth = value.to_int()
 		"band": band = StringName(value.strip_edges().to_lower())
+		"kind": kind = StringName(value.strip_edges().to_lower())
 		"rotate": may_rotate = value.to_lower() != "no"
 		"terrain": fixed_terrain = value.to_lower() != "random"
 
+## Every vault in the folder and its subfolders (`caves/`, 2026-10-08:
+## Brad keeps the cave vaults apart). A folder is only for tidiness: what a
+## vault IS comes from its own header (`kind:`, `band:`), so moving a file
+## between folders never changes what the dungeon does.
 static func load_all(dir_path: String = "res://assets/vaults/") -> Array[Vault]:
 	var out: Array[Vault] = []
 	var d := DirAccess.open(dir_path)
@@ -147,6 +175,10 @@ static func load_all(dir_path: String = "res://assets/vaults/") -> Array[Vault]:
 		f.close()
 		if v != null:
 			out.append(v)
+	var subs := d.get_directories()
+	subs.sort()
+	for sub in subs:
+		out.append_array(load_all(dir_path + sub + "/"))
 	return out
 
 # ----------------------------------------------------------------- rotating --

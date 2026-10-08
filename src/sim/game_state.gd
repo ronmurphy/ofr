@@ -558,6 +558,10 @@ var gem_found := false
 ## Which uniques this run has already turned up. One of each per dungeon, so a
 ## second chest cannot hand you a second ring.
 var uniques_found: Dictionary = {}
+## The cave vaults this run has met, name -> Array of [quarters, mirror]
+## (2026-10-08): MapGen offers one twice at most, the second time turned
+## differently. Saved.
+var cave_vaults_seen: Dictionary = {}
 
 ## How far a chest's hinges carry. The existing ladder: combat 6, bones 7, a
 ## banshee's wail 9, the forge 10, the vigil shrine 24. Eight puts it above an
@@ -1320,6 +1324,7 @@ func new_game() -> void:
 	# because new_game() is also the restart path.
 	gem_found = false
 	uniques_found.clear()
+	cave_vaults_seen.clear()
 	player = Entity.new("you", &"player", 0, 0)
 	# Always named from here on. If nothing was chosen, the dungeon picks one
 	# and the player meets it in the sidebar -- the same bargain the shrines
@@ -1373,7 +1378,12 @@ func build_level() -> void:
 	gen.allow_pits = not ascending and depth < MAX_DEPTH
 	gen.depth = effective_depth()
 	gen.library = _vault_library
+	gen.cave_seen = cave_vaults_seen
 	gen.generate(map)
+	for spot in gen.cave_vault_spots:
+		var met: Array = cave_vaults_seen.get(spot["vault"].name, [])
+		met.append([int(spot["quarters"]), bool(spot["mirror"])])
+		cave_vaults_seen[spot["vault"].name] = met
 
 	# Whoever is walking with you comes along. Captured before `entities` is
 	# replaced, and put back once the player has somewhere to stand.
@@ -1485,6 +1495,11 @@ func build_level() -> void:
 	for i in range(1, rooms.size()):
 		_populate_room(rooms[i], gen.archetypes[i])
 	for region in gen.caves:
+		# A cave vault whose author placed its own monsters is not peopled
+		# by the roll as well: both would spend one ceiling twice. One with
+		# no monster markers is peopled like any cave.
+		if _authored_monsters(gen, region):
+			continue
 		_populate_cave(region)
 	_place_the_wild(gen)
 	_place_vault_contents(gen)
@@ -1497,6 +1512,11 @@ func build_level() -> void:
 	vault_rects.clear()
 	vault_names.clear()
 	for spot in gen.vault_spots:
+		vault_rects.append(spot["rect"])
+		vault_names.append(spot["vault"].name)
+	# A cave vault is an authored place too: the corruption keeps out of it,
+	# and nothing rewrites its terrain (protected_cell).
+	for spot in gen.cave_vault_spots:
 		vault_rects.append(spot["rect"])
 		vault_names.append(spot["vault"].name)
 	# AFTER the vault rects are recorded, because _corrupt_sites reads them to
@@ -2725,6 +2745,24 @@ func _corrupt_sites() -> Array[Vector2i]:
 		out[j] = t
 	return out
 
+## Does a cave vault fill this region with monsters of its author's own?
+func _authored_monsters(gen: MapGen, region: Rect2i) -> bool:
+	for spot in gen.cave_vault_spots:
+		if spot["rect"] != region:
+			continue
+		for entry in gen.vault_contents:
+			var ch: String = entry["ch"]
+			if not region.has_point(entry["pos"]):
+				continue
+			if ch == "m" or ch == "M":
+				return true
+			# A monster by name counts; an animal by name does not.
+			if ch == "creature":
+				for e in BESTIARY:
+					if String(e["name"]) == String(entry["name"]) and not e.get("wild", false):
+						return true
+	return false
+
 func _populate_cave(region: Rect2i) -> void:
 	# Caves are wilder than rooms, and unlit -- worth a little more danger.
 	var count := rng.randi_range(1, 3 + effective_depth() / 3)
@@ -3360,6 +3398,11 @@ func _place_vault_contents(gen: MapGen) -> void:
 				# way a rabbit is found in a fortress. Wild like any rabbit and
 				# never spent from the budget -- an animal is nobody's enemy.
 				_place_kept(at, &"rabbit")
+			"creature":
+				# A creature by name (`place N: name`, 2026-10-08).
+				var named := _place_named(at, String(entry["name"]), ceiling - spent)
+				if named > 0:
+					spent += named
 			"(":
 				# A sack, placed rather than rolled. The sack decides its own
 				# contents when opened -- see _open_sack -- so an author is
@@ -3367,6 +3410,41 @@ func _place_vault_contents(gen: MapGen) -> void:
 				# it is. That keeps a hand-drawn room from handing out a
 				# specific prize the tables would never have given it.
 				_drop_item_at(Item.make(&"sack"), at)
+
+## CREATURES BY NAME (2026-10-08; tools/VAULTS_GAME_SIDE.md part 2). The
+## vault's author chose the kind; the game still decides whether it can be
+## met here and whether the room can afford it:
+## - only where the ordinary roll could meet it: effective depth at least
+##   its `min_depth`, and an `ascent_from` creature only on the climb from
+##   that floor;
+## - a WILD animal on top of the budget, like `r` (a wolf brings its pack);
+## - a MONSTER spends the vault's budget like `m`, and is left out when its
+##   threat is more than is left -- under-populated, never over.
+## No draws beyond what _place_pick makes for its gear. Returns the threat
+## spent (0 for an animal, or for nothing placed).
+func _place_named(at: Vector2i, called: String, remaining: int) -> int:
+	var row: Dictionary = {}
+	for e in BESTIARY:
+		if String(e["name"]) == called:
+			row = e
+			break
+	if row.is_empty():
+		return 0
+	var here := effective_depth()
+	if int(row["min_depth"]) > here:
+		return 0
+	if row.has("ascent_from") and (not ascending or here < int(row["ascent_from"])):
+		return 0
+	if not _can_rest_on(at.x, at.y) or entity_at(at.x, at.y) != null:
+		return 0
+	if at == stairs or at == Vector2i(player.x, player.y):
+		return 0
+	if row.get("wild", false):
+		_place_pick(at, row, -1, WILD_UNPRICED)
+		return 0
+	if int(row["threat"]) > remaining:
+		return 0
+	return _place_pick(at, row, here, remaining)
 
 ## One creature of a named kind at a vault cell, if the cell will take it.
 ## The kind is the author's choice, not a roll: no draw on any stream.
@@ -8532,6 +8610,7 @@ func to_dict() -> Dictionary:
 		"rooms_found": rooms_found.keys(),
 		"player_name": player_name,
 		"uniques": uniques_found.keys(),
+		"cave_vaults_seen": cave_vaults_seen,
 		"risen_grave": [risen_grave.x, risen_grave.y],
 		"hues": shrine_hues,
 		"known": shrine_known.keys(), "forge_bonus": forge_cap_bonus,
@@ -8705,6 +8784,13 @@ func apply_dict(d: Dictionary) -> bool:
 	uniques_found.clear()
 	for k in d.get("uniques", []):
 		uniques_found[StringName(k)] = true
+	cave_vaults_seen = {}
+	var caves_met: Dictionary = d.get("cave_vaults_seen", {})
+	for k in caves_met:
+		var turns_met: Array = []
+		for t in caves_met[k]:
+			turns_met.append([int(t[0]), bool(t[1])])
+		cave_vaults_seen[String(k)] = turns_met
 	var rg: Array = d.get("risen_grave", [-1, -1])
 	risen_grave = Vector2i(int(rg[0]), int(rg[1])) if rg.size() == 2 \
 		else Vector2i(-1, -1)
