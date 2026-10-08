@@ -55,6 +55,8 @@ TILES = """const TILES = [
   { ch: "%", show: "\\u2592", name: "rubble",      fg: "#6b5b47", bg: "#1a150f", pass: true  },
   { ch: ",", show: ",", icon: 0xF00B9, name: "bones",       fg: "#bdb69f", bg: "#1d1c19", pass: true  },
   { ch: "*", show: "*", icon: 0xF07DF, name: "fungus",      fg: "#7fd9b0", bg: "#14201b", pass: true  },
+  { ch: "v", show: "*", icon: 0xF07DF, name: "purple fungus", fg: "#b77be8", bg: "#1c1424", pass: true  },
+  { ch: ";", show: "*", icon: 0xF07DF, name: "red fungus",  fg: "#d8434a", bg: "#241314", pass: true  },
   { ch: "&", show: "\\u03a9", icon: 0xF0238, name: "brazier",     fg: "#e0913c", bg: "#241408", pass: false },
   { ch: "A", show: "\\u2229", icon: 0xEEE6,  name: "shrine",      fg: "#b98ad9", bg: "#1c1826", pass: true  },
   { ch: "n", show: "n", icon: 0xF0BA2, name: "grave",       fg: "#8d94a6", bg: "#1a1920", pass: true  },
@@ -71,6 +73,7 @@ TILES = """const TILES = [
   { ch: "[", show: "[", icon: 0xF0A7B, name: "armour",      fg: "#a89a7c", bg: "#17171c", pass: true  },
   { ch: "}", show: "}", icon: 0xF1841, name: "launcher",    fg: "#c8b28a", bg: "#17171c", pass: true  },
   { ch: "(", show: "\\u00a4", icon: 0xF0D2E, name: "sack",        fg: "#8a5a3c", bg: "#17171c", pass: true  },
+  { ch: "r", show: "u", name: "rabbit",      fg: "#e0a05c", bg: "#17171c", pass: true  },
   { ch: " ", show: "",  name: "outside",     fg: "#1d1f26", bg: "#0d0e13", pass: false },
 ];"""
 

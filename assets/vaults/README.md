@@ -43,6 +43,16 @@ wall, so keep comments up top.
 | `terrain` | `fixed` (default) or `random` -- see below |
 | `band` | restrict to one floor theme -- see below. Omit for "anywhere" |
 
+### kind: room or cave
+
+`kind: cave` marks a CAVE VAULT: drawn in cave floor (`_`) with rock (`#` or
+space) around it, no doors, at least 24 cells in one connected piece, for the
+cave band. The vault editor grows a starting shape with its *generate cave*
+button. **Not read by the game yet** (2026-10-08): keep cave vaults in
+`tools/cave_vaults/` until `tools/CAVE_VAULTS_GAME_SIDE.md` is done, or the
+game will place them as doorless rooms. A file with no `kind` is a room, as
+every vault here is today.
+
 ### band: which floors it belongs to
 
 The dungeon is themed in groups of three, and the climb out reuses the same

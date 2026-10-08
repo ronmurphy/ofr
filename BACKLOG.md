@@ -800,6 +800,10 @@ in its own entry.
    purpose -- see the beats entry above the combat update for why it was
    held back).
 
+12. **Cave vaults, the game side** -- `tools/CAVE_VAULTS_GAME_SIDE.md` has
+   the steps (vault.gd's kind, the linter, mapgen's cave slot, the run's
+   repeat memory, tests). The editor side is done. Probably two nights.
+
 **Waiting on Brad, not code:** the trader's numbers (from play); the right
 stick in Firefox on itch (a test); David's music in the web build (a
 listen); the frozen room's rule (b); the spider's bite and provocation;
@@ -956,6 +960,13 @@ on a cave floor -- a hand-drawn room in a cavern, which reads as a mistake.
   run's repeat memory, the cave band's preference, tests) and the editor
   side (the kind, the automaton in JavaScript, the growing canvas, the
   checks). Either is a short session for the Legion.
+- **THE EDITOR SIDE -- BUILT 2026-10-08 (desktop).** `tools/vault_editor.html`
+  has the cave kind, GENERATE CAVE and re-roll (the game's automaton ported
+  exactly; tested headless over 300 caves: sealed border, one region,
+  repeatable, all kept), sizes to 40x40, and cave checks. Cave vaults wait
+  in `tools/cave_vaults/` (not assets/vaults/, or the game places them as
+  rooms). **The game side is written up step by step in
+  `tools/CAVE_VAULTS_GAME_SIDE.md`** for the Legion or Brad.
 
 **A test start, so testing never risks a real run (an idea from the same
 talk, for Brad to decide).** Brad tests far more than he plays to win,
