@@ -922,6 +922,49 @@ waits on moving graves over to it.
 
 ## Designed in full, not built
 
+**Cave vaults (Brad and the desktop, 2026-10-08 -- designed, not built;
+a few hours, two pieces).** Authored set pieces for the cave band that ARE
+caves, not masonry rooms. Today a vault is a rectangle the caves keep clear
+of, joined by corridors like a room, and any vault without a band can land
+on a cave floor -- a hand-drawn room in a cavern, which reads as a mistake.
+- **A cave vault takes one of the floor's cave slots** (`_reserve_caves`
+  sets aside 6-7 regions of 14-22 by 10-15 on a cave floor): the author's
+  cells are used instead of the automaton's. From then on it is simply a
+  cave -- cave floor, CAVERN material, joined by `_connect_caves`, in
+  `gen.caves`, populated by `_populate_cave` (monsters, animals, a bear's
+  den) -- never a room.
+- **The file says so:** a header `kind: cave`. No doors: the author draws
+  rock (`#`) and cave floor (`_`), and the cave connector finds the way in.
+  The existing letters cover the rest (`~` pools, `^` stalagmites, `*` `v`
+  `;` fungus, `,` bones, `r` and the markers). The linter checks one
+  connected area instead of doors.
+- **The editor:** a cave/room kind setting; a GENERATE CAVE button that
+  runs the game's own automaton (`CaveGen`: fill 0.46, four smoothing
+  passes, birth limit 5, keep the largest region) at cave size and hands
+  the shape over for painting, with a re-roll; and the canvas GROWS to the
+  vault's size (or takes the size the author sets -- 13x13 stays the
+  recommendation for rooms, caves run to 22x15 and could be larger).
+- **On the cave band, both halves, cave vaults are preferred** -- masonry
+  vaults stop landing in caverns. A cave vault may come round AT MOST TWICE
+  in a run, and the second time turned or mirrored differently (the run
+  remembers which it used, and how). With only a few authored at first,
+  some repeats are expected; Brad will draw several of different sizes.
+- **First ones worth drawing:** a bear's den with its bones, a drip-pool
+  grotto, a fungus cavern, and the spider's nest (its entry: "always a
+  cave").
+- **Pieces:** the game side (read the kind, swap it into a cave slot, the
+  run's repeat memory, the cave band's preference, tests) and the editor
+  side (the kind, the automaton in JavaScript, the growing canvas, the
+  checks). Either is a short session for the Legion.
+
+**A test start, so testing never risks a real run (an idea from the same
+talk, for Brad to decide).** Brad tests far more than he plays to win,
+because playing for real risks a good run's save -- so the climb's caves,
+where cave vaults matter most, are almost never played. A test start: its
+own save file that never touches the run's (the same mechanism as
+`use_scratch_files`), starting on any floor, going down or climbing. Off
+the main menu, or behind a key, as Brad prefers.
+
 **Taming the wolves -- BUILT 2026-10-06 (Legion), waiting on play.** As
 built, from the design below: the wolf row carries `"tame": true`; with the
 price in your pack -- haunches to the pack's count (`_tame_price` =
