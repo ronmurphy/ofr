@@ -800,9 +800,12 @@ in its own entry.
    purpose -- see the beats entry above the combat update for why it was
    held back).
 
-12. **Cave vaults, the game side** -- `tools/CAVE_VAULTS_GAME_SIDE.md` has
-   the steps (vault.gd's kind, the linter, mapgen's cave slot, the run's
-   repeat memory, tests). The editor side is done. Probably two nights.
+12. **The vault editor's new format, the game side** --
+   `tools/VAULTS_GAME_SIDE.md`: part 1, cave vaults (vault.gd's kind, the
+   linter, mapgen's cave slot, the run's repeat memory, tests); part 2,
+   creatures by name (`place N: name`, budget rules, tests). The editor side
+   of both is done (2026-10-08). Parts are independent; about a night each,
+   part 1 perhaps two.
 
 **Waiting on Brad, not code:** the trader's numbers (from play); the right
 stick in Firefox on itch (a test); David's music in the web build (a
@@ -964,9 +967,13 @@ on a cave floor -- a hand-drawn room in a cavern, which reads as a mistake.
   has the cave kind, GENERATE CAVE and re-roll (the game's automaton ported
   exactly; tested headless over 300 caves: sealed border, one region,
   repeatable, all kept), sizes to 40x40, and cave checks. Cave vaults wait
-  in `tools/cave_vaults/` (not assets/vaults/, or the game places them as
+  in `tools/vaults_waiting/` (not assets/vaults/, or the game places them as
   rooms). **The game side is written up step by step in
-  `tools/CAVE_VAULTS_GAME_SIDE.md`** for the Legion or Brad.
+  `tools/VAULTS_GAME_SIDE.md`** for the Legion or Brad. The same day the
+  editor gained a palette in categories (ground, structure, fungus,
+  features, creatures, items) and CREATURES BY NAME from a dropdown of the
+  game's own bestiary (`tools/dump_bestiary.gd`), saved as `place N: name`
+  -- part 2 of the same file. Tested in headless Edge: 27 checks.
 
 **A test start, so testing never risks a real run (an idea from the same
 talk, for Brad to decide).** Brad tests far more than he plays to win,

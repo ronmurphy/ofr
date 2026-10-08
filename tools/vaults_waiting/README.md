@@ -1,10 +1,15 @@
-# tools/cave_vaults/ -- the holding folder
+# tools/vaults_waiting/ -- the holding folder
 
-Cave vaults (`kind: cave`, made in `tools/vault_editor.html`) wait here until
-the game reads that kind. The steps are in `tools/CAVE_VAULTS_GAME_SIDE.md`.
+Vaults made in `tools/vault_editor.html` that use what the game does not read
+yet wait here. That means a cave vault (`kind: cave`), or a vault with
+creatures by name (digits on the board, with `place 1: cave bear` lines). The
+editor's checks say when a vault belongs here. The steps for the game are in
+`tools/VAULTS_GAME_SIDE.md`.
 
-Do NOT put them in `assets/vaults/` before then: the loader ignores the
-`kind:` line today, so a cave vault there would be placed as a doorless ROOM.
+Do NOT put them in `assets/vaults/` before then. The loader ignores both lines
+today, so a cave vault would be placed as a doorless ROOM, and a digit square
+would be left unbuilt. The vault linter (and so the full suite) fails a file
+with digits in it.
 
 This folder is under `tools/`, which has a `.gdignore`, so Godot neither
 imports nor exports anything here.

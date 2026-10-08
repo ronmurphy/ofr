@@ -28,6 +28,12 @@
   .sw span { font-size: 10px; color: var(--dim); line-height: 1.15; }
   .sw.on span { color: var(--text); }
   .note { margin-top: 10px; font-size: 11px; color: var(--dim); }
+  /* categories: a row of buttons over the swatches, as the trade screen has */
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .tab { width: auto; padding: 3px 7px; font-size: 11px; background: #00000030; }
+  .tab.on { border-color: var(--gold); color: var(--gold); background: #d9cf9a18; }
+  #creaturebox { display: none; margin-top: 8px; }
+  #creaturebox.show { display: block; }
   /* grid */
   #board { display: grid; gap: 0; background: #000; border: 1px solid var(--frame);
            width: max-content; user-select: none; cursor: crosshair; }
@@ -71,14 +77,22 @@
      Same rules as tests/vault_lint.gd — if it passes here it will load in the game.</p>
   <p><b style="color:var(--gold)">Cave vaults</b> (kind: cave): press <i>generate cave</i> for a shape
      grown by the game's own rules, then paint it. Until the game reads
-     <code>kind: cave</code> (tools/CAVE_VAULTS_GAME_SIDE.md), save them into
-     <b>tools/cave_vaults/</b>, NOT assets/vaults/ — the game would place them as rooms.</p>
+     <code>kind: cave</code> and creatures by name (tools/VAULTS_GAME_SIDE.md), save any vault
+     that uses either into <b>tools/vaults_waiting/</b>, NOT assets/vaults/ — the checks say when.</p>
 </header>
 
 <main>
   <div class="panel">
     <h2>Palette</h2>
+    <div class="tabs" id="tabs"></div>
     <div class="swatches" id="palette"></div>
+    <div id="creaturebox">
+      <label for="creature">or a creature by name</label>
+      <select id="creature"></select>
+      <p class="note">A named creature is saved as a digit with a
+        <code>place 1: cave bear</code> line in the file. Wild animals cost the
+        room nothing; a monster spends its threat budget.</p>
+    </div>
     <p class="note">Click to paint, drag to fill. Right-click erases back to
       outside-the-vault.</p>
   </div>
@@ -157,40 +171,68 @@
 /* The legend, mirroring src/sim/vault.gd. `show` is what the game actually
    draws, so the board is a preview rather than a spreadsheet. */
 const TILES = [
-  { ch: "#", show: "\u2588", name: "wall",        fg: "#8d8578", bg: "#3a382f", pass: false },
-  { ch: ".", show: "\u00b7", name: "floor",       fg: "#57534a", bg: "#17171c", pass: true  },
-  { ch: "_", show: "\u00b7", name: "cave floor",  fg: "#6d6250", bg: "#1c1814", pass: true  },
-  { ch: "+", show: "+", icon: 0xF081B, name: "door",        fg: "#b4813f", bg: "#1c1712", pass: true  },
-  { ch: "'", show: "'", icon: 0xF081C, name: "open door",   fg: "#b4813f", bg: "#14120f", pass: true  },
-  { ch: "O", show: "\u25cf", name: "pillar",      fg: "#9a9082", bg: "#3a382f", pass: false },
-  { ch: "^", show: "\u25b2", name: "stalagmite",  fg: "#857a69", bg: "#241f19", pass: false },
-  { ch: "~", show: "~", icon: 0xEF30,  name: "water",       fg: "#4d7f9e", bg: "#15242e", pass: true  },
-  { ch: "=", show: "\u2591", name: "mud",         fg: "#7a6248", bg: "#241d16", pass: true  },
-  { ch: "%", show: "\u2592", name: "rubble",      fg: "#6b5b47", bg: "#1a150f", pass: true  },
-  { ch: ",", show: ",", icon: 0xF00B9, name: "bones",       fg: "#bdb69f", bg: "#1d1c19", pass: true  },
-  { ch: "*", show: "*", icon: 0xF07DF, name: "fungus",      fg: "#7fd9b0", bg: "#14201b", pass: true  },
-  { ch: "v", show: "*", icon: 0xF07DF, name: "purple fungus", fg: "#b77be8", bg: "#1c1424", pass: true  },
-  { ch: ";", show: "*", icon: 0xF07DF, name: "red fungus",  fg: "#d8434a", bg: "#241314", pass: true  },
-  { ch: "&", show: "\u03a9", icon: 0xF0238, name: "brazier",     fg: "#e0913c", bg: "#241408", pass: false },
-  { ch: "A", show: "\u2229", icon: 0xEEE6,  name: "shrine",      fg: "#b98ad9", bg: "#1c1826", pass: true  },
-  { ch: "n", show: "n", icon: 0xF0BA2, name: "grave",       fg: "#8d94a6", bg: "#1a1920", pass: true  },
-  { ch: "C", show: "\u00a2", icon: 0xF0726, name: "chest",       fg: "#c9953f", bg: "#1d1710", pass: false },
-  { ch: "X", show: "\u25cf", name: "pit",         fg: "#000000", bg: "#05050a", pass: true  },
-  { ch: "t", show: "^", icon: 0xF0026, name: "trap",        fg: "#d4674f", bg: "#2a1714", pass: true  },
-  { ch: ">", show: ">", icon: 0xF12BE, name: "stairs down", fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
-  { ch: "<", show: "<", icon: 0xF12BD, name: "stairs up",   fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
-  { ch: "m", show: "m", name: "monster",     fg: "#6f9c4e", bg: "#17171c", pass: true  },
-  { ch: "M", show: "M", name: "guardian",    fg: "#c05a3a", bg: "#17171c", pass: true  },
-  { ch: "?", show: "?", icon: 0xF0BC2, name: "any item",    fg: "#cfc39a", bg: "#17171c", pass: true  },
-  { ch: "!", show: "!", icon: 0xF0093, name: "potion",      fg: "#d2607a", bg: "#17171c", pass: true  },
-  { ch: ")", show: ")", icon: 0xF04E5, name: "weapon",      fg: "#9fb3c8", bg: "#17171c", pass: true  },
-  { ch: "[", show: "[", icon: 0xF0A7B, name: "armour",      fg: "#a89a7c", bg: "#17171c", pass: true  },
-  { ch: "}", show: "}", icon: 0xF1841, name: "launcher",    fg: "#c8b28a", bg: "#17171c", pass: true  },
-  { ch: "(", show: "\u00a4", icon: 0xF0D2E, name: "sack",        fg: "#8a5a3c", bg: "#17171c", pass: true  },
-  { ch: "r", show: "u", name: "rabbit",      fg: "#e0a05c", bg: "#17171c", pass: true  },
-  { ch: " ", show: "",  name: "outside",     fg: "#1d1f26", bg: "#0d0e13", pass: false },
+  { ch: "#", cat: "ground", show: "\u2588", name: "wall",        fg: "#8d8578", bg: "#3a382f", pass: false },
+  { ch: ".", cat: "ground", show: "\u00b7", name: "floor",       fg: "#57534a", bg: "#17171c", pass: true  },
+  { ch: "_", cat: "ground", show: "\u00b7", name: "cave floor",  fg: "#6d6250", bg: "#1c1814", pass: true  },
+  { ch: "+", cat: "structure", show: "+", icon: 0xF081B, name: "door",        fg: "#b4813f", bg: "#1c1712", pass: true  },
+  { ch: "'", cat: "structure", show: "'", icon: 0xF081C, name: "open door",   fg: "#b4813f", bg: "#14120f", pass: true  },
+  { ch: "O", cat: "structure", show: "\u25cf", name: "pillar",      fg: "#9a9082", bg: "#3a382f", pass: false },
+  { ch: "^", cat: "structure", show: "\u25b2", name: "stalagmite",  fg: "#857a69", bg: "#241f19", pass: false },
+  { ch: "~", cat: "ground", show: "~", icon: 0xEF30,  name: "water",       fg: "#4d7f9e", bg: "#15242e", pass: true  },
+  { ch: "=", cat: "ground", show: "\u2591", name: "mud",         fg: "#7a6248", bg: "#241d16", pass: true  },
+  { ch: "%", cat: "ground", show: "\u2592", name: "rubble",      fg: "#6b5b47", bg: "#1a150f", pass: true  },
+  { ch: ",", cat: "ground", show: ",", icon: 0xF00B9, name: "bones",       fg: "#bdb69f", bg: "#1d1c19", pass: true  },
+  { ch: "*", cat: "fungus", show: "*", icon: 0xF07DF, name: "fungus",      fg: "#7fd9b0", bg: "#14201b", pass: true  },
+  { ch: "v", cat: "fungus", show: "*", icon: 0xF07DF, name: "purple fungus", fg: "#b77be8", bg: "#1c1424", pass: true  },
+  { ch: ";", cat: "fungus", show: "*", icon: 0xF07DF, name: "red fungus",  fg: "#d8434a", bg: "#241314", pass: true  },
+  { ch: "&", cat: "features", show: "\u03a9", icon: 0xF0238, name: "brazier",     fg: "#e0913c", bg: "#241408", pass: false },
+  { ch: "A", cat: "features", show: "\u2229", icon: 0xEEE6,  name: "shrine",      fg: "#b98ad9", bg: "#1c1826", pass: true  },
+  { ch: "n", cat: "features", show: "n", icon: 0xF0BA2, name: "grave",       fg: "#8d94a6", bg: "#1a1920", pass: true  },
+  { ch: "C", cat: "features", show: "\u00a2", icon: 0xF0726, name: "chest",       fg: "#c9953f", bg: "#1d1710", pass: false },
+  { ch: "X", cat: "structure", show: "\u25cf", name: "pit",         fg: "#000000", bg: "#05050a", pass: true  },
+  { ch: "t", cat: "features", show: "^", icon: 0xF0026, name: "trap",        fg: "#d4674f", bg: "#2a1714", pass: true  },
+  { ch: ">", cat: "structure", show: ">", icon: 0xF12BE, name: "stairs down", fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
+  { ch: "<", cat: "structure", show: "<", icon: 0xF12BD, name: "stairs up",   fg: "#d9cf9a", bg: "#1a1a20", pass: true  },
+  { ch: "m", cat: "creatures", show: "m", name: "monster",     fg: "#6f9c4e", bg: "#17171c", pass: true  },
+  { ch: "M", cat: "creatures", show: "M", name: "guardian",    fg: "#c05a3a", bg: "#17171c", pass: true  },
+  { ch: "?", cat: "items", show: "?", icon: 0xF0BC2, name: "any item",    fg: "#cfc39a", bg: "#17171c", pass: true  },
+  { ch: "!", cat: "items", show: "!", icon: 0xF0093, name: "potion",      fg: "#d2607a", bg: "#17171c", pass: true  },
+  { ch: ")", cat: "items", show: ")", icon: 0xF04E5, name: "weapon",      fg: "#9fb3c8", bg: "#17171c", pass: true  },
+  { ch: "[", cat: "items", show: "[", icon: 0xF0A7B, name: "armour",      fg: "#a89a7c", bg: "#17171c", pass: true  },
+  { ch: "}", cat: "items", show: "}", icon: 0xF1841, name: "launcher",    fg: "#c8b28a", bg: "#17171c", pass: true  },
+  { ch: "(", cat: "items", show: "\u00a4", icon: 0xF0D2E, name: "sack",        fg: "#8a5a3c", bg: "#17171c", pass: true  },
+  { ch: "r", cat: "creatures", show: "u", name: "rabbit",      fg: "#e0a05c", bg: "#17171c", pass: true  },
+  { ch: " ", cat: "ground", show: "",  name: "outside",     fg: "#1d1f26", bg: "#0d0e13", pass: false },
 ];
 const BY_CH = Object.fromEntries(TILES.map(t => [t.ch, t]));
+/* Written by tools/build_vault_editor.py from tools/dump_bestiary.gd -- the
+   game's own creatures, with their looks. Do not edit by hand. */
+const BESTIARY = [{"app":"rat","ascent":0,"ch":"r","fg":"#8a7f6a","icon":987943,"min_depth":1,"name":"giant rat","threat":2,"wild":false},{"app":"slime","ascent":0,"ch":"j","fg":"#86c93e","icon":988411,"min_depth":1,"name":"slime","threat":2,"wild":false},{"app":"wolf","ascent":0,"ch":"d","fg":"#a9a9b4","icon":985668,"min_depth":1,"name":"wolf","threat":6,"wild":true},{"app":"kobold","ascent":0,"ch":"k","fg":"#e8d9a0","icon":983783,"min_depth":1,"name":"kobold","threat":3,"wild":false},{"app":"slinger","ascent":0,"ch":"K","fg":"#d8a04a","icon":985132,"min_depth":2,"name":"kobold slinger","threat":6,"wild":false},{"app":"bat","ascent":0,"ch":"b","fg":"#8e6fa8","icon":985951,"min_depth":2,"name":"cave bat","threat":5,"wild":true},{"app":"goblin","ascent":0,"ch":"g","fg":"#2f6b4f","icon":983783,"min_depth":2,"name":"goblin","threat":5,"wild":false},{"app":"skeleton","ascent":0,"ch":"s","fg":"#d6d2c4","icon":984716,"min_depth":3,"name":"skeleton","threat":8,"wild":false},{"app":"orc","ascent":0,"ch":"o","fg":"#b5643c","icon":983782,"min_depth":4,"name":"orc","threat":10,"wild":false},{"app":"ogre","ascent":0,"ch":"O","fg":"#9a7fb8","icon":987485,"min_depth":5,"name":"ogre","threat":14,"wild":false},{"app":"harpy","ascent":0,"ch":"H","fg":"#d08fc0","icon":988614,"min_depth":5,"name":"harpy","threat":12,"wild":false},{"app":"troll","ascent":0,"ch":"T","fg":"#6b4a2a","icon":987485,"min_depth":6,"name":"cave troll","threat":16,"wild":false},{"app":"bear","ascent":0,"ch":"B","fg":"#b5763d","icon":984041,"min_depth":1,"name":"cave bear","threat":17,"wild":true},{"app":"wight","ascent":0,"ch":"w","fg":"#b8c4d8","icon":983782,"min_depth":7,"name":"wight","threat":17,"wild":false},{"app":"wyvern","ascent":0,"ch":"W","fg":"#c05a3a","icon":61176,"min_depth":7,"name":"wyvern","threat":20,"wild":false},{"app":"golem","ascent":0,"ch":"G","fg":"#9aa0a8","icon":984745,"min_depth":8,"name":"stone golem","threat":24,"wild":false},{"app":"shadow","ascent":0,"ch":"S","fg":"#8a63c4","icon":983712,"min_depth":9,"name":"shadow","threat":19,"wild":false},{"app":"dragon","ascent":0,"ch":"D","fg":"#e8c33c","icon":61176,"min_depth":10,"name":"young dragon","threat":28,"wild":false},{"app":"rabbit","ascent":0,"ch":"u","fg":"#e0a05c","icon":989793,"min_depth":1,"name":"rabbit","threat":3,"wild":true},{"app":"banshee","ascent":0,"ch":"h","fg":"#f2f4ff","icon":988765,"min_depth":3,"name":"banshee","threat":8,"wild":false},{"app":"wizard","ascent":0,"ch":"l","fg":"#3d6ee8","icon":983782,"min_depth":8,"name":"wizard","threat":22,"wild":false},{"app":"giant","ascent":14,"ch":"C","fg":"#c6d8e2","icon":987485,"min_depth":10,"name":"cave giant","threat":26,"wild":false},{"app":"lich","ascent":16,"ch":"L","fg":"#7cf0d8","icon":61039,"min_depth":10,"name":"arch lich","threat":32,"wild":false}];
+const BEAST = Object.fromEntries(BESTIARY.map(b => [b.name, b]));
+
+/* The palette's categories, in the order their buttons show. */
+const CATS = ["ground", "structure", "fungus", "features", "creatures", "items"];
+let tab = "ground";
+/* Creatures by name: the file's `place 1: cave bear` lines, digit -> name.
+   A painted named creature is that digit on the board. */
+const DIGITS = "123456789";
+let places = {};
+function isPlace(ch) { return ch.length === 1 && DIGITS.includes(ch); }
+function beastAt(ch) { return BEAST[places[ch]]; }
+function usedDigits() {
+  const used = new Set();
+  for (const row of cells) for (const c of row) if (isPlace(c)) used.add(c);
+  return used;
+}
+/* The digit standing for `name`: its own, or the lowest free once digits no
+   longer on the board are let go. Null when all nine are in use. */
+function digitFor(name) {
+  for (const d of DIGITS) if (places[d] === name) return d;
+  const used = usedDigits();
+  for (const d of Object.keys(places)) if (!used.has(d)) delete places[d];
+  for (const d of DIGITS) if (!places[d]) { places[d] = name; return d; }
+  return null;
+}
 
 let W = 11, H = 9;
 let cells = [];
@@ -233,7 +275,20 @@ function drawBoard() {
       const ch = cells[y][x], t = BY_CH[ch] || BY_CH[" "];
       const d = document.createElement("div");
       d.className = ch === " " ? (isCave() ? "cell rock" : "cell void") : "cell";
-      if (ch !== " ") {
+      if (isPlace(ch)) {
+        const b = beastAt(ch);
+        if (b) {
+          const pic = mode === "pic" && b.icon >= 0;
+          d.textContent = pic ? String.fromCodePoint(b.icon) : b.ch;
+          if (pic) d.classList.add("pic");
+          d.style.color = b.fg;
+          d.title = b.name;
+        } else {
+          d.textContent = ch;
+          d.style.color = "var(--bad)";
+        }
+        d.style.background = "#17171c";
+      } else if (ch !== " ") {
         d.textContent = faceOf(t);
         if (isPic(t)) d.classList.add("pic");
         d.style.color = t.fg;
@@ -248,7 +303,11 @@ function drawBoard() {
 function paint(el, erase) {
   if (!el || !el.dataset.x) return;
   const x = +el.dataset.x, y = +el.dataset.y;
-  const ch = erase ? " " : brush;
+  let ch = erase ? " " : brush;
+  if (!erase && brush.startsWith("@")) {
+    ch = digitFor(brush.slice(1));
+    if (!ch) return;                 // nine kinds already; the checks say so
+  }
   if (cells[y][x] === ch) return;
   cells[y][x] = ch;
   refresh();
@@ -348,6 +407,7 @@ function kindChanged() {
     $("minD").value = BAND_DEPTHS.caves[0];
     $("maxD").value = BAND_DEPTHS.caves[1];
     brush = "_";
+    tab = "ground";
     buildPalette();
   }
   refresh();
@@ -361,7 +421,7 @@ function validate() {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const t = BY_CH[cells[y][x]];
-      if (t && t.pass) open.push([x, y]);
+      if ((t && t.pass) || isPlace(cells[y][x])) open.push([x, y]);
     }
 
   if (!open.length) {
@@ -423,6 +483,36 @@ function validate() {
       out.push(["warn", "no door reaches the outside edge — entry will be punched through"]);
   }
 
+  // Creatures by name.
+  const named = [];
+  for (const d of [...usedDigits()].sort()) {
+    const beast = beastAt(d);
+    if (!beast) { out.push(["fail", `${d} on the board has no creature named for it`]); continue; }
+    named.push(beast);
+  }
+  const lo = +$("minD").value || 1;
+  for (const beast of named) {
+    if (beast.ascent) {
+      out.push(["warn", `${beast.name} is met only on the climb (from floor ${beast.ascent}); placed only there`]);
+    } else if (beast.min_depth > (+$("maxD").value || lo)) {
+      out.push(["warn", `${beast.name} lives from depth ${beast.min_depth}: placed on the climb, not on the way down`]);
+    }
+    // A monster spends the room's threat budget (Threat.room_ceiling:
+    // 10 + 2 a floor); where it cannot be afforded it is left out.
+    const ceiling = 10 + 2 * lo;
+    if (!beast.wild && beast.threat > ceiling)
+      out.push(["warn", `${beast.name} (threat ${beast.threat}) is more than floor ${lo}'s rooms afford (${ceiling}); left out there`]);
+  }
+  if (named.length)
+    out.push(["pass", "by name: " + named.map(b => b.name).join(", ")]);
+  if (usedDigits().size >= 9)
+    out.push(["warn", "nine kinds by name is the most a vault holds"]);
+  const waiting = [];
+  if (isCave()) waiting.push("kind: cave");
+  if (named.length) waiting.push("creatures by name");
+  if (waiting.length)
+    out.push(["warn", `the game does not read ${waiting.join(" or ")} yet: save into tools/vaults_waiting/`]);
+
   // Size.
   const b = bounds();
   if (b) {
@@ -464,6 +554,8 @@ function serialise() {
     ($("band").value ? `band: ${$("band").value}\n` : "") +
     // Only a cave says its kind; a missing kind is a room, as before.
     (isCave() ? `kind: cave\n` : "") +
+    // One line per creature by name still on the board.
+    [...usedDigits()].sort().filter(d => places[d]).map(d => `place ${d}: ${places[d]}\n`).join("") +
     `LAYOUT\n`;
   if (!b) return head;
   const lines = [];
@@ -478,6 +570,7 @@ function serialise() {
 
 function deserialise(text) {
   const lines = text.split("\n");
+  const newPlaces = {};
   let inLayout = false;
   const body = [];
   const meta = {};
@@ -485,6 +578,8 @@ function deserialise(text) {
     const line = raw.replace(/\r$/, "");
     if (!inLayout) {
       if (line.trim() === "LAYOUT") { inLayout = true; continue; }
+      const pl = line.match(/^place\s+([1-9])\s*:\s*(.+)$/i);
+      if (pl) { newPlaces[pl[1]] = pl[2].trim(); continue; }
       const m = line.match(/^([a-z_]+)\s*:\s*(.*)$/i);
       if (m) meta[m[1].trim()] = m[2].trim();
       continue;
@@ -502,7 +597,7 @@ function deserialise(text) {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const ch = x < body[y].length ? body[y][x] : " ";
-      cells[y][x] = BY_CH[ch] ? ch : " ";
+      cells[y][x] = (BY_CH[ch] || isPlace(ch)) ? ch : " ";
     }
   if (meta.name) $("name").value = meta.name;
   if (meta.weight) $("weight").value = meta.weight;
@@ -512,6 +607,7 @@ function deserialise(text) {
   if (meta.terrain) $("ter").value = meta.terrain === "random" ? "random" : "fixed";
   $("band").value = meta.band || "";
   $("kind").value = meta.kind === "cave" ? "cave" : "room";
+  places = newPlaces;
   $("cols").value = W; $("rows").value = H;
   return true;
 }
@@ -531,11 +627,22 @@ function refresh() {
 }
 
 function buildPalette() {
+  const tabs = $("tabs");
+  tabs.textContent = "";
+  for (const c of CATS) {
+    const b = document.createElement("button");
+    b.className = "tab" + (c === tab ? " on" : "");
+    b.textContent = c;
+    b.onclick = () => { tab = c; buildPalette(); };
+    tabs.appendChild(b);
+  }
+  $("creaturebox").classList.toggle("show", tab === "creatures");
   const p = $("palette");
   // Cleared first: this is called again when the view mode changes, and an
   // append-only version quietly stacked a second copy of every swatch.
   p.textContent = "";
   for (const t of TILES) {
+    if (t.cat !== tab) continue;
     const b = document.createElement("div");
     b.className = "sw" + (t.ch === brush ? " on" : "");
     b.innerHTML = `<b class="${isPic(t) ? "pic" : ""}" style="color:${t.fg}">` +
@@ -545,9 +652,37 @@ function buildPalette() {
       brush = t.ch;
       [...p.children].forEach(c => c.classList.remove("on"));
       b.classList.add("on");
+      $("creature").value = "";
     };
     p.appendChild(b);
   }
+}
+
+/* The named-creature dropdown: wild animals, then monsters, each with where
+   it lives and what it costs. Built once; the game's own list. */
+function buildCreatures() {
+  const sel = $("creature");
+  sel.textContent = "";
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = "— choose —";
+  sel.appendChild(none);
+  for (const [label, wild] of [["wild animals", true], ["monsters", false]]) {
+    const g = document.createElement("optgroup");
+    g.label = label;
+    for (const b of BESTIARY.filter(b => b.wild === wild)) {
+      const o = document.createElement("option");
+      o.value = b.name;
+      const where = b.ascent ? `climb ${b.ascent}+` : `depth ${b.min_depth}+`;
+      o.textContent = `${b.name} — ${where}` + (wild ? "" : `, threat ${b.threat}`);
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
+  }
+  sel.onchange = () => {
+    if (!sel.value) return;
+    brush = "@" + sel.value;
+    [...$("palette").children].forEach(c => c.classList.remove("on"));
+  };
 }
 
 const board = $("board");
@@ -596,7 +731,7 @@ $("cave").onclick = () => {
 };
 $("reroll").onclick = () => { caveSeed++; generateCave(); };
 
-$("clear").onclick = () => { blank(); refresh(); };
+$("clear").onclick = () => { blank(); places = {}; refresh(); };
 $("frame").onclick = () => {
   for (let x = 0; x < W; x++) { cells[0][x] = "#"; cells[H - 1][x] = "#"; }
   for (let y = 0; y < H; y++) { cells[y][0] = "#"; cells[y][W - 1] = "#"; }
@@ -629,5 +764,6 @@ $("mode").onchange = () => { mode = $("mode").value; buildPalette(); refresh(); 
 
 blank();
 buildPalette();
+buildCreatures();
 $("frame").onclick();
 </script>

@@ -49,9 +49,17 @@ wall, so keep comments up top.
 space) around it, no doors, at least 24 cells in one connected piece, for the
 cave band. The vault editor grows a starting shape with its *generate cave*
 button. **Not read by the game yet** (2026-10-08): keep cave vaults in
-`tools/cave_vaults/` until `tools/CAVE_VAULTS_GAME_SIDE.md` is done, or the
+`tools/vaults_waiting/` until `tools/VAULTS_GAME_SIDE.md` is done, or the
 game will place them as doorless rooms. A file with no `kind` is a room, as
 every vault here is today.
+
+### place N: creatures by name
+
+`place 1: cave bear` puts that creature wherever a `1` is drawn -- any name
+from the game's bestiary, up to nine kinds a vault. The editor's creatures
+tab writes these for you. **Not read by the game yet** (2026-10-08): keep
+such vaults in `tools/vaults_waiting/` until `tools/VAULTS_GAME_SIDE.md`
+part 2 is done; the linter fails a digit today.
 
 ### band: which floors it belongs to
 
