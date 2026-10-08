@@ -183,6 +183,20 @@ house the intro shows, and may draw players the dungeon alone would not.
     pre-run is perhaps a second or two of building on the desktop, more in
     a browser -- hidden behind the house by building the next floor while
     you are there (the rule above: the house draws on no run stream).
+- **The house file is a vault (Brad, 2026-10-08).** The layout is a vault
+  grid (`house.json` holds it as the `LAYOUT` rows): walls, floor, mud,
+  water, pillars, furniture letters -- parsed by `Vault.parse`, checked by
+  the same connectivity rule that becomes "never wall off the portal", and
+  drawn by both renderers as any floor. Beside the grid, a list of OBJECTS
+  with identity, each with its square and its full record: display pieces
+  (`Item.to_dict`, the run and floor they came from), gravestones (a
+  `legends.json` hero), retirees. The `place N: name` key the vault editor
+  gained the same day is the pattern, but nine slots will not hold a
+  house, hence the list. The editor's categories map onto the house's
+  build screen (walls, garden, features, memorials). Crossover, for later:
+  a house is a vault, so one can turn up IN the dungeon -- a retired
+  hero's abandoned home built from an old save, their trophies still on the
+  shelves -- or a friend's house shared as a text file.
 - **Slices, each shippable:** (1) the visit -- stairs choice, the lot with
   the starter house, the portal, the house file, the kit and scrap wood so
   the first visit can gather; (2) building -- rubble, pillars, pools, mud,
