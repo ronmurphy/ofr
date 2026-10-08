@@ -233,6 +233,10 @@ const WILD := Color("bfa22f")
 ## The heart over a wolf that has turned to you (taming, 2026-10-06). A
 ## popup, so no glyph shares it; a warm red apart from CRITICAL's blood.
 const TAMED := Color("ff5c7c")
+## The "hungry" chip under a creature in the look panel (hunger,
+## 2026-10-07): a warm orange between WILD's gold and TAMED's red. A chip
+## colour only; nothing on the map is drawn in it.
+const HUNGRY := Color("e8834a")
 
 ## A creature that has given up and is running. Cool rather than hot, because
 ## it is the one alertness state that means you are winning.

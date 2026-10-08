@@ -1547,7 +1547,10 @@ func _set_appetites() -> void:
 				and e.faction != Entity.Faction.PLAYER:
 			e.hunger = hunger_rng.randi_range(0, HUNGER_START_MAX)
 
-## One turn of an eater's hunger (see _set_appetites).
+## One turn of an eater's hunger (see _set_appetites). Counted by the
+## creature's OWN turns, not the clock, on purpose: a fast thing burns more,
+## so a speed-130 wolf goes hungry about a third sooner than a bear. Brad
+## kept it as metabolism (2026-10-07, raised in the desktop's review).
 func _grow_hungry(actor: Entity) -> void:
 	if not actor.eats or actor.faction == Entity.Faction.PLAYER or _prerunning:
 		return
@@ -4434,10 +4437,12 @@ func visible_monsters() -> Array:
 static func _is_meat(it: Item) -> bool:
 	return it.id == &"meat" or it.id == &"bear_meat" or it.id == &"wolf_meat"
 
-## Is anything alive on this floor that would eat meat left lying?
+## Is anything alive on this floor that would eat meat left lying? Only the
+## HUNGRY count (2026-10-07, the desktop's review): a fed eater leaves meat
+## be (_hunt), and a warning about it would cry wolf.
 func _eaters_about() -> bool:
 	for e in entities:
-		if e.alive and not e.is_player and e.eats and e.faction != Entity.Faction.PLAYER:
+		if e.alive and not e.is_player and e.is_hungry() and e.faction != Entity.Faction.PLAYER:
 			return true
 	return false
 

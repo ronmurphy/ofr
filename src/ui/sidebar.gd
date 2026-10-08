@@ -707,6 +707,20 @@ func _draw() -> void:
 		# sentences like "orc  16/16 hp" and "long dead, and still angry". Some
 		# lines are simply easier to read as words, and a creature's glyph is
 		# already on the map under the cursor you are pointing with.
+		if entry is Dictionary and entry.has("chips"):
+			# A creature's state, as chips (see _describe): they wrap, and
+			# each row takes a chip row's height rather than a line's.
+			var x0 := PAD + float(entry.get("indent", 0.0))
+			var chips: Array = entry["chips"]
+			var widths: Array = []
+			for c in chips:
+				widths.append(chip_width(c))
+			for row in chip_rows(widths, size.x - PAD - x0):
+				var x := x0
+				for i in row:
+					x += _draw_chip(x, y, chips[i]) + CHIP_GAP
+				y += CHIP_ROW
+			continue
 		if entry is Dictionary:
 			_icon_line(y, String(entry["glyph"]), String(entry["text"]),
 				float(entry.get("indent", 0.0)))
@@ -1201,17 +1215,30 @@ func _describe() -> Array:
 				# allies green, but the moment he died the map was gone and all
 				# he had was this panel, which told him a name, hit points and
 				# a kit, and nothing about which of them was trying to kill him.
+				#
+				# CHIPS, ON THEIR OWN ROW (2026-10-07). These were words on the
+				# name's line, "(yours)" and "(wild)", and on a 256 px panel
+				# "cave bear  34/34 hp  (wild, hungry)" is 315 px: _fit cut it
+				# to "(w..", so "hungry" never showed on anything and the bear
+				# did not even say wild (the desktop's review, measured). A row
+				# of chips under the name, like the condition chips, always has
+				# the room.
+				var states := []
 				if e.faction == Entity.Faction.PLAYER and not e.is_player:
-					tag += "  (yours)"
+					states.append({"glyph": "", "text": "yours", "colour": Palette.ALLY})
 				# An animal up and about is not hunting you: say so, or a bear
 				# wandering past reads as one coming for you (the desktop's
 				# review, 2026-10-06).
 				elif e.is_wild() and not e.hostile_to(state.player):
+					states.append({"glyph": "", "text": "wild", "colour": Palette.WILD})
 					# Hungry, it hunts -- and a hungry den bear is worse to wake.
-					tag += "  (wild, hungry)" if e.is_hungry() else "  (wild)"
+					if e.is_hungry():
+						states.append({"glyph": "", "text": "hungry", "colour": Palette.HUNGRY})
 				if e.regen > 0:
 					tag += " *"
 				out.append(tag)
+				if not states.is_empty():
+					out.append({"chips": states, "indent": 10.0})
 				# What it is carrying, so a fight can be assessed before it is
 				# committed to.
 				# One line per piece. Comma-joining them overran the panel and

@@ -10073,7 +10073,12 @@ func _test_panels_do_not_overflow() -> void:
 	var worded := 0
 	var broken := []
 	for line in lines:
-		if line is Dictionary:
+		if line is Dictionary and line.has("chips"):
+			# A creature's state chips (2026-10-07): each needs its words.
+			for chip in line["chips"]:
+				if String(chip.get("text", "")) == "":
+					broken.append("chip with no words: %s" % str(line))
+		elif line is Dictionary:
 			pictured += 1
 			if String(line.get("glyph", "")) == "":
 				broken.append("picture line with no glyph: %s" % str(line))
@@ -15165,38 +15170,75 @@ func _test_the_panel_says_whose_side() -> void:
 	check("an enemy is not marked as yours", said != "" and not said.contains("yours"),
 		said)
 
+	# A creature's state is a row of chips under its name (2026-10-07).
+	var states := func(c: Vector2i) -> String:
+		bar.hovered = c
+		var words := []
+		for entry in bar._describe():
+			if entry is Dictionary and entry.has("chips"):
+				for chip in entry["chips"]:
+					words.append(String(chip["text"]))
+		return ",".join(words)
+	check("  and carries no chip at all", states.call(Vector2i(8, 5)) == "")
+
 	var mate := _spawn(gs, "skeleton", 9, 5)
 	mate.name = "B"
 	mate.faction = Entity.Faction.PLAYER
-	bar.hovered = Vector2i(9, 5)
-	said = ""
-	for entry in bar._describe():
-		if entry is String and String(entry).begins_with("B "):
-			said = String(entry)
-	check("but an ally is", said.contains("(yours)"), said)
+	check("but an ally is: a 'yours' chip", states.call(Vector2i(9, 5)) == "yours",
+		states.call(Vector2i(9, 5)))
 	var bruin := _spawn(gs, "cave bear", 10, 5)
-	bar.hovered = Vector2i(10, 5)
-	said = ""
-	for entry in bar._describe():
-		if entry is String and String(entry).begins_with("cave bear"):
-			said = String(entry)
-	check("an unstruck animal is marked wild, so it is not read as hunting you",
-		said.contains("(wild"), said)
 	# Hunger (2026-10-07): a hungry one says so, a fed one does not.
-	check("precondition: this bear is hungry", bruin.is_hungry())
-	check("  a hungry animal says so: it hunts", said.contains("(wild, hungry)"), said)
+	check("precondition: this bear is hungry and unstruck",
+		bruin.is_hungry() and not bruin.provoked)
+	check("an unstruck animal is marked wild, so it is not read as hunting you",
+		states.call(Vector2i(10, 5)).begins_with("wild"), states.call(Vector2i(10, 5)))
+	check("  a hungry animal says so: it hunts",
+		states.call(Vector2i(10, 5)) == "wild,hungry", states.call(Vector2i(10, 5)))
 	bruin.hunger = 0
-	said = ""
-	for entry in bar._describe():
-		if entry is String and String(entry).begins_with("cave bear"):
-			said = String(entry)
-	check("  a fed one is only wild", said.contains("(wild)") and not said.contains("hungry"), said)
+	check("  a fed one is only wild", states.call(Vector2i(10, 5)) == "wild",
+		states.call(Vector2i(10, 5)))
 	bruin.provoked = true
-	said = ""
-	for entry in bar._describe():
-		if entry is String and String(entry).begins_with("cave bear"):
-			said = String(entry)
-	check("  and once struck it is not", said != "" and not said.contains("(wild"), said)
+	check("  and once struck it is not", states.call(Vector2i(10, 5)) == "",
+		states.call(Vector2i(10, 5)))
+	gs.entities.erase(bruin)
+
+	# IT FITS (the desktop's review, 2026-10-07): "(wild, hungry)" on the
+	# name's line was cut to "(w.." on the real 256 px panel, so nothing ever
+	# said hungry. Every wild creature at full health, hungry: its name line
+	# whole, and its chips on one row inside the panel.
+	bar.font = Sidebar.ui_font()
+	bar.size = Vector2(256.0, 720.0)
+	var cut := []
+	var looked := 0
+	for row in GameState.BESTIARY:
+		if not row.get("wild", false):
+			continue
+		var beast := _spawn(gs, String(row["name"]), 12, 5)
+		beast.hunger = Entity.HUNGRY_AT
+		bar.hovered = Vector2i(12, 5)
+		var lines: Array = bar._describe()
+		var name_line := ""
+		var chips: Array = []
+		for k in lines.size():
+			if lines[k] is Dictionary and lines[k].has("chips"):
+				chips = lines[k]["chips"]
+				name_line = String(lines[k - 1])
+		# Wild, and hungry if it eats at all (a rabbit grazes, a bat flits).
+		if chips.size() != (2 if beast.eats else 1):
+			cut.append("%s: chips %s" % [row["name"], str(chips)])
+		elif bar._fit(name_line) != name_line:
+			cut.append("%s: name line cut, '%s'" % [row["name"], bar._fit(name_line)])
+		else:
+			var widths: Array = []
+			for c in chips:
+				widths.append(bar.chip_width(c))
+			if Sidebar.chip_rows(widths, bar.size.x - Sidebar.PAD * 2.0 - 10.0).size() != 1:
+				cut.append("%s: chips wrap" % row["name"])
+		looked += 1
+		gs.entities.erase(beast)
+	check("precondition: every wild kind looked at (%d)" % looked, looked >= 4)
+	check("every wild creature's name and its chips fit the panel uncut",
+		cut.is_empty(), str(cut))
 	bar.free()
 
 ## Doors, noise, and what a rat can do that a person cannot.
@@ -16542,9 +16584,16 @@ func _test_the_desktops_review_points() -> void:
 		return all
 	check("with no eater alive, meat underfoot is plain", rows.call().contains("pick up the haunch of rabbit|"),
 		rows.call())
-	_spawn(den, "goblin", 15, 4)
+	var diner := _spawn(den, "goblin", 15, 4)
 	check("with an eater on the floor, the box says so", rows.call().contains("haunch of rabbit; eaters about"),
 		rows.call())
+	# Only the hungry count (2026-10-07): a fed one leaves meat be.
+	diner.hunger = 0
+	check("  a fed eater is no threat to it: plain again",
+		rows.call().contains("pick up the haunch of rabbit|"), rows.call())
+	diner.hunger = Entity.HUNGRY_AT
+	check("  hungry again, the box says so again",
+		rows.call().contains("haunch of rabbit; eaters about"), rows.call())
 	check("  within the box's width", "pick up the haunch of rabbit; eaters about".length() <= 42)
 
 	# The ally's walk is bounded.

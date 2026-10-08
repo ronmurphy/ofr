@@ -1499,9 +1499,22 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
     hungry (18 of 57 on six cave floors).
   - **The den bear.** A fed one is half as quick to come out
     (`DEN_FED_SCALE`).
-  - **Seeing it.** The panel's tag reads "(wild, hungry)".
+  - **Seeing it.** Under the cursor, a row of chips beneath the name:
+    [wild] [hungry], and [yours] on an ally (`Palette.HUNGRY` e8834a).
+    The first version put "(wild, hungry)" on the name's line, where the
+    256 px panel cut it to "(w.." on the bear, so "hungry" never showed on
+    anything. Found in the desktop's review the same night, measured, and
+    moved to chips at Brad's suggestion, matching [lit] and [firm].
+    `_test_the_panel_says_whose_side` now checks that every wild kind's name
+    and chips fit the real panel uncut; probe
+    `tools/probes/screenshot_chips.gd`.
   - **Defaults.** A creature made outside a floor build (a test, an old
     save) defaults to hungry, which is how every hunter behaved before.
+  - **The desktop's review, the same night.** First, metabolism: hunger
+    counts the creature's own turns, so a fast wolf goes hungry about a
+    third sooner than a bear. Brad kept it, and the comment says so.
+    Second, the HERE box's "; eaters about" over meat now counts only
+    hungry eaters, since a fed one leaves meat be.
   Test: `_test_hunger` (mutation: without the fed gate in `_hunt`, three
   checks fail).
 - **The warren: rabbits out of the fortress -- BUILT 2026-10-07 (desktop).**
