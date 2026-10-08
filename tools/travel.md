@@ -54,7 +54,10 @@ apply them here once Brad copies the file over.
 - Small, for the `:=` hazard's examples: a lambda's `.call()` is a Variant
   too (`var g := build.call(...)` failed today; `var g: GameState = ...`).
 
-**2026-10-08, the desktop: for ADVICE.md -- a suggestion, Brad's call.**
+**2026-10-08, the desktop: for ADVICE.md -- a suggestion, Brad's call.
+-- DONE (the Legion, Brad said yes): the stale sections are now pointers
+(travel.md, the short-sessions list, the roadmap, git log); the headless
+Edge note, the commit rule and the 14-16 min suite are in too.**
 Its "Where the game stands (end of 2026-10-01)" and "the queue" sections
 are a week stale, and a queue copied into a hand-carried file goes stale
 again within a day. Suggest replacing them with pointers: the queue is
