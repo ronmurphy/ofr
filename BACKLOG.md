@@ -12,6 +12,23 @@ reliably caught bad suggestions.
 **Player feedback lives in `PLAYTESTS.md`** — what testers did, said and asked,
 one dated section per session. Decisions that come out of it land here.
 
+**THE CLASSIC VIEW IS DEPRECATED (Brad, 2026-10-08).** Everyone plays in 3D
+(the default for every player since 2026-09-28, web included) or in the 3D
+overhead view. Maintaining two renderers doubles the visual work, so:
+- **New visual features are built for the 3D views only.** Effects,
+  markers, tells, popups, lighting: the diorama, not `GlyphGrid`.
+- **The classic grid and its letters and symbols themes stay as they are,**
+  still reachable with Q and `v`, still compiled and tested, but no longer
+  extended. A feature missing there is not a bug; one that breaks it is.
+- **Shared UI is not affected:** the sidebar, the HERE box, the pack and the
+  legend serve both, and still get new work.
+- **Removing it later is Brad's call.** The plan if he makes it: one switch,
+  `const PICTURES_ONLY := true` in `render_theme.gd`, makes `v` stop cycling
+  and Q flip between 3D and 3D overhead, and moves any saved classic or
+  letters setting to 3D and pictures. The code stays behind the switch, so
+  flipping it back restores everything. Not commented out: commented code is
+  no longer checked by Godot and quietly breaks.
+
 ---
 
 ## Built — do not re-add

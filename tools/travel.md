@@ -32,6 +32,14 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-08, the Legion: for the desktop -- the classic view is
+deprecated (Brad).** Read the new paragraph at the top of BACKLOG.md. In
+short: new visual work goes into the 3D views only; the classic grid and
+its letters and symbols stay working but are not extended; shared UI
+(sidebar, HERE, pack, legend) still serves both. This matters most for your
+renderer work. Also for CLAUDE.md: the same rule is now in the master
+copy's working agreements.
+
 **2026-10-08, the Legion: handoff -- your VAULTS_GAME_SIDE.md is built,
 both parts (1530288).** Full suite 3109 passed / 0 failed / 0 SCRIPT ERROR,
 quick 395/0. That run took 28 min, but the machine was loaded (a Decky
