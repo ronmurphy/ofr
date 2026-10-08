@@ -1999,6 +1999,19 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**The open question in CLAUDE.md (descent caves above the vault rule's
+p=0.25, the climb's below, "about 3.0 sigma") -- ANSWERED 2026-10-08
+(desktop): it does not reproduce.** 600 REAL floors a half
+(`tools/probes/cave_vault_halves_probe.gd`): descent caves 147 of 600 with
+an authored vault (0.245, -0.3 sd), the climb's caves 150 of 600 (0.250,
++0.0 sd); every vault the rule wanted fit. In a cave the rule can only place
+one and only ever fewer than it wants, so "above 0.25" was never possible
+for a real rate -- the old figure was small samples (150 floors) and very
+likely the old `vault_rate_probe.gd`, which built floors 11-19 by setting
+the depth going DOWN, a floor the game never builds (fixed the same day: it
+builds a real climb). CLAUDE.md's open question can be struck; that file
+travels by hand, so the Legion's master copy needs the edit.
+
 **Fungus grows on mud -- BUILT 2026-10-08 (desktop).** Brad saw red fungus
 in a muddy room never go for the body beside it. Measured: a band of mud
 between the red and a body stopped the crawl dead, and a body lying in mud

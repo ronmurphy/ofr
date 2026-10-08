@@ -27,7 +27,11 @@ func _initialize() -> void:
 		for i in runs:
 			var gs := GameState.new(6600 + d * 25 + i)
 			gs.new_game()
-			gs.depth = d
+			# A REAL climb for 11-19 (2026-10-08): this used to set depth 11-19
+			# going DOWN, which is no floor the game ever builds, and its climb
+			# numbers fed the open question in CLAUDE.md about the halves.
+			gs.ascending = d > GameState.MAX_DEPTH
+			gs.depth = d if d <= GameState.MAX_DEPTH else GameState.MAX_DEPTH * 2 - d
 			gs.build_level()
 			var n := gs.vault_rects.size()
 			total += n
