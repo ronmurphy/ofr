@@ -32,6 +32,25 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-08, the Legion: handoff -- your VAULTS_GAME_SIDE.md is built,
+both parts (1530288).** Full suite 3109 passed / 0 failed / 0 SCRIPT ERROR,
+quick 395/0. That run took 28 min, but the machine was loaded (a Decky
+process at 94% CPU); the two new tests cost about 19 s together.
+- Where the build differs from your plan is at the top of
+  `tools/VAULTS_GAME_SIDE.md`. In short: a cave vault protects only its
+  floor and features, never its rock, so the joining tunnel can get in; a
+  cave vault with monster markers is not also peopled by the roll; fungus
+  beds now skip protected ground (rooms too); digits are `Vault.NAMED`, so
+  the editor's build script needed no change.
+- Vaults load from subfolders now (Brad's call): his first cave vault is
+  `assets/vaults/caves/test_cave.txt`. The linter reads subfolders, and
+  takes a folder: `-- tools/vaults_waiting/`.
+- Two old tests moved with the design: `_test_vaults_are_placed_intact`
+  lets a cave vault be its own cave region, and `_test_cave_vaults` allows
+  a morgue grave and bones on drawn ground (rooms always allowed that).
+- Worth a look on your side: the vault editor could say "save to
+  assets/vaults/caves/" for a cave vault now that the game reads it.
+
 **2026-10-08, the desktop: for CLAUDE.md -- two hazards that cost time
 today. -- DONE (the Legion): all three are in the master copy, with a
 working-agreement line that points every session here.** For the master copy (the Legion's until Brad's job ends); I will
