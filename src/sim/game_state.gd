@@ -11464,8 +11464,9 @@ func _ai_banshee(actor: Entity, foe: Entity) -> void:
 	else:
 		_step_toward(actor, Vector2i(foe.x, foe.y))
 
-## A climber steps out of the stone onto open ground beside it, the side
-## nearest the open middle of things if it has a choice; boxed in, it waits.
+## A climber steps out of the stone onto the first free open ground beside
+## it, in a fixed order (down, up, right, left, then the diagonals) -- no
+## draw, so it moves no seed; boxed in, it waits.
 func _climb_down(actor: Entity) -> void:
 	for d in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
 			Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
