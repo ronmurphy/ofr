@@ -275,6 +275,7 @@ func _initialize() -> void:
 	_test_cave_vaults()
 	_test_creatures_by_name()
 	_test_the_latched_gate()
+	_test_fire_as_a_fear()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -1448,6 +1449,93 @@ func _test_vaults_ship_in_every_export() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## FIRE, AN INNATE FEAR (built 2026-10-09, Brad's numbers): an unstruck
+## animal keeps FIRE_FEAR_REACH from your lit torch and lit braziers; a
+## struck bear or wolf beside fire fights CORNERED_BONUS harder and will not
+## flee; monsters ignore fire.
+func _test_fire_as_a_fear() -> void:
+	var gs := _arena(25, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = true
+	var wolf := _spawn(gs, "wolf", 6, 4)
+	gs.entities = [gs.player, wolf]
+	check("precondition: an unstruck wolf beside your lit torch",
+		wolf.is_wild() and not wolf.provoked and gs.torch_lit and wolf.is_adjacent(gs.player))
+	# Directly, not over several turns: a wolf left alone wanders off anyway,
+	# and a check that passes for that reason cannot fail (it did not).
+	check("it steps back from the torch", gs._keeps_back_from_fire(wolf)
+		and Los.steps(wolf.x, wolf.y, 5, 4) == 2)
+	check("  and again, out past FIRE_FEAR_REACH", gs._keeps_back_from_fire(wolf)
+		and Los.steps(wolf.x, wolf.y, 5, 4) == GameState.FIRE_FEAR_REACH + 1)
+	check("  where the fire no longer moves it", not gs._keeps_back_from_fire(wolf))
+	# Doused: no fire, no fear.
+	wolf.x = 6
+	wolf.y = 4
+	gs.torch_lit = false
+	check("douse the torch and it no longer keeps back", not gs._keeps_back_from_fire(wolf)
+		and wolf.x == 6)
+	# A lit brazier frightens too, with you nowhere near.
+	gs.torch_lit = true
+	gs.player.x = 1
+	gs.player.y = 1
+	gs.map.set_tile(15, 4, Tiles.BRAZIER)
+	var bun := _spawn(gs, "rabbit", 16, 4)
+	gs.entities = [gs.player, wolf, bun]
+	check("a rabbit beside a lit brazier steps away from it",
+		gs._keeps_back_from_fire(bun) and Los.steps(bun.x, bun.y, 15, 4) == 2)
+	gs.map.set_tile(15, 4, Tiles.BRAZIER_DEAD)
+	bun.x = 16
+	check("  but not from a dead one", not gs._keeps_back_from_fire(bun) and bun.x == 16)
+	# Monsters do not fear fire.
+	gs.player.x = 5
+	gs.player.y = 4
+	var gob := _spawn(gs, "goblin", 6, 5)
+	check("a goblin beside your torch does not keep back", not gs._keeps_back_from_fire(gob))
+	# In the pre-run you are not on the floor: your torch frightens nothing.
+	wolf.x = 6
+	wolf.y = 4
+	gs._prerunning = true
+	check("in the pre-run your torch frightens nothing", gs._fire_near(Vector2i(6, 4)).x < 0)
+	gs._prerunning = false
+	# Struck: no longer afraid -- cornered.
+	wolf.provoked = true
+	wolf.grudge = gs.player
+	check("a struck wolf beside fire does not back off", not gs._keeps_back_from_fire(wolf))
+	check("  it is cornered by the flame", gs._cornered_by_flame(wolf))
+	var bear := _spawn(gs, "cave bear", 4, 3)
+	bear.provoked = true
+	check("  so is a struck bear", gs._cornered_by_flame(bear))
+	bun.provoked = true
+	bun.x = 4
+	bun.y = 5
+	check("  but not a struck rabbit", not gs._cornered_by_flame(bun))
+	# The bonus, measured: the same blows with the same rolls, fire and none.
+	gs.entities = [gs.player, wolf]
+	var dealt := func(lit: bool) -> int:
+		gs.torch_lit = lit
+		gs.rng.seed = 777
+		var total := 0
+		for i in 20:
+			gs.player.hp = gs.player.max_hp
+			gs._attack(wolf, gs.player)
+			total += gs.player.max_hp - gs.player.hp
+		return total
+	var cold: int = dealt.call(false)
+	var hot: int = dealt.call(true)
+	check("cornered, it hits CORNERED_BONUS harder (%d against %d over 20 blows)" % [hot, cold],
+		hot == cold + 20 * GameState.CORNERED_BONUS)
+	check("  and the log says so, once", _log_says(gs, "Cornered by the flame"))
+	# It will not flee beside fire; away from it, it does.
+	wolf.hp = 1
+	wolf.fleeing = false
+	gs.torch_lit = true
+	gs._update_morale(wolf)
+	check("cornered by flame, a beaten wolf does not flee", not wolf.fleeing)
+	gs.torch_lit = false
+	gs._update_morale(wolf)
+	check("  without the fire, it does", wolf.fleeing)
+
 ## THE LATCHED GATE (Brad, 2026-10-07; built 2026-10-09): no animal gets
 ## past it, anything with hands lifts the latch, a bear smashes it, and a
 ## phasing thing goes through as it goes through stone.
@@ -8858,7 +8946,9 @@ func _test_pits_are_an_escape() -> void:
 	# A corridor: the bear can only run east, and the pit is where the
 	# corridor would have cornered it -- the case the strand exists for.
 	var gs := _arena(21, 3)
-	gs.player.x = 5
+	# Three cells off, not two: within FIRE_FEAR_REACH of your torch a struck
+	# bear is cornered by flame and will not flee (2026-10-09).
+	gs.player.x = 4
 	gs.player.y = 1
 	gs.torch_lit = true
 	gs.map.set_tile(9, 1, Tiles.PIT)

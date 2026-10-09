@@ -811,7 +811,8 @@ this list only gains an item when one leaves it.** (Why, at length:
    (`assets/vaults/the_warren.txt`) and re-run `tools/probes/warren_probe.gd`:
    the rabbits should stay home. The houndmaster's kennel (item 4) and the
    spider's nest (item 3) can use it.
-2. **Fire as a fear** (the wild creatures update): a lit torch keeps an
+2. **DONE 2026-10-09 (the Legion) -- as built under "Fire, an innate
+   fear" in the wild creatures update.** **Fire as a fear** (the wild creatures update): a lit torch keeps an
    unstruck animal back; read the entry for the wolves' "cornered by flame"
    rule and the bear's exception before starting.
 3. **The spider** (the wild creatures update, "The spider"; designed in
@@ -1740,6 +1741,23 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
   wolves fight HARDER within 2 of fire -- an animal cornered by flame. (Its
   own constant: `FIRE_SAFE` is 1 and is the fungus rule. Keeping back could
   reuse the giving-way code that already steps things away from a dragon.)
+  **BUILT 2026-10-09 (the Legion), Brad's numbers.**
+  - **Unstruck ANIMALS only** keep back; monsters ignore fire, so fights
+    with goblins and orcs are unchanged.
+  - **2 cells** (`FIRE_FEAR_REACH`) from **your lit torch or a lit brazier**
+    (`_fire_near`). A dead or spent brazier is no fire. Douse the torch and
+    they come close again. In the pre-run your torch is not on the floor.
+  - **Order:** a den bear holds its den first (`_keeps_to_the_den`); a
+    rabbit runs from a predator before it minds a flame; then fire, before
+    hunting, drinking or wandering (`_keeps_back_from_fire`, stepping away
+    with `_step_away_from`, the dread code's step taken from a place).
+  - **Cornered by flame:** a STRUCK bear or wolf with fire within 2 hits
+    `CORNERED_BONUS` (2) harder and will not flee (`_update_morale`). The log
+    says "Cornered by the flame, the wolf fights all the harder!" once a
+    creature a floor.
+  - Test: `_test_fire_as_a_fear` (mutations: no fear, no bonus -- three
+    checks fail). Its first wolf check passed with the fear switched off (a
+    wolf left alone wanders off anyway) and was rewritten as a direct step.
 
 **The spider** (D&D's giant spider by way of Minecraft):
 - Ranged, and does not attack you directly: it shoots WEBS, so you spend

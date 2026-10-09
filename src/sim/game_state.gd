@@ -1361,6 +1361,7 @@ func build_level() -> void:
 	hunger_rng.seed = int(rng.seed) ^ (depth * 7253) ^ 0x4C6B
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
+	_cornered_said = {}
 	scorched = {}
 	mud_under = {}
 	tending = {}
@@ -9932,6 +9933,10 @@ func _rattle_the_ranks(slain: Entity) -> void:
 func _update_morale(actor: Entity) -> void:
 	if actor.flee_below <= 0.0:
 		return
+	# Cornered by flame, it does not run (fire, 2026-10-09).
+	if _cornered_by_flame(actor):
+		actor.fleeing = false
+		return
 	# WHERE ITS NERVE BREAKS, not how hard it hits. Company steadies it; having
 	# watched the biggest thing nearby die does the opposite. Moving the
 	# threshold rather than the damage keeps the combat path untouched and
@@ -10850,6 +10855,10 @@ func _ai_wild(actor: Entity) -> void:
 				and Los.clear(map, actor.x, actor.y, scare.x, scare.y):
 			_ai_forager(actor, scare)
 			return
+		# Then fire (2026-10-09): a rabbit does not graze beside a flame --
+		# but one with a goblin after it runs from the goblin, torch or no.
+		if _keeps_back_from_fire(actor):
+			return
 		if _drinks(actor):
 			return
 		_ai_forager(actor, scare)
@@ -10862,6 +10871,9 @@ func _ai_wild(actor: Entity) -> void:
 		return
 	# Up and about: a den bear that left is an ordinary bear from now on.
 	actor.denned = false
+	# FIRE, AN INNATE FEAR: before hunting, drinking or wandering.
+	if _keeps_back_from_fire(actor):
+		return
 	# The food web (Brad, 2026-10-04): a bear hunts the rabbits, with the
 	# same hunt the goblins have, and eats what it brings down. Never a bear
 	# (heavy), never you (_prey_for looks only at the wild).
@@ -10945,6 +10957,49 @@ const DEN_TURN_CHANCE := [0.0, 0.40, 0.20]
 ## A fed bear is slower to come out after anything (hunger; Brad: "a bear
 ## WILL attack a person, especially if it is hungry").
 const DEN_FED_SCALE := 0.5
+
+## FIRE, AN INNATE FEAR (the wild creatures update; built 2026-10-09, Brad's
+## numbers). An UNSTRUCK animal will not stay within FIRE_FEAR_REACH of fire
+## -- your lit torch or a lit brazier -- and steps away from it before
+## anything else it would do. Douse the torch and they come close again. A
+## struck BEAR or WOLF within that reach of fire is CORNERED BY FLAME: it
+## hits CORNERED_BONUS harder and will not flee. Monsters ignore fire. In the
+## pre-run your torch is not on the floor, so only the braziers count.
+const FIRE_FEAR_REACH := 2
+const CORNERED_BONUS := 2
+
+## The nearest fire within `reach` of `c`, or (-1, -1): your lit torch (you
+## carry it), else a lit brazier.
+func _fire_near(c: Vector2i, reach: int = FIRE_FEAR_REACH) -> Vector2i:
+	if torch_lit and player.alive and not _prerunning \
+			and Los.steps(c.x, c.y, player.x, player.y) <= reach:
+		return Vector2i(player.x, player.y)
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			if map.get_tile(c.x + dx, c.y + dy) == Tiles.BRAZIER:
+				return Vector2i(c.x + dx, c.y + dy)
+	return Vector2i(-1, -1)
+
+## An unstruck animal near fire steps away from it. True if that was its
+## turn. Boxed in, it holds its ground and gets on with its turn.
+func _keeps_back_from_fire(actor: Entity) -> bool:
+	if not actor.is_wild() or actor.provoked:
+		return false
+	var fire := _fire_near(Vector2i(actor.x, actor.y))
+	if fire.x < 0:
+		return false
+	return _step_away_from(actor, fire)
+
+## A struck bear or wolf with fire within FIRE_FEAR_REACH: cornered by flame.
+func _cornered_by_flame(actor: Entity) -> bool:
+	if not actor.is_wild() or not actor.provoked:
+		return false
+	if actor.appearance != &"bear" and actor.appearance != &"wolf":
+		return false
+	return _fire_near(Vector2i(actor.x, actor.y)).x >= 0
+
+## Which cornered animals the log has named this floor, so it says so once.
+var _cornered_said: Dictionary = {}
 
 ## The nearest awake thing within `reach` of `actor`: you (always awake,
 ## except during the pre-run, when you are not there) or any creature.
@@ -11424,6 +11479,11 @@ func _step_random(actor: Entity) -> void:
 
 ## Returns false when there is nowhere further from the player to go.
 func _step_away(actor: Entity, foe: Entity) -> bool:
+	return _step_away_from(actor, Vector2i(foe.x, foe.y))
+
+## The same, from a place rather than a creature (a fire, 2026-10-09).
+func _step_away_from(actor: Entity, from: Vector2i) -> bool:
+	var foe := from
 	var here := Los.steps(actor.x, actor.y, foe.x, foe.y)
 	var best := Vector2i(actor.x, actor.y)
 	var best_d := here
@@ -11714,6 +11774,13 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	# but the ordering should not depend on that staying true.
 	if not ranged and power_override < 0:
 		atk += attacker.offhand_tier(&"bash") * 2
+	# Cornered by flame: a struck bear or wolf beside fire fights harder.
+	if not ranged and power_override < 0 and _cornered_by_flame(attacker):
+		atk += CORNERED_BONUS
+		if not _cornered_said.has(attacker) and map.is_visible(attacker.x, attacker.y):
+			_cornered_said[attacker] = true
+			msg_log.add("Cornered by the flame, the %s fights all the harder!" % attacker.name,
+				Color(0.95, 0.55, 0.35))
 
 	var raw := atk - defender.total_defense() + rng.randi_range(-1, 1)
 	# What it was struck WITH, before the floor is applied -- so a resisted
