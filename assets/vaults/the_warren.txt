@@ -10,8 +10,10 @@ band: fortress
 # found in either fortress. No mushrooms on purpose: two make a killer
 # rabbit at this depth, and the garrison keeps them fed on scraps (the
 # bones by the door are the butcher's corner -- loud underfoot).
+# The doorway is a LATCHED GATE (H, 2026-10-09): the rabbits stay in; the
+# garrison's goblins lift the latch to fetch one; a bear breaks it.
 LAYOUT
-####+####
+####H####
 #,,.....#
 #,..r...#
 #.....r.#

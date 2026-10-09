@@ -75,7 +75,8 @@ const DRAWN := {
 ## wrong fungi, which this list had never heard of, are the tiles a player
 ## most needs told about.
 const TERRAIN_ORDER := [
-	Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN, Tiles.DOOR_BARRED, Tiles.WATER, Tiles.MUD, Tiles.RUBBLE,
+	Tiles.DOOR_CLOSED, Tiles.DOOR_OPEN, Tiles.DOOR_BARRED, Tiles.GATE_CLOSED,
+	Tiles.WATER, Tiles.MUD, Tiles.RUBBLE,
 	Tiles.BONES, Tiles.FUNGUS, Tiles.FUNGUS_PURPLE, Tiles.FUNGUS_RED,
 	Tiles.BRAZIER, Tiles.BRAZIER_SPENT, Tiles.BRAZIER_DEAD, Tiles.SHRINE,
 	Tiles.TRAP, Tiles.PIT, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
@@ -88,6 +89,7 @@ const LEFT_OUT := "floor, walls, pillars: as they look"
 const NOTES := {
 	Tiles.DOOR_CLOSED: "loud to open",
 	Tiles.DOOR_BARRED: "holds all but a bear",
+	Tiles.GATE_CLOSED: "no animal gets past",
 	Tiles.MUD: "slow; worst for heavy things",
 	Tiles.WATER: "slow and LOUD; washes the red off",
 	Tiles.RUBBLE: "slightly slow; knaps sling stones",

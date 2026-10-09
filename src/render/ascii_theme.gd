@@ -13,6 +13,9 @@ const TABLE := {
 	&"door_open":   {"ch": "'",      "fg": Palette.DOOR,     "bg": Color("14120f")},
 	# The bulwark's stone across a door: the door's shape in stone's colour.
 	&"door_barred": {"ch": "+",      "fg": Palette.STONE_LIGHT, "bg": Color("1c1712")},
+	# A latched gate: the door's shape in the gate's own colour.
+	&"gate_closed": {"ch": "+",      "fg": Palette.GATE,     "bg": Color("1c1712")},
+	&"gate_open":   {"ch": "'",      "fg": Palette.GATE,     "bg": Color("14120f")},
 	&"stairs_down": {"ch": ">",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
 	&"stairs_up":   {"ch": "<",      "fg": Palette.STAIRS,   "bg": Color("1a1a20")},
 	# Colour is supplied per-shrine by the grid, not from here.

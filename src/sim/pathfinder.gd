@@ -18,12 +18,19 @@ extends RefCounted
 ## (2026-10-02 -- before this a found trap was solid to everyone, and one in a
 ## doorway shut every guard in its room).
 
+## GATES (2026-10-09): two more grids, plain and trap-wary, in which a shut
+## latched gate is solid -- for what cannot work a latch (the animals, your
+## tamed wolves among them). Not careful: nothing that squeezes under a door
+## is careful today, and a careful squeezer would get the plain gated route.
+## Six grids, not eight, because every floor build pays for each one.
 var _grids := {}
 
 func _init(map: DungeonMap) -> void:
 	for careful in [false, true]:
 		for traps in [false, true]:
-			_grids[[careful, traps]] = _make(map)
+			_grids[[careful, traps, false]] = _make(map)
+	for traps in [false, true]:
+		_grids[[false, traps, true]] = _make(map)
 	refresh(map)
 
 func _make(map: DungeonMap) -> AStarGrid2D:
@@ -47,7 +54,8 @@ func refresh(map: DungeonMap) -> void:
 			var blocked := not map.is_walkable(x, y) or t == Tiles.PIT
 			for key in _grids:
 				_grids[key].set_point_solid(Vector2i(x, y), blocked
-					or (key[0] and Tiles.is_bad_fungus(t)) or (key[1] and t == Tiles.TRAP))
+					or (key[0] and Tiles.is_bad_fungus(t)) or (key[1] and t == Tiles.TRAP)
+					or (key[2] and t == Tiles.GATE_CLOSED))
 
 func set_solid(x: int, y: int, solid: bool) -> void:
 	for key in _grids:
@@ -55,16 +63,24 @@ func set_solid(x: int, y: int, solid: bool) -> void:
 
 ## A cell's ground changed to or from the wrong fungus: only careful routes care.
 func set_fungus(x: int, y: int, bad: bool) -> void:
-	if _grids[[false, false]].is_point_solid(Vector2i(x, y)):
+	if _grids[[false, false, false]].is_point_solid(Vector2i(x, y)):
 		return
 	for key in _grids:
 		if key[0]:
 			_grids[key].set_point_solid(Vector2i(x, y), bad)
 
+## A gate was latched, or opened or smashed: only the gated routes care.
+func set_gate(x: int, y: int, shut: bool) -> void:
+	if _grids[[false, false, false]].is_point_solid(Vector2i(x, y)):
+		return
+	for key in _grids:
+		if key[2]:
+			_grids[key].set_point_solid(Vector2i(x, y), shut)
+
 ## A trap was found, or a found one sprang or was disarmed: only the routes
 ## that avoid traps care.
 func set_trap(x: int, y: int, found: bool) -> void:
-	if _grids[[false, false]].is_point_solid(Vector2i(x, y)):
+	if _grids[[false, false, false]].is_point_solid(Vector2i(x, y)):
 		return
 	for key in _grids:
 		if key[1]:
@@ -72,8 +88,9 @@ func set_trap(x: int, y: int, found: bool) -> void:
 
 ## Returns the path from `from` to `to`, excluding the starting cell. Careful
 ## routes go round the wrong fungus; trap-wary ones round every found trap.
-func path(from: Vector2i, to: Vector2i, careful := false, traps := false) -> Array[Vector2i]:
-	var g: AStarGrid2D = _grids[[careful, traps]]
+func path(from: Vector2i, to: Vector2i, careful := false, traps := false,
+		gates := false) -> Array[Vector2i]:
+	var g: AStarGrid2D = _grids[[false, traps, true]] if gates else _grids[[careful, traps, false]]
 	if g.is_in_boundsv(to) and g.is_point_solid(to):
 		return []
 	var pts := g.get_id_path(from, to)

@@ -46,6 +46,12 @@ enum {
 	## heaving (GameState.BAR_HOLDS), or your own hand lifting the bar.
 	## Appended, like everything after CHEST.
 	DOOR_BARRED,
+	## THE LATCHED GATE (Brad, 2026-10-07; built 2026-10-09). A door no
+	## ANIMAL passes: nothing that squeezes under a door gets under this one,
+	## anything with hands lifts the latch, a bear still smashes it. Shut and
+	## open, like a door; appended, never inserted (tiles save as numbers).
+	GATE_CLOSED,
+	GATE_OPEN,
 }
 
 ## walk  = an actor may stand here
@@ -88,6 +94,9 @@ const DATA := {
 	# Walkable like a shut door -- walking into it is how you open it -- and
 	# as opaque as one.
 	DOOR_BARRED:   {"id": &"door_barred",   "walk": true, "clear": false},
+	# A latched gate: walked into to open, like a door, and as opaque shut.
+	GATE_CLOSED:   {"id": &"gate_closed",   "walk": true, "clear": false},
+	GATE_OPEN:     {"id": &"gate_open",     "walk": true, "clear": true},
 	# Walkable on purpose: falling in is always a choice, never an accident.
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.
@@ -114,6 +123,32 @@ const DATA := {
 	## chest would be one you could cross without noticing.
 	CHEST:       {"id": &"chest",        "walk": false, "clear": true},
 }
+
+## A latched gate, shut or open.
+static func is_gate(t: int) -> bool:
+	return t == GATE_CLOSED or t == GATE_OPEN
+
+## A doorway of any kind: a door or a gate, shut, open or barred.
+static func is_doorway(t: int) -> bool:
+	return t == DOOR_CLOSED or t == DOOR_OPEN or t == DOOR_BARRED \
+		or t == GATE_CLOSED or t == GATE_OPEN
+
+## A shut leaf in a doorway: walked into to open it, and it blocks sight.
+static func is_shut(t: int) -> bool:
+	return t == DOOR_CLOSED or t == DOOR_BARRED or t == GATE_CLOSED
+
+## An open doorway that can be shut again.
+static func is_open_door(t: int) -> bool:
+	return t == DOOR_OPEN or t == GATE_OPEN
+
+## What a shut door or gate becomes when opened, and the reverse. A gate
+## stays a gate both ways: open it and it is an open gate, shut it and it
+## latches again.
+static func opened(t: int) -> int:
+	return GATE_OPEN if t == GATE_CLOSED else DOOR_OPEN
+
+static func closed(t: int) -> int:
+	return GATE_CLOSED if t == GATE_OPEN else DOOR_CLOSED
 
 static func is_walkable(t: int) -> bool:
 	return DATA[t]["walk"]

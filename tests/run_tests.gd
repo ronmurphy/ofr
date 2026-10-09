@@ -274,6 +274,7 @@ func _initialize() -> void:
 	_test_authored_pits_obey_the_rule()
 	_test_cave_vaults()
 	_test_creatures_by_name()
+	_test_the_latched_gate()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -1447,6 +1448,114 @@ func _test_vaults_ship_in_every_export() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## THE LATCHED GATE (Brad, 2026-10-07; built 2026-10-09): no animal gets
+## past it, anything with hands lifts the latch, a bear smashes it, and a
+## phasing thing goes through as it goes through stone.
+## A pen: a wall down x=10 with one doorway at (10, 4).
+func _gate_pen(door_tile: int) -> GameState:
+	var gs := _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	for y in range(1, 8):
+		gs.map.set_tile(10, y, Tiles.WALL)
+	gs.map.set_tile(10, 4, door_tile)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	gs.entities = [gs.player]
+	return gs
+
+func _test_the_latched_gate() -> void:
+	check("a vault's H is a latched gate", Vault.TERRAIN.get("H", -1) == Tiles.GATE_CLOSED)
+	check("  shut it is a shut doorway, open an open one",
+		Tiles.is_shut(Tiles.GATE_CLOSED) and Tiles.is_open_door(Tiles.GATE_OPEN)
+		and Tiles.opened(Tiles.GATE_CLOSED) == Tiles.GATE_OPEN
+		and Tiles.closed(Tiles.GATE_OPEN) == Tiles.GATE_CLOSED
+		and Tiles.opened(Tiles.DOOR_CLOSED) == Tiles.DOOR_OPEN)
+	# A rabbit penned with its supper outside.
+	var crossed := func(door_tile: int) -> bool:
+		var gs := _gate_pen(door_tile)
+		gs.map.set_tile(13, 4, Tiles.FUNGUS)
+		var bun := _spawn(gs, "rabbit", 7, 4)
+		for i in 120:
+			gs._take_ai_turn(bun)
+			if bun.x > 10:
+				return true
+		return false
+	check("precondition: a rabbit goes under a plain shut door to its supper",
+		crossed.call(Tiles.DOOR_CLOSED))
+	check("a rabbit stays behind a latched gate (120 turns)", not crossed.call(Tiles.GATE_CLOSED))
+	# A wolf: the step is refused, and its routes go round (here: none).
+	var gs := _gate_pen(Tiles.GATE_CLOSED)
+	var wolf := _spawn(gs, "wolf", 9, 4)
+	check("precondition: a wolf squeezes under doors", wolf.door_style() == Entity.Door.SQUEEZES)
+	check("a wolf may not step into a latched gate", not gs.can_creature_step(9, 4, 10, 4, wolf))
+	check("  and its route through the pen wall finds nothing",
+		gs.pathfinder.path(Vector2i(9, 4), Vector2i(12, 4), false, false, true).is_empty())
+	check("  while an ordinary route goes through the gate",
+		not gs.pathfinder.path(Vector2i(9, 4), Vector2i(12, 4)).is_empty())
+	check("  and the backstop holds it if it tries", gs._through_the_door(wolf, Vector2i(10, 4))
+		and gs.map.get_tile(10, 4) == Tiles.GATE_CLOSED)
+	for i in 30:
+		gs._step_toward(wolf, Vector2i(12, 4))
+	check("  a wolf walking at it stays its side (30 tries)", wolf.x < 10)
+	# A goblin has hands.
+	var gob := _spawn(gs, "goblin", 9, 3)
+	check("precondition: a goblin opens doors", gob.door_style() == Entity.Door.OPENS)
+	check("a goblin lifts the latch", gs._through_the_door(gob, Vector2i(10, 4))
+		and gs.map.get_tile(10, 4) == Tiles.GATE_OPEN and _log_says(gs, "lifts the latch"))
+	check("  and once open, the animals' routes go through",
+		not gs.pathfinder.path(Vector2i(9, 4), Vector2i(12, 4), false, false, true).is_empty())
+	# Shut behind it, it latches again.
+	gob.x = 11
+	gob.y = 4
+	gob.shut_behind = Vector2i(10, 4)
+	gob.alertness = Entity.Alert.ASLEEP
+	gs.entities = [gs.player, gob]
+	check("a guard shutting a gate behind it latches it",
+		gs._shut_behind(gob) and gs.map.get_tile(10, 4) == Tiles.GATE_CLOSED)
+	check("  and the animals' routes know it again",
+		gs.pathfinder.path(Vector2i(9, 4), Vector2i(12, 4), false, false, true).is_empty())
+	# A bear smashes it.
+	var bear := _spawn(gs, "cave bear", 9, 5)
+	check("a bear smashes a gate like any door", gs._through_the_door(bear, Vector2i(10, 4))
+		and gs.map.get_tile(10, 4) == Tiles.FLOOR and _log_says(gs, "smashes the gate"))
+	# A banshee goes through stone, so through a gate.
+	gs = _gate_pen(Tiles.GATE_CLOSED)
+	var ghost := _spawn(gs, "banshee", 9, 4)
+	check("a phasing thing passes a latched gate",
+		ghost.phasing and gs.can_creature_step(9, 4, 10, 4, ghost)
+		and not gs._through_the_door(ghost, Vector2i(10, 4)))
+	# You lift the latch, and shut it again.
+	gs = _gate_pen(Tiles.GATE_CLOSED)
+	gs.player.x = 9
+	gs.player.y = 4
+	gs.player_move(1, 0)
+	check("you lift the latch and open the gate",
+		gs.map.get_tile(10, 4) == Tiles.GATE_OPEN and gs.player.x == 9)
+	check("  you close it: it latches", gs.player_close_door()
+		and gs.map.get_tile(10, 4) == Tiles.GATE_CLOSED)
+	# The bulwark bars a gate, and the bar comes off as an open gate.
+	var bulwark := Item.make(&"gem_bulwark")
+	check("the bulwark bars a gate", gs._bar_the_door(bulwark)
+		and gs.map.get_tile(10, 4) == Tiles.DOOR_BARRED and gs.barred_gates.has(Vector2i(10, 4)))
+	var back := GameState.new(1)
+	back.apply_dict(gs.to_dict())
+	check("  remembered across a save", back.barred_gates.has(Vector2i(10, 4)))
+	gs._unbar(Vector2i(10, 4))
+	check("  lifted, it is an open gate, not a door", gs.map.get_tile(10, 4) == Tiles.GATE_OPEN)
+	# The cursor names it.
+	var bar := Sidebar.new()
+	bar.state = gs
+	gs.map.set_tile(10, 4, Tiles.GATE_CLOSED)
+	gs.map.set_all_visible()
+	gs.map.remember_visible()
+	bar.hovered = Vector2i(10, 4)
+	var said := ""
+	for entry in bar._describe():
+		if entry is String:
+			said += String(entry) + "|"
+	check("the cursor says 'a latched gate'", said.contains("a latched gate"), said)
+	bar.free()
+
 func _test_rabbits_keep_to_the_warren() -> void:
 	var gs := _arena(15, 9)
 	var rabbits_at := func(tier: int) -> int:

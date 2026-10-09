@@ -20,6 +20,7 @@ const FADE_FLOOR := 0.5
 const LANDMARK_TILES := {
 	Tiles.STAIRS_DOWN: true, Tiles.STAIRS_UP: true,
 	Tiles.DOOR_CLOSED: true, Tiles.DOOR_OPEN: true, Tiles.DOOR_BARRED: true,
+	Tiles.GATE_CLOSED: true, Tiles.GATE_OPEN: true,
 	Tiles.BRAZIER: true, Tiles.BRAZIER_SPENT: true, Tiles.BRAZIER_DEAD: true,
 	Tiles.SHRINE: true,
 }

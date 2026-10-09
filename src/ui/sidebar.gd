@@ -1262,6 +1262,11 @@ func _describe() -> Array:
 	elif tile == Tiles.SHRINE:
 		# Named only once its colour has been learned the hard way.
 		out.append(state.shrine_label(int(state.shrine_at.get(hovered, 0))))
+	elif Tiles.is_gate(tile):
+		# Keep the look, add the words (the gate's design, 2026-10-07): a rat
+		# stopping dead at a door needs explaining. Short, to fit the panel;
+		# the legend's row says what a gate does.
+		out.append("a latched gate" if tile == Tiles.GATE_CLOSED else "an open gate")
 	else:
 		out.append(String(Tiles.appearance_id(tile)).replace("_", " "))
 	return out

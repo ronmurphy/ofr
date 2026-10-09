@@ -147,6 +147,8 @@ static func _terrain_colour(t: int) -> Color:
 		return Color(0.20, 0.20, 0.24)
 	if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN or t == Tiles.DOOR_BARRED:
 		return Color(0.55, 0.42, 0.28)
+	if Tiles.is_gate(t):
+		return Palette.GATE.darkened(0.25)
 	if t == Tiles.WATER:
 		return Color(0.16, 0.26, 0.36)
 	if t == Tiles.PIT:

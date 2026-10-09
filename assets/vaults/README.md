@@ -149,6 +149,7 @@ Terrain:
 | `.` | floor | |
 | `_` | cave floor | |
 | `+` | closed door | |
+| `H` | latched gate | no animal gets past; hands lift the latch, a bear smashes it. Counts as the vault's doorway |
 | `'` | open door | |
 | `O` | pillar | blocks movement **and** sight |
 | `^` | stalagmite | same, but natural |

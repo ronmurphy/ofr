@@ -17,7 +17,7 @@ const TERRAIN := {
 	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus",
 	"v": "purple fungus", ";": "red fungus", "&": "brazier",
 	"A": "shrine", "X": "pit", "t": "trap", ">": "stairs down", "<": "stairs up",
-	"n": "grave", "C": "chest",
+	"n": "grave", "C": "chest", "H": "latched gate",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit"}
@@ -28,7 +28,7 @@ const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 ## tiles.gd says so explicitly, and the reason is that a headstone which
 ## blocked movement would be one more thing generation has to prove it never
 ## wedged into a corridor.
-const PASSABLE := [".", "_", "+", "'", "~", "=", "%", ",", "*", "v", ";",
+const PASSABLE := [".", "_", "+", "'", "H", "~", "=", "%", ",", "*", "v", ";",
 	"A", "X", "t", ">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "(", "r"]
 ## Creatures by name: a digit on the board, named by a `place N: name` line.
 const NAMED := ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
@@ -38,6 +38,11 @@ const CAVE_MIN_CELLS := 24
 
 var _problems := 0
 var _warnings := 0
+## Vault name -> the file that first used it (2026-10-09). A run remembers
+## the cave vaults it has met BY NAME (GameState.cave_vaults_seen), and the
+## editor's default name is "new vault": two files left unrenamed would count
+## as one vault there.
+var _names := {}
 
 func _initialize() -> void:
 	print("")
@@ -149,6 +154,14 @@ func _lint(path: String, vault: String) -> void:
 			warn(vault, "place %s: a %s (threat %d) is over the room ceiling (%d) at depth %d, so it is left out there"
 				% [digit, called, int(row["threat"]), Threat.room_ceiling(lowest), lowest])
 
+	# The game names a vault by its `name:` line, else by its file name.
+	var called: String = meta.get("name", vault.get_file().trim_suffix(".txt"))
+	if _names.has(called):
+		warn(vault, "has the same name as %s ('%s'); the game would count them as one vault"
+			% [_names[called], called])
+	else:
+		_names[called] = vault
+
 	for key in ["name", "weight", "min_depth", "max_depth"]:
 		if not meta.has(key):
 			warn(vault, "no '%s' in the metadata" % key)
@@ -238,7 +251,7 @@ func _lint(path: String, vault: String) -> void:
 		var row := String(grid[y])
 		for x in w:
 			var ch := " " if x >= row.length() else row[x]
-			if ch != "+" and ch != "'":
+			if ch != "+" and ch != "'" and ch != "H":
 				continue
 			doors += 1
 			var inside_touch := 0

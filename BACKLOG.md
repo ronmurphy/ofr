@@ -803,7 +803,8 @@ this list only gains an item when one leaves it.** (Why, at length:
 
 **The queue, in order:**
 
-1. **The latched gate** (Ideas, 2026-10-07): a door no animal passes, its
+1. **DONE 2026-10-09 (the Legion) -- see the gate's own entry under Ideas
+   for as built.** **The latched gate** (Ideas, 2026-10-07): a door no animal passes, its
    own colour, opened by hands, smashed by a bear; a wall to monster
    pathfinding, a door to yours; "a latched gate" under the cursor and in
    the HERE box; a vault letter for it. Then put one on the warren
@@ -901,6 +902,13 @@ climb's caves remember the map faintly (0.15) instead of not at all -- one
 rule now, MapMemory.strength_for, for both views.
 
 ## Known gaps
+
+- **A forced corridor can cut through a vault's wall** (found 2026-10-09 by
+  the gated warren). When `_ensure_connected` stalls it carves with
+  `force`, through protected ground, and an L-shaped corridor through a
+  vault's wall gives it a second opening -- a gated pen with a hole in it.
+  Seen on 1 floor in 40 at effective 13. A fix would route the forced
+  corridor round a vault's rect, or through its own doorway.
 
 **No vault ever reached an exported build -- FIXED 2026-10-08 (desktop).**
 Found reviewing the Legion's cave vaults: all three export presets were
@@ -2358,6 +2366,42 @@ gate); anything with hands does (the garrison's goblins walking in to eat
 the larder is a feature); a bear still smashes it as it smashes any door --
 a gate is a fence, not a vault door. A truly unbreakable door, if ever
 wanted (a boss's vault), is a separate thing.
+**BUILT 2026-10-09 (the Legion), as refined.** Two tiles, `GATE_CLOSED`
+and `GATE_OPEN` (appended), and the vault letter `H` (also the vault
+editor's, "latched gate", structure).
+- **Who passes.** Whatever squeezes under a door (`Entity.door_style()`
+  SQUEEZES: rabbits, rats, wolves, bats, slimes, your tamed wolves) is
+  stopped. Openers lift the latch ("The goblin lifts the latch and swings
+  the gate open."). The heavy smash it to floor ("The cave bear smashes the
+  gate to kindling."). A phasing thing (the banshee) goes through, as it
+  goes through stone. You lift it by walking into it, and close it with C:
+  "The latch drops." Wearing the ring of the rat you are a rat, and it stops
+  you too.
+- **Three layers, so no animal stalls at one:** `can_creature_step` refuses
+  the step (random steps, fleeing, ally walks); the pathfinder has two more
+  grids, plain and trap-wary, in which a shut gate is solid, used for
+  squeezers (`path(..., gates)`, kept current by `_set_gate_route`); and
+  `_through_the_door` refuses as a backstop.
+- **It stays a gate.** A guard shutting it behind them latches it again. The
+  bulwark can bar it (`barred_gates`, saved), and the bar comes off as an
+  open gate, not a door.
+- **Its look.** The door's shape everywhere, in its own colour
+  (`Palette.GATE`, an olive). In 3D its leaf is four slats on two rails with
+  a brace, swinging on the door's hinge. The cursor says "a latched gate" /
+  "an open gate". The legend's row says "no animal gets past". The map and
+  memory treat it as a door.
+- **Mapgen:** `H` counts as a vault's doorway (`_vault_mouths`,
+  `_seal_blind_doors`), or a gated vault got a second, ungated hole.
+- **The warren has one.** Its rabbits' wander after the pre-run, over 40
+  floors each, median then max then share past 6 cells. Before:
+  eff 7 4/23/8 of 30, eff 8 4/18/8 of 39, eff 13 4/25/9 of 39. After:
+  3/5/0, 3/5/0, 3/15/3; every other fortress depth 0 past 6. The three
+  left at eff 13 are all one floor (seed 100319): `_ensure_connected`,
+  stalled, force-carves a corridor through the warren's east wall to join
+  two halves of the map. That is pre-existing, any vault can get it, and is
+  noted under Known gaps.
+- Test: `_test_the_latched_gate` (mutation: without the gate rule four
+  checks fail).
 
 **Gems on any host, with a different effect there (Brad, 2026-10-07 -- an
 idea with a shape, not built).** Today each element has ONE host family

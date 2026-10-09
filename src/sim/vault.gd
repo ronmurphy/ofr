@@ -42,6 +42,9 @@ const TERRAIN := {
 	# _place_chest -- so placing one here adds to that cadence rather than
 	# replacing it.
 	"C": Tiles.CHEST,
+	# A latched gate (2026-10-09): H, a gate with bars. Shut, like `+`; no
+	# animal gets past it, anything with hands does, a bear smashes it.
+	"H": Tiles.GATE_CLOSED,
 }
 ## Content markers stand on plain floor; the floor is laid first, then these.
 ##

@@ -15,6 +15,10 @@ const STONE_DARK    := Color("3a382f")
 const FLOOR_FG      := Color("57534a")
 const FLOOR_BG      := Color("17171c")
 const DOOR          := Color("b4813f")
+## A latched gate (2026-10-09): the door's shape in a pen's weathered
+## olive -- its own colour, the tell seen before the cursor names it. Apart
+## from the door's brown and WILD's gold, so a gate is never read as either.
+const GATE          := Color("93a05a")
 const STAIRS        := Color("d9cf9a")
 ## Stairs stay legible in remembered terrain. Once you have found the way down
 ## it is navigation information, not scenery, and hunting for it in the dim

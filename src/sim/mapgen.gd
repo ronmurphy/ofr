@@ -491,6 +491,9 @@ func _leg_crosses(a: Vector2i, b: Vector2i, avoid: Rect2i) -> int:
 	return n
 
 ## Every cell just outside one of the vault's doors.
+## A latched gate (H) counts as a doorway here and in _seal_blind_doors, or
+## a gated vault is given a second, ungated hole (2026-10-09: the warren's
+## rabbits walked out of one).
 func _vault_mouths(spot: Dictionary) -> Array:
 	var grid: Array = spot["grid"]
 	var at: Vector2i = spot["rect"].position
@@ -498,7 +501,7 @@ func _vault_mouths(spot: Dictionary) -> Array:
 	for y in grid.size():
 		var row := String(grid[y])
 		for x in row.length():
-			if row[x] != "+" and row[x] != "'":
+			if row[x] != "+" and row[x] != "'" and row[x] != "H":
 				continue
 			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var n: Vector2i = Vector2i(x, y) + d
@@ -534,7 +537,7 @@ func _seal_blind_doors(map: DungeonMap) -> void:
 		for y in grid.size():
 			var row := String(grid[y])
 			for x in row.length():
-				if row[x] != "+" and row[x] != "'":
+				if row[x] != "+" and row[x] != "'" and row[x] != "H":
 					continue
 				var cell := at + Vector2i(x, y)
 				var touching := 0

@@ -214,6 +214,9 @@ var _door_map: DungeonMap = null
 var _swings: Dictionary = {}
 var _leaf_mesh: BoxMesh
 var _leaf_material: ShaderMaterial
+## The latched gate's leaf (2026-10-09): slats, rails and a brace, one mesh,
+## the door leaf's size so it hangs and swings on the same hinge.
+var _gate_leaf_mesh: ArrayMesh
 var _dot_quad: PlaneMesh
 var _dot_material: StandardMaterial3D
 ## This floor's colour by region, fetched once a rebuild -- see RegionLook.
@@ -874,8 +877,7 @@ func _rebuild_world() -> void:
 				continue
 			var solid := tile == Tiles.WALL or tile == Tiles.ROCK \
 				or tile == Tiles.PILLAR or tile == Tiles.STALAGMITE \
-				or tile == Tiles.DOOR_CLOSED or tile == Tiles.DOOR_BARRED \
-				or tile == Tiles.CHEST
+				or Tiles.is_shut(tile) or tile == Tiles.CHEST
 			var ground_kind := _ground_surface_kind(tile)
 			var kind := ground_kind
 			var height := WALL_HEIGHT
@@ -899,8 +901,7 @@ func _rebuild_world() -> void:
 				var base_transform := Transform3D(Basis.IDENTITY,
 					Vector3(x + 0.5, -0.035, y + 0.5))
 				_add_batch(batches, ground_kind, base_transform, color)
-			var is_door := tile == Tiles.DOOR_CLOSED or tile == Tiles.DOOR_OPEN \
-				or tile == Tiles.DOOR_BARRED
+			var is_door := Tiles.is_doorway(tile)
 			if not is_door:
 				_add_batch(batches, kind, transform, color)
 			if is_door:
@@ -978,6 +979,9 @@ func _add_multimeshes(batches: Dictionary) -> void:
 				leaf.size = Vector3(0.78, 1.12, 0.12)
 				mesh = leaf
 				surface_style = 2
+			"gate_leaf":
+				mesh = _gate_leaf()
+				surface_style = 2
 			# The bulwark's bar: a beam of stone across the shut leaf.
 			"door_bar":
 				var bar := BoxMesh.new()
@@ -1027,7 +1031,26 @@ func _add_multimeshes(batches: Dictionary) -> void:
 	# and material, so it is lit exactly as it will be once it lands.
 	_leaf_mesh = BoxMesh.new()
 	_leaf_mesh.size = Vector3(0.78, 1.12, 0.12)
+	_gate_leaf_mesh = _gate_leaf()
 	_leaf_material = _surface_material(2)
+
+## A pen gate's leaf, centred like the door leaf (0.78 wide, 1.12 tall): four
+## upright slats with gaps between, two rails across the front and a diagonal
+## brace -- a gate at a glance, before its colour or the cursor says so.
+static func _gate_leaf() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var parts := []
+	for i in 4:
+		parts.append([Vector3(0.15, 1.12, 0.06), Vector3(-0.315 + i * 0.21, 0.0, 0.0), 0.0])
+	for ry in [-0.34, 0.34]:
+		parts.append([Vector3(0.78, 0.10, 0.06), Vector3(0.0, ry, -0.05), 0.0])
+	parts.append([Vector3(0.88, 0.08, 0.05), Vector3(0.0, 0.0, -0.05), atan2(0.68, 0.62)])
+	for part in parts:
+		var box := BoxMesh.new()
+		box.size = part[0]
+		st.append_from(box, 0, Transform3D(Basis(Vector3.BACK, float(part[2])), part[1]))
+	return st.commit()
 
 ## THE ENGINE LIGHTS. The torch and the sim's static sources, nearest first,
 ## as OmniLight3Ds -- up to LIGHT_CAP, because the Compatibility renderer
@@ -1083,7 +1106,7 @@ func _add_occlusion() -> void:
 			if not map.is_visible(x, y) and not map.is_explored(x, y):
 				continue
 			var t := map.get_tile(x, y)
-			if not Tiles.is_walkable(t) or t == Tiles.DOOR_OPEN:
+			if not Tiles.is_walkable(t) or Tiles.is_open_door(t):
 				continue
 			for d in AXES:
 				var nx := x + d.x
@@ -1091,8 +1114,7 @@ func _add_occlusion() -> void:
 				if not map.in_bounds(nx, ny):
 					continue
 				var nt := map.get_tile(nx, ny)
-				if nt == Tiles.WALL or nt == Tiles.ROCK or nt == Tiles.DOOR_CLOSED \
-						or nt == Tiles.DOOR_BARRED:
+				if nt == Tiles.WALL or nt == Tiles.ROCK or Tiles.is_shut(nt):
 					strips.append([x, y, d])
 	if strips.is_empty():
 		return
@@ -1347,15 +1369,17 @@ func _add_door(batches: Dictionary, x: int, y: int, tile: int,
 	# drawn each frame by _draw_swings until it lands; the rebuild after that
 	# puts it back with the others.
 	var cell := Vector2i(x, y)
-	var open := tile == Tiles.DOOR_OPEN
+	var open := Tiles.is_open_door(tile)
+	var gate := Tiles.is_gate(tile)
 	if _door_open.has(cell) and _door_open[cell] != open and visible and Effects.any():
-		_swings[cell] = {"t": 0.0, "open": open, "angle": angle, "colour": color}
+		_swings[cell] = {"t": 0.0, "open": open, "angle": angle, "colour": color,
+			"gate": gate}
 	_door_open[cell] = open
 	if _swings.has(cell):
 		return
 	var leaf_basis := basis
 	var leaf_at := center + Vector3(0.0, 0.56, 0.0)
-	if tile == Tiles.DOOR_OPEN:
+	if open:
 		# Swing the leaf ninety degrees into the room from its hinge at the
 		# negative end of the opening, leaving the passage visibly clear.
 		var open_angle := angle + PI * 0.5
@@ -1372,7 +1396,8 @@ func _add_door(batches: Dictionary, x: int, y: int, tile: int,
 		_add_batch(batches, "door_bar", Transform3D(basis, center + Vector3(0.0, 0.62, 0.0)),
 			color)
 		return
-	_add_batch(batches, "door_leaf", Transform3D(leaf_basis, leaf_at), color)
+	_add_batch(batches, "gate_leaf" if gate else "door_leaf",
+		Transform3D(leaf_basis, leaf_at), color)
 
 ## Which floor mesh and pattern a tile's ground uses. A table rather than a
 ## match: this is asked for every cell on every rebuild, and the match was a
@@ -2007,7 +2032,7 @@ func _draw_swings() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
-		mm.mesh = _leaf_mesh
+		mm.mesh = _gate_leaf_mesh if s.get("gate", false) else _leaf_mesh
 		mm.instance_count = 1
 		mm.set_instance_transform(0, Transform3D(leaf_basis, at))
 		mm.set_instance_custom_data(0, s["colour"])

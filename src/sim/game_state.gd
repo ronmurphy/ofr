@@ -895,6 +895,9 @@ var ember_until: Dictionary = {}
 ## takes one off this, loudly, so a pack breaks in faster than a straggler.
 ## Saved, like the embers.
 var barred: Dictionary = {}
+## The barred cells that were latched GATES (2026-10-09): the bar comes off a
+## gate as an open gate, not a plain door. Saved.
+var barred_gates: Dictionary = {}
 const BAR_HOLDS := 10
 ## PITS AS ESCAPE (Dwarf Fortress plan, strand 5). A fleeing creature chased
 ## -- fleeing in your light and your sight CHASED_TURNS turns running -- leaps
@@ -1470,6 +1473,7 @@ func build_level() -> void:
 	brazier_charge.clear()
 	ember_until.clear()
 	barred.clear()
+	barred_gates.clear()
 	frozen_rooms.clear()
 	recall_mark = Vector2i(-1, -1)
 	road_shown = false
@@ -1697,7 +1701,7 @@ func _can_rest_on(x: int, y: int) -> bool:
 ## trap you could neither see nor avoid there would be unfair, not tense.
 func _can_land_on(x: int, y: int) -> bool:
 	var t := map.get_tile(x, y)
-	return _can_rest_on(x, y) and t != Tiles.DOOR_CLOSED and t != Tiles.DOOR_BARRED
+	return _can_rest_on(x, y) and not Tiles.is_shut(t)
 
 func _open_cell_in(room: Rect2i) -> Vector2i:
 	var c := room.get_center()
@@ -1834,7 +1838,22 @@ func can_creature_step(fx: int, fy: int, nx: int, ny: int, actor: Entity = null)
 	var t := map.get_tile(nx, ny)
 	if t == Tiles.PIT:
 		return false
+	# A shut latched gate is a wall to anything that cannot work a latch.
+	if t == Tiles.GATE_CLOSED and actor != null and _gate_holds(actor):
+		return false
 	return t != Tiles.TRAP or (actor != null and _owns_the_floor(actor))
+
+## Does a shut latched gate stop this creature? Whatever squeezes under a
+## door -- the animals, the small and handless -- except what phases through
+## stone. Those with hands lift the latch; the heavy smash it.
+func _gate_holds(actor: Entity) -> bool:
+	return actor.door_style() == Entity.Door.SQUEEZES and not actor.phasing \
+		and not actor.is_player
+
+## A gate opened, shut or smashed: the squeezers' routes learn it.
+func _set_gate_route(c: Vector2i) -> void:
+	if pathfinder != null:
+		pathfinder.set_gate(c.x, c.y, map.get_tile(c.x, c.y) == Tiles.GATE_CLOSED)
 
 ## Whether a creature knows this floor's traps: everything that is not on the
 ## player's side. The risen are the floor's own dead and know it too.
@@ -2030,7 +2049,7 @@ func _ringed_by_floor(c: Vector2i) -> bool:
 			if not map.is_walkable(n.x, n.y):
 				return false
 			var t := map.get_tile(n.x, n.y)
-			if t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+			if Tiles.is_doorway(t):
 				return false
 	return true
 
@@ -2344,8 +2363,7 @@ func _trader_cell(room: Rect2i) -> Vector2i:
 			# Same shape as the stairs bug: anything that holds its cell
 			# permanently has to ask what is already there, and `walkable` is
 			# not the same question as `empty`.
-			if t == Tiles.SHRINE or t == Tiles.GRAVE \
-					or t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_OPEN:
+			if t == Tiles.SHRINE or t == Tiles.GRAVE or Tiles.is_doorway(t):
 				continue
 			# Whatever the player is standing on when the floor is built is the
 			# way they came in, and blocking it strands them on arrival.
@@ -4236,7 +4254,8 @@ func bulwark_target() -> Vector2i:
 		if not map.in_bounds(c.x, c.y):
 			continue
 		var t := map.get_tile(c.x, c.y)
-		if t != Tiles.DOOR_OPEN and t != Tiles.DOOR_CLOSED:
+		# A gate takes the bar as a door does (2026-10-09).
+		if t != Tiles.DOOR_OPEN and t != Tiles.DOOR_CLOSED and not Tiles.is_gate(t):
 			continue
 		if entity_at(c.x, c.y) != null or not items_at(c.x, c.y).is_empty():
 			continue
@@ -4251,12 +4270,14 @@ func _bar_the_door(gem: Item) -> bool:
 		for i in 8:
 			var d := Entity.turned(Vector2i(0, -1), i)
 			var c := Vector2i(player.x + d.x, player.y + d.y)
-			if map.in_bounds(c.x, c.y) and (map.get_tile(c.x, c.y) == Tiles.DOOR_OPEN
-					or map.get_tile(c.x, c.y) == Tiles.DOOR_CLOSED):
+			if map.in_bounds(c.x, c.y) and Tiles.is_doorway(map.get_tile(c.x, c.y)) \
+					and map.get_tile(c.x, c.y) != Tiles.DOOR_BARRED:
 				any_door = true
 		msg_log.add("The doorway is not clear." if any_door
 			else "There is no door beside you to bar.", Color(0.7, 0.6, 0.4))
 		return false
+	if Tiles.is_gate(map.get_tile(at.x, at.y)):
+		barred_gates[at] = true
 	map.set_tile(at.x, at.y, Tiles.DOOR_BARRED)
 	barred[at] = BAR_HOLDS
 	events.append({"kind": &"notice", "to": at})
@@ -4264,10 +4285,15 @@ func _bar_the_door(gem: Item) -> bool:
 		% gem.name, Color(0.80, 0.78, 0.70))
 	return true
 
+## What a barred doorway is once the bar is off: an open gate if it was a
+## gate, else an open door. Forgets the gate either way.
+func _unbarred(at: Vector2i) -> int:
+	return Tiles.GATE_OPEN if barred_gates.erase(at) else Tiles.DOOR_OPEN
+
 ## You lift the bar. The door is open and the bar is spent -- a gem's worth,
 ## so it is your choice to make.
 func _unbar(at: Vector2i) -> void:
-	map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+	map.set_tile(at.x, at.y, _unbarred(at))
 	barred.erase(at)
 	pathfinder.set_solid(at.x, at.y, false)
 	_work_the_door(at, "You lift the bar and pull the door open.")
@@ -4278,7 +4304,7 @@ func _pound_the_door(actor: Entity, at: Vector2i) -> bool:
 	var left := int(barred.get(at, BAR_HOLDS)) - 1
 	_make_noise(at, DOOR_NOISE, &"door")
 	if left <= 0:
-		map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+		map.set_tile(at.x, at.y, _unbarred(at))
 		barred.erase(at)
 		if map.is_visible(at.x, at.y):
 			msg_log.add("The bar gives. The %s bangs the door open." % actor.name,
@@ -4345,7 +4371,7 @@ func _doors_of(region: Rect2i) -> int:
 			if region.has_point(Vector2i(x, y)) or not map.in_bounds(x, y):
 				continue
 			var t := map.get_tile(x, y)
-			if t == Tiles.DOOR_OPEN or t == Tiles.DOOR_CLOSED or t == Tiles.DOOR_BARRED:
+			if Tiles.is_doorway(t):
 				count += 1
 	return count
 
@@ -4669,6 +4695,17 @@ func player_move(dx: int, dy: int) -> bool:
 		map.set_tile(nx, ny, Tiles.DOOR_OPEN)
 		pathfinder.set_solid(nx, ny, false)
 		_work_the_door(Vector2i(nx, ny), "You pull the door open.")
+		return true
+	# A LATCHED GATE: you lift the latch. Wearing the ring you are a rat, and
+	# a rat is exactly what the gate is for -- it stops you, and says why.
+	if map.get_tile(nx, ny) == Tiles.GATE_CLOSED:
+		if ratted():
+			msg_log.add("A latched gate. A rat cannot work a latch, and there is no gap under it.",
+				Color(0.7, 0.6, 0.4))
+			return false
+		map.set_tile(nx, ny, Tiles.GATE_OPEN)
+		_set_gate_route(Vector2i(nx, ny))
+		_work_the_door(Vector2i(nx, ny), "You lift the latch and swing the gate open.")
 		return true
 	if map.get_tile(nx, ny) == Tiles.DOOR_BARRED and not ratted():
 		_unbar(Vector2i(nx, ny))
@@ -5863,7 +5900,7 @@ func player_close_door() -> bool:
 			var c := Vector2i(player.x + dx, player.y + dy)
 			if not map.in_bounds(c.x, c.y):
 				continue
-			if map.get_tile(c.x, c.y) != Tiles.DOOR_OPEN:
+			if not Tiles.is_open_door(map.get_tile(c.x, c.y)):
 				continue
 			if entity_at(c.x, c.y) != null or not items_at(c.x, c.y).is_empty():
 				blocked = true
@@ -5876,9 +5913,12 @@ func player_close_door() -> bool:
 		else:
 			msg_log.add("There is no open door beside you.", Color(0.7, 0.6, 0.4))
 		return false
-	map.set_tile(found.x, found.y, Tiles.DOOR_CLOSED)
+	var gate := map.get_tile(found.x, found.y) == Tiles.GATE_OPEN
+	map.set_tile(found.x, found.y, Tiles.closed(map.get_tile(found.x, found.y)))
+	_set_gate_route(found)
 	_travel.clear()
-	_work_the_door(found, "You pull the door shut.")
+	_work_the_door(found, "You swing the gate to. The latch drops." if gate
+		else "You pull the door shut.")
 	return true
 
 ## How loud working a door is, and what being careful about it costs.
@@ -8344,6 +8384,16 @@ func _step_travel(allow_watched_first_step: bool) -> bool:
 		pathfinder.set_solid(next.x, next.y, false)
 		_work_the_door(next, "You pull the door open.")
 		return true
+	# A latched gate on the route: lifted like a door; a rat stops at it.
+	if map.get_tile(next.x, next.y) == Tiles.GATE_CLOSED:
+		if ratted():
+			_travel.clear()
+			msg_log.add("A latched gate. A rat cannot get past it.", Color(0.7, 0.6, 0.4))
+			return false
+		map.set_tile(next.x, next.y, Tiles.GATE_OPEN)
+		_set_gate_route(next)
+		_work_the_door(next, "You lift the latch and swing the gate open.")
+		return true
 	if map.get_tile(next.x, next.y) == Tiles.DOOR_BARRED and not ratted():
 		_unbar(next)
 		return true
@@ -8585,6 +8635,7 @@ func to_dict() -> Dictionary:
 		"explored": Marshalls.raw_to_base64(map.explored),
 		"stairs": [stairs.x, stairs.y],
 		"braziers": charges, "embers": embers, "spires": stone, "barred": bars,
+		"barred_gates": _cells_to_strings(barred_gates.keys()),
 		"frozen": frozen, "recall": [recall_mark.x, recall_mark.y], "road": road_shown,
 		"caves": caves, "rooms": rooms,
 		"shrines": _shrines_to_dict(), "graves": _graves_to_dict(),
@@ -8695,11 +8746,16 @@ func apply_dict(d: Dictionary) -> bool:
 		if bits.size() == 2:
 			ember_until[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(embers[key])
 	barred.clear()
+	barred_gates.clear()
 	var bars: Dictionary = d.get("barred", {})
 	for key in bars:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			barred[Vector2i(bits[0].to_int(), bits[1].to_int())] = int(bars[key])
+	for key in d.get("barred_gates", []):
+		var bits: PackedStringArray = String(key).split(",")
+		if bits.size() == 2:
+			barred_gates[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
 	frozen_rooms.clear()
 	for row in d.get("frozen", []):
 		if row.size() == 5:
@@ -10397,10 +10453,17 @@ const DOOR_SHOULDER_COST := 3
 ## find behind you tells you something came through.
 func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 	var tile := map.get_tile(at.x, at.y)
-	if tile != Tiles.DOOR_CLOSED and tile != Tiles.DOOR_BARRED:
+	if not Tiles.is_shut(tile):
 		return false
 	var style := actor.door_style()
 	if style == Entity.Door.SQUEEZES:
+		# A LATCHED GATE holds it (2026-10-09): no gap under, no hands for the
+		# latch. Only a phasing thing goes through, as it goes through stone.
+		# The routes and can_creature_step keep a squeezer from choosing the
+		# step; this is the backstop, and it spends the turn.
+		if tile == Tiles.GATE_CLOSED and not actor.phasing:
+			_last_move_cost = Scheduler.ACTION_COST
+			return true
 		# Under it, and no slower for it. Brad has watched rabbits do this.
 		# A bar is above the gap, so under a barred one too.
 		return false
@@ -10409,9 +10472,11 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 		# Hands cannot lift a bar from the wrong side: they heave at it.
 		if tile == Tiles.DOOR_BARRED:
 			return _pound_the_door(actor, at)
-		map.set_tile(at.x, at.y, Tiles.DOOR_OPEN)
+		map.set_tile(at.x, at.y, Tiles.opened(tile))
+		_set_gate_route(at)
 		if map.is_visible(at.x, at.y):
-			msg_log.add("The %s pulls the door open." % actor.name,
+			msg_log.add(("The %s lifts the latch and swings the gate open." if tile == Tiles.GATE_CLOSED
+				else "The %s pulls the door open.") % actor.name,
 				Color(0.78, 0.74, 0.66))
 		return true
 
@@ -10434,9 +10499,13 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 		Tiles.CAVE_FLOOR if map.material_at(at.x, at.y) == Materials.CAVERN
 		else Tiles.FLOOR)
 	barred.erase(at)  # a bar is no more to a bear than the door was
+	var smashed_gate := tile == Tiles.GATE_CLOSED or barred_gates.has(at)
+	barred_gates.erase(at)
 	pathfinder.set_solid(at.x, at.y, false)
+	_set_gate_route(at)
 	if map.is_visible(at.x, at.y):
-		msg_log.add("The %s takes the door off its hinges." % actor.name,
+		msg_log.add(("The %s smashes the gate to kindling." if smashed_gate
+			else "The %s takes the door off its hinges.") % actor.name,
 			Color(0.92, 0.66, 0.45))
 	else:
 		msg_log.add("Wood splinters, somewhere out of sight.",
@@ -10445,7 +10514,7 @@ func _through_the_door(actor: Entity, at: Vector2i) -> bool:
 
 func _step_toward(actor: Entity, target: Vector2i) -> void:
 	var route := pathfinder.path(Vector2i(actor.x, actor.y), target, actor.careful,
-		not _owns_the_floor(actor))
+		not _owns_the_floor(actor), _gate_holds(actor))
 	if route.is_empty():
 		return
 	var step: Vector2i = route[0]
@@ -10492,7 +10561,7 @@ func _step_toward(actor: Entity, target: Vector2i) -> void:
 	actor.x = step.x
 	actor.y = step.y
 	# Stepping OFF an open door: a careful guard will shut it next turn.
-	actor.shut_behind = from if map.get_tile(from.x, from.y) == Tiles.DOOR_OPEN \
+	actor.shut_behind = from if Tiles.is_open_door(map.get_tile(from.x, from.y)) \
 		and actor.door_style() == Entity.Door.OPENS \
 		and actor.alertness != Entity.Alert.AWAKE else Vector2i(-1, -1)
 
@@ -10520,7 +10589,7 @@ func _shut_behind(actor: Entity) -> bool:
 		return false
 	actor.shut_behind = Vector2i(-1, -1)
 	if actor.door_style() != Entity.Door.OPENS \
-			or map.get_tile(door.x, door.y) != Tiles.DOOR_OPEN:
+			or not Tiles.is_open_door(map.get_tile(door.x, door.y)):
 		return false
 	if maxi(absi(actor.x - door.x), absi(actor.y - door.y)) != 1:
 		return false
@@ -10531,10 +10600,14 @@ func _shut_behind(actor: Entity) -> bool:
 			continue
 		if maxi(absi(e.x - door.x), absi(e.y - door.y)) <= 1:
 			return false
-	map.set_tile(door.x, door.y, Tiles.DOOR_CLOSED)
+	# A gate shut behind a guard latches again (2026-10-09).
+	var gate := map.get_tile(door.x, door.y) == Tiles.GATE_OPEN
+	map.set_tile(door.x, door.y, Tiles.closed(map.get_tile(door.x, door.y)))
+	_set_gate_route(door)
 	_last_move_cost = Scheduler.ACTION_COST
 	if map.is_visible(door.x, door.y):
-		msg_log.add("The %s pulls the door shut behind it." % actor.name,
+		msg_log.add(("The %s swings the gate to behind it; the latch drops." if gate
+			else "The %s pulls the door shut behind it.") % actor.name,
 			Color(0.78, 0.74, 0.66))
 	return true
 
