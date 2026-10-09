@@ -649,7 +649,13 @@ and other overlays left out of the picture.
   game scales, the 1600-wide frame does not fit a laptop at 125–150%.
 
 **2. David's background music -- MERGED 2026-09-28, and in the web build
-(Brad, 2026-10-09).** Original note: His `synth.gd` and `sound_deck.gd` came over whole (ours were
+(Brad, 2026-10-09).** **A reference for more (2026-10-09):** the Google
+Playground's rebuild of OFR played a library track Brad liked, "haunted
+hollow" -- dark, creeping horror drones, dissonant strings, a slow pulse. Not
+to ship: it streams from Google's playground music library with no licence
+for use elsewhere, and is very likely AI-generated. As a BRIEF for David it
+is ideal: a further mood for his synth, perhaps for the caves or the climb.
+Original note: His `synth.gd` and `sound_deck.gd` came over whole (ours were
 unchanged since his base), plus his one hook in `_refresh`; added a separate
 music switch (Shift+M, the title's settings), tests, and credit. His preview
 WAVs stayed in his folder. Brad may ask David for a title-screen loop.
@@ -2157,6 +2163,34 @@ shape to aim at.
 ---
 
 ## Ideas, not yet designed
+
+**Pixel sprites drawn in code -- a fourth look for the 3D view (Brad,
+2026-10-09, from the Google Playground test).** The playground's rebuild of
+OFR drew its creatures as pixel art IN CODE: each sprite a short list of
+coloured rectangles painted onto a tiny canvas (24-32 px wide), cached, and
+shown on a billboard with nearest-neighbour filtering so the pixels stay
+sharp. No image files at all. Brad: a bit primitive, but they look nice --
+an alternative to the icon-font "pictures" on the 3D cards.
+- **What it has:** eight real drawings (the knight as the player, slime, rat,
+  skeleton, banshee, troll, wizard/lich, dragon) and ONE generic figure
+  tinted by colour for everything else; six item shapes; a corpse; 158
+  rectangles in all. OFR has 23 creatures, so most would need drawing. The
+  project is kept OUTSIDE the repo: `~/ofr-art-originals/playground-test-
+  2026-10-09/` (`pixelArt.ts` holds the drawings; the zip as downloaded).
+- **In Godot:** an `Image` per appearance, `fill_rect` per rectangle,
+  `ImageTexture.create_from_image`, the card's material on nearest filtering;
+  built once and cached, like the glyph cards today. A sprite is data (a
+  list of rects), so a rect list ports almost line for line.
+- **Where it fits:** a look option for the 3D views only (the classic view is
+  deprecated, 2026-10-08), beside the icon pictures. The marks drawn over a
+  creature (`z ? ! <<`, the fungus rings, the mirror tell, the state chips)
+  stay as they are. Creature colours keep to their families.
+- **Beside the friend's sprite sheets** (`assets/spritesheets/`, an eventual
+  update): these are cheaper and could come first, as a stepping stone.
+- **One decision for Brad:** the playground's drawings are AI-made. Porting
+  them as they are brings AI-made art into the game itself (OFR keeps AI out
+  of its public record); redrawing in the same technique does not. Either
+  way the technique is the useful part.
 
 **FOUR THEMES FOR THE LIVING DUNGEON AND THE FIGHT (Brad and the desktop,
 2026-10-09).** Nine ideas from one talk, grouped by the code they touch so
