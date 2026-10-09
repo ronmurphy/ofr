@@ -1711,10 +1711,11 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
   as clinging there -- and stays killable, because `player_move` tests for a
   creature before it tests the ground.
 - **A nest it protects**, always a cave (`cave_regions`): decent in the
-  upper band, common in the caves. NOT the fortress, by the rule set the
-  week after this was written -- wild animals keep out of the fortress
-  (`bands`, `not_in`); castles really do have spiders, so an exception is
-  Brad's call. Hostile inside the den, indifferent outside it; attacking
+  upper band, common in the caves, AND the fortress -- the one wild animal
+  allowed there (Brad, 2026-10-09: spiders were all over buildings and
+  fortresses historically), an exception to the rule that wild animals keep
+  out of the fortress (`bands`, `not_in`); the cat is the other planned
+  one. Hostile inside the den, indifferent outside it; attacking
   one or burning its web provokes. A cave vault is the natural nest.
 - **Webs are a TILE** (appended), where a shot lands and through the nest.
   Forcing past one costs **200 energy**, two turns -- the same shape as mud's
