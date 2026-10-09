@@ -1710,9 +1710,12 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
   flee. It may end a move inside a wall cell -- deliberately, and it reads
   as clinging there -- and stays killable, because `player_move` tests for a
   creature before it tests the ground.
-- **A nest it protects**, always a cave (`cave_regions`): rare in the
-  fortress, decent in the upper band, common in the caves. Hostile inside the
-  den, indifferent outside it; attacking one or burning its web provokes.
+- **A nest it protects**, always a cave (`cave_regions`): decent in the
+  upper band, common in the caves. NOT the fortress, by the rule set the
+  week after this was written -- wild animals keep out of the fortress
+  (`bands`, `not_in`); castles really do have spiders, so an exception is
+  Brad's call. Hostile inside the den, indifferent outside it; attacking
+  one or burning its web provokes. A cave vault is the natural nest.
 - **Webs are a TILE** (appended), where a shot lands and through the nest.
   Forcing past one costs **200 energy**, two turns -- the same shape as mud's
   move cost of 2.0. Burning it costs **100**, one turn, with the torch or a
@@ -1725,8 +1728,21 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
 - **As a risen ally** it webs your enemies. Allies use `_ai_ally`, not their
   bestiary AI, so the web shot must be taught there, as `_ready_weapon`
   taught archers. A RED risen spider webs anything in its room.
-- **Open:** the bite's damage; what provokes a wolf pack; how far the torch
-  keeps creatures back.
+- **The bite (Brad, 2026-10-09): damage AND poison,** like getting too close
+  to the purple. It reuses the miasma's poison -- `Entity.poisoned`, 1 hp a
+  turn (`POISON_HURT`), the sidebar's chip, water washes it off -- set to
+  THREE turns (a short, sharp venom; the purple lingers five since
+  2026-10-06 -- match it if Brad prefers). Its hit's own damage is still to
+  set, with the spider's hp and power, when it is built.
+- **The web, as Brad put it the same day:** a RANGED attack that shoots a
+  web onto a tile; any creature -- monster, animal or you -- in that tile,
+  whether it walked in or the shot landed on it, spends the extra energy
+  to break free, or burns the web. (As above: 200 energy to force past,
+  100 to burn with the torch or a fire weapon, struggling is loud, flyers
+  are held, the bear walks straight through.)
+- **Answered elsewhere since:** what provokes a wolf pack (being struck,
+  `PACK_REACH` -- built 2026-10-05). Still open: how far the torch keeps
+  creatures back (fire as a fear, the Legion's short session 5).
 
 **Allies step out of the poison on their own -- BUILT 2026-10-04 (Legion),
 the last thing of the night.** Brad's bear ally died in the purple's cloud
