@@ -2158,6 +2158,52 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**FOUR THEMES FOR THE LIVING DUNGEON AND THE FIGHT (Brad and the desktop,
+2026-10-09).** Nine ideas from one talk, grouped by the code they touch so
+each theme is one update. Brad likes all of them. NOT in the Legion's
+queue (the queue only gains an item when one leaves it); in this order
+when they are taken up. Every one leaves a trace the player can SEE.
+
+1. **Facing, part two -- after combat flanking (queue item 6); about 2
+   nights.** Flanking gives every creature a facing. Then:
+   - **They see less behind them.** Noticing you from behind is harder
+     (`_notices_player`, `_notice_reach`): douse the torch and come up
+     behind a guard. The rogue's job made real without naming it.
+   - **A strike on the unaware.** A blow on something asleep, or unaware
+     of you, from behind deals extra -- D&D's sneak attack.
+   - **Pinned in a web.** A creature caught in a web cannot turn to face
+     you, so every blow counts as from behind (the spider, queue item 3).
+   - **Footing in a fight.** Wading or sinking costs a point to hit and a
+     point of defence, monsters too; the sidebar's footing line already
+     shows it. Luring an orc into mud is tactics.
+2. **The dungeon reacts to death; about 2 nights.** The same trigger: a
+   creature meeting the death of its own kind.
+   - **Guards find the bodies.** A guard on its beat that passes a fresh
+     body of its own kind cries out and wakes the floor (`_make_noise`);
+     bodies record their killer (`killed_by`), so "slain by you" turns the
+     alarm toward you. A corpse left on a patrol route is a mistake.
+   - **Morale.** When a group's leader falls, or half the group, the rest
+     may break and run (every creature has a flee threshold already; the
+     running mark exists). Killing the houndmaster first becomes a plan.
+3. **Hunger's consequences; about 2 nights.** Built on hunger (2026-10-07).
+   - **Monsters fight over food.** Two hungry eaters and one haunch: they
+     turn on each other.
+   - **Bait.** Throw a haunch between two hungry goblins and slip past while
+     they squabble; a fed one ignores it, and the "hungry" chip says which
+     will bite. Hunger, throwing, the satchel's meat and the grudge.
+   - **Blood trails.** A wounded creature leaves blood every few steps
+     and a hungry hunter follows it: let something flee and it may lead
+     the pack to you. (In the old brainstorm list; hunger gives it a
+     reason now.)
+4. **Fire spreads -- after the spider; about 1 night.** A burning web sets
+   the next web alight; burning red fungus runs along its chain
+   (`red_from`). Fire becomes a real tool against nests and red patches, and
+   the first piece of Brad's "destructive environments".
+
+**The desktop's top three for the most play from the least code:** monsters
+fighting over food (theme 3), seeing less behind them (theme 1), guards
+finding the bodies (theme 2).
+
 **The open question in CLAUDE.md (descent caves above the vault rule's
 p=0.25, the climb's below, "about 3.0 sigma") -- ANSWERED 2026-10-08
 (desktop): it does not reproduce.** 600 REAL floors a half
