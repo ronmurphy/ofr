@@ -648,8 +648,8 @@ and other overlays left out of the picture.
   gave up over it. Also set the itch embed smaller (for example 1280×720) — the
   game scales, the 1600-wide frame does not fit a laptop at 125–150%.
 
-**2. David's background music -- MERGED 2026-09-28**, waiting on a listen in
-the web build. His `synth.gd` and `sound_deck.gd` came over whole (ours were
+**2. David's background music -- MERGED 2026-09-28, and in the web build
+(Brad, 2026-10-09).** Original note: His `synth.gd` and `sound_deck.gd` came over whole (ours were
 unchanged since his base), plus his one hook in `_refresh`; added a separate
 music switch (Shift+M, the title's settings), tests, and credit. His preview
 WAVs stayed in his folder. Brad may ask David for a title-screen loop.
@@ -679,7 +679,11 @@ bones cannot be traded; the counter opens after the trader speaks.
   it is one line in `DioramaView.view_to_grid()`;
 - the per-turn 3D rebuild is ~50 ms; rebuilding only changed cells is the real fix;
 - the view tests are light on premise checks — a good day-7 job;
-- **the right stick in Firefox on itch -- FIX WAITING ON A TEST (2026-09-28).**
+- **the right stick in Firefox on itch -- NOT NEEDED (Brad, 2026-10-09).** In
+  the follow view left and right turn you on the spot, Wizardry's keys
+  (`main.gd` `_step`), so the left stick or the cursor keys turn the
+  player and the right stick is no longer how you look round. The fix
+  below stays in, never confirmed on itch. Original entry, 2026-09-28:
   The pad watch (F8) found it: Godot's web build sends the right stick as
   EVENTS on the trigger axes (axis 5 at +1.00 in its event list) but never
   stores them where `Input.get_joy_axis()` polls -- the polled value sat at
@@ -840,10 +844,10 @@ in its own entry.
    of both is done (2026-10-08). Parts are independent; about a night each,
    part 1 perhaps two.
 
-**Waiting on Brad, not code:** the trader's numbers (from play); the right
-stick in Firefox on itch (a test); David's music in the web build (a
-listen); the frozen room's rule (b); the spider's bite and provocation;
-which heart glyph over a tamed wolf.
+**Waiting on Brad, not code:** the trader's numbers (from play); the frozen
+room's rule (b); the spider's bite and provocation; which heart glyph over
+a tamed wolf; item 4's yes. (The Firefox right stick and David's music
+were closed 2026-10-09: the first not needed, the second in.)
 
 **For the desktop at night:** reviewing what the Legion pushed; the open
 question in CLAUDE.md (descent caves place vaults above p=0.25 and the
