@@ -1043,9 +1043,11 @@ static func _gate_leaf() -> ArrayMesh:
 	var parts := []
 	for i in 4:
 		parts.append([Vector3(0.15, 1.12, 0.06), Vector3(-0.315 + i * 0.21, 0.0, 0.0), 0.0])
+	# Rails and brace thicker than the slats and centred on them, so they
+	# stand proud of BOTH faces: a gate is seen from either side.
 	for ry in [-0.34, 0.34]:
-		parts.append([Vector3(0.78, 0.10, 0.06), Vector3(0.0, ry, -0.05), 0.0])
-	parts.append([Vector3(0.88, 0.08, 0.05), Vector3(0.0, 0.0, -0.05), atan2(0.68, 0.62)])
+		parts.append([Vector3(0.78, 0.10, 0.11), Vector3(0.0, ry, 0.0), 0.0])
+	parts.append([Vector3(0.88, 0.08, 0.10), Vector3(0.0, 0.0, 0.0), atan2(0.68, 0.62)])
 	for part in parts:
 		var box := BoxMesh.new()
 		box.size = part[0]
