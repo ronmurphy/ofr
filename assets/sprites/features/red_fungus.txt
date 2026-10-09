@@ -1,9 +1,9 @@
-name: fungus
+name: red_fungus
 size: 20x17
 color a: #141418
-color b: #7fd9b0
-color c: #4a9a78
-color d: #c0f4dc
+color b: #d8434a
+color c: #962a30
+color d: #f08a8e
 color e: #ffffff
 color w: #e8e4d4
 PIXELS

@@ -2656,6 +2656,33 @@ func _test_the_pixel_look(scene: Control) -> void:
 	check("  a look with no drawing keeps its picture, beside the drawings",
 		d._creatures[bad]["label"] is Label3D and d._creatures[wild]["label"] is Sprite3D)
 	PixelSprites.reload()
+	# Terrain: a feature drawn by hand is its drawing, lit like the picture;
+	# one never drawn keeps its picture (features get no starters).
+	var fungus_at := p + Vector2i(-1, -1)
+	var grave_at := p + Vector2i(1, -1)
+	var was_fungus: int = gs.map.get_tile(fungus_at.x, fungus_at.y)
+	var was_grave: int = gs.map.get_tile(grave_at.x, grave_at.y)
+	gs.map.set_tile(fungus_at.x, fungus_at.y, Tiles.FUNGUS_PURPLE)
+	gs.map.set_tile(grave_at.x, grave_at.y, Tiles.GRAVE)
+	gs.map.set_all_visible()
+	d._rebuild_world()
+	check("  precondition: the purple fungus is drawn, the grave is not",
+		PixelSprites.has(&"purple_fungus") and not PixelSprites.has(&"grave"))
+	var fungus_card: Node3D = null
+	var grave_card: Node3D = null
+	for node in d._scene_root.get_children():
+		var at := Vector2i(floori(node.position.x), floori(node.position.z)) if node is Node3D else Vector2i(-9, -9)
+		if node is Sprite3D and node.get_meta(&"look", &"") == &"purple_fungus" and at == fungus_at:
+			fungus_card = node
+		elif node is Label3D and at == grave_at and not (node as Label3D).no_depth_test:
+			grave_card = node
+	check("  a feature with a drawing is drawn, lit, in the features' place; one without keeps its picture",
+		fungus_card != null and (fungus_card as Sprite3D).render_priority == DioramaView.PRIORITY_FEATURE
+		and (fungus_card as Sprite3D).modulate.is_equal_approx(Color(
+			gs.light_map.get_light(fungus_at.x, fungus_at.y), 1.0))
+		and grave_card != null)
+	gs.map.set_tile(fungus_at.x, fungus_at.y, was_fungus)
+	gs.map.set_tile(grave_at.x, grave_at.y, was_grave)
 	scene._unhandled_key_input(v)
 	d._rebuild_world()
 	said = String(gs.msg_log.entries[-1]["text"])

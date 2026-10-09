@@ -197,7 +197,8 @@ func _clock() -> float:
 ## them each frame without rebuilding anything.
 var _surface_materials: Array[ShaderMaterial] = []
 ## Pictures whose colour moves between rebuilds: remembered stairs breathing,
-## and cooling braziers -- [label, kind, colour, cell, heat].
+## and cooling braziers -- [card, kind, colour, cell, heat]. A card may be a
+## drawing (the pixel look), whose colour is then the light on it.
 var _pulsing: Array = []
 ## Cells with magic lying in them, cell -> item, for the glow under it.
 var _glowing_items: Dictionary = {}
@@ -1606,15 +1607,27 @@ func _add_dots() -> void:
 func _add_tile_icon(tile: int, x: int, y: int, visible: bool) -> void:
 	var id := Tiles.appearance_id(tile)
 	var app: Dictionary = _icon_theme.appearance(id)
-	var color: Color = app.get("fg", Palette.UI_TEXT)
+	# Under the pixel look a feature WITH a drawing is the drawing (the web
+	# first, 2026-10-09); every other keeps its picture. Everything below
+	# then works on white -- the light, memory's dimming, the stairs'
+	# breath, the embers' gauge multiply the drawing as they colour the
+	# picture -- and a shrine's hue tints the drawing instead.
+	var drawn := _drawn(id)
+	var color: Color = Color.WHITE if drawn else app.get("fg", Palette.UI_TEXT)
+	var tint := Color(0, 0, 0, 0)
 	if tile == Tiles.SHRINE:
-		color = state.shrine_hue(int(state.shrine_at.get(Vector2i(x, y), 0)))
+		var hue := state.shrine_hue(int(state.shrine_at.get(Vector2i(x, y), 0)))
+		if drawn:
+			tint = hue
+		else:
+			color = hue
 	# Moving colour, as the classic grid draws it: remembered stairs breathe,
 	# and a cooling brazier is the forging window's gauge -- see LivingLight.
 	var pulse: Array = []
 	if not visible and (tile == Tiles.STAIRS_DOWN or tile == Tiles.STAIRS_UP):
-		color = Palette.STAIRS_KNOWN * LivingLight.stairs_pulse()
-		pulse = [&"stairs", Palette.STAIRS_KNOWN, 0.0]
+		var known: Color = Color.WHITE if drawn else Palette.STAIRS_KNOWN
+		color = known * LivingLight.stairs_pulse()
+		pulse = [&"stairs", known, 0.0]
 	elif visible:
 		if tile == Tiles.BRAZIER_SPENT and state.ember_heat(x, y) > 0.0:
 			var heat := state.ember_heat(x, y)
@@ -1627,10 +1640,9 @@ func _add_tile_icon(tile: int, x: int, y: int, visible: bool) -> void:
 	var feet := _floor_point(x, y)
 	if tile == Tiles.CHEST:
 		feet.y = 0.66
-	var label := _add_billboard(String(app.get("ch", "?")), Color(color, 1.0), feet,
-		BillboardSizes.box(id, BillboardSizes.FEATURE))
-	label.render_priority = PRIORITY_FEATURE
-	label.outline_render_priority = PRIORITY_FEATURE - 1
+	var label := _add_card(id, String(app.get("ch", "?")), Color(color, 1.0), feet,
+		BillboardSizes.box(id, BillboardSizes.FEATURE), Color(color, 1.0), "", tint)
+	_set_priority(label, PRIORITY_FEATURE)
 	if not pulse.is_empty():
 		_pulsing.append([label, pulse[0], pulse[1], Vector2i(x, y), pulse[2]])
 
@@ -1822,7 +1834,8 @@ func _add_billboard(ch: String, color: Color, feet: Vector3, box: Vector2,
 # ------------------------------------------------------------ the pixel look --
 
 ## Does the look `id` show as a drawing? Under the pixel look, where a sprite
-## file exists (PixelSprites); terrain features keep their pictures.
+## file exists (PixelSprites); a terrain feature only where one was drawn by
+## hand, since features get no starters.
 func _drawn(id: StringName) -> bool:
 	return _pixel_look and PixelSprites.has(id)
 
@@ -2000,7 +2013,7 @@ func _update_dynamic() -> void:
 		else:
 			colour = LivingLight.embers(colour, float(p[4]), cell.x, cell.y) \
 				* state.light_map.get_light(cell.x, cell.y)
-		(p[0] as Label3D).modulate = Color(colour, 1.0).clamp()
+		_set_colour(p[0], Color(colour, 1.0).clamp())
 	var up := _camera.global_transform.basis.y
 	var toward_camera := _camera.global_transform.basis.z
 	# The torch goes where you are drawn, mid-glide included.

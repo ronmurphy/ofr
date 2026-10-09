@@ -48,7 +48,8 @@ func _initialize() -> void:
 	print("ITEMS_JSON:" + JSON.stringify(items))
 	# EVERY LOOK A CARD CAN SHOW, for the sprite editor (2026-10-09): the
 	# creatures above plus the ones no vault places -- you, the trader, your
-	# risen bones, the killer rabbit -- and the item looks, each with the
+	# risen bones, the killer rabbit -- the item looks and the terrain
+	# features, each with the
 	# canvas its template is drawn on (PixelSprites.canvas_for, from the
 	# card's box) and the colour the 3D view really draws it in: an animal in
 	# the one colour for animals, Palette.WILD, as the picture look does.
@@ -69,6 +70,20 @@ func _initialize() -> void:
 		cards.append(_card(letters, StringName(row["app"]),
 			String(names[0]) if names.size() == 1 else "%s (%d items)" % [row["app"], names.size()],
 			"items", BillboardSizes.ITEM, false))
+	# Terrain features the 3D view stands up as cards (2026-10-09, for the
+	# web): every tile with an icon but a door or a gate, which are drawn as
+	# leaves. No starters are made for these -- they keep their pictures
+	# until one is drawn by hand.
+	var seen := {}
+	for card in cards:
+		seen[StringName(card["app"])] = true    # the fungus tile is the fungus item's look
+	for tile in Tiles.DATA:
+		var tile_app: StringName = Tiles.appearance_id(tile)
+		if Tiles.is_doorway(tile) or seen.has(tile_app) or not GlyphTheme.OVERRIDES.has(tile_app):
+			continue
+		seen[tile_app] = true
+		cards.append(_card(letters, tile_app, String(tile_app).replace("_", " "), "terrain features",
+			BillboardSizes.FEATURE, false))
 	print("LOOKS_JSON:" + JSON.stringify(cards))
 	quit()
 

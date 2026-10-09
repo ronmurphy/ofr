@@ -2301,14 +2301,27 @@ an alternative to the icon-font "pictures" on the 3D cards.
   - Tests: 13 checks on the reader and images, 4 on the files, 5 on the
     export, 18 in the view suite (`_test_the_pixel_look`). Render:
     `tools/probes/screenshot_sprites.gd`.
-- **Drawn by hand (the desktop, 2026-10-09, Brad's ask):** the player (a
-  hooded adventurer with a sword), the trader (a bearded pedlar under a
-  straw hat, packs either side), your risen bones, rat, kobold, goblin,
-  orc, skeleton, slime, wolf, bear, rabbit, bat, killer rabbit. Each on its
-  look's canvas and in the colour the picture look uses, so a creature
-  reads as itself in either look; animals in the wild gold.
-- **Still open:** drawing the rest by hand (any file, any order); terrain
-  features as drawings; a title-screen row for the look, if wanted; the
+- **ALL DRAWN BY HAND (the desktop, 2026-10-09, Brad's ask), the same
+  night:** every one of the 27 creature looks and 17 item looks, plus the
+  purple and red fungus tiles (the green fungus tile shares the fungus
+  item's look, as it does in the picture look). Each on its look's canvas
+  and in the colour the picture look uses, so a creature reads as itself in
+  either look; animals in the wild gold. No starters are left (`grep -L
+  "^# starter" -r assets/sprites` lists all 46). Drawn as grids and shapes
+  in a scratch script, previewed at 8x, then written in the editor's
+  format; any of them can be opened in the editor and redrawn.
+- **Terrain features under the pixel look (2026-10-09):** a feature WITH a
+  drawing is drawn from it (`_add_tile_icon` through `_add_card`), lit,
+  remembered and pulsing as the picture is, a shrine's hue as a tint. A
+  feature without one keeps its picture, and features never get starters,
+  so they change only as they are drawn. The sprite editor lists them in a
+  "terrain features" group.
+- **The spider and the web (Brad, 2026-10-09):** drawn and waiting in
+  `tools/sprites_waiting/` until the Legion adds the looks: the spider in
+  the wild gold, the web pale silk. Icons for the picture look: md-spider
+  `0xF11EA`, md-spider_web `0xF0BCA` (told to the Legion, with the steps).
+- **Still open:** redrawing any of them better (any file, any order);
+  the rest of the terrain features as drawings; a title-screen row for the look, if wanted; the
   editor reading the files back rather than embedding (Brad, 2026-10-09:
   "extra code that maybe we don't need") -- not done.
 

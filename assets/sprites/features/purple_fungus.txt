@@ -1,9 +1,9 @@
-name: fungus
+name: purple_fungus
 size: 20x17
 color a: #141418
-color b: #7fd9b0
-color c: #4a9a78
-color d: #c0f4dc
+color b: #b77be8
+color c: #7a4aa8
+color d: #dcbcf8
 color e: #ffffff
 color w: #e8e4d4
 PIXELS

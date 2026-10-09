@@ -7,15 +7,18 @@ shows on the next press without restarting the game.
 - **One file per look, named after it.** `wolf.txt` is every wolf,
   `meat.txt` every haunch, `player.txt` you. The game finds a sprite by its
   file name, so a file named after anything else is never seen (the suite
-  says so). `creatures/` and `items/` are only for tidiness.
+  says so). `creatures/`, `items/` and `features/` are only for tidiness.
+- **Terrain features** (braziers, stairs, the fungi, the web...) are drawn
+  only where a file exists here; the rest keep their pictures. They never
+  get starters.
 - **Draw them in `tools/sprite_editor.html`.** Open a file here, draw over
   it, save it back under the same name. "From the game" starts a look from
   its icon, on its own canvas, already named.
-- **The starters** are the game's icons drawn onto the grid by
-  `tools/make_starter_sprites.py`. Each one's first line says so. The
+- **Every file here was drawn by hand (2026-10-09).** For a new creature
+  or item, `tools/make_starter_sprites.py` makes a STARTER from the game's
+  icon, never overwriting a file. A starter's first line says so, and the
   editor drops that line when it saves, so this lists the hand-drawn ones:
-  `grep -L "^# starter" -r assets/sprites`. The script never overwrites a
-  file.
+  `grep -L "^# starter" -r assets/sprites`.
 - **Colour still says whose side it is on.** A drawing may carry variants
   named `ally`, `corrupted` and `magic`. Without one, the game tints the
   drawing in that state's colour.

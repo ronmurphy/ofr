@@ -32,6 +32,30 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-09 late, the desktop: the whole set is drawn; terrain features can be drawn; the spider and web are waiting. Pull first.**
+- **Every creature and item look is hand-drawn now** (all 44), plus the
+  purple and red fungus tiles. No starters are left. Nothing to do on your
+  side; `v` in 3D shows them.
+- **Terrain features under the pixel look:** `_add_tile_icon` now goes
+  through `_add_card`, so a feature WITH a drawing is drawn from it; the
+  rest keep their pictures, and features never get starters. If the web
+  tile goes through `_add_tile_icon` as the other features do, its drawing
+  shows with no more code. The `_pulsing` update uses `_set_colour` now.
+- **The spider and the web:** drawings in `tools/sprites_waiting/` with a
+  README. Icons: md-spider `0xF11EA` into `GlyphTheme.OVERRIDES` as
+  `&"spider"`, md-spider_web `0xF0BCA` as `&"web"`, then
+  `python3 tools/build_icon_font.py` (the font subset and glyph_metrics.gd
+  come from OVERRIDES) and `tools/build_vault_editor.py`. When the looks
+  exist, move `spider.txt` to `assets/sprites/creatures/` and `web.txt` to
+  `assets/sprites/features/` -- the file name must be the appearance id.
+  Suggested: `x` for the spider's letter; BillboardSizes about 0.80 x 0.50
+  for the spider, 0.60 x 0.50 for the web. Not `w` as the web's DISPLAY
+  char: in the classic view `w` is the wight (it is free as a vault glyph,
+  which also needs a row in build_vault_editor.py's TILES table).
+  Agreed with the Legion the same night: the spider and its bite tonight,
+  the web tile and shot on night 2, the nest on night 3.
+- **Suites:** full 3176 passed / 0 / 0 SCRIPT ERROR (15 min, no new main checks), quick 415/0 (two new: a drawn feature, and one never drawn keeps its picture).
+
 **2026-10-09 night, the desktop: the pixel look is in the game. Pull first.**
 Brad asked the desktop for the game side of the sprite format. What
 changed, and what touches files you may also be editing:

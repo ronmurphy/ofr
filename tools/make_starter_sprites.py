@@ -5,6 +5,9 @@ canvas by the sprite editor's own "from the game" template code, in the colour
 the 3D view draws it, outlined. Something to draw over, so the pixel look is
 whole from the first day and gets better one file at a time.
 
+Creatures and items only: terrain features (braziers, stairs, the web...)
+keep their pictures until one is drawn by hand.
+
 NEVER OVERWRITES. A look that already has a file anywhere under assets/sprites/
 is skipped, so a hand-drawn sprite is safe from this script for good. A new
 creature or item in the game gets its starter on the next run.
@@ -86,13 +89,16 @@ def main() -> None:
     have = existing()
     wrote = 0
     for app, row in looks.items():
-        if app in have:
+        # Terrain features keep their pictures until someone DRAWS one: a
+        # starter would turn every brazier and staircase into a pictogram.
+        if app in have or row["group"] == "terrain features":
             continue
         folder = OUT / ("items" if row["group"] == "items" else "creatures")
         folder.mkdir(parents=True, exist_ok=True)
         (folder / (app + ".txt")).write_text(STARTER + "\n" + row["text"], encoding="utf-8")
         wrote += 1
-    print("%d looks, %d already drawn, %d starters written" % (len(looks), len(have & set(looks)), wrote))
+    print("%d looks, %d already drawn, %d starters written (terrain features are never started)"
+          % (len(looks), len(have & set(looks)), wrote))
 
 
 if __name__ == "__main__":
