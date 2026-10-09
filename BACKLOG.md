@@ -663,8 +663,9 @@ David by first name.
 
 **3. The miasma.** Designed in full below; the breathe patches left it to us.
 
-**4. Tune the trader.** These numbers were never settled and are marked
-PROVISIONAL in `src/sim/trade.gd` — play decides them:
+**4. Tune the trader -- SETTLED (Brad, 2026-10-09: "fine for a while now").**
+The numbers below, the stock and the rules after them stay as they are;
+`src/sim/trade.gd` no longer calls them provisional. The original entry:
 - consumables cost 3 each (a healing potion, a scroll of light, a scroll of
   blinking); two potions and one of each scroll are stocked;
 - up to three relics show, each a twice-dead hero's most valuable piece.
@@ -844,10 +845,9 @@ in its own entry.
    of both is done (2026-10-08). Parts are independent; about a night each,
    part 1 perhaps two.
 
-**Waiting on Brad, not code:** the trader's numbers (from play); the frozen
-room's rule (b); the spider's bite and provocation; which heart glyph over
-a tamed wolf; item 4's yes. (The Firefox right stick and David's music
-were closed 2026-10-09: the first not needed, the second in.)
+**Waiting on Brad, not code:** the frozen room's rule (b); the spider's bite and provocation; which heart glyph over
+a tamed wolf; item 4's yes. (Closed 2026-10-09: the Firefox right stick, not
+needed; David's music, in; the trader's numbers, settled.)
 
 **For the desktop at night:** reviewing what the Legion pushed; the open
 question in CLAUDE.md (descent caves place vaults above p=0.25 and the

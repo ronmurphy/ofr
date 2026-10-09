@@ -47,9 +47,9 @@ const ENCHANT := 9
 ## Gems for a gem of your choice.
 const GEMS_FOR_ONE := 3
 
-## PROVISIONAL -- nobody has settled these yet. What the trader asks for the
-## consumables it stocks. Three points is a tier-2 item: a short sword buys a
-## potion. Brad to tune after play.
+## What the trader asks for the consumables it stocks. Three points is a
+## tier-2 item: a short sword buys a potion. SETTLED by Brad after weeks of
+## play (2026-10-09): these, the stock and the rules above stay as they are.
 const SELLS := {
 	&"potion_healing": 3,
 	&"scroll_light": 3,
