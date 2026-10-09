@@ -778,8 +778,8 @@ otherwise. **Aim for TWO a night; one is fine** -- a night can go to one
 long run (the pre-run's first versions took the suite to 53 and then 38
 minutes). When the list is short of time, the free model's open jobs in
 `SMALL_TASKS.md` are add-ons of the same size. Big themes (the house, gems
-on any host -- an effects discussion with Brad first -- the spider, the
-bestiary page) wait for Brad and the desktop.
+on any host -- an effects discussion with Brad first -- the bestiary page)
+wait for Brad and the desktop. (The spider joined this list 2026-10-09.)
 
 **How a night goes:** pull first (the desktop pushes in the mornings and at
 night); message the desktop session when the Legion boots; read the item's
@@ -788,44 +788,52 @@ working, the full suite at the end; commit and push with no attribution
 line; mark the item done HERE with the commit and the tally, and as-built
 in its own entry.
 
+**STREAMLINED 2026-10-09 (Brad and the desktop).** Eleven items had piled
+up at two a night. Items in the same code area are merged, polish moved
+below, tidy-ups moved to someday, and the spider added at its natural place.
+The rule from now on: **new ideas go into "Ideas, not yet designed" freely;
+this list only gains an item when one leaves it.** (Why, at length:
+`tools/travel.md`, 2026-10-09.)
+
+**The queue, in order:**
+
 1. **The latched gate** (Ideas, 2026-10-07): a door no animal passes, its
    own colour, opened by hands, smashed by a bear; a wall to monster
    pathfinding, a door to yours; "a latched gate" under the cursor and in
    the HERE box; a vault letter for it. Then put one on the warren
    (`assets/vaults/the_warren.txt`) and re-run `tools/probes/warren_probe.gd`:
-   the rabbits should stay home.
-2. **The riders** (Trained animals): the kobold wolf rider and the goblin
-   bear rider -- the animal's glyph and stats in the MONSTER's colour,
-   MONSTER faction, attacking on sight; fortress floors. Two bestiary rows
-   and the colour; the art reference regenerated.
-3. **The houndmaster** (Trained animals): an orc or an ogre (Brad's pick)
-   with two or three hounds of the wolf's kind in the master's colour,
-   MONSTER, via `_spawn_pack`; a kennel vault with a latched gate (item 1).
-4. **The master falls, the hounds go wild** -- ASK BRAD FIRST (the desktop's
-   suggestion, not yet his yes): on the master's death the survivors turn
-   WILD, the provocation loop run backwards (`_turn_to_you` is the model).
-5. **Fire as a fear** (the wild creatures update): a lit torch keeps an
+   the rabbits should stay home. The houndmaster's kennel (item 4) and the
+   spider's nest (item 3) can use it.
+2. **Fire as a fear** (the wild creatures update): a lit torch keeps an
    unstruck animal back; read the entry for the wolves' "cornered by flame"
    rule and the bear's exception before starting.
-6. **The rat goes WILD** (the wild creatures update): with the threat
+3. **The spider** (the wild creatures update, "The spider"; designed in
+   full 2026-10-09 except its numbers). WILD, with a NEST that makes it
+   hostile, like the den bear; walks the walls (the banshee's phasing,
+   only to flee); a bite of damage plus a THREE-turn poison (the miasma's
+   `poisoned`); a ranged WEB shot that lands as a new tile -- 200 energy to
+   break free, 100 to burn with the torch or a fire weapon, struggling is
+   loud, flyers held, a bear walks through; upper floors, caves AND the
+   fortress (the one wild exception, Brad). After item 2, because webs
+   burn. About three nights: the spider and its bite; the web tile and the
+   shot (both renderers draw it; new looks go into the 3D views, classic
+   keeps working); the nest. Set its hp, power and threat by probe.
+4. **Trained animals** (merged: the riders, the houndmaster and the master
+   falling -- one code area). The kobold wolf rider and the goblin bear
+   rider: the animal's glyph and stats in the MONSTER's colour, MONSTER
+   faction, attacking on sight, fortress floors (two bestiary rows, the
+   colour, the art reference regenerated). Then the houndmaster, an orc or
+   an ogre (Brad's pick), with two or three hounds of the wolf's kind in
+   the master's colour, MONSTER, via `_spawn_pack`, and a kennel vault with
+   a latched gate (item 1). **ASK BRAD FIRST** about the last part, the
+   desktop's suggestion: when the master dies, the surviving hounds turn
+   WILD, the provocation loop run backwards (`_turn_to_you` is the model).
+   About two nights.
+5. **The rat goes WILD** (the wild creatures update): with the threat
    ceiling re-measured before and after (`tools/probes/threat_wild_probe.gd`)
-   -- the slime now fills floors 1-2, which was the condition.
-7. **Throwing a fungus roots it where it lands** (the satchel's entry):
-   throwing exists; the rooting is `player_drop_from_satchel`'s rule
-   (open floor only), applied at the landing cell.
-8. **The marked brazier drawn as marked** (the gem of returning): both
-   views; nothing changes in the sim.
-9. **The rabbit's mushroom search from a list** (desktop profile,
-   2026-10-07): a rabbit's turn checks 841 cells for a mushroom; keep the
-   floor's mushroom cells in a list kept current wherever a FUNGUS tile is
-   set or cleared, and search that, with exactly the same choices (row
-   order, nearest, not one somebody stands on). A test comparing the old
-   search with the new on random floors and positions.
-10. **Rename `Entity.charges` -> `dash`** (Ideas): a bull-rush flag that
-   reads as brazier charges. Grep every use first, saved games included
-   (read the old key as well as the new).
-
-11. **Combat flanking** (the combat update, Roadmap; Brad asked for it on
+   -- the slime now fills floors 1-2, which was the condition. The spider
+   (item 3) and the cat (Ideas) both hunt rats, so this makes them prey.
+6. **Combat flanking** (the combat update, Roadmap; Brad asked for it on
    this list 2026-10-07, now that facing exists): creatures get a FACING --
    `Entity.facing` exists but only the player's is ever set; `Entity.want`,
    the traffic intent, can supply it. A blow from the side does +1, from
@@ -836,23 +844,39 @@ in its own entry.
    purpose -- see the beats entry above the combat update for why it was
    held back).
 
-12. **DONE 2026-10-08 (the Legion), both parts, in one day at Brad's call.**
-   Next is Brad's: draw cave vaults in the editor, lint them, move them into
-   `assets/vaults/`, and play. **The vault editor's new format, the game side** --
-   `tools/VAULTS_GAME_SIDE.md`: part 1, cave vaults (vault.gd's kind, the
-   linter, mapgen's cave slot, the run's repeat memory, tests); part 2,
-   creatures by name (`place N: name`, budget rules, tests). The editor side
-   of both is done (2026-10-08). Parts are independent; about a night each,
-   part 1 perhaps two.
+**Polish, when a night has room after its item:**
+- **Throwing a fungus roots it where it lands** (the satchel's entry):
+  throwing exists; the rooting is `player_drop_from_satchel`'s rule
+  (plain floor or mud since 2026-10-08), applied at the landing cell.
+- **The marked brazier drawn as marked** (the gem of returning): the 3D
+  views only (the classic view is deprecated, 2026-10-08); nothing changes
+  in the sim.
 
-**Waiting on Brad, not code:** the frozen room's rule (b); the spider's bite and provocation; which heart glyph over
-a tamed wolf; item 4's yes. (Closed 2026-10-09: the Firefox right stick, not
+**Someday, not queued:**
+- **The rabbit's mushroom search from a list** (desktop profile,
+  2026-10-07): a rabbit's turn checks 841 cells for a mushroom. Less
+  needed since rabbits left the fortress (where no mushroom was ever near,
+  the worst case). If it comes back: keep the floor's mushroom cells in a
+  list kept current wherever a FUNGUS tile is set or cleared, search that
+  with exactly the same choices, and test the old search against the new.
+- **Rename `Entity.charges` -> `dash`** (Ideas): a bull-rush flag that
+  reads as brazier charges. Tidy-up with no player benefit. Grep every use
+  first, saved games included (read the old key as well as the new).
+
+**Done:** the vault editor's new format, the game side (both parts, the
+Legion, 2026-10-08; `tools/VAULTS_GAME_SIDE.md`). Next is Brad's: draw cave
+vaults in the editor, lint them, move them into `assets/vaults/`, and play.
+
+**Waiting on Brad, not code:** the frozen room's rule (b); which heart
+glyph over a tamed wolf; item 4's yes (the master falling). (The spider's
+bite was answered 2026-10-09.) (Closed 2026-10-09: the Firefox right stick, not
 needed; David's music, in; the trader's numbers, settled.)
 
-**For the desktop at night:** reviewing what the Legion pushed; the open
-question in CLAUDE.md (descent caves place vaults above p=0.25 and the
-climb's below -- instrument `wanted` against what is placed); the house's
-first slice written as a full design.
+**For the desktop:** reviewing what the Legion pushes; an idle wild
+animal's random step off the main rng (after the week's changes are
+played); a linter warning on duplicate vault names; the house's first
+slice written as a full design. (The CLAUDE.md vault question was answered
+2026-10-08: it did not reproduce.)
 
 ## For the free model
 

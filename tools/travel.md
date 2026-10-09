@@ -32,6 +32,32 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-09, the desktop: the short-session list is streamlined -- why.**
+For the Legion, at Brad's request. The list in BACKLOG ("Short sessions --
+the Legion's nights") had grown to eleven open items while the nights went to
+hunger, the den bears, the cursor chips and the vault work at Brad's call.
+At two a night, which is not always realistic, that read as a debt rather
+than a queue. Brad: "I just need to stop adding in new things, but that's
+more or less what makes the game fun, seeing new interactions." So the ideas
+keep coming, and the queue gets a rule instead:
+- **New ideas go into BACKLOG's "Ideas, not yet designed" freely; the
+  Legion's list only gains an item when one leaves it.**
+- **Merged by code area:** the riders, the houndmaster and the master
+  falling (old 2, 3, 4) are now ONE item, "Trained animals", about two
+  nights. They touch the same bestiary rows, `_spawn_pack` and factions.
+- **Added: the spider** (designed in full 2026-10-09 apart from its numbers;
+  Brad left it to the Legion rather than the desktop or after the job),
+  placed after fire as a fear because its webs burn.
+- **Polish, when a night has room:** throwing a fungus to root it; the
+  marked brazier (3D views only now, the classic view being deprecated).
+- **Someday, not queued:** the rabbit's mushroom list (less needed since
+  rabbits left the fortress, the worst case) and the `charges` -> `dash`
+  rename (no player benefit).
+- **The queue now:** 1 the latched gate, 2 fire as a fear, 3 the spider,
+  4 trained animals, 5 the rat goes wild, 6 combat flanking. About a week
+  and a half of nights, roughly the rest of Brad's job.
+Nothing in any item's design changed; only order, grouping and the rule.
+
 **2026-10-08 night, the desktop: review of the Legion's vault night, and a
 bug that predates it.**
 - **Tally on c318994: 3109 passed / 0 / 0 SCRIPT ERROR, 14 min** here
