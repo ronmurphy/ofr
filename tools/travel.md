@@ -32,6 +32,21 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-09 evening, the desktop: the gate reviewed; a sprite editor.**
+- **Your gate (5c58e7a, 6b78afa): 3137 passed / 0 / 0 SCRIPT ERROR, 15 min
+  here; quick 395/0.** Careful work: the gated routes keep a rabbit from
+  stalling at a gate, and barring, smashing, re-latching, the rat ring and
+  travel all handle it. One cost you named yourself: six pathfinding grids
+  instead of four, paid on every floor build.
+- **`tools/sprite_editor.html`** is new (Brad asked the desktop for it). A
+  pixel sprite editor with templates, and "from the game": each creature's
+  or item look's icon as a starting pictogram in its own colour.
+  `tools/build_vault_editor.py` now rebuilds BOTH editors, and
+  `tools/dump_bestiary.gd` also prints `ITEMS_JSON:` (item looks). The file
+  format and the Godot side still to do are in BACKLOG ("Pixel sprites drawn
+  in code"). Note there: sprite files will be `.txt`, so they need their own
+  export `include_filter` line, as the vaults did.
+
 **2026-10-09, the desktop: the short-session list is streamlined -- why.**
 For the Legion, at Brad's request. The list in BACKLOG ("Short sessions --
 the Legion's nights") had grown to eleven open items while the nights went to

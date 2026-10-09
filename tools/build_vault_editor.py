@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Rebuilds tools/vault_editor.html: embeds the icon font and refreshes the
-tile table.
+tile table. Since 2026-10-09 it also refreshes tools/sprite_editor.html: the
+same font, and the game's creatures and item looks for its templates.
 
 The editor is a single file on purpose -- you open it with a double click, no
 server, no build step. That is worth keeping, so the icon font is embedded as
@@ -37,6 +38,9 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HTML = ROOT / "tools" / "vault_editor.html"
+## The sprite editor (2026-10-09) takes the same icon font and the game's
+## creatures and item looks, for its "from the game" templates.
+SPRITES = ROOT / "tools" / "sprite_editor.html"
 FONT = ROOT / "assets" / "fonts" / "ofr_icons.ttf"
 VAULT = ROOT / "src" / "sim" / "vault.gd"
 
@@ -161,9 +165,10 @@ def check_against_vault() -> None:
     print("checked %d glyphs against %s" % (len(legal), VAULT.name))
 
 
-def dump_bestiary() -> list:
-    """Every creature, from the game's own tables, via Godot. Refuses to go on
-    without it rather than writing an editor with an empty dropdown."""
+def dump_bestiary() -> tuple:
+    """Every creature, and every item look, from the game's own tables, via
+    Godot. Refuses to go on without them rather than writing an editor with an
+    empty dropdown."""
     godot = shutil.which("godot")
     if godot is None:
         sys.exit("godot is not on the PATH: the bestiary is dumped by "
@@ -171,15 +176,19 @@ def dump_bestiary() -> list:
     out = subprocess.run([godot, "--headless", "--path", str(ROOT), "-s",
                           "tools/dump_bestiary.gd"], capture_output=True, text=True,
                          timeout=180).stdout
-    marker = "BESTIARY_JSON:"
-    for line in out.splitlines():
-        if line.startswith(marker):
-            rows = json.loads(line[len(marker):])
-            if len(rows) < 10:
-                sys.exit("the bestiary dump held %d creatures -- refusing" % len(rows))
-            print("dumped %d creatures from the game" % len(rows))
-            return rows
-    sys.exit("tools/dump_bestiary.gd printed no %s line" % marker)
+    found = {}
+    for marker in ("BESTIARY_JSON:", "ITEMS_JSON:"):
+        for line in out.splitlines():
+            if line.startswith(marker):
+                found[marker] = json.loads(line[len(marker):])
+        if marker not in found:
+            sys.exit("tools/dump_bestiary.gd printed no %s line" % marker)
+    rows, items = found["BESTIARY_JSON:"], found["ITEMS_JSON:"]
+    if len(rows) < 10 or len(items) < 5:
+        sys.exit("the dump held %d creatures and %d item looks -- refusing"
+                 % (len(rows), len(items)))
+    print("dumped %d creatures and %d item looks from the game" % (len(rows), len(items)))
+    return rows, items
 
 
 def replace_once(text: str, pattern: str, repl: str, what: str) -> str:
@@ -220,13 +229,31 @@ def main() -> None:
     html = replace_once(html, r"const TILES = \[.*?\n\];", TILES, "the TILES table")
     # 3. The bestiary, dumped by the game itself (tools/dump_bestiary.gd), so
     # the named-creature dropdown can never fall behind the game.
-    rows = dump_bestiary()
+    rows, items = dump_bestiary()
     line = "const BESTIARY = " + json.dumps(rows, separators=(",", ":")) + ";"
     html = replace_once(html, r"const BESTIARY = \[.*?\];", line, "the BESTIARY line")
 
     HTML.write_text(html, encoding="utf-8")
     print("embedded %s (%d KB of base64)" % (FONT.name, len(b64) // 1024))
     print("wrote %s" % HTML.relative_to(ROOT))
+
+    # 4. The sprite editor: the same font, the creatures and the item looks.
+    if SPRITES.exists():
+        sprites = SPRITES.read_text(encoding="utf-8")
+        if "@font-face { font-family: 'OFRIcons'" in sprites:
+            sprites = replace_once(
+                sprites,
+                r"  /\* ofr_icons\.ttf, embedded.*?\.cell\.pic, \.sw b\.pic \{[^}]*\}\n",
+                face, "the sprite editor's embedded font block")
+        else:
+            sprites = replace_once(sprites, r"</style>", face + "</style>", "the sprite editor's </style>")
+        sprites = replace_once(sprites, r"const BESTIARY = \[.*?\];", line,
+                               "the sprite editor's BESTIARY line")
+        item_line = "const ITEMS = " + json.dumps(items, separators=(",", ":")) + ";"
+        sprites = replace_once(sprites, r"const ITEMS = \[.*?\];", item_line,
+                               "the sprite editor's ITEMS line")
+        SPRITES.write_text(sprites, encoding="utf-8")
+        print("wrote %s" % SPRITES.relative_to(ROOT))
 
 
 if __name__ == "__main__":

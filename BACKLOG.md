@@ -2199,6 +2199,42 @@ an alternative to the icon-font "pictures" on the 3D cards.
   them as they are brings AI-made art into the game itself (OFR keeps AI out
   of its public record); redrawing in the same technique does not. Either
   way the technique is the useful part.
+- **THE SPRITE EDITOR -- BUILT 2026-10-09 (desktop): `tools/sprite_editor.html`**,
+  so sprites can be drawn by HAND (Brad, a designer, a player), which also
+  settles the AI-art question. Pencil, fill, dragged rectangle and line,
+  colour picker, mirror, flip, nudge, automatic outline, undo/redo; five
+  body templates (humanoid, four-legged, blob, flyer, item); and **FROM THE
+  GAME**: any of the 23 creatures or 17 item looks, its icon from the
+  game's own icon font drawn onto the grid as a rough pictogram in its own
+  colour, outlined, to draw over (Brad's idea). The lists and the font are
+  embedded by `tools/build_vault_editor.py` (now builds both editors) from
+  `tools/dump_bestiary.gd` (now also dumps item looks), so a creature added
+  to the game gets its template on the next build. COLOUR VARIANTS: the same
+  drawing with some colours changed -- the wolf, and the rider's wolf in its
+  monster's colour (the trained-animal idea) for free. Tested in headless
+  Edge: 29 checks on the tools, 7 on the game templates (every creature and
+  item look gives a whole silhouette in its own colour).
+- **The file format** (what the Godot side reads): header lines, then
+  `PIXELS` and the grid.
+  ```
+  name: wolf
+  size: 24x32
+  color a: #141418
+  color b: #a9a9b4
+  variant trained: b #c05a3a, c #8a3f2a
+  PIXELS
+  ........aaaa............
+  ```
+  One letter per colour (a-z, then A-Z), `.` see-through; a variant line
+  changes some letters' colours. The editor also saves a PNG strip of every
+  variant side by side, for previews and ART_REFERENCE.
+- **Still to do, the Godot side:** read a sprite file into an `Image`
+  (`set_pixel` per cell), an `ImageTexture` on the 3D card with nearest
+  filtering, cached per appearance and variant; a look option for the 3D
+  views. **Mind the export hazard:** sprite files are plain `.txt`, so every
+  export preset's `include_filter` needs their folder (e.g.
+  `assets/sprites/*.txt`) beside the vaults', and
+  `_test_vaults_ship_in_every_export` should check that path too.
 
 **FOUR THEMES FOR THE LIVING DUNGEON AND THE FIGHT (Brad and the desktop,
 2026-10-09).** Nine ideas from one talk, grouped by the code they touch so
