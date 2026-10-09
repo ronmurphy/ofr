@@ -140,7 +140,7 @@ const KEY_GROUPS := [
 	["ACT", ["move", "wait / rest", "descend / ascend", "pick up", "shoot", "throw",
 		"swap reach / blade", "torch", "close a door", "pray at a shrine",
 		"ally: heel / loose", "inventory", "the satchel", "look"]],
-	["VIEW AND SYSTEM", ["letters / symbols / pictures", "classic / 3D / overhead",
+	["VIEW AND SYSTEM", ["how things are drawn", "classic / 3D / overhead",
 		"turn 3D camera", "still / simple / full", "the map", "sound", "music",
 		"screenshot", "menu", "travel"]],
 ]

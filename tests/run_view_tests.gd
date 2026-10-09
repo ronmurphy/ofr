@@ -2501,6 +2501,181 @@ func _test_the_overhead_view(scene: Control) -> void:
 		is_equal_approx(cam.global_transform.basis.z.y, sin(deg_to_rad(DioramaView.CAMERA_PITCH_DEG)))
 		and player.position.y < 0.5 and d.hint_text().begins_with("3D  "), d.hint_text())
 
+## THE PIXEL LOOK (2026-10-09): `v` in a 3D view swaps the cards' icon
+## pictures for the drawings in assets/sprites/ (PixelSprites), at the same
+## size, with whose-side-it-is still said by colour.
+func _test_the_pixel_look(scene: Control) -> void:
+	print("-- the pixel look")
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	var was_3d: bool = scene._map_view == scene.diorama
+	scene._select_map_view(true)
+	gs.map.set_all_visible()
+	var wolf_row := {}
+	var goblin_row := {}
+	for row in GameState.BESTIARY:
+		if row["app"] == &"wolf":
+			wolf_row = row
+		elif row["app"] == &"goblin":
+			goblin_row = row
+	check("precondition: pictures to start with, and the wolf and the goblin have drawings",
+		not RenderTheme.sprites_enabled() and PixelSprites.has(&"wolf")
+		and PixelSprites.has(&"goblin") and not wolf_row.is_empty() and not goblin_row.is_empty())
+	var p := Vector2i(gs.player.x, gs.player.y)
+	var spots: Array[Vector2i] = [p + Vector2i(1, 0), p + Vector2i(-1, 0), p + Vector2i(0, 1),
+		p + Vector2i(1, 1), p + Vector2i(-1, 1)]
+	var was_tiles := []
+	for c in spots:
+		was_tiles.append(gs.map.get_tile(c.x, c.y))
+		gs.map.set_tile(c.x, c.y, Tiles.FLOOR)
+	var wild := GameState.monster_from(wolf_row, spots[0].x, spots[0].y)
+	var tame := GameState.monster_from(wolf_row, spots[1].x, spots[1].y)
+	tame.faction = Entity.Faction.PLAYER
+	var bad := GameState.monster_from(goblin_row, spots[2].x, spots[2].y)
+	bad.corrupted = true
+	var had_entities: Array = gs.entities.duplicate()
+	var had_ground: Array = gs.ground.duplicate()
+	var had_bodies: Array = gs.bodies.duplicate()
+	gs.entities.append_array([wild, tame, bad])
+	var sword := Item.make(&"short_sword")
+	sword.x = spots[3].x
+	sword.y = spots[3].y
+	var magic := Item.make(&"short_sword")
+	magic.element = &"fire"
+	magic.x = spots[4].x
+	magic.y = spots[4].y
+	gs.ground.append_array([sword, magic])
+	d.set_overhead(false)
+	d._rebuild_world()
+	var picture_ink := Vector2(float(d._creatures[wild]["wide"]), float(d._creatures[wild]["tall"]))
+	check("  with pictures, a creature's card is its picture", d._creatures[wild]["label"] is Label3D)
+
+	var v := InputEventKey.new()
+	v.keycode = KEY_V
+	v.pressed = true
+	scene._unhandled_key_input(v)
+	var said := String(gs.msg_log.entries[-1]["text"]) if not gs.msg_log.entries.is_empty() else ""
+	check("  v in a 3D view turns the pixel look on, and says so (%s)" % said,
+		RenderTheme.sprites_enabled() and said == "Look: pixel art.")
+	RenderTheme._sprites = false
+	RenderTheme.load_settings()
+	check("  and it is remembered with the view", RenderTheme.sprites_enabled())
+	d._rebuild_world()
+	d.settle_motion()
+	d._update_dynamic()
+	var card = d._creatures[wild]["label"]
+	check("  the wolf's card is its drawing: nearest pixels, facing the camera",
+		card is Sprite3D and card.texture != null
+		and card.texture_filter == BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		and card.billboard == BaseMaterial3D.BILLBOARD_ENABLED
+		and card.texture == PixelSprites.texture(&"wolf"))
+	if card is Sprite3D:
+		# Measured on an unturned copy: a billboard reports a box big enough
+		# for every way it can turn, and turning is about its feet anyway.
+		var flat: Sprite3D = card.duplicate()
+		flat.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		d._scene_root.add_child(flat)
+		var box: AABB = flat.get_aabb()
+		flat.free()
+		check("  it stands on its feet, centred (bottom %.3f, middle %.3f)"
+				% [box.position.y, box.position.x + box.size.x * 0.5],
+			absf(box.position.y) < 0.001 and absf(box.position.x + box.size.x * 0.5) < 0.001)
+		# The same box as the picture, filled the same way: as large as fits,
+		# touching it on one side. A drawing the icon's shape comes out the
+		# icon's size; a longer one (the hand-drawn wolf) fills the box by
+		# its width where the icon filled it by its height.
+		var texel: float = card.pixel_size
+		var inside := Vector2(card.texture.get_width() - 2, card.texture.get_height() - 2) * texel
+		var fit := BillboardSizes.box(&"wolf", BillboardSizes.CREATURE)
+		check("  its inside fills the picture's box as the picture's ink does (%s and %s in %s)"
+				% [inside, picture_ink, fit],
+			(absf(inside.x - fit.x) < 0.001 or absf(inside.y - fit.y) < 0.001)
+			and inside.x <= fit.x + 0.001 and inside.y <= fit.y + 0.001
+			and (absf(picture_ink.x - fit.x) < 0.001 or absf(picture_ink.y - fit.y) < 0.001))
+		var shape = d._creatures[wild]["shape"]
+		check("  a silhouette of the drawing behind it, for what walls hide",
+			shape is Sprite3D and shape.no_depth_test and not card.no_depth_test
+			and shape.render_priority < card.render_priority and shape.texture != card.texture
+			and is_equal_approx(shape.pixel_size, card.pixel_size) and shape.offset == card.offset)
+		var middle: Vector2 = d._billboard_middle(d._floor_point(wild.x, wild.y),
+			Vector2(float(d._creatures[wild]["wide"]), float(d._creatures[wild]["tall"])))
+		check("  pointing at the drawing finds the wolf", d._billboard_cell_at(middle) == spots[0],
+			str(d._billboard_cell_at(middle)))
+	var tame_card = d._creatures[tame]["label"]
+	var bad_card = d._creatures[bad]["label"]
+	check("  a tamed wolf wears the ally colour, a corrupted goblin the corrupted",
+		tame_card is Sprite3D and bad_card is Sprite3D
+		and tame_card.texture == PixelSprites.texture(&"wolf", PixelSprites.ALLY, Palette.ALLY)
+		and bad_card.texture == PixelSprites.texture(&"goblin", PixelSprites.CORRUPTED, Palette.CORRUPTED)
+		and tame_card.texture != card.texture)
+	var cards := {}
+	for node in d._scene_root.get_children():
+		if node is Sprite3D and node.has_meta(&"look") and node.get_meta(&"look") == &"weapon":
+			cards[node.texture] = true
+	check("  items are drawn too, a magic one in the magic colour (%d sword cards)" % cards.size(),
+		cards.has(PixelSprites.texture(&"weapon"))
+		and cards.has(PixelSprites.texture(&"weapon", PixelSprites.MAGIC, Palette.MAGIC)))
+	# A marked creature wears its frame; an unmarked one shows none.
+	wild.take_spores(&"red")
+	d._rebuild_world()
+	var rim: Color = CreatureMarks.single_outline(wild)
+	var frame = d._creatures[wild].get("rim")
+	var plain = d._creatures[tame].get("rim")
+	check("  precondition: the spored wolf has a mark to wear", rim.a > 0.0)
+	check("  and wears it as a frame round the drawing; an unmarked wolf wears none",
+		frame is Sprite3D and frame.visible and frame.modulate == rim
+		and frame.texture == PixelSprites.rim_texture(&"wolf")
+		and plain is Sprite3D and not plain.visible)
+	# A body lies as its drawing.
+	gs.bodies.append({"x": spots[3].x, "y": spots[3].y, "app": "wolf", "turn": gs.turns,
+		"corrupted": false})
+	d._rebuild_world()
+	var lying := false
+	for b in d._body_labels:
+		lying = lying or (b is Sprite3D and b.texture == PixelSprites.texture(&"wolf")
+			and b.billboard == BaseMaterial3D.BILLBOARD_DISABLED)
+	check("  a body lies flat as its drawing", lying)
+	# From overhead, a drawing is centred over its cell and hung above the walls.
+	d.set_overhead(true)
+	d._rebuild_world()
+	d.settle_motion()
+	d._update_dynamic()
+	var over = d._creatures[wild]["label"]
+	var cam: Camera3D = d._camera
+	var centre: Vector3 = over.position + cam.global_transform.basis.y * (over.offset.y * over.pixel_size)
+	var off := cam.unproject_position(centre).distance_to(
+		cam.unproject_position(d._floor_at(Vector2(wild.x, wild.y))))
+	check("  from overhead the drawing is over its own cell (%.2f px off) and above the walls" % off,
+		over is Sprite3D and off < 1.5
+		and over.position.y - over.texture.get_height() * over.pixel_size * 0.5
+			* cos(deg_to_rad(DioramaView.CAMERA_PITCH_OVERHEAD_DEG)) > DioramaView.WALL_HEIGHT)
+	d.set_overhead(false)
+	# A look with no drawing keeps its picture.
+	PixelSprites.paths().erase(&"goblin")
+	d._rebuild_world()
+	check("  a look with no drawing keeps its picture, beside the drawings",
+		d._creatures[bad]["label"] is Label3D and d._creatures[wild]["label"] is Sprite3D)
+	PixelSprites.reload()
+	scene._unhandled_key_input(v)
+	d._rebuild_world()
+	said = String(gs.msg_log.entries[-1]["text"])
+	check("  v again: pictures (%s)" % said, not RenderTheme.sprites_enabled()
+		and said == "Look: pictures." and d._creatures[wild]["label"] is Label3D)
+	# In the classic view `v` is the letters / symbols / pictures cycle still.
+	var mode := RenderTheme.mode()
+	scene._select_map_view(false)
+	scene._unhandled_key_input(v)
+	check("  in the classic view v still cycles letters, symbols and pictures",
+		RenderTheme.mode() != mode and not RenderTheme.sprites_enabled())
+	RenderTheme.set_mode(mode)
+	scene._select_map_view(was_3d)
+	gs.entities = had_entities
+	gs.ground = had_ground
+	gs.bodies = had_bodies
+	for i in spots.size():
+		gs.map.set_tile(spots[i].x, spots[i].y, was_tiles[i])
+	d._rebuild_world()
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -2934,5 +3109,6 @@ func _test_both_views_share_one_moment() -> void:
 	await _test_3d_extras(scene)
 	_test_the_overhead_view(scene)
 	_test_the_3d_look(scene)
+	_test_the_pixel_look(scene)
 	scene.queue_free()
 	await process_frame

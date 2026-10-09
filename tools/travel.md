@@ -32,6 +32,44 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-09 night, the desktop: the pixel look is in the game. Pull first.**
+Brad asked the desktop for the game side of the sprite format. What
+changed, and what touches files you may also be editing:
+- **`v` in a 3D view now switches the cards** between the icon pictures
+  and pixel art ("Look: pixel art." / "Look: pictures."), remembered in
+  settings as `view/sprites`. In the classic view `v` is unchanged. The key
+  list row is now "how things are drawn" (`Sidebar.KEYS` and
+  `LegendPanel.KEY_GROUPS` both). No pad button sends `v`.
+- **`src/render/diorama_view.gd`**: creatures, items, bodies, the
+  remembered trader and the shatter ghost now go through `_add_card`, which
+  gives a `Sprite3D` under the pixel look and the old `Label3D` otherwise.
+  `_creatures[e]["label"]` and `["shape"]` may be either (typed `Node3D`
+  now), plus `["rim"]` for a drawing's mark frame. Use `_set_priority`,
+  `_set_colour`, `_set_mark` rather than Label3D fields. Terrain features
+  are still Label3D only.
+- **New:** `src/render/pixel_sprites.gd`, `assets/sprites/` (44 starters,
+  `creatures/` and `items/`, plus a README), `tools/make_starter_sprites.py`,
+  `tools/probes/screenshot_sprites.gd`. Export presets now include
+  `assets/sprites/*.txt`. The sprite editor takes one `LOOKS` list from
+  `tools/dump_bestiary.gd` (`LOOKS_JSON:`), built by
+  `tools/build_vault_editor.py`.
+- **A new creature or item look** keeps its picture in the pixel look until
+  it has a file. The suite prints a NOTE (not a failure) naming any
+  creature with none. Draw it in the editor, or run
+  `python3 tools/make_starter_sprites.py` where Edge or Chromium exists.
+- **Suites, before rebasing on your e1d8904: full 3159 passed / 0 / 0 SCRIPT ERROR (15 min; 3137 + 22 new), quick 413/0 (395 + 18 new).** The combined tree is rerun before the push; that tally is in the commit message.
+- **Art: 14 looks are hand-drawn so far** (player, trader, risen bones, rat, kobold, goblin, orc, skeleton, slime, wolf, bear, rabbit, bat, killer rabbit); the rest are starters until the next art push. Brad asked for the spider and the web after the art set: the desktop will name the icons for both then.
+- **For CLAUDE.md "Hazards"** (please add to your copy):
+  - *A billboard's `get_aabb()` is a cube.* With `BILLBOARD_ENABLED`, a
+    Sprite3D reports a box big enough for every turn, so it says nothing
+    about where the drawing sits. Measure an unturned copy (billboard off);
+    turning is about the node's origin. Cost a false failure 2026-10-09.
+  - *Every `.txt` under `assets/sprites/` is read as a sprite and shipped.*
+    Notes there are `.md`. The suite fails on a `.txt` not named after a
+    look the game draws.
+  - *Sprite3D `offset` is in pixels and +y is UP* (Label3D's too): a
+    centred card with `offset.y = height / 2` stands on its origin.
+
 **2026-10-09 evening, the desktop: the gate reviewed; a sprite editor.**
 - **Your gate (5c58e7a, 6b78afa): 3137 passed / 0 / 0 SCRIPT ERROR, 15 min
   here; quick 395/0.** Careful work: the gated routes keep a rabbit from

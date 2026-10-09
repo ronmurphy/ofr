@@ -177,8 +177,10 @@ const LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /* Written by tools/build_vault_editor.py from tools/dump_bestiary.gd: the
    game's creatures, and its item looks, each with its icon and colour. Do not
    edit by hand; run the script. */
-const BESTIARY = [{"app":"rat","ascent":0,"ch":"r","fg":"#8a7f6a","icon":987943,"min_depth":1,"name":"giant rat","threat":2,"wild":false},{"app":"slime","ascent":0,"ch":"j","fg":"#86c93e","icon":988411,"min_depth":1,"name":"slime","threat":2,"wild":false},{"app":"wolf","ascent":0,"ch":"d","fg":"#a9a9b4","icon":985668,"min_depth":1,"name":"wolf","threat":6,"wild":true},{"app":"kobold","ascent":0,"ch":"k","fg":"#e8d9a0","icon":983783,"min_depth":1,"name":"kobold","threat":3,"wild":false},{"app":"slinger","ascent":0,"ch":"K","fg":"#d8a04a","icon":985132,"min_depth":2,"name":"kobold slinger","threat":6,"wild":false},{"app":"bat","ascent":0,"ch":"b","fg":"#8e6fa8","icon":985951,"min_depth":2,"name":"cave bat","threat":5,"wild":true},{"app":"goblin","ascent":0,"ch":"g","fg":"#2f6b4f","icon":983783,"min_depth":2,"name":"goblin","threat":5,"wild":false},{"app":"skeleton","ascent":0,"ch":"s","fg":"#d6d2c4","icon":984716,"min_depth":3,"name":"skeleton","threat":8,"wild":false},{"app":"orc","ascent":0,"ch":"o","fg":"#b5643c","icon":983782,"min_depth":4,"name":"orc","threat":10,"wild":false},{"app":"ogre","ascent":0,"ch":"O","fg":"#9a7fb8","icon":987485,"min_depth":5,"name":"ogre","threat":14,"wild":false},{"app":"harpy","ascent":0,"ch":"H","fg":"#d08fc0","icon":988614,"min_depth":5,"name":"harpy","threat":12,"wild":false},{"app":"troll","ascent":0,"ch":"T","fg":"#6b4a2a","icon":987485,"min_depth":6,"name":"cave troll","threat":16,"wild":false},{"app":"bear","ascent":0,"ch":"B","fg":"#b5763d","icon":984041,"min_depth":1,"name":"cave bear","threat":17,"wild":true},{"app":"wight","ascent":0,"ch":"w","fg":"#b8c4d8","icon":983782,"min_depth":7,"name":"wight","threat":17,"wild":false},{"app":"wyvern","ascent":0,"ch":"W","fg":"#c05a3a","icon":61176,"min_depth":7,"name":"wyvern","threat":20,"wild":false},{"app":"golem","ascent":0,"ch":"G","fg":"#9aa0a8","icon":984745,"min_depth":8,"name":"stone golem","threat":24,"wild":false},{"app":"shadow","ascent":0,"ch":"S","fg":"#8a63c4","icon":983712,"min_depth":9,"name":"shadow","threat":19,"wild":false},{"app":"dragon","ascent":0,"ch":"D","fg":"#e8c33c","icon":61176,"min_depth":10,"name":"young dragon","threat":28,"wild":false},{"app":"rabbit","ascent":0,"ch":"u","fg":"#e0a05c","icon":989793,"min_depth":1,"name":"rabbit","threat":3,"wild":true},{"app":"banshee","ascent":0,"ch":"h","fg":"#f2f4ff","icon":988765,"min_depth":3,"name":"banshee","threat":8,"wild":false},{"app":"wizard","ascent":0,"ch":"l","fg":"#3d6ee8","icon":983782,"min_depth":8,"name":"wizard","threat":22,"wild":false},{"app":"giant","ascent":14,"ch":"C","fg":"#c6d8e2","icon":987485,"min_depth":10,"name":"cave giant","threat":26,"wild":false},{"app":"lich","ascent":16,"ch":"L","fg":"#7cf0d8","icon":61039,"min_depth":10,"name":"arch lich","threat":32,"wild":false}];
-const ITEMS = [{"app":"amulet","ch":"\"","fg":"#ffe07a","icon":986891,"names":["Amulet of the Deep"]},{"app":"meat","ch":"%","fg":"#c46b5a","icon":988266,"names":["haunch of rabbit","haunch of bear","haunch of wolf"]},{"app":"fungus","ch":"*","fg":"#7fd9b0","icon":985055,"names":["fungus"]},{"app":"gem","ch":"$","fg":"#dfe4ea","icon":983496,"names":["gem of fire","gem of frost","gem of thirst","gem of returning","gem of the crag","gem of the bulwark","gem of the mirror","gem of the boss","gem of the road","gem of the veil","gem of the lantern","the trapwright's glass"]},{"app":"ring","ch":"=","fg":"#b98cd6","icon":985067,"names":["ring of the rat"]},{"app":"potion","ch":"!","fg":"#d2607a","icon":983187,"names":["potion of healing"]},{"app":"sack","ch":"\u00a4","fg":"#8a5a3c","icon":986414,"names":["sack","forager's satchel"]},{"app":"scroll","ch":"?","fg":"#cfc39a","icon":986050,"names":["scroll of light","scroll of blink"]},{"app":"bone","ch":"/","fg":"#7fd69a","icon":983225,"names":["knucklebone"]},{"app":"shovel","ch":"|","fg":"#7fd69a","icon":984848,"names":["undertaker's shovel"]},{"app":"weapon","ch":")","fg":"#9fb3c8","icon":984293,"names":["dagger","short sword"]},{"app":"axe","ch":")","fg":"#9fb3c8","icon":989250,"names":["war axe"]},{"app":"mace","ch":")","fg":"#9fb3c8","icon":989251,"names":["mace"]},{"app":"launcher","ch":"}","fg":"#c8b28a","icon":989249,"names":["sling","short bow","war bow"]},{"app":"shield","ch":"(","fg":"#a89a7c","icon":984216,"names":["buckler","kite shield","tower shield"]},{"app":"ammo","ch":"\\","fg":"#c8b28a","icon":989248,"names":["spent arrows"]},{"app":"armour","ch":"[","fg":"#a89a7c","icon":985723,"names":["leather armour","chain mail","plate mail"]}];
+/* Every look the game can put on a 3D card -- written by tools/build_vault_editor.py
+   from tools/dump_bestiary.gd. `size` is the canvas its template is drawn on, so a
+   set made from templates shares one pixel size in the game. */
+const LOOKS = [{"app":"player","ch":"@","fg":"#f2e9d8","group":"people and allies","icon":60007,"label":"you","size":[24,32]},{"app":"trader","ch":"&","fg":"#e8b76a","group":"people and allies","icon":62666,"label":"the trader","size":[30,32]},{"app":"bone_ally","ch":"s","fg":"#7fd69a","group":"people and allies","icon":984716,"label":"your risen bones","size":[27,26]},{"app":"rat","ch":"r","fg":"#8a7f6a","group":"monsters","icon":987943,"label":"giant rat","size":[24,17]},{"app":"slime","ch":"j","fg":"#86c93e","group":"monsters","icon":988411,"label":"slime","size":[24,18]},{"app":"wolf","ch":"d","fg":"#bfa22f","group":"wild animals","icon":985668,"label":"wolf","size":[32,22]},{"app":"kobold","ch":"k","fg":"#e8d9a0","group":"monsters","icon":983783,"label":"kobold","size":[24,24]},{"app":"slinger","ch":"K","fg":"#d8a04a","group":"monsters","icon":985132,"label":"kobold slinger","size":[24,24]},{"app":"bat","ch":"b","fg":"#bfa22f","group":"wild animals","icon":985951,"label":"cave bat","size":[28,16]},{"app":"goblin","ch":"g","fg":"#2f6b4f","group":"monsters","icon":983783,"label":"goblin","size":[24,24]},{"app":"skeleton","ch":"s","fg":"#d6d2c4","group":"monsters","icon":984716,"label":"skeleton","size":[27,26]},{"app":"orc","ch":"o","fg":"#b5643c","group":"monsters","icon":983782,"label":"orc","size":[30,30]},{"app":"ogre","ch":"O","fg":"#9a7fb8","group":"monsters","icon":987485,"label":"ogre","size":[35,38]},{"app":"harpy","ch":"H","fg":"#d08fc0","group":"monsters","icon":988614,"label":"harpy","size":[33,27]},{"app":"troll","ch":"T","fg":"#6b4a2a","group":"monsters","icon":987485,"label":"cave troll","size":[36,40]},{"app":"bear","ch":"B","fg":"#bfa22f","group":"wild animals","icon":984041,"label":"cave bear","size":[36,32]},{"app":"wight","ch":"w","fg":"#b8c4d8","group":"monsters","icon":983782,"label":"wight","size":[30,31]},{"app":"wyvern","ch":"W","fg":"#c05a3a","group":"monsters","icon":61176,"label":"wyvern","size":[49,40]},{"app":"golem","ch":"G","fg":"#9aa0a8","group":"monsters","icon":984745,"label":"stone golem","size":[35,36]},{"app":"shadow","ch":"S","fg":"#8a63c4","group":"monsters","icon":983712,"label":"shadow","size":[30,32]},{"app":"dragon","ch":"D","fg":"#e8c33c","group":"monsters","icon":61176,"label":"young dragon","size":[56,46]},{"app":"rabbit","ch":"u","fg":"#bfa22f","group":"wild animals","icon":989793,"label":"rabbit","size":[22,19]},{"app":"banshee","ch":"h","fg":"#f2f4ff","group":"monsters","icon":988765,"label":"banshee","size":[30,30]},{"app":"wizard","ch":"l","fg":"#3d6ee8","group":"monsters","icon":983782,"label":"wizard","size":[30,31]},{"app":"giant","ch":"C","fg":"#c6d8e2","group":"monsters","icon":987485,"label":"cave giant","size":[43,49]},{"app":"lich","ch":"L","fg":"#7cf0d8","group":"monsters","icon":61039,"label":"arch lich","size":[33,33]},{"app":"killer_rabbit","ch":"U","fg":"#fff2f2","group":"monsters","icon":989793,"label":"killer rabbit","size":[24,20]},{"app":"amulet","ch":"\"","fg":"#ffe07a","group":"items","icon":986891,"label":"Amulet of the Deep","size":[17,15]},{"app":"meat","ch":"%","fg":"#c46b5a","group":"items","icon":988266,"label":"meat (3 items)","size":[20,16]},{"app":"fungus","ch":"*","fg":"#7fd9b0","group":"items","icon":985055,"label":"fungus","size":[20,17]},{"app":"gem","ch":"$","fg":"#dfe4ea","group":"items","icon":983496,"label":"gem (12 items)","size":[17,14]},{"app":"ring","ch":"=","fg":"#b98cd6","group":"items","icon":985067,"label":"ring of the rat","size":[16,14]},{"app":"potion","ch":"!","fg":"#d2607a","group":"items","icon":983187,"label":"potion of healing","size":[20,16]},{"app":"sack","ch":"\u00a4","fg":"#8a5a3c","group":"items","icon":986414,"label":"sack (2 items)","size":[20,16]},{"app":"scroll","ch":"?","fg":"#cfc39a","group":"items","icon":986050,"label":"scroll (2 items)","size":[20,16]},{"app":"bone","ch":"/","fg":"#7fd69a","group":"items","icon":983225,"label":"knucklebone","size":[20,16]},{"app":"shovel","ch":"|","fg":"#7fd69a","group":"items","icon":984848,"label":"undertaker's shovel","size":[20,16]},{"app":"weapon","ch":")","fg":"#9fb3c8","group":"items","icon":984293,"label":"weapon (2 items)","size":[20,16]},{"app":"axe","ch":")","fg":"#9fb3c8","group":"items","icon":989250,"label":"war axe","size":[20,16]},{"app":"mace","ch":")","fg":"#9fb3c8","group":"items","icon":989251,"label":"mace","size":[20,16]},{"app":"launcher","ch":"}","fg":"#c8b28a","group":"items","icon":989249,"label":"launcher (3 items)","size":[20,16]},{"app":"shield","ch":"(","fg":"#a89a7c","group":"items","icon":984216,"label":"shield (3 items)","size":[20,16]},{"app":"ammo","ch":"\\","fg":"#c8b28a","group":"items","icon":989248,"label":"spent arrows","size":[20,14]},{"app":"armour","ch":"[","fg":"#a89a7c","group":"items","icon":985723,"label":"armour (3 items)","size":[20,16]}];
 const CLEAR = ".";
 
 let W = 24, H = 32, ZOOM = 16;
@@ -347,10 +349,16 @@ function darker(hex, k) {
   const ch = s => Math.round(((n >> s) & 255) * k).toString(16).padStart(2, "0");
   return "#" + ch(16) + ch(8) + ch(0);
 }
-function iconTemplate(entry, label) {
+function iconTemplate(entry) {
   const glyph = entry.icon >= 0 ? String.fromCodePoint(entry.icon) : entry.ch;
   const family = entry.icon >= 0 ? "OFRIcons" : "monospace";
   const draw = () => {
+    remember();
+    // The canvas the game draws this look's template on (see LOOKS).
+    if (entry.size) {
+      W = Math.max(4, Math.min(64, entry.size[0])); H = Math.max(4, Math.min(64, entry.size[1]));
+      $("cols").value = W; $("rows").value = H;
+    }
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const k = c.getContext("2d");
@@ -369,7 +377,6 @@ function iconTemplate(entry, label) {
     k.fillStyle = "#fff";
     k.fillText(glyph, (W - w) / 2 + m.actualBoundingBoxLeft, (H - h) / 2 + m.actualBoundingBoxAscent);
     const data = k.getImageData(0, 0, W, H).data;
-    remember();
     colours.a = colours.a || "#141418";
     colours.b = entry.fg;
     colours.c = darker(entry.fg, 0.7);
@@ -377,7 +384,9 @@ function iconTemplate(entry, label) {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
       if (data[(y * W + x) * 4 + 3] >= 128) px[y][x] = "b";
     outline();
-    $("name").value = label;
+    // Named as the game names the look, so the saved file is the one the
+    // game reads: wolf.txt, meat.txt, player.txt.
+    $("name").value = entry.app;
     refresh();
     return true;
   };
@@ -392,28 +401,21 @@ function buildFromGame() {
   const head = document.createElement("option");
   head.value = ""; head.textContent = "from the game\u2026";
   sel.appendChild(head);
-  const groups = [
-    ["wild animals", BESTIARY.filter(b => b.wild).map(b => ["c:" + b.name, b.name])],
-    ["monsters", BESTIARY.filter(b => !b.wild).map(b => ["c:" + b.name, b.name])],
-    ["items", ITEMS.map(i => ["i:" + i.app, i.names.length > 1 ? `${i.app} (${i.names.length} items)` : i.names[0]])],
-  ];
-  for (const [label, rows] of groups) {
-    if (!rows.length) continue;
-    const g = document.createElement("optgroup"); g.label = label;
-    for (const [value, text] of rows) {
-      const o = document.createElement("option"); o.value = value; o.textContent = text; g.appendChild(o);
+  // People first, then animals before monsters, as the vault editor lists them.
+  const ORDER = ["people and allies", "wild animals", "monsters", "items"];
+  const rank = g => { const i = ORDER.indexOf(g); return i < 0 ? ORDER.length : i; };
+  const names = [...new Set(LOOKS.map(l => l.group))].sort((a, b) => rank(a) - rank(b));
+  for (const name of names) {
+    const g = document.createElement("optgroup"); g.label = name; sel.appendChild(g);
+    for (const look of LOOKS.filter(l => l.group === name)) {
+      const o = document.createElement("option");
+      o.value = look.app; o.textContent = look.label; g.appendChild(o);
     }
-    sel.appendChild(g);
   }
   sel.onchange = () => {
     const v = sel.value; sel.value = "";
-    if (v.startsWith("c:")) {
-      const b = BESTIARY.find(x => x.name === v.slice(2));
-      if (b) iconTemplate(b, b.name);
-    } else if (v.startsWith("i:")) {
-      const it = ITEMS.find(x => x.app === v.slice(2));
-      if (it) iconTemplate(it, it.names[0]);
-    }
+    const look = LOOKS.find(x => x.app === v);
+    if (look) iconTemplate(look);
   };
 }
 
@@ -580,6 +582,11 @@ function validate() {
     if (!changes) out.push(["warn", `variant "${v}" changes no colour the drawing uses`]);
   }
   out.push(["pass", `${W}×${H}`]);
+  // The game finds a sprite by its file name, which is this name.
+  const named = fileName();
+  if (LOOKS.length && !LOOKS.some(l => l.app === named))
+    out.push(["warn", `the game draws "${named}" nowhere: name it after a look, e.g. wolf, meat, player`]);
+  else if (LOOKS.length) out.push(["pass", `the game draws this as ${named}`]);
   return out;
 }
 

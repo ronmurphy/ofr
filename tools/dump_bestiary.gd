@@ -46,4 +46,37 @@ func _initialize() -> void:
 	for item_app in order:
 		items.append(looks[item_app])
 	print("ITEMS_JSON:" + JSON.stringify(items))
+	# EVERY LOOK A CARD CAN SHOW, for the sprite editor (2026-10-09): the
+	# creatures above plus the ones no vault places -- you, the trader, your
+	# risen bones, the killer rabbit -- and the item looks, each with the
+	# canvas its template is drawn on (PixelSprites.canvas_for, from the
+	# card's box) and the colour the 3D view really draws it in: an animal in
+	# the one colour for animals, Palette.WILD, as the picture look does.
+	var cards: Array = []
+	var people := [[&"player", "you"], [&"trader", "the trader"],
+		[&"bone_ally", "your risen bones"]]
+	for pair in people:
+		cards.append(_card(letters, pair[0], pair[1], "people and allies",
+			BillboardSizes.CREATURE, false))
+	for e in GameState.BESTIARY:
+		var wild := bool(e.get("wild", false))
+		cards.append(_card(letters, e["app"], String(e["name"]),
+			"wild animals" if wild else "monsters", BillboardSizes.CREATURE, wild))
+	cards.append(_card(letters, &"killer_rabbit", "killer rabbit", "monsters",
+		BillboardSizes.CREATURE, false))
+	for row in items:
+		var names: Array = row["names"]
+		cards.append(_card(letters, StringName(row["app"]),
+			String(names[0]) if names.size() == 1 else "%s (%d items)" % [row["app"], names.size()],
+			"items", BillboardSizes.ITEM, false))
+	print("LOOKS_JSON:" + JSON.stringify(cards))
 	quit()
+
+func _card(letters: AsciiTheme, app: StringName, label: String, group: String,
+		fallback: Vector2, wild: bool) -> Dictionary:
+	var look: Dictionary = letters.appearance(app)
+	var fg: Color = Palette.WILD if wild else look["fg"]
+	var size := PixelSprites.canvas_for(BillboardSizes.box(app, fallback))
+	return {"app": String(app), "label": label, "group": group,
+		"ch": String(look["ch"]), "fg": "#" + fg.to_html(false),
+		"icon": int(GlyphTheme.OVERRIDES.get(app, -1)), "size": [size.x, size.y]}

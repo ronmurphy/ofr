@@ -1,0 +1,24 @@
+name: bat
+size: 28x16
+color a: #141418
+color b: #bfa22f
+color c: #8a7420
+color d: #e3cc6a
+color e: #f6efc8
+PIXELS
+............................
+...........a....a...........
+..........aca..aca..........
+..a.......abcaacba.......a..
+.ada......abbbbbba......ada.
+.adda....abbebbebba....adda.
+.adddaa.acbbbbbbbbca.aaddda.
+.adccddaccbbbbbbbbccaddccda.
+.adcccddccbbbbbbbbccddcccda.
+.adcccdccccbbbbbbccccdcccda.
+.adccdcccdcbbbbbbcdcccdccda.
+.adcdaccdccabbbbaccdccadcda.
+.adda.acdaaabaabaaadca.adda.
+.ada...ada..a..a..ada...ada.
+..a.....a..........a.....a..
+............................

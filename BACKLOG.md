@@ -2191,7 +2191,8 @@ shape to aim at.
 ## Ideas, not yet designed
 
 **Pixel sprites drawn in code -- a fourth look for the 3D view (Brad,
-2026-10-09, from the Google Playground test).** The playground's rebuild of
+2026-10-09, from the Google Playground test). THE GAME SIDE IS BUILT
+(2026-10-09, desktop): see "AS BUILT" at the end of this entry.** The playground's rebuild of
 OFR drew its creatures as pixel art IN CODE: each sprite a short list of
 coloured rectangles painted onto a tiny canvas (24-32 px wide), cached, and
 shown on a billboard with nearest-neighbour filtering so the pixels stay
@@ -2246,13 +2247,70 @@ an alternative to the icon-font "pictures" on the 3D cards.
   One letter per colour (a-z, then A-Z), `.` see-through; a variant line
   changes some letters' colours. The editor also saves a PNG strip of every
   variant side by side, for previews and ART_REFERENCE.
-- **Still to do, the Godot side:** read a sprite file into an `Image`
-  (`set_pixel` per cell), an `ImageTexture` on the 3D card with nearest
-  filtering, cached per appearance and variant; a look option for the 3D
-  views. **Mind the export hazard:** sprite files are plain `.txt`, so every
-  export preset's `include_filter` needs their folder (e.g.
-  `assets/sprites/*.txt`) beside the vaults', and
-  `_test_vaults_ship_in_every_export` should check that path too.
+- **AS BUILT, THE GAME SIDE (2026-10-09, desktop; Brad: "you made the
+  editor ... you know the text format").**
+  - **`v` in a 3D view** switches the cards between the icon pictures and
+    pixel art ("Look: pixel art." / "Look: pictures."), remembered with the
+    view. In the classic view `v` is still letters / symbols / pictures. The
+    key list calls it "how things are drawn". Off by default until the set
+    is drawn by hand. Each press re-reads the folder, so a sprite saved from
+    the editor shows on the next press, no restart (Brad tests from the
+    editor's Run, where res:// is the project folder).
+  - **`assets/sprites/`**, one `.txt` per LOOK, named by the appearance id
+    the game draws (`wolf.txt` is every wolf, `meat.txt` every haunch).
+    Subfolders `creatures/` and `items/` are only tidiness. A look with no
+    file keeps its picture, beside the drawings. In every export preset's
+    `include_filter` (`assets/sprites/*.txt`), checked by
+    `_test_sprites_ship_in_every_export`.
+  - **`src/render/pixel_sprites.gd`** (`PixelSprites`) reads the editor's
+    format exactly (short rows padded, a stray character or a letter with
+    no colour see-through, unknown header lines skipped), crops to what is
+    drawn, and caches an `ImageTexture` per look and state.
+  - **Whose side, by colour, kept:** the game asks for the variants `ally`,
+    `corrupted` and `magic` (an enchanted item). A drawing without the one
+    asked for is TINTED: its commonest colour becomes the state's, the
+    others keep their light and dark against it. The ratted player is the
+    rat tinted in the player's colour.
+  - **In the 3D view** (`DioramaView._add_card`): creatures, items, the
+    remembered trader, bodies and the shatter ghost. A `Sprite3D` card,
+    nearest filtering, standing on its feet, fitted so the drawing's INSIDE
+    (all but its one-pixel outline) fills the picture's box as the
+    picture's ink does: a drawing of the icon's shape is the icon's size, a
+    longer one (the hand-drawn wolf) fills the box by its width. Fitting the whole drawing made everything a third
+    smaller; growing the box by the picture's outline overshot (the dragon
+    by half). The silhouette behind walls is the drawing's shape; the mark a
+    creature wears (spores, the mirror) is a frame card round the OUTSIDE
+    of the drawing (a skull's eyes are not framed); picking, contact
+    shadows, the overhead view and the markers over heads use the drawing's
+    size. Terrain features (brazier, stairs, shrine...) keep their pictures
+    for now.
+  - **The starter set: 44 drawings**, every creature and item look, made by
+    `tools/make_starter_sprites.py` from the editor's own "from the game"
+    template (the icon on its canvas, in the colour the 3D view draws it --
+    animals in the one wild gold -- outlined). It NEVER overwrites a file,
+    and each starter's first line says it is one; the editor drops that line
+    on save, so `grep -L "^# starter" -r assets/sprites` lists the drawings
+    done by hand. A new creature: draw it in the editor, or rerun the script
+    (needs Edge or Chromium).
+  - **The editor now takes its list from the game** (`LOOKS`, dumped by
+    `tools/dump_bestiary.gd`): people and allies, wild animals, monsters,
+    items. A template opens on the look's own canvas (its card's box at 32
+    pixels a cell, `PixelSprites.canvas_for`) and is named after the look,
+    so the saved file is the one the game reads; a check warns when a name
+    is not a look the game draws.
+  - Tests: 13 checks on the reader and images, 4 on the files, 5 on the
+    export, 18 in the view suite (`_test_the_pixel_look`). Render:
+    `tools/probes/screenshot_sprites.gd`.
+- **Drawn by hand (the desktop, 2026-10-09, Brad's ask):** the player (a
+  hooded adventurer with a sword), the trader (a bearded pedlar under a
+  straw hat, packs either side), your risen bones, rat, kobold, goblin,
+  orc, skeleton, slime, wolf, bear, rabbit, bat, killer rabbit. Each on its
+  look's canvas and in the colour the picture look uses, so a creature
+  reads as itself in either look; animals in the wild gold.
+- **Still open:** drawing the rest by hand (any file, any order); terrain
+  features as drawings; a title-screen row for the look, if wanted; the
+  editor reading the files back rather than embedding (Brad, 2026-10-09:
+  "extra code that maybe we don't need") -- not done.
 
 **FOUR THEMES FOR THE LIVING DUNGEON AND THE FIGHT (Brad and the desktop,
 2026-10-09).** Nine ideas from one talk, grouped by the code they touch so

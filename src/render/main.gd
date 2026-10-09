@@ -977,7 +977,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 
 	# Renderer switching is free and available wherever the map has focus.
-	# `v` remains the classic letters / symbols / pictures cycle. Q is also the
+	# `v` is the classic letters / symbols / pictures cycle, and in 3D the
+	# pictures / pixel art look. Q is also the
 	# default d-pad-up binding. Older saved pad layouts still send O here; the
 	# overview remains one page away through the legend.
 	if key == KEY_Q or (_synthetic and key == KEY_O):
@@ -1016,8 +1017,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_overview()
 		return
 
+	# In a 3D view, `v` is the cards' look: pictures or pixel art (2026-10-09,
+	# PixelSprites). The folder is read afresh each press, so a sprite saved
+	# from the editor shows on the next press without a restart.
 	if key == KEY_V:
-		state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
+		if _map_view == diorama:
+			PixelSprites.reload()
+			state.msg_log.add(RenderTheme.toggle_sprites(), Color(0.70, 0.74, 0.80))
+		else:
+			state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
 		_map_view.forget_metrics()
 		_refresh()
 		return

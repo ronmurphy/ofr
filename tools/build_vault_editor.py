@@ -166,9 +166,10 @@ def check_against_vault() -> None:
 
 
 def dump_bestiary() -> tuple:
-    """Every creature, and every item look, from the game's own tables, via
-    Godot. Refuses to go on without them rather than writing an editor with an
-    empty dropdown."""
+    """Every creature, every item look, and every look a 3D card can show
+    (for the sprite editor), from the game's own tables, via Godot. Refuses
+    to go on without them rather than writing an editor with an empty
+    dropdown."""
     godot = shutil.which("godot")
     if godot is None:
         sys.exit("godot is not on the PATH: the bestiary is dumped by "
@@ -177,18 +178,20 @@ def dump_bestiary() -> tuple:
                           "tools/dump_bestiary.gd"], capture_output=True, text=True,
                          timeout=180).stdout
     found = {}
-    for marker in ("BESTIARY_JSON:", "ITEMS_JSON:"):
+    for marker in ("BESTIARY_JSON:", "ITEMS_JSON:", "LOOKS_JSON:"):
         for line in out.splitlines():
             if line.startswith(marker):
                 found[marker] = json.loads(line[len(marker):])
         if marker not in found:
             sys.exit("tools/dump_bestiary.gd printed no %s line" % marker)
     rows, items = found["BESTIARY_JSON:"], found["ITEMS_JSON:"]
-    if len(rows) < 10 or len(items) < 5:
-        sys.exit("the dump held %d creatures and %d item looks -- refusing"
-                 % (len(rows), len(items)))
-    print("dumped %d creatures and %d item looks from the game" % (len(rows), len(items)))
-    return rows, items
+    looks = found["LOOKS_JSON:"]
+    if len(rows) < 10 or len(items) < 5 or len(looks) < len(rows) + len(items):
+        sys.exit("the dump held %d creatures, %d item looks and %d card looks -- refusing"
+                 % (len(rows), len(items), len(looks)))
+    print("dumped %d creatures, %d item looks and %d card looks from the game"
+          % (len(rows), len(items), len(looks)))
+    return rows, items, looks
 
 
 def replace_once(text: str, pattern: str, repl: str, what: str) -> str:
@@ -229,7 +232,7 @@ def main() -> None:
     html = replace_once(html, r"const TILES = \[.*?\n\];", TILES, "the TILES table")
     # 3. The bestiary, dumped by the game itself (tools/dump_bestiary.gd), so
     # the named-creature dropdown can never fall behind the game.
-    rows, items = dump_bestiary()
+    rows, items, looks = dump_bestiary()
     line = "const BESTIARY = " + json.dumps(rows, separators=(",", ":")) + ";"
     html = replace_once(html, r"const BESTIARY = \[.*?\];", line, "the BESTIARY line")
 
@@ -237,7 +240,7 @@ def main() -> None:
     print("embedded %s (%d KB of base64)" % (FONT.name, len(b64) // 1024))
     print("wrote %s" % HTML.relative_to(ROOT))
 
-    # 4. The sprite editor: the same font, the creatures and the item looks.
+    # 4. The sprite editor: the same font, and every look a card can show.
     if SPRITES.exists():
         sprites = SPRITES.read_text(encoding="utf-8")
         if "@font-face { font-family: 'OFRIcons'" in sprites:
@@ -247,11 +250,9 @@ def main() -> None:
                 face, "the sprite editor's embedded font block")
         else:
             sprites = replace_once(sprites, r"</style>", face + "</style>", "the sprite editor's </style>")
-        sprites = replace_once(sprites, r"const BESTIARY = \[.*?\];", line,
-                               "the sprite editor's BESTIARY line")
-        item_line = "const ITEMS = " + json.dumps(items, separators=(",", ":")) + ";"
-        sprites = replace_once(sprites, r"const ITEMS = \[.*?\];", item_line,
-                               "the sprite editor's ITEMS line")
+        looks_line = "const LOOKS = " + json.dumps(looks, separators=(",", ":")) + ";"
+        sprites = replace_once(sprites, r"const LOOKS = \[.*?\];", looks_line,
+                               "the sprite editor's LOOKS line")
         SPRITES.write_text(sprites, encoding="utf-8")
         print("wrote %s" % SPRITES.relative_to(ROOT))
 

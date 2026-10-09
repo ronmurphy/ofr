@@ -95,7 +95,8 @@ const KEYS := [
 	["p", "pray at a shrine", KEY_P, ""],
 	["m  - +", "sound", 0, ""],
 	["shift m", "music", 0, ""],
-	["v", "letters / symbols / pictures", KEY_V, ""],
+	# Classic: letters / symbols / pictures. 3D: pictures / pixel art.
+	["v", "how things are drawn", KEY_V, ""],
 	["q", "classic / 3D / overhead", KEY_Q, ""],
 	["[ / ] / right stick", "turn 3D camera", 0, ""],
 	# Motion, and it is an accessibility setting before it is a taste one --

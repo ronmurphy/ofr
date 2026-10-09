@@ -93,6 +93,9 @@ func _initialize() -> void:
 	_test_the_wolf_pack()
 	_test_rabbits_keep_to_the_warren()
 	_test_vaults_ship_in_every_export()
+	_test_sprites_ship_in_every_export()
+	_test_pixel_sprites_read_the_editors_files()
+	_test_every_sprite_is_a_look_the_game_draws()
 	_test_animals_nap()
 	_test_let_sleeping_bears_lie()
 	_test_hunger()
@@ -1406,6 +1409,17 @@ func _test_hunger() -> void:
 ## Each preset now includes `assets/vaults/*.txt`, and `*` crosses folders
 ## (assets/vaults/caves/ ships too; checked in a test export).
 func _test_vaults_ship_in_every_export() -> void:
+	_check_folder_ships("assets/vaults/", "vault files", 20)
+
+## The sprite files are plain .txt too (2026-10-09), so the same hazard: a
+## sprite the export leaves out is a picture in every build but the editor's.
+func _test_sprites_ship_in_every_export() -> void:
+	_check_folder_ships("assets/sprites/", "sprite files", 40)
+
+## Every export preset's include_filter carries `folder`*.txt, and that
+## filter matches every .txt the game loads from it, subfolders too.
+func _check_folder_ships(folder: String, what: String, at_least: int) -> void:
+	var filter := folder + "*.txt"
 	var presets := ConfigFile.new()
 	check("precondition: the export presets load", presets.load("res://export_presets.cfg") == OK)
 	var names := []
@@ -1418,15 +1432,15 @@ func _test_vaults_ship_in_every_export() -> void:
 		var filters := String(presets.get_value(section, "include_filter", "")).split(",")
 		var covered := false
 		for f in filters:
-			if f.strip_edges() == "assets/vaults/*.txt":
+			if f.strip_edges() == filter:
 				covered = true
 		if not covered:
 			missing.append(preset_name)
 	check("precondition: three export presets (%s)" % ", ".join(names), names.size() == 3)
-	check("every export includes the vault files", missing.is_empty(), str(missing))
-	# And the filter really covers every vault the game loads, subfolders too.
+	check("every export includes the %s" % what, missing.is_empty(), str(missing))
+	# And the filter really covers every file the game loads, subfolders too.
 	var paths := []
-	var dirs := ["res://assets/vaults/"]
+	var dirs := ["res://" + folder]
 	while not dirs.is_empty():
 		var dir: String = dirs.pop_back()
 		var d := DirAccess.open(dir)
@@ -1439,11 +1453,125 @@ func _test_vaults_ship_in_every_export() -> void:
 			dirs.append(dir + sub + "/")
 	var unmatched := []
 	for path in paths:
-		if not String(path).matchn("assets/vaults/*.txt"):
+		if not String(path).matchn(filter):
 			unmatched.append(path)
-	check("precondition: the vaults include one in a subfolder (%d files)" % paths.size(),
-		paths.size() >= 20 and paths.any(func(p): return String(p).count("/") > 2))
+	check("precondition: the %s include one in a subfolder (%d files)" % [what, paths.size()],
+		paths.size() >= at_least and paths.any(func(p): return String(p).count("/") > 2))
 	check("  and the filter matches every one of them, subfolders too", unmatched.is_empty(), str(unmatched))
+
+## PIXEL SPRITES (2026-10-09): the game reads exactly what
+## tools/sprite_editor.html writes. A sprite here is written by hand in the
+## editor's format, with every rough edge a hand-edited file can have.
+func _test_pixel_sprites_read_the_editors_files() -> void:
+	var text := "\r\n".join([
+		"name: test",
+		"size: 6x4",
+		"color a: #141418",
+		"color b: #808080",
+		"color c: #ffffff",
+		"color q: nonsense",
+		"a comment line the editor would skip",
+		"variant ally: b #7fd69a, z #ff0000",
+		"PIXELS",
+		"......",
+		".abba.",
+		".aqc?",
+	])
+	var s := PixelSprites.parse(text)
+	check("a sprite in the editor's format reads (the must-succeed check)",
+		not s.is_empty() and s["name"] == "test" and s["w"] == 6 and s["h"] == 4)
+	var rows: PackedStringArray = s.get("rows", PackedStringArray())
+	check("  every row is the full width: a short row and a missing one are padded",
+		rows.size() == 4 and rows[2] == ".aqc.." and rows[3] == "......", str(rows))
+	check("  a colour that is not #rrggbb is no colour; a stray character is see-through",
+		not (s["colours"] as Dictionary).has("q") and rows[2][4] == ".")
+	check("  the variant keeps its letters, z included", (s["variants"] as Dictionary).has("ally")
+		and (s["variants"]["ally"] as Dictionary).size() == 2)
+	check("  no PIXELS line, or no size, is not a sprite",
+		PixelSprites.parse("name: x\nsize: 2x2\n").is_empty()
+		and PixelSprites.parse("name: x\nPIXELS\naa\n").is_empty())
+	check("  a size past the editor's 64 is cut to it",
+		int(PixelSprites.parse("size: 90x3\nPIXELS\n").get("w", 0)) == PixelSprites.MAX_SIDE)
+	var img := PixelSprites.image(s)
+	check("  the image is cropped to what is drawn: 4x2 of a 6x4 canvas",
+		img != null and img.get_width() == 4 and img.get_height() == 2,
+		"%s" % [Vector2i(img.get_width(), img.get_height()) if img != null else "null"])
+	if img != null:
+		check("  each letter in its colour; a letter with no colour is see-through",
+			img.get_pixel(0, 0).is_equal_approx(Color("141418"))
+			and img.get_pixel(1, 0).is_equal_approx(Color("808080"))
+			and img.get_pixel(1, 1).a == 0.0
+			and img.get_pixel(2, 1).is_equal_approx(Color("ffffff")))
+		var ally := PixelSprites.image(s, "ally")
+		check("  a variant changes its letters only",
+			ally.get_pixel(1, 0).is_equal_approx(Color("7fd69a"))
+			and ally.get_pixel(0, 0).is_equal_approx(Color("141418"))
+			and ally.get_pixel(2, 1).is_equal_approx(Color("ffffff")))
+		var tint := Color("c05a3a")
+		var tinted := PixelSprites.tinted(img, tint)
+		check("  tinted: the commonest colour becomes the tint, the outline stays dark",
+			tinted.get_pixel(1, 0).is_equal_approx(tint)
+			and tinted.get_pixel(0, 0).get_luminance() < 0.2
+			and tinted.get_pixel(1, 1).a == 0.0)
+		var shape := PixelSprites.silhouette(img, Color.BLACK, Color.RED)
+		var rim := PixelSprites.rim(img)
+		var r := PixelSprites.RIM
+		check("  the silhouette keeps the shape; the frame is RIM wider and stays outside it",
+			shape.get_pixel(0, 0) == Color.RED and shape.get_pixel(1, 1).a == 0.0
+			and rim.get_width() == img.get_width() + r * 2
+			and rim.get_pixel(r, r).a == 0.0 and rim.get_pixel(0, r).a > 0.0
+			and rim.get_pixel(r + 1, r + 1).a > 0.0)
+	var ring := PixelSprites.image(PixelSprites.parse("size: 3x3\ncolor a: #808080\nPIXELS\naaa\na.a\naaa\n"))
+	var framed := PixelSprites.rim(ring)
+	var rr := PixelSprites.RIM
+	check("  a hole the drawing closes round is not framed (the frame shows through it)",
+		ring.get_pixel(1, 1).a == 0.0 and framed.get_pixel(rr + 1, rr + 1).a == 0.0
+		and framed.get_pixel(rr - 1, rr + 1).a > 0.0)
+	check("  nothing drawn is no image",
+		PixelSprites.image(PixelSprites.parse("size: 3x1\nPIXELS\nzzz\n")) == null)
+
+## Every sprite file is a drawing (it parses and has pixels) of a look the
+## game puts on a card, drawn once. The game finds a sprite by its file
+## name, so a file named after anything else is a drawing nobody ever sees.
+func _test_every_sprite_is_a_look_the_game_draws() -> void:
+	PixelSprites.reload()
+	var paths := PixelSprites.paths()
+	var looks := AsciiTheme.TABLE
+	var broken := []
+	var stray := []
+	var seen := {}
+	var twice := []
+	var dirs := ["res://assets/sprites/"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		var d := DirAccess.open(dir)
+		if d == null:
+			continue
+		for f in d.get_files():
+			if not f.ends_with(".txt"):
+				continue
+			var id := StringName(f.trim_suffix(".txt"))
+			if seen.has(id):
+				twice.append(id)
+			seen[id] = true
+			var parsed := PixelSprites.parse(FileAccess.get_file_as_string(dir + f))
+			if parsed.is_empty() or PixelSprites.image(parsed) == null:
+				broken.append(dir + f)
+			if not looks.has(id):
+				stray.append(f)
+		for sub in d.get_directories():
+			dirs.append(dir + sub + "/")
+	check("precondition: the sprite folder has the starter set (%d files)" % seen.size(),
+		seen.size() >= 40 and paths.size() == seen.size() - twice.size())
+	check("every sprite file is a drawing", broken.is_empty(), str(broken))
+	check("every sprite is named after a look the game draws", stray.is_empty(), str(stray))
+	check("no look is drawn twice", twice.is_empty(), str(twice))
+	var missing := []
+	for row in GameState.BESTIARY:
+		if not PixelSprites.has(row["app"]):
+			missing.append(row["app"])
+	if not missing.is_empty():
+		print("  NOTE: no drawing yet for %s -- they keep their pictures; tools/make_starter_sprites.py makes starters" % str(missing))
 
 ## THE WARREN (Brad, 2026-10-07): wild things keep out of a fortress, so the
 ## ordinary roll never puts a rabbit in one, going down or coming up; the

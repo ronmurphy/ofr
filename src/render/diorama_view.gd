@@ -5,8 +5,10 @@ extends Control
 ##
 ## The world is still a grid of map cells. This view only changes how those
 ## cells are presented: blocks for masonry, coloured ground, and the existing
-## icon-font pictures on camera-facing Label3D billboards. No simulation code
-## or coordinates are changed when the camera turns.
+## icon-font pictures on camera-facing Label3D billboards -- or, under the
+## pixel look, drawings from assets/sprites/ on Sprite3D cards (PixelSprites,
+## _add_card). No simulation code or coordinates are changed when the camera
+## turns.
 ##
 ## ONE LIGHT. The simulation's light map is the only light here, uploaded as a
 ## texture the surface shader blends between cells (see _build_cell_light).
@@ -230,6 +232,12 @@ var _recall := -1.0
 ## under it, the marker over it, and how tall it stands. Rebuilt with the
 ## world, repositioned every frame by _update_dynamic.
 var _creatures: Dictionary = {}
+## THE PIXEL LOOK (2026-10-09), as it was when the world was last built, so
+## picking and effects agree with what is drawn -- see _add_card.
+var _pixel_look := false
+## How wide a body's drawing lies on the floor, in cells: about what the
+## picture's ink covers at the body label's 0.70 em.
+const BODY_DRAWN := 0.56
 ## Effects are redrawn every frame they run, under their own root so a
 ## rebuild of the world never touches them.
 var _fx_root: Node3D
@@ -788,7 +796,7 @@ func _billboard_cell_at(screen_pos: Vector2) -> Vector2i:
 		var appearance := _entity_appearance(entity)
 		var ch := String(_icon_theme.appearance(appearance).get("ch", "?"))
 		var feet := _floor_point(entity.x, entity.y)
-		var ink := _ink_size(ch, BillboardSizes.box(appearance, BillboardSizes.CREATURE))
+		var ink := _card_size(appearance, ch, BillboardSizes.box(appearance, BillboardSizes.CREATURE))
 		if _screen_over_billboard(screen_pos, feet, ink):
 			var off := _billboard_middle(feet, ink).distance_to(screen_pos)
 			if off < closest:
@@ -801,7 +809,8 @@ func _billboard_cell_at(screen_pos: Vector2) -> Vector2i:
 			continue
 		var item_ch := String(_icon_theme.appearance(item.appearance).get("ch", "?"))
 		var feet := _floor_point(item.x, item.y)
-		var ink := _ink_size(item_ch, BillboardSizes.box(item.appearance, BillboardSizes.ITEM))
+		var ink := _card_size(item.appearance, item_ch,
+			BillboardSizes.box(item.appearance, BillboardSizes.ITEM))
 		if _screen_over_billboard(screen_pos, feet, ink):
 			var off := _billboard_middle(feet, ink).distance_to(screen_pos)
 			if off < closest:
@@ -835,6 +844,7 @@ func _rebuild_world() -> void:
 	if not is_inside_tree() or state == null or _scene_root == null:
 		return
 	_dirty = false
+	_pixel_look = RenderTheme.sprites_enabled()
 	for child in _scene_root.get_children():
 		if child == _overlay_root:
 			continue
@@ -1524,7 +1534,7 @@ func map_visible(c: Vector2i) -> bool:
 ## The dead, each its own picture lying flat on its floor cell -- on its side,
 ## and turned with the camera so it always reads the same way up. Coloured by
 ## BodyLook, as the classic view colours it. Only where you can see.
-var _body_labels: Array[Label3D] = []
+var _body_labels: Array[Node3D] = []
 
 func _add_bodies() -> void:
 	_body_labels.clear()
@@ -1537,6 +1547,9 @@ func _add_bodies() -> void:
 		var app: Dictionary = _icon_theme.appearance(StringName(b["app"]))
 		var fg: Color = Palette.CORRUPTED if bool(b.get("corrupted", false)) \
 			else app.get("fg", Palette.UI_TEXT)
+		if _drawn(StringName(b["app"])):
+			_add_drawn_body(b, x, y, age)
+			continue
 		var label := Label3D.new()
 		label.text = String(app.get("ch", "?"))
 		label.font = _icon_font
@@ -1553,6 +1566,25 @@ func _add_bodies() -> void:
 		label.no_depth_test = false
 		_scene_root.add_child(label)
 		_body_labels.append(label)
+
+## A body under the pixel look: its drawing, lying as the picture lies, faded
+## by BodyLook as the picture's colour is. A corrupted one in its variant.
+func _add_drawn_body(b: Dictionary, x: int, y: int, age: int) -> void:
+	var corrupt := bool(b.get("corrupted", false))
+	var tex := PixelSprites.texture(StringName(b["app"]),
+		PixelSprites.CORRUPTED if corrupt else "",
+		Palette.CORRUPTED if corrupt else Color(0, 0, 0, 0))
+	var flat := Sprite3D.new()
+	flat.texture = tex
+	flat.pixel_size = BODY_DRAWN / float(maxi(tex.get_width(), tex.get_height()))
+	flat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	flat.modulate = BodyLook.colour(Color.WHITE, age)
+	flat.shaded = false
+	flat.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	flat.position = Vector3(x + 0.5, 0.03, y + 0.5)
+	flat.rotation = Vector3(-PI * 0.5, _rotation, PI * 0.5)
+	_scene_root.add_child(flat)
+	_body_labels.append(flat)
 
 func _add_dots() -> void:
 	if _dots.is_empty():
@@ -1622,28 +1654,30 @@ func _add_items_and_entities() -> void:
 		if item.shows_enchanted():
 			color = Palette.MAGIC
 		var box := BillboardSizes.box(item.appearance, BillboardSizes.ITEM)
-		var label := _add_billboard(String(app.get("ch", "?")), _legible(color, at.x, at.y),
-			_floor_point(at.x, at.y), box)
-		label.render_priority = PRIORITY_ITEM
-		label.outline_render_priority = PRIORITY_ITEM - 1
+		var ch := String(app.get("ch", "?"))
+		var magic := item.shows_enchanted()
+		var label := _add_card(item.appearance, ch, _legible(color, at.x, at.y),
+			_floor_point(at.x, at.y), box, _legible(Color.WHITE, at.x, at.y),
+			PixelSprites.MAGIC if magic else "", Palette.MAGIC if magic else Color(0, 0, 0, 0))
+		_set_priority(label, PRIORITY_ITEM)
 		# A mirror shield shines where it lies, as in the classic view: the
 		# identifier comes before the pickup (Brad, 2026-10-04).
 		if CreatureMarks.is_a_mirror(item):
-			label.modulate = _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y)
+			_set_colour(label, _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y))
 			_mirror_items.append([label, at])
 		_add_silhouette(label, color, PRIORITY_ITEM - 1)
-		_item_shadows.append([Vector2(at), _ink_size(String(app.get("ch", "?")), box).x])
+		_item_shadows.append([Vector2(at), _card_size(item.appearance, ch, box).x])
 	# The trader, remembered where you saw them -- see MapMemory. Out of sight
 	# only, and behind walls like the ground: this is memory, not sight.
 	var trader := memory.trader_cell
 	if trader.x >= 0 and not map.is_visible(trader.x, trader.y) \
 			and _memory_strength() > 0.0:
 		var ch := String(_icon_theme.appearance(&"trader").get("ch", "?"))
-		var remembered := _add_billboard(ch, MapMemory.trader_colour(),
+		var remembered := _add_card(&"trader", ch, MapMemory.trader_colour(),
 			_floor_point(trader.x, trader.y),
-			BillboardSizes.box(&"trader", BillboardSizes.CREATURE))
-		remembered.render_priority = PRIORITY_CREATURE
-		remembered.outline_render_priority = PRIORITY_CREATURE - 1
+			BillboardSizes.box(&"trader", BillboardSizes.CREATURE),
+			Color.WHITE, "", MapMemory.trader_colour())
+		_set_priority(remembered, PRIORITY_CREATURE)
 	_creatures.clear()
 	for entity in state.entities:
 		if not entity.alive or not map.is_visible(entity.x, entity.y):
@@ -1663,21 +1697,44 @@ func _add_items_and_entities() -> void:
 		if entity.is_player and state.ratted():
 			color = Palette.PLAYER
 		var box := BillboardSizes.box(appearance, BillboardSizes.CREATURE)
-		var label := _add_billboard(String(app.get("ch", "?")),
-			_legible(color, entity.x, entity.y), _floor_point(entity.x, entity.y), box)
-		label.render_priority = PRIORITY_CREATURE
-		label.outline_render_priority = PRIORITY_CREATURE - 1
+		var ch := String(app.get("ch", "?"))
+		# Under the pixel look the colour that says whose side it is on comes
+		# from the drawing's variant, or a tint in the same colour.
+		var variant := ""
+		var tint := Color(0, 0, 0, 0)
+		if entity.corrupted:
+			variant = PixelSprites.CORRUPTED
+			tint = Palette.CORRUPTED
+		elif entity.faction == Entity.Faction.PLAYER and not entity.is_player:
+			variant = PixelSprites.ALLY
+			tint = Palette.ALLY
+		if entity.is_player and state.ratted():
+			variant = ""
+			tint = Palette.PLAYER
+		var label := _add_card(appearance, ch, _legible(color, entity.x, entity.y),
+			_floor_point(entity.x, entity.y), box,
+			_legible(Color.WHITE, entity.x, entity.y), variant, tint)
+		_set_priority(label, PRIORITY_CREATURE)
+		var ink := _card_size(appearance, ch, box)
+		var nodes := {"label": label, "tall": ink.y, "wide": ink.x,
+			"shape": _add_silhouette(label, color, PRIORITY_CREATURE - 1)}
 		# Marked: its outline wears the fungus it carries, or the shine of the
 		# mirror shield it holds, and thicker, so it reads before you strike.
 		# One outline here, so both at once take turns (CreatureMarks.
-		# single_outline); the plain outline is kept to put back.
+		# single_outline); the plain outline is kept to put back. A drawing
+		# has no outline to recolour, so it gets a frame of its own (_set_mark).
 		var rim := CreatureMarks.single_outline(entity, _clock())
-		if rim.a > 0.0:
-			label.outline_modulate = rim
-			label.outline_size = maxi(3, label.outline_size * 3)
-		var ink := _ink_size(String(app.get("ch", "?")), box)
-		var nodes := {"label": label, "tall": ink.y, "wide": ink.x,
-			"shape": _add_silhouette(label, color, PRIORITY_CREATURE - 1)}
+		if label is Label3D:
+			if rim.a > 0.0:
+				(label as Label3D).outline_modulate = rim
+				(label as Label3D).outline_size = maxi(3, (label as Label3D).outline_size * 3)
+		else:
+			var frame := (label as Sprite3D).duplicate() as Sprite3D
+			frame.texture = PixelSprites.rim_texture(appearance)
+			frame.render_priority = PRIORITY_CREATURE - 1
+			label.get_parent().add_child(frame)
+			nodes["rim"] = frame
+			_set_mark(nodes, rim)
 		if not entity.is_player:
 			nodes["mark"] = _add_text("", Color.WHITE, 0.34, PRIORITY_MARK)
 		_creatures[entity] = nodes
@@ -1762,6 +1819,105 @@ func _add_billboard(ch: String, color: Color, feet: Vector3, box: Vector2,
 	(parent if parent != null else _scene_root).add_child(label)
 	return label
 
+# ------------------------------------------------------------ the pixel look --
+
+## Does the look `id` show as a drawing? Under the pixel look, where a sprite
+## file exists (PixelSprites); terrain features keep their pictures.
+func _drawn(id: StringName) -> bool:
+	return _pixel_look and PixelSprites.has(id)
+
+## The size a card for `id` stands at, in world units: its drawing's under
+## the pixel look, else the picture's ink.
+func _card_size(id: StringName, ch: String, box: Vector2) -> Vector2:
+	if _drawn(id):
+		var img := PixelSprites.image_for(id)
+		var texels := Vector2(img.get_width(), img.get_height())
+		return texels * _drawing_texel(texels, box)
+	return _ink_size(ch, box)
+
+## World units per pixel for a drawing `texels` in size in `box`: its INSIDE
+## -- all but the one-pixel outline round it -- fitted as _em_for fits a
+## picture's ink, as large as fits either way, keeping its shape. So the
+## coloured part of a drawing fills the picture's box as the picture's ink
+## does, and the outline sits outside both, as the picture's own does: a
+## drawing of the icon's shape is the icon's size, and a longer one (the
+## hand-drawn wolf) fills the box by its width instead. Fitting the whole
+## drawing to the box made every one smaller than its picture (the first
+## render, 2026-10-09); growing the box by the picture's outline overshot,
+## the dragon by half.
+static func _drawing_texel(texels: Vector2, box: Vector2) -> float:
+	var inside := (texels - Vector2(2, 2)).max(Vector2.ONE)
+	return minf(box.x / inside.x, box.y / inside.y)
+
+## A card for the look `id`, standing on `feet` and fitted into `box`.
+## Under the pixel look and with a drawing: the drawing in `variant`'s
+## colours, or tinted `tint` where it has no such variant (PixelSprites.
+## texture), multiplied by `light`. Otherwise the picture `ch` in `colour`,
+## which the caller has already lit. The caller sets the draw order.
+func _add_card(id: StringName, ch: String, colour: Color, feet: Vector3, box: Vector2,
+		light: Color, variant := "", tint := Color(0, 0, 0, 0), on_top := false,
+		parent: Node3D = null) -> Node3D:
+	if not _drawn(id):
+		return _add_billboard(ch, colour, feet, box, on_top, parent)
+	var card := _add_sprite(PixelSprites.texture(id, variant, tint), feet, box, on_top, parent)
+	card.set_meta(&"look", id)
+	card.modulate = light
+	return card
+
+## Stands the drawing `tex` on `feet`, fitted into `box`, as _add_billboard
+## stands a picture: the bottom of the drawing on the floor and centred on
+## it, or from overhead centred on its cell and hung above the walls. The
+## drawing is cropped to what is drawn, so its texture IS its ink. Nearest
+## filtering, so a pixel stays a square however large the card is drawn.
+func _add_sprite(tex: Texture2D, feet: Vector3, box: Vector2, on_top := false,
+		parent: Node3D = null) -> Sprite3D:
+	var texels := Vector2(tex.get_width(), tex.get_height())
+	var texel := _drawing_texel(texels, box)
+	var card := Sprite3D.new()
+	card.texture = tex
+	card.pixel_size = texel
+	card.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	card.shaded = false
+	card.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	card.centered = true
+	card.offset = Vector2(0.0, texels.y * 0.5)
+	card.position = feet
+	if overhead:
+		# As _add_billboard: hung clear of the walls, the lift taken back on
+		# screen so the card is drawn exactly over its cell.
+		var lift := overhead_lift(texels.y * texel)
+		card.offset.y = -lift * cos(deg_to_rad(CAMERA_PITCH_OVERHEAD_DEG)) / texel
+		card.position = feet + Vector3.UP * lift
+	card.no_depth_test = on_top
+	(parent if parent != null else _scene_root).add_child(card)
+	return card
+
+## Draw order for either kind of card: a picture's outline goes just under it.
+static func _set_priority(card: Node3D, priority: int) -> void:
+	if card is Label3D:
+		(card as Label3D).render_priority = priority
+		(card as Label3D).outline_render_priority = priority - 1
+	elif card is SpriteBase3D:
+		(card as SpriteBase3D).render_priority = priority
+
+## A picture's colour, or the light a drawing is multiplied by.
+static func _set_colour(card: Node3D, colour: Color) -> void:
+	if card is Label3D:
+		(card as Label3D).modulate = colour
+	elif card is SpriteBase3D:
+		(card as SpriteBase3D).modulate = colour
+
+## The frame a marked creature wears (CreatureMarks.single_outline): a
+## picture's outline, or a drawing's frame card, hidden when there is none.
+static func _set_mark(nodes: Dictionary, colour: Color) -> void:
+	var card: Node3D = nodes["label"]
+	if card is Label3D:
+		(card as Label3D).outline_modulate = colour
+	elif nodes.has("rim"):
+		var frame: Sprite3D = nodes["rim"]
+		frame.modulate = colour
+		frame.visible = colour.a > 0.0
+
 ## The part of a creature or an item that something solid hides from the
 ## camera, drawn as a dark shape with a faint rim of its own colour -- so a
 ## monster behind a wall is still a monster, and still reads as BEHIND it.
@@ -1772,7 +1928,18 @@ func _add_billboard(ch: String, color: Color, feet: Vector3, box: Vector2,
 ## what shows; wherever it is not, the real one covers it exactly. The copy
 ## gives nothing away -- creatures and items are only drawn in cells you can
 ## see, and this only says that what you can see stands behind something.
-func _add_silhouette(front: Label3D, colour: Color, priority: int) -> Label3D:
+func _add_silhouette(front: Node3D, colour: Color, priority: int) -> Node3D:
+	if front is Sprite3D:
+		# A drawing's shape, dark, with its outermost pixels in its colour.
+		var drawn := front as Sprite3D
+		var shape := drawn.duplicate() as Sprite3D
+		shape.texture = PixelSprites.silhouette_texture(drawn.get_meta(&"look"),
+			SILHOUETTE, Color(colour, SILHOUETTE_RIM))
+		shape.modulate = Color.WHITE
+		shape.no_depth_test = true
+		shape.render_priority = priority
+		drawn.get_parent().add_child(shape)
+		return shape
 	var back := front.duplicate() as Label3D
 	back.modulate = SILHOUETTE
 	back.outline_modulate = Color(colour, SILHOUETTE_RIM)
@@ -1846,17 +2013,19 @@ func _update_dynamic() -> void:
 	# The mirror's shine, on what holds one and what lies there.
 	for row in _mirror_items:
 		var at: Vector2i = row[1]
-		(row[0] as Label3D).modulate = _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y)
+		_set_colour(row[0], _legible(CreatureMarks.mirror_colour(_clock()), at.x, at.y))
 	for e in _creatures:
 		var nodes: Dictionary = _creatures[e]
 		if CreatureMarks.outline_moves(e):
-			(nodes["label"] as Label3D).outline_modulate = CreatureMarks.single_outline(e, _clock())
+			_set_mark(nodes, CreatureMarks.single_outline(e, _clock()))
 		var feet := _floor_at(_drawn_cell(e))
 		var tall := float(nodes["tall"])
 		var stand := feet + (Vector3.UP * overhead_lift(tall) if overhead
 			else toward_camera * lean_pull(tall))
-		(nodes["label"] as Label3D).position = stand
-		(nodes["shape"] as Label3D).position = stand
+		(nodes["label"] as Node3D).position = stand
+		(nodes["shape"] as Node3D).position = stand
+		if nodes.has("rim"):
+			(nodes["rim"] as Node3D).position = stand
 		var mark: Label3D = nodes.get("mark")
 		if mark == null:
 			continue
@@ -1941,9 +2110,10 @@ func _draw_fx() -> void:
 					var ghost := Fx.shatter_ghost(e, t)
 					if ghost > 0.0 and map.is_visible(c.x, c.y):
 						var ch := String(_icon_theme.appearance(e["appearance"]).get("ch", "?"))
-						_add_billboard(ch, Color(e["colour"], ghost), _floor_point(c.x, c.y),
+						_add_card(e["appearance"], ch, Color(e["colour"], ghost),
+							_floor_point(c.x, c.y),
 							BillboardSizes.box(e["appearance"], BillboardSizes.CREATURE),
-							true, _fx_root)
+							Color(1, 1, 1, ghost), "", e["colour"], true, _fx_root)
 				var colour: Color = e["colour"]
 				for piece in Fx.burst_points(e, t, map):
 					var off: Vector2 = piece[0]
