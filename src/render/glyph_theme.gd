@@ -67,6 +67,10 @@ const OVERRIDES := {
 	&"slime":    0xF14FB,   # md-square_rounded (Brad's pick; a blob)
 	&"wolf":     0xF0A44,   # md-dog_side: a canine in profile reads as the wolf
 	&"bat":      0xF0B5F,   # md-bat
+	&"spider":   0xF11EA,   # md-spider (the desktop's pick, 2026-10-09)
+	# The spider's web (md-spider_web) joins with its tile on night
+	# 2: an override must name a look the game draws
+	# (_test_every_override_names_a_real_appearance -- it caught this).
 	&"harpy":    0xF15C6,   # md-bird
 	&"skeleton": 0xF068C,   # md-skull
 	## Deliberately the SAME skull as the skeleton, recoloured by the ascii

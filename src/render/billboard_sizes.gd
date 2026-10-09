@@ -35,6 +35,7 @@ const BOX := {
 	&"slime":         Vector2(0.62, 0.42),
 	&"wolf":          Vector2(0.85, 0.55),
 	&"bat":           Vector2(0.75, 0.36),
+	&"spider":        Vector2(0.80, 0.50),
 	&"rabbit":        Vector2(0.55, 0.45),
 	&"killer_rabbit": Vector2(0.60, 0.50),
 	&"skeleton":      Vector2(0.70, 0.66),

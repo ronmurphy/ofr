@@ -82,6 +82,7 @@ TILES = """const TILES = [
   { ch: "}", cat: "items", show: "}", icon: 0xF1841, name: "launcher",    fg: "#c8b28a", bg: "#17171c", pass: true  },
   { ch: "(", cat: "items", show: "\\u00a4", icon: 0xF0D2E, name: "sack",        fg: "#8a5a3c", bg: "#17171c", pass: true  },
   { ch: "r", cat: "creatures", show: "u", name: "rabbit",      fg: "#e0a05c", bg: "#17171c", pass: true  },
+  { ch: "x", cat: "creatures", show: "x", icon: 0xF11EA, name: "spider", fg: "#9a8a70", bg: "#17171c", pass: true  },
   { ch: " ", cat: "ground", show: "",  name: "outside",     fg: "#1d1f26", bg: "#0d0e13", pass: false },
 ];"""
 

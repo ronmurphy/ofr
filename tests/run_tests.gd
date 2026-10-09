@@ -279,6 +279,7 @@ func _initialize() -> void:
 	_test_creatures_by_name()
 	_test_the_latched_gate()
 	_test_fire_as_a_fear()
+	_test_the_spider()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -1577,6 +1578,104 @@ func _test_every_sprite_is_a_look_the_game_draws() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## THE SPIDER, night 1 of 3 (2026-10-09): WILD, its bite poisons, it flees
+## up the walls and climbs down after, it hunts bats; upper floors, caves and
+## the fortress. Its web (night 2) and nest (night 3) are still to come.
+func _test_the_spider() -> void:
+	var row: Dictionary = {}
+	for e in GameState.BESTIARY:
+		if e["name"] == "spider":
+			row = e
+	check("the spider is in the bestiary, wild, solitary",
+		not row.is_empty() and row.get("wild", false) and not row.has("pack")
+		and row["app"] == &"spider")
+	check("  and the fortress is one of its bands -- the one wild exception",
+		(row.get("bands", {}) as Dictionary).has(&"fortress"))
+	# Found where it should be.
+	var seen := {"upper": 0, "caves": 0, "fortress": 0}
+	for band_depth in [[2, "upper"], [5, "caves"], [8, "fortress"]]:
+		for i in 12:
+			var f := GameState.new(95000 + i)
+			f.new_game()
+			f.depth = int(band_depth[0])
+			f.build_level()
+			for e in f.entities:
+				if e.alive and e.appearance == &"spider":
+					seen[band_depth[1]] += 1
+	check("spiders turn up on the upper floors, in the caves and in the fortress %s" % str(seen),
+		seen["upper"] > 0 and seen["caves"] > 0 and seen["fortress"] > 0)
+	# Unstruck, nobody's enemy; its bite poisons.
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = false
+	var spi := _spawn(gs, "spider", 6, 4)
+	gs.entities = [gs.player, spi]
+	check("an unstruck spider is no enemy of yours", not spi.hostile_to(gs.player))
+	check("precondition: you are not poisoned", gs.player.poisoned == 0)
+	gs.player.hp = gs.player.max_hp
+	gs._attack(spi, gs.player)
+	check("its bite poisons you for three turns (%d)" % gs.player.poisoned,
+		gs.player.poisoned == 3 and _log_says(gs, "bite burns"))
+	var bones := _spawn(gs, "skeleton", 7, 5)
+	gs._attack(spi, bones)
+	check("  but nothing unliving", bones.poisoned == 0)
+	# It flees up the wall, and climbs down after.
+	gs = _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = false
+	for y in range(1, 8):
+		gs.map.set_tile(7, y, Tiles.WALL)
+	gs.pathfinder = Pathfinder.new(gs.map)
+	spi = _spawn(gs, "spider", 6, 4)
+	gs.entities = [gs.player, spi]
+	spi.provoked = true
+	spi.fleeing = true
+	check("precondition: a fleeing spider with its back to a wall",
+		not gs.map.is_walkable(7, 4) and spi.fleeing)
+	gs._ai_flee(spi, gs.player)
+	check("it goes up the wall, away from you (%d,%d)" % [spi.x, spi.y],
+		spi.x == 7 and not gs.map.is_walkable(spi.x, spi.y))
+	# Beside it, one move is the blow (two would give it a turn between,
+	# and it climbs on).
+	gs.player.x = 6
+	var whole := spi.hp
+	gs.player_move(1, 0)
+	check("  and is still killable there: walking at it strikes it (%d -> %d)" % [whole, spi.hp],
+		spi.hp < whole or not spi.alive)
+	spi.hp = spi.max_hp
+	spi.fleeing = false
+	gs._take_ai_turn(spi)
+	check("no longer fleeing, it climbs down onto open ground",
+		gs.map.is_walkable(spi.x, spi.y) and gs._can_rest_on(spi.x, spi.y))
+	# The food web: bats are its game; it is a bear's, never a wolf's.
+	gs = _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	spi = _spawn(gs, "spider", 10, 4)
+	var bat := _spawn(gs, "cave bat", 11, 4)
+	var wolf := _spawn(gs, "wolf", 9, 5)
+	var bear := _spawn(gs, "cave bear", 12, 5)
+	gs.entities = [gs.player, spi, bat, wolf, bear]
+	check("a bat is a spider's game", gs._is_game(spi, bat))
+	check("  a spider is not a wolf's (threat 7 to its 6)", not gs._is_game(wolf, spi))
+	check("  but it is a bear's", gs._is_game(bear, spi))
+	check("  and never another spider's", not gs._is_game(spi, _spawn(gs, "spider", 13, 4)))
+	# A vault's x is a spider.
+	gs = _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	gs.depth = 5
+	var gen := MapGen.new(gs.rng)
+	gen.vault_contents = [{"ch": "x", "pos": Vector2i(8, 4)}]
+	gs._place_vault_contents(gen)
+	var drawn: Entity = gs.entity_at(8, 4)
+	check("a vault's x places a spider", drawn != null and drawn.appearance == &"spider")
+	# Saved.
+	var back := Entity.from_dict(drawn.to_dict())
+	check("its venom and its climbing are saved", back.venom == 3 and back.climbs)
+
 ## FIRE, AN INNATE FEAR (built 2026-10-09, Brad's numbers): an unstruck
 ## animal keeps FIRE_FEAR_REACH from your lit torch and lit braziers; a
 ## struck bear or wolf beside fire fights CORNERED_BONUS harder and will not

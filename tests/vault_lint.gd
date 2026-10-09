@@ -20,7 +20,8 @@ const TERRAIN := {
 	"n": "grave", "C": "chest", "H": "latched gate",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
-	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit"}
+	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit",
+	"x": "spider"}
 ## Cells an actor can occupy. Doors count -- they open. Shrines too: they are
 ## stood upon, not bumped into. Braziers and pillars are NOT.
 ##
@@ -29,7 +30,7 @@ const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 ## blocked movement would be one more thing generation has to prove it never
 ## wedged into a corridor.
 const PASSABLE := [".", "_", "+", "'", "H", "~", "=", "%", ",", "*", "v", ";",
-	"A", "X", "t", ">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "(", "r"]
+	"A", "X", "t", ">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "(", "r", "x"]
 ## Creatures by name: a digit on the board, named by a `place N: name` line.
 const NAMED := ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 ## A cave vault (`kind: cave`) is painted in place of a grown cave, and the

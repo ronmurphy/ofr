@@ -53,7 +53,7 @@ const TERRAIN := {
 ## draws as `¤`, which is not on a keyboard and has no business in a file
 ## people hand-edit. `(` is free in both namespaces and reads as the open mouth
 ## of one.
-const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "(", "r"]
+const CONTENTS := ["m", "M", "?", "!", ")", "[", "}", "(", "r", "x"]
 ## CREATURES BY NAME (2026-10-08; tools/VAULTS_GAME_SIDE.md part 2): a digit
 ## on the board places the creature its `place N: <bestiary name>` line names.
 ## Kept apart from CONTENTS on purpose: tools/build_vault_editor.py checks

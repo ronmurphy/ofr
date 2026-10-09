@@ -101,6 +101,9 @@ const TABLE := {
 	&"kobold":      {"ch": "k", "fg": Color("e8d9a0")},
 	&"goblin":      {"ch": "g", "fg": Color("2f6b4f")},
 	&"bat":         {"ch": "b", "fg": Color("8e6fa8")},
+	# Eight crossing legs; `x` was free everywhere (2026-10-09). A dusty
+	# grey-brown -- the wild gold tints it in the 3D view.
+	&"spider":      {"ch": "x", "fg": Color("9a8a70")},
 	&"skeleton":    {"ch": "s", "fg": Color("d6d2c4")},
 	## The same letter as the skeleton it used to be, in the ally colour. It is
 	## a skeleton; what changed is whose side it is on, and side is a colour

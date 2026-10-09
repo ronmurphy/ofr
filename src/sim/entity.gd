@@ -292,6 +292,12 @@ var blink_cool: int = 0
 ## Walks through stone. Nothing else does, and it is half of what makes the
 ## banshee unanswerable by hiding -- you cannot put a wall between you and it.
 var phasing := false
+## THE SPIDER (2026-10-09): it walks the walls, but ONLY to flee -- the
+## banshee's phasing step, used to get away (GameState._ai_flee). Saved.
+var climbs := false
+## Turns of poison its bite leaves (`poisoned`, the miasma's own): the
+## spider's 3. Zero for everything else. Saved.
+var venom: int = 0
 ## How many cells this creature's melee hit shoves its target back. 0 for
 ## everything that fights by standing still and swinging.
 var knockback := 0
@@ -592,6 +598,7 @@ func to_dict() -> Dictionary:
 		"attack_range": attack_range, "standoff": standoff,
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
+		"climbs": climbs, "venom": venom,
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
@@ -646,6 +653,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.blink_range = int(d.get("blink_range", 0))
 	e.blink_cool = int(d.get("blink_cool", 0))
 	e.phasing = bool(d.get("phasing", false))
+	e.climbs = bool(d.get("climbs", false))
+	e.venom = int(d.get("venom", 0))
 	e.senses = bool(d.get("senses", false))
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))

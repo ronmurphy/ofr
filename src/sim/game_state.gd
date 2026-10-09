@@ -1285,6 +1285,20 @@ const BESTIARY := [
 	{"name": "arch lich", "app": &"lich", "hp": 40, "power": 15, "def": 5,
 	 "speed": 100, "ai": &"ranged", "range": 8, "standoff": 3, "blink": 12,
 	 "flee": 0.0, "min_depth": 10, "ascent_from": 16, "threat": 32, "caves": 0.6, "unliving": true, "resists": ["pierce"], "weak_to": ["blunt"], "careful": true, "casts": true},
+	# THE SPIDER (the wild creatures update; night 1 of 3, 2026-10-09). WILD,
+	# like the bat and the bear: nobody's enemy until struck, on top of the
+	# budget, placed by _place_the_wild from `bands`. Upper floors, the caves
+	# AND the fortress -- the one wild exception there (Brad: spiders were
+	# all over buildings and fortresses). Its bite poisons (`venom`, the
+	# miasma's `poisoned`, three turns); it flees up the walls (`climbs`); it
+	# hunts bats. Threat 7: above the wolf's 6, so a pack does not take it as
+	# game; the bear still does. LAST in the table, so adding it moves none
+	# of the earlier rows' wild draws. Its web shot (night 2) and its nest
+	# (night 3) are still to come.
+	{"name": "spider", "app": &"spider", "hp": 8, "power": 3, "def": 1,
+	 "speed": 120, "ai": &"hunter", "flee": 0.5, "min_depth": 1, "threat": 7,
+	 "bands": {&"upper": 0.35, &"caves": 0.6, &"fortress": 0.35},
+	 "max_per_floor": 1, "wild": true, "eats": true, "venom": 3, "climbs": true},
 ]
 
 ## The deepest tier that exists.
@@ -3135,6 +3149,8 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.standoff = entry.get("standoff", 1)
 	m.blink_range = entry.get("blink", 0)
 	m.phasing = entry.get("phasing", false)
+	m.climbs = entry.get("climbs", false)
+	m.venom = int(entry.get("venom", 0))
 	m.knockback = int(entry.get("knockback", 0))
 	m.unliving = entry.get("unliving", false)
 	m.resists.clear()
@@ -3417,6 +3433,10 @@ func _place_vault_contents(gen: MapGen) -> void:
 				# way a rabbit is found in a fortress. Wild like any rabbit and
 				# never spent from the budget -- an animal is nobody's enemy.
 				_place_kept(at, &"rabbit")
+			"x":
+				# A spider where the author drew it (2026-10-09): wild, on top
+				# of the budget, as the rabbit's `r` is.
+				_place_kept(at, &"spider")
 			"creature":
 				# A creature by name (`place N: name`, 2026-10-08).
 				var named := _place_named(at, String(entry["name"]), ceiling - spent)
@@ -9116,6 +9136,12 @@ func _take_ai_turn(actor: Entity) -> int:
 	if actor.frozen > 0:
 		return Scheduler.ACTION_COST
 
+	# A climber in the stone that is no longer fleeing comes down first: no
+	# route starts inside a wall, and it should not hide there for ever.
+	if actor.climbs and not actor.fleeing and not map.is_walkable(actor.x, actor.y):
+		_climb_down(actor)
+		return Scheduler.ACTION_COST
+
 	# A neutral takes no turn at all.
 	#
 	# Stated here rather than left to fall out of "it has no foe", because the
@@ -10436,6 +10462,16 @@ func _far_landing() -> Vector2i:
 	return best
 
 func _ai_flee(actor: Entity, foe: Entity) -> void:
+	# A spider goes up the wall (2026-10-09): the banshee's phasing step,
+	# away from what it flees, and it may end the move inside the stone --
+	# still killable there, as the banshee is (player_move tests for a
+	# creature before the ground).
+	if actor.climbs:
+		var before := Vector2i(actor.x, actor.y)
+		_step_phasing(actor, Vector2i(actor.x + signi(actor.x - foe.x),
+			actor.y + signi(actor.y - foe.y)))
+		if Vector2i(actor.x, actor.y) != before:
+			return
 	if _step_away(actor, foe):
 		return
 	# Cornered. A trapped animal fights.
@@ -10810,7 +10846,9 @@ func _is_game(actor: Entity, e: Entity) -> bool:
 	# (probe, Brad's "three of four dead when I arrived", 2026-10-05).
 	if e.appearance == actor.appearance:
 		return false
-	if e.flying and actor.ai != &"ranged":
+	# A spider takes a bat as readily (2026-10-09): its web will hold
+	# flyers (night 2); until then it bites one within reach.
+	if e.flying and actor.ai != &"ranged" and not actor.climbs:
 		return false
 	return true
 
@@ -11426,6 +11464,17 @@ func _ai_banshee(actor: Entity, foe: Entity) -> void:
 	else:
 		_step_toward(actor, Vector2i(foe.x, foe.y))
 
+## A climber steps out of the stone onto open ground beside it, the side
+## nearest the open middle of things if it has a choice; boxed in, it waits.
+func _climb_down(actor: Entity) -> void:
+	for d in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
+			Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
+		var c: Vector2i = Vector2i(actor.x, actor.y) + d
+		if _can_rest_on(c.x, c.y) and entity_at(c.x, c.y) == null:
+			actor.x = c.x
+			actor.y = c.y
+			return
+
 ## A step toward the target that ignores walls entirely.
 ##
 ## The pathfinder cannot serve here: it routes over walkable ground by
@@ -11825,6 +11874,12 @@ func _attack(attacker: Entity, defender: Entity, ranged: bool = false,
 	defender.take_damage(dmg)
 	if gem != &"":
 		_gem_strikes(gem, attacker, defender, dmg, ranged)
+	# The spider's bite: its venom, as the purple's poison (2026-10-09).
+	if attacker.venom > 0 and defender.alive and not ranged and not defender.unliving:
+		defender.poisoned = maxi(defender.poisoned, attacker.venom)
+		if defender.is_player:
+			msg_log.add("The %s's bite burns. Poisoned -- water would wash it out." % attacker.name,
+				Color(0.78, 0.55, 0.90))
 	# The slime's touch: acid that goes on eating (ACID_LINGER turns).
 	if attacker.acid and defender.alive and not ranged:
 		defender.acid_turns = ACID_LINGER

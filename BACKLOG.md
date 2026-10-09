@@ -815,7 +815,9 @@ this list only gains an item when one leaves it.** (Why, at length:
    fear" in the wild creatures update.** **Fire as a fear** (the wild creatures update): a lit torch keeps an
    unstruck animal back; read the entry for the wolves' "cornered by flame"
    rule and the bear's exception before starting.
-3. **The spider** (the wild creatures update, "The spider"; designed in
+3. **NIGHT 1 OF 3 DONE 2026-10-09 (the Legion): the spider and its bite**
+   -- as built under "The spider" in the wild creatures update. Night 2 is
+   the web tile and the shot, night 3 the nest. **The spider** (the wild creatures update, "The spider"; designed in
    full 2026-10-09 except its numbers). WILD, with a NEST that makes it
    hostile, like the den bear; walks the walls (the banshee's phasing,
    only to flee); a bite of damage plus a THREE-turn poison (the miasma's
@@ -1800,6 +1802,33 @@ gem's own use stands as before. Test: `_test_the_embers_come_first`.
 - **Answered elsewhere since:** what provokes a wolf pack (being struck,
   `PACK_REACH` -- built 2026-10-05). Still open: how far the torch keeps
   creatures back (fire as a fear, the Legion's short session 5).
+
+**The spider, night 1 of 3 -- BUILT 2026-10-09 (the Legion), on a plan
+agreed with the desktop first.**
+- **The row** (`BESTIARY`, last, so earlier wild draws do not move): "spider",
+  `&"spider"`, hp 8, power 3, def 1, speed 120, flee 0.5, threat 7 (above
+  the wolf's 6, so a pack does not take it as game; the bear does), solitary,
+  `bands` upper 0.35, caves 0.6, fortress 0.35 -- placed by
+  `_place_the_wild` like the wolf and the bear, on top of the budget.
+- **The bite:** `Entity.venom` 3 sets `poisoned` (the miasma's, 1 hp a turn,
+  water washes it), never on the unliving. "The spider's bite burns.
+  Poisoned -- water would wash it out."
+- **Up the walls, only to flee:** `Entity.climbs`; `_ai_flee` takes the
+  banshee's `_step_phasing` away from what it flees, and may end in the
+  stone, where it is still struck by walking at it. Not fleeing, it climbs
+  down first thing (`_climb_down`).
+- **Game:** bats (`_is_game` lets a climber take a flyer). Rats when they go
+  wild (queue item 5).
+- **Looks:** md-spider 0xF11EA, letter `x` in the classic view. The web's
+  md-spider_web (0xF0BCA) is in the font as a spare; its override goes into
+  GlyphTheme with the tile on night 2 (an override naming a look the game
+  does not draw yet fails `_test_icon_theme`'s "every override names a real
+  appearance id" -- the desktop and the Legion both thought it harmless), a 0.80 x 0.50 card, the
+  desktop's hand-drawn sprite moved to `assets/sprites/creatures/`. Vault
+  marker `x` (vault.gd, the linter, both editors).
+- Fire as a fear already covers it as an unstruck animal.
+- Test: `_test_the_spider` (mutation: without the venom, the bite check
+  fails).
 
 **Allies step out of the poison on their own -- BUILT 2026-10-04 (Legion),
 the last thing of the night.** Brad's bear ally died in the purple's cloud
