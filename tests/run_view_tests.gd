@@ -2770,6 +2770,67 @@ func _test_the_bestiary_screen(scene: Control) -> void:
 		and at["id"] == &"goblin")
 	b.close()
 
+## THE DEPTH CARD (2026-10-10): a card on entering a band, and at the start
+## of a run; only the number between bands; never what lives there; the key
+## that clears it takes no step.
+func _test_the_depth_card(scene: Control) -> void:
+	print("-- the depth card")
+	var card: DepthCard = scene.depth_card
+	var gs: GameState = scene.state
+	check("precondition: the scene has a depth card, off in the harness as the title is",
+		card != null and not card.enabled and not card.showing)
+	check("  each band has its name, and the climb its own",
+		DepthCard.title_for(1) == "THE ENTRANCE" and DepthCard.title_for(4) == "THE CAVES"
+		and DepthCard.title_for(7) == "THE FORTRESS" and DepthCard.title_for(10) == "THE DEEP"
+		and DepthCard.title_for(15).begins_with("THE CLIMB") and DepthCard.title_for(15).contains("CAVES")
+		and DepthCard.title_for(19).contains("ENTRANCE"))
+	var spoilers := []
+	for key in DepthCard.TITLES:
+		var words := String(DepthCard.TITLES[key][1]).to_lower()
+		for e in GameState.BESTIARY:
+			if words.contains(String(e["name"]).to_lower()) or words.contains(String(e["app"])):
+				spoilers.append("%s: %s" % [key, e["name"]])
+	check("  and no card names a creature", spoilers.is_empty(), str(spoilers))
+	card.enabled = true
+	card.reset()
+	card._process(0.016)
+	check("  a run opens on its card (the must-succeed)", card.showing and card.visible)
+	# While it is up the world has no focus -- no step, no turn, no held
+	# walk -- and the key that clears it is spent on that.
+	var blocked: bool = not scene._world_has_focus()
+	var at := Vector2i(gs.player.x, gs.player.y)
+	var key := InputEventKey.new()
+	key.keycode = KEY_RIGHT
+	key.pressed = true
+	scene._unhandled_key_input(key)
+	check("  while it is up the world has no focus; a key clears it, and takes no step",
+		blocked and not card.showing and scene._world_has_focus()
+		and Vector2i(gs.player.x, gs.player.y) == at)
+	# A new floor in the same band: only its number, and nothing waits.
+	card._last_map = DungeonMap.new(1, 1)
+	card._process(0.016)
+	check("  a new floor in the same band shows only its number", not card.showing
+		and card._label_t >= 0.0 and card.mouse_filter == Control.MOUSE_FILTER_IGNORE)
+	card._process(DepthCard.LABEL_TIME)
+	# A new band: the card again, gone by itself after HOLD.
+	card._last_map = DungeonMap.new(1, 1)
+	card._last_band = "never"
+	card._process(0.016)
+	var shown := card.showing
+	card._process(DepthCard.HOLD)
+	check("  a new band brings the card, and it goes by itself", shown and not card.showing)
+	# The title or naming: it waits, and the floor gets its card after.
+	card.reset()
+	card.paused = true
+	card._process(0.016)
+	var waited := not card.showing and not card.visible
+	card.paused = false
+	card._process(0.016)
+	check("  under the title it waits, then shows", waited and card.showing)
+	card.dismiss()
+	card.reset()
+	card.enabled = false
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -3205,5 +3266,6 @@ func _test_both_views_share_one_moment() -> void:
 	_test_the_3d_look(scene)
 	_test_the_pixel_look(scene)
 	await _test_the_bestiary_screen(scene)
+	_test_the_depth_card(scene)
 	scene.queue_free()
 	await process_frame

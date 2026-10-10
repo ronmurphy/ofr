@@ -23,6 +23,8 @@ extends Control
 ## The bestiary (2026-10-10): made here rather than in main.tscn, and placed
 ## just above the map. See _make_bestiary.
 var bestiary: BestiaryPanel
+## The depth card (2026-10-10), over everything while it is up. See DepthCard.
+var depth_card: DepthCard
 @onready var here: HerePanel = $Here
 @onready var trade: TradePanel = $Trade
 @onready var sound: SoundDeck = $Sound
@@ -226,6 +228,12 @@ func _ready() -> void:
 	_map_view = grid
 	# First, before anything binds a state to the panels -- see _make_bestiary.
 	_make_bestiary()
+	depth_card = DepthCard.new()
+	depth_card.name = "DepthCard"
+	depth_card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	depth_card.z_index = 20
+	depth_card.enabled = not GameState.using_scratch()
+	add_child(depth_card)
 	# One list of effects and one set of step glides, read by whichever view is
 	# showing -- so both show the same moment, and switching views mid-arrow or
 	# mid-stride loses neither. See Fx and StepMotion.
@@ -404,6 +412,8 @@ func _cycle_text_size() -> void:
 	_refresh()
 
 func _process(delta: float) -> void:
+	# The depth card waits while the title or the naming is up.
+	depth_card.paused = title.visible or name_entry.visible
 	# The stick is polled rather than evented: one held still sends nothing, and
 	# "still held" is exactly what auto-repeat has to know about.
 	#
@@ -643,7 +653,7 @@ func _on_talk_finished() -> void:
 ## Is the MAP what the player is looking at -- no panel, no cursor?
 func _world_has_focus() -> bool:
 	return not (title.visible or inventory.visible or menu.visible or legend.visible
-		or bestiary.visible or summary.visible or name_entry.visible or pad_setup.visible
+		or bestiary.visible or depth_card.showing or summary.visible or name_entry.visible or pad_setup.visible
 		or talk.visible or overview.visible or trade.visible or _aiming or _look)
 
 ## May a HELD direction take another step? See GameState.threat_in_view for
@@ -732,6 +742,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if _synthetic and key == PACK_BACK_KEY:
 			key = KEY_ESCAPE
 		title.handle_key(key)
+		return
+
+	# The depth card takes the key that clears it, and only that: the press
+	# that dismisses the card does not also take a step.
+	if depth_card.showing:
+		depth_card.dismiss()
+		_refresh()
 		return
 
 	# Asked before the run begins, so it takes keys ahead of every other panel.
@@ -1428,6 +1445,9 @@ func _bind_state(s: GameState) -> void:
 	legend.state = s
 	bestiary.state = s
 	bestiary.close()
+	# A new run or a load opens on its card, whatever floor the last one ended.
+	depth_card.state = s
+	depth_card.reset()
 	summary.state = s
 	# A fresh state is a fresh run, so the record of the last one goes away
 	# with it -- and re-arms, so the next ending opens its own.
