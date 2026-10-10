@@ -118,7 +118,11 @@ The left stick moves relative to the camera and stays on the grid: in a diamond
 view every direction turns 45° clockwise on screen, so pushing up walks the grid
 line that runs up and to the right; in a straight-on view it walks exactly where
 it points.
-The overview remains available by paging from the legend.
+The legend, the bestiary and the map are three pages in a ring (2026-10-10):
+left and right on the d-pad turn the page -- in the bestiary, past the edge of
+its grid -- so the map and the bestiary need no button of their own. In the
+bestiary the shoulders switch between creatures and items, A does nothing,
+and B closes.
 
 ## 4. The pause menu works entirely from the pad
 

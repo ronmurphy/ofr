@@ -86,10 +86,11 @@ Only `src/sim/` is serialised, which is what the no-Godot-nodes rule was for.
 | `tab` | inside the inventory: cycle the category filter (`shift+tab` backwards) |
 | left click | travel to a seen cell, stopping if anything comes into view |
 | hover | inspect a cell; the route there is previewed as dots |
-| `?` or `F1` | legend: every glyph in the game, generated from the tables |
+| `?` or `F1` | the reference, opening on the legend: every glyph in the game. It is three pages in a ring -- legend, bestiary, map -- turned with left and right or the "< / >" buttons in each page's header |
+| `o` | the reference, opening on the map |
 | `m` | mute; `-` and `+` set the volume. Kept in `user://settings.cfg` |
 | `w` | swap between your best launcher and your best blade (costs a turn) |
-| `v` | cycle the view: letters, symbols, or pictures |
+| `v` | classic view: cycle letters, symbols or pictures. 3D view: cycle pictures and the pixel-art sets (Original, Cute, Detailed, Horror); the title's "3D art" row does the same |
 | `q` | toggle between the classic grid and the tilted 3D view |
 | `[` / `]` | turn the 3D camera left or right by 45° (eight views: diamond and straight on, alternating); the right stick or LT / RT also turn it |
 | `R` | new game |
@@ -387,6 +388,16 @@ the rest of the game.
 | **letters** | `+ ' ~ , * Ω` and `! ? ) } [ "` -- the original |
 | **symbols** | `■ □ ≈ ∴ ◌ ✶` and `◔ ≡ † ➜ ◫ ◎` -- no new font needed |
 | **pictures** | icons, from an 18KB font subset |
+
+In the 3D view `v` cycles the cards instead: the icon **pictures**, then
+pixel art from each **art set** -- Original (hand-drawn, `assets/sprites/`),
+Detailed, Horror and Cute (`assets/skins/`). Anything a set lacks falls back
+to Original. See `assets/skins/README.md` for adding a set.
+
+The **bestiary** is a page of its own between the legend and the map: a
+portrait of every creature you have met and every item you have seen, from
+the art set in use, with what it does and its numbers. What you have not met
+is "???".
 
 `q` switches between that classic grid and a tilted 3D view, in the style of
 Final Fantasy Tactics: the camera looks along a diagonal, so floor squares are

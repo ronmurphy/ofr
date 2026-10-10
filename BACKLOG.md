@@ -2413,8 +2413,13 @@ an alternative to the icon-font "pictures" on the 3D cards.
   once seen lying or carried (`BestiaryLog.note_item`, from
   `_note_sightings`). A creature's row in the legend opens its page. The
   old 720 ASCII portraits in `assets/art/creatures/` are kept but no longer
-  ship (`.gdignore`, 4.2 MB). Tests: 10 on the page, the ring and its keys
-  in the overview test, 5 in the view suite.
+  ship (`.gdignore`, 4.2 MB). Tests: 11 on the page, the ring and its keys
+  in the overview test, 7 in the view suite. **Every input** (Brad asked,
+  2026-10-10): keys as above; a MOUSE clicks a tile, a tab, and "< legend"
+  / "map >" buttons in the header -- and the legend and the map gained the
+  same page buttons, which they never had; a PAD moves on the d-pad, turns
+  tabs on the shoulders, and its A does nothing (B closes), with a hint
+  line naming the pad's buttons.
   **Not yet, Brad's ideas:** seen / slain / deaths-to counts (not tracked
   yet); a redesign of the legend now the bestiary has moved out of it.
 - **THE DEPTH CARD -- BUILT 2026-10-10 (desktop)** (`src/ui/depth_card.gd`):
@@ -2425,8 +2430,14 @@ an alternative to the icon-font "pictures" on the 3D cards.
   alone, briefly. Hiding the floor build behind it (the mock-up's loading
   idea) is NOT done: the floor is built before the card can show.
 - **3D FEATURES -- THE SHRINE IS THE FIRST MODEL (2026-10-10, desktop).** A
-  stone pedestal and a crystal in the shrine's hue, replacing its card in
-  3D; the shader's new style 14 (glow) for the crystal. The plan for the
+  low round stone dais, a disc of the shrine's hue set into its top, and
+  four small crystals at its corners, replacing its card in 3D; the
+  shader's new style 14 (glow) for the disc and crystals. Used exactly as
+  before: stand on it and pray (p, or g) -- the HERE box is unchanged. The
+  first version, a pedestal with a floating crystal, stood in the middle of
+  a tile you STAND ON, and the player stood inside it (Brad's question
+  found it); hence the rule that a walkable feature keeps its middle
+  clear. The plan for the
   rest -- the great gate, the grave and the rising effect, the brazier, the
   stairs, the chest -- with the rules any feature model follows, is in
   `tools/3D_FEATURES.md`.
