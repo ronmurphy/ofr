@@ -32,6 +32,26 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10 morning, the desktop: art sets. Pull first.**
+- **`v` in a 3D view now cycles** pictures -> Original -> Cute -> Detailed
+  -> Horror -> pictures ("Look: pixel art, Horror."). The title has a new
+  "3D art" settings row doing the same. `RenderTheme.toggle_sprites` is
+  gone; use `cycle_look` (and `skin()`, saved as `view/skin`).
+- **Folders:** Original is still `assets/sprites/` (cards; your web.txt
+  still goes into `assets/sprites/features/` on night 2, and every set
+  falls back to it) plus `assets/portraits/` (the 28 portraits that were
+  in tools/portraits_incoming). Other sets are `assets/skins/<id>/` with a
+  `skin.txt`; see `assets/skins/README.md`. Exports include both.
+- **`pixel_sprites.gd`:** `_index` now builds the set's cards with
+  fallback, the parse cache is keyed by FILE (a card and a portrait are two
+  files), and there is `portrait(id)` for the bestiary, not wired in yet.
+- **A new creature** needs nothing from the sets: they fall back to
+  Original. `_test_every_art_set_is_whole` checks every set still draws
+  everything Original draws.
+- `assets/temp/` is gone: the zips are kept outside the repo, and the
+  ideas file Brad added is now `tools/notes/ideas_from_reading_the_source.md`.
+- **Suites:** full 3214 passed / 0 / 0 SCRIPT ERROR (15 min; 3193 + 21), quick 417/0.
+
 **2026-10-09 night, the desktop: a new splash screen; two ideas in BACKLOG.**
 - **The boot splash is the new OFR logo** (Brad's pick): the same file,
   `assets/art/roguelike-splash-art.png`, so `project.godot` is unchanged.

@@ -94,6 +94,8 @@ func _initialize() -> void:
 	_test_rabbits_keep_to_the_warren()
 	_test_vaults_ship_in_every_export()
 	_test_sprites_ship_in_every_export()
+	_test_art_sets_ship_in_every_export()
+	_test_every_art_set_is_whole()
 	_test_pixel_sprites_read_the_editors_files()
 	_test_every_sprite_is_a_look_the_game_draws()
 	_test_animals_nap()
@@ -1417,9 +1419,15 @@ func _test_vaults_ship_in_every_export() -> void:
 func _test_sprites_ship_in_every_export() -> void:
 	_check_folder_ships("assets/sprites/", "sprite files", 40)
 
+## The portraits and every art set are plain .txt too (2026-10-10).
+func _test_art_sets_ship_in_every_export() -> void:
+	_check_folder_ships("assets/portraits/", "portrait files", 28, false)
+	_check_folder_ships("assets/skins/", "art set files", 90)
+
 ## Every export preset's include_filter carries `folder`*.txt, and that
-## filter matches every .txt the game loads from it, subfolders too.
-func _check_folder_ships(folder: String, what: String, at_least: int) -> void:
+## filter matches every .txt the game loads from it, subfolders too
+## (`nested`: the folder must hold one in a subfolder, to prove that).
+func _check_folder_ships(folder: String, what: String, at_least: int, nested := true) -> void:
 	var filter := folder + "*.txt"
 	var presets := ConfigFile.new()
 	check("precondition: the export presets load", presets.load("res://export_presets.cfg") == OK)
@@ -1456,9 +1464,96 @@ func _check_folder_ships(folder: String, what: String, at_least: int) -> void:
 	for path in paths:
 		if not String(path).matchn(filter):
 			unmatched.append(path)
-	check("precondition: the %s include one in a subfolder (%d files)" % [what, paths.size()],
-		paths.size() >= at_least and paths.any(func(p): return String(p).count("/") > 2))
+	check("precondition: the %s are there (%d files)%s" % [what, paths.size(),
+			", one in a subfolder" if nested else ""],
+		paths.size() >= at_least and (not nested or paths.any(func(p): return String(p).count("/") > 2)))
 	check("  and the filter matches every one of them, subfolders too", unmatched.is_empty(), str(unmatched))
+
+## ART SETS (2026-10-10): the original set and the folders under
+## assets/skins/, each a whole game -- every file a drawing of a look the game
+## draws, drawn once, and every look the original has still drawn under every
+## set (what a set lacks falls back to the original). See PixelSprites.
+func _test_every_art_set_is_whole() -> void:
+	var sets := PixelSprites.skins()
+	check("precondition: the original and three sets (%s)" % str(sets),
+		sets.size() >= 4 and sets[0] == PixelSprites.ORIGINAL
+		and sets.has(&"detailed") and sets.has(&"horror") and sets.has(&"cute"))
+	var looks := AsciiTheme.TABLE
+	var broken := []
+	var stray := []
+	var twice := []
+	var unnamed := []
+	var groups := {"res://assets/portraits/": PixelSprites.PORTRAITS}
+	for id in sets:
+		if id == PixelSprites.ORIGINAL:
+			continue
+		var root := PixelSprites.SKINS + String(id) + "/"
+		if not FileAccess.get_file_as_string(root + "skin.txt").contains("name:"):
+			unnamed.append(id)
+		groups[root + "portraits/"] = root + "portraits/"
+		groups[root + "cards"] = root
+	for key in groups:
+		var seen := {}
+		var dirs: Array = []
+		if String(key).ends_with("cards"):
+			for folder in PixelSprites.CARD_FOLDERS:
+				dirs.append(String(groups[key]) + folder)
+		else:
+			dirs.append(groups[key])
+		while not dirs.is_empty():
+			var dir: String = dirs.pop_back()
+			var d := DirAccess.open(dir)
+			if d == null:
+				continue
+			for f in d.get_files():
+				if not f.ends_with(".txt"):
+					continue
+				var id := StringName(f.trim_suffix(".txt"))
+				if seen.has(id):
+					twice.append(dir + f)
+				seen[id] = true
+				var parsed := PixelSprites.parse(FileAccess.get_file_as_string(dir + f))
+				if parsed.is_empty() or PixelSprites.image(parsed) == null:
+					broken.append(dir + f)
+				if not looks.has(id):
+					stray.append(dir + f)
+			for sub in d.get_directories():
+				dirs.append(dir + sub + "/")
+	check("every art set names itself in its skin.txt", unnamed.is_empty(), str(unnamed))
+	check("every file in every art set is a drawing", broken.is_empty(), str(broken))
+	check("  of a look the game draws", stray.is_empty(), str(stray))
+	check("  and no look is drawn twice in one set", twice.is_empty(), str(twice))
+	# Fallback: every look the original draws is still drawn under every set.
+	PixelSprites.use_skin(PixelSprites.ORIGINAL)
+	var original: Dictionary = PixelSprites.paths().duplicate()
+	var lost := []
+	for id in sets:
+		PixelSprites.use_skin(id)
+		for look in original:
+			if not PixelSprites.has(look):
+				lost.append("%s:%s" % [id, look])
+	check("precondition: the original draws its set (%d looks)" % original.size(), original.size() >= 47)
+	check("no art set loses a look the original draws", lost.is_empty(), str(lost))
+	# Where each card and portrait comes from.
+	PixelSprites.use_skin(&"horror")
+	var horror_ok := PixelSprites.skin() == &"horror" \
+		and String(PixelSprites.paths()[&"wolf"]).contains("skins/horror/portraits") \
+		and String(PixelSprites.paths()[&"weapon"]).contains("skins/horror/items")
+	PixelSprites.use_skin(&"detailed")
+	var detailed_ok := String(PixelSprites.paths()[&"wolf"]) == "res://assets/portraits/wolf.txt" \
+		and String(PixelSprites.paths()[&"weapon"]).begins_with("res://assets/sprites/")
+	PixelSprites.use_skin(PixelSprites.ORIGINAL)
+	var original_ok := String(PixelSprites.paths()[&"wolf"]) == "res://assets/sprites/creatures/wolf.txt" \
+		and PixelSprites.portrait_path(&"wolf") == "res://assets/portraits/wolf.txt" \
+		and PixelSprites.portrait_path(&"weapon") == String(PixelSprites.paths()[&"weapon"]) \
+		and not PixelSprites.portrait(&"wolf").is_empty()
+	check("horror's portraits are its creature cards, its items its own (the must-succeed)", horror_ok)
+	check("  detailed shows the original's portraits as cards, the original's items", detailed_ok)
+	check("  the original keeps its small cards, with portraits for the bestiary; no portrait, the card",
+		original_ok)
+	PixelSprites.use_skin(&"no_such_set")
+	check("a set that is not there is the original", PixelSprites.skin() == PixelSprites.ORIGINAL)
+	PixelSprites.use_skin(PixelSprites.ORIGINAL)
 
 ## PIXEL SPRITES (2026-10-09): the game reads exactly what
 ## tools/sprite_editor.html writes. A sprite here is written by hand in the

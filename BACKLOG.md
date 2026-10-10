@@ -2381,6 +2381,25 @@ an alternative to the icon-font "pictures" on the 3D cards.
   `tools/sprites_waiting/` until the Legion adds the looks: the spider in
   the wild gold, the web pale silk. Icons for the picture look: md-spider
   `0xF11EA`, md-spider_web `0xF0BCA` (told to the Legion, with the steps).
+- **ART SETS -- BUILT 2026-10-10 (desktop), the art changeover Brad made
+  the desktop's own project.** `v` in a 3D view, and the title's new "3D
+  art" row, cycle pictures -> Original -> each set -> pictures, remembered
+  as `view/skin`. Original is `assets/sprites/` (cards) plus
+  `assets/portraits/` (the bestiary's 64x64 pictures of the same designs,
+  from the first Manus pass). Every other set is `assets/skins/<id>/` with a
+  `skin.txt` (`name:`, and `cards: portraits` when its portraits double as
+  its map cards) and any of `creatures/ items/ features/ portraits/`;
+  anything a set lacks falls back to Original (`PixelSprites._index`). Sets
+  today: Detailed (Original's portraits as cards), Horror and Cute (28
+  portraits, 17 items, 2 fungus tiles each; checked complete and in format
+  before they went in). Ships: `assets/portraits/*.txt` and
+  `assets/skins/*.txt` in every preset. Tests: 11 on the sets
+  (`_test_every_art_set_is_whole`), 10 on the exports, 3 in the view suite.
+  `assets/skins/README.md` explains the layout. The old zips and previews
+  are kept outside the repo, `~/ofr-art-originals/skins-2026-10-10/`.
+  **Not yet:** the bestiary showing the portraits (`PixelSprites.portrait`
+  is ready; `main.gd _show_portrait` still opens the 720 PNG scenes in
+  `assets/art/creatures/`).
 - **Still open:** redrawing any of them better (any file, any order);
   the rest of the terrain features as drawings; a title-screen row for the look, if wanted; the
   editor reading the files back rather than embedding (Brad, 2026-10-09:

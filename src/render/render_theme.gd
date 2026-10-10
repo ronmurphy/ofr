@@ -45,8 +45,9 @@ const MODE_NAMES := {
 ## choice.
 static var _mode: int = Mode.ICONS
 ## The map renderer is a separate choice from its glyph theme. The 3D view
-## uses picture billboards -- or pixel sprites, `v` in 3D (_sprites, below)
-## -- while `v` in the classic view keeps cycling the classic themes.
+## uses picture billboards -- or pixel sprites from an art set, `v` in 3D
+## (_sprites and _skin, below) -- while `v` in the classic view keeps
+## cycling the classic themes.
 ## 3D by default, from 2026-09-28 (Brad: "i have yet to talk to a person that
 ## plays the game that dislikes it"). A player who chose classic keeps it: the
 ## saved value wins over this default.
@@ -123,18 +124,42 @@ static func toggle_follow() -> String:
 	return "Camera: %s." % ("follows you" if _follow else "fixed")
 
 ## THE PIXEL LOOK (2026-10-09): the 3D views' cards drawn from the sprite
-## files in assets/sprites/ (PixelSprites) instead of the icon pictures,
-## wherever a drawing exists. 3D only; off by default until the set is
-## drawn by hand. `v` in a 3D view turns it on and off.
+## files (PixelSprites) instead of the icon pictures, wherever a drawing
+## exists. 3D only; off by default.
 static var _sprites := false
+## THE ART SET (2026-10-10) the pixel look draws from: the original, or one
+## of assets/skins/ -- see PixelSprites. Saved by id; a set that has since
+## gone loads as the original.
+static var _skin: StringName = &"original"
 
 static func sprites_enabled() -> bool:
 	return _sprites
 
-static func toggle_sprites() -> String:
-	_sprites = not _sprites
+static func skin() -> StringName:
+	return _skin
+
+## `v` in a 3D view, and the title's "art" row: pictures, then each art set
+## in turn (PixelSprites.skins), then pictures again. Returns what to tell
+## the player.
+static func cycle_look() -> String:
+	var sets := PixelSprites.skins()
+	if not _sprites:
+		_sprites = true
+		_skin = sets[0]
+	else:
+		var i := sets.find(_skin)
+		if i < 0 or i + 1 >= sets.size():
+			_sprites = false
+			_skin = sets[0]
+		else:
+			_skin = sets[i + 1]
+	PixelSprites.use_skin(_skin)
 	_save()
-	return "Look: %s." % ("pixel art" if _sprites else "pictures")
+	return "Look: %s." % look_name()
+
+## The look as the title's row and the log say it.
+static func look_name() -> String:
+	return "pixel art, %s" % PixelSprites.skin_name(_skin) if _sprites else "pictures"
 
 ## How many modes this build offers.
 ##
@@ -191,6 +216,8 @@ static func load_settings() -> void:
 	_overhead = bool(cfg.get_value("view", "overhead", false))
 	_follow = bool(cfg.get_value("view", "follow", true))
 	_sprites = bool(cfg.get_value("view", "sprites", false))
+	PixelSprites.use_skin(StringName(cfg.get_value("view", "skin", "original")))
+	_skin = PixelSprites.skin()
 	# Set directly rather than through set_cell_size(), which would write the
 	# file back out during the load that is reading it.
 	var px := int(cfg.get_value("view", "cell", 18))
@@ -204,5 +231,6 @@ static func _save() -> void:
 	cfg.set_value("view", "overhead", _overhead)
 	cfg.set_value("view", "follow", _follow)
 	cfg.set_value("view", "sprites", _sprites)
+	cfg.set_value("view", "skin", String(_skin))
 	cfg.set_value("view", "cell", _cell)
 	cfg.save(GameState.SETTINGS_PATH)

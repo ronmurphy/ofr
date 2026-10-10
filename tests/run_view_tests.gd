@@ -2555,8 +2555,9 @@ func _test_the_pixel_look(scene: Control) -> void:
 	v.pressed = true
 	scene._unhandled_key_input(v)
 	var said := String(gs.msg_log.entries[-1]["text"]) if not gs.msg_log.entries.is_empty() else ""
-	check("  v in a 3D view turns the pixel look on, and says so (%s)" % said,
-		RenderTheme.sprites_enabled() and said == "Look: pixel art.")
+	check("  v in a 3D view turns the pixel look on, the original set, and says so (%s)" % said,
+		RenderTheme.sprites_enabled() and RenderTheme.skin() == PixelSprites.ORIGINAL
+		and said == "Look: pixel art, Original.")
 	RenderTheme._sprites = false
 	RenderTheme.load_settings()
 	check("  and it is remembered with the view", RenderTheme.sprites_enabled())
@@ -2683,11 +2684,37 @@ func _test_the_pixel_look(scene: Control) -> void:
 		and grave_card != null)
 	gs.map.set_tile(fungus_at.x, fungus_at.y, was_fungus)
 	gs.map.set_tile(grave_at.x, grave_at.y, was_grave)
-	scene._unhandled_key_input(v)
+	# ART SETS (2026-10-10): v goes on through every set, then back to the
+	# pictures; the set in use is remembered, and draws the cards.
+	var heard: Array[String] = []
+	var horror_card := false
+	var horror_kept := false
+	for i in 12:
+		scene._unhandled_key_input(v)
+		said = String(gs.msg_log.entries[-1]["text"])
+		heard.append(said)
+		if RenderTheme.skin() == &"horror" and RenderTheme.sprites_enabled():
+			d._rebuild_world()
+			var horror_wolf = d._creatures[wild]["label"]
+			horror_card = horror_wolf is Sprite3D and horror_wolf.texture == PixelSprites.texture(&"wolf") \
+				and String(PixelSprites.paths()[&"wolf"]).contains("skins/horror/")
+			RenderTheme._skin = PixelSprites.ORIGINAL
+			RenderTheme.load_settings()
+			horror_kept = RenderTheme.skin() == &"horror" and PixelSprites.skin() == &"horror"
+		if said == "Look: pictures.":
+			break
+	var expected: Array[String] = []
+	for id in PixelSprites.skins().slice(1):
+		expected.append("Look: pixel art, %s." % PixelSprites.skin_name(id))
+	expected.append("Look: pictures.")
+	check("  v goes on through every art set, then back to the pictures (%s)" % ", ".join(heard),
+		heard == expected and expected.size() >= 4)
+	check("  under a set its drawings are the cards (horror's wolf), and the set is remembered",
+		horror_card and horror_kept)
 	d._rebuild_world()
-	said = String(gs.msg_log.entries[-1]["text"])
-	check("  v again: pictures (%s)" % said, not RenderTheme.sprites_enabled()
-		and said == "Look: pictures." and d._creatures[wild]["label"] is Label3D)
+	check("  and back at the pictures, a creature is its picture again",
+		not RenderTheme.sprites_enabled() and d._creatures[wild]["label"] is Label3D
+		and PixelSprites.skin() == PixelSprites.ORIGINAL)
 	# In the classic view `v` is the letters / symbols / pictures cycle still.
 	var mode := RenderTheme.mode()
 	scene._select_map_view(false)

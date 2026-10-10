@@ -1,0 +1,5 @@
+name: Detailed
+# The original designs drawn in more detail (64x64). This set has no
+# files of its own: it shows the portraits in assets/portraits/ as its
+# map cards, and everything else falls back to the original set.
+cards: portraits

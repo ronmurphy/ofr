@@ -1,8 +1,9 @@
 # Sprites: the 3D view's pixel look
 
-Press `v` in a 3D view to switch the cards between the icon pictures and
-these drawings. Each press re-reads this folder, so a sprite saved here
-shows on the next press without restarting the game.
+These are the ORIGINAL art set's map cards. Press `v` in a 3D view to
+switch between the icon pictures, these drawings and the other art sets
+(`assets/skins/README.md`). Each press re-reads the folders, so a sprite
+saved here shows on the next press without restarting the game.
 
 - **One file per look, named after it.** `wolf.txt` is every wolf,
   `meat.txt` every haunch, `player.txt` you. The game finds a sprite by its

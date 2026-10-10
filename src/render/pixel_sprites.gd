@@ -4,7 +4,8 @@ extends RefCounted
 ## PIXEL SPRITES (2026-10-09): drawings made in tools/sprite_editor.html, read
 ## from plain text and shown on the 3D view's cards in place of the icon
 ## pictures when the player picks the pixel look (`v` in a 3D view, see
-## RenderTheme.sprites_enabled). 3D ONLY: the classic view is deprecated.
+## RenderTheme.sprites_enabled, and the art set, RenderTheme.skin). 3D
+## ONLY: the classic view is deprecated.
 ##
 ## ONE FILE PER LOOK, named by the appearance id the game draws: wolf.txt is
 ## every wolf, meat.txt every haunch, player.txt you. Anything without a file
@@ -35,8 +36,27 @@ extends RefCounted
 ## same box as the picture (BillboardSizes), keeping its shape; nearest
 ## filtering keeps the pixels square. Templates are drawn at TEXELS_PER_CELL,
 ## so a set made from them shares one pixel size on screen.
+##
+## ART SETS (2026-10-10). The folders above are the ORIGINAL set: map cards in
+## DIR, and in PORTRAITS the bestiary's larger pictures of the same designs.
+## Every other set is a folder under SKINS -- `assets/skins/<id>/` -- with a
+## `skin.txt` (its `name:`, and `cards: portraits` when its portraits double
+## as its creatures' map cards) and any of `creatures/`, `items/`,
+## `features/`, `portraits/`. A set holds only what it changes: every look it
+## lacks FALLS BACK to the original, so a half-made set is a whole game.
+## Chosen with `v` in a 3D view or the title's "art" row (RenderTheme).
+##   cards:     the set's own card folders, over its portraits (if `cards:
+##              portraits`), over the original's portraits (likewise), over
+##              the original's cards
+##   portraits: the set's portraits, over the original's, else the card
 
 const DIR := "res://assets/sprites/"
+const PORTRAITS := "res://assets/portraits/"
+const SKINS := "res://assets/skins/"
+const ORIGINAL := &"original"
+## A set's card folders, scanned one by one: never its root, whose
+## portraits/ would otherwise be read as cards.
+const CARD_FOLDERS := ["creatures/", "items/", "features/"]
 const LETTERS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const CLEAR := "."
 ## The editor's limit on a side; a bigger size in a file is cut to it.
@@ -54,10 +74,15 @@ const OUTLINE_LUMA := 0.15
 ## How far the frame round a marked creature reaches out, in pixels.
 const RIM := 2
 
-## appearance id -> res:// path, found once (see _index).
+## appearance id -> res:// path of its map card, for the set in use, found
+## once (see _index); and the same for bestiary portraits.
 static var _paths := {}
+static var _portraits := {}
 static var _indexed := false
-## appearance id -> parsed sprite ({} for a file that did not parse).
+## The art set in use -- see use_skin.
+static var _skin: StringName = ORIGINAL
+## res:// path -> parsed sprite ({} for a file that did not parse). By path,
+## not look: a creature's card and its portrait are two files.
 static var _parsed := {}
 ## Images and textures by what they are of -- see _key.
 static var _images := {}
@@ -273,22 +298,39 @@ static func _solid(img: Image, x: int, y: int) -> bool:
 static func has(id: StringName) -> bool:
 	return not sprite(id).is_empty()
 
-## The parsed drawing for a look, {} if it has none or its file is broken.
+## The parsed drawing for a look's map card, {} if it has none or its file is
+## broken.
 static func sprite(id: StringName) -> Dictionary:
 	_index()
-	if not _paths.has(id):
-		return {}
-	if not _parsed.has(id):
-		var f := FileAccess.open(_paths[id], FileAccess.READ)
+	return _load(_paths[id]) if _paths.has(id) else {}
+
+## The parsed bestiary portrait for a creature: the set's, else the
+## original's, else its map card. {} when it has none of them.
+static func portrait(id: StringName) -> Dictionary:
+	_index()
+	if _portraits.has(id):
+		var p := _load(_portraits[id])
+		if not p.is_empty():
+			return p
+	return sprite(id)
+
+## The file a creature's portrait comes from, "" for none -- for the suite.
+static func portrait_path(id: StringName) -> String:
+	_index()
+	return String(_portraits.get(id, _paths.get(id, "")))
+
+static func _load(path: String) -> Dictionary:
+	if not _parsed.has(path):
+		var f := FileAccess.open(path, FileAccess.READ)
 		var parsed := {}
 		if f != null:
 			parsed = parse(f.get_as_text())
 			f.close()
 		if parsed.is_empty() or image(parsed) == null:
-			push_warning("PixelSprites: %s is not a drawing; the picture stays" % _paths[id])
+			push_warning("PixelSprites: %s is not a drawing; the picture stays" % path)
 			parsed = {}
-		_parsed[id] = parsed
-	return _parsed[id]
+		_parsed[path] = parsed
+	return _parsed[path]
 
 ## The image a card shows for `id` in `state` ("" for its own colours, or
 ## ALLY / CORRUPTED / MAGIC): the drawing's variant of that name if it has
@@ -347,41 +389,108 @@ static func canvas_for(box: Vector2) -> Vector2i:
 	return Vector2i(ceili(box.x * TEXELS_PER_CELL) + MARGIN,
 		ceili(box.y * TEXELS_PER_CELL) + MARGIN).min(Vector2i(MAX_SIDE, MAX_SIDE))
 
-## Which looks have a drawing, id -> path. A look drawn twice keeps the
-## first found (folders sorted) and says so.
+## Which looks have a map card in the set in use, id -> path.
 static func paths() -> Dictionary:
 	_index()
 	return _paths
 
-## Forget everything read, so the next card reads the folder afresh: the
+## Forget everything read, so the next card reads the folders afresh: the
 ## look's key calls this, so a sprite saved from the editor shows on the
-## next press, without restarting the game.
+## next press, without restarting the game. The set in use is kept.
 static func reload() -> void:
 	_paths.clear()
+	_portraits.clear()
 	_parsed.clear()
 	_images.clear()
 	_textures.clear()
 	_indexed = false
 
-static func _index(dir_path := DIR) -> void:
-	if _indexed and dir_path == DIR:
+# ------------------------------------------------------------- the art sets --
+
+## Every art set: ORIGINAL first, then each folder under SKINS that has a
+## skin.txt, in name order.
+static func skins() -> Array[StringName]:
+	var out: Array[StringName] = [ORIGINAL]
+	var names := DirAccess.get_directories_at(SKINS)
+	names.sort()
+	for n in names:
+		if FileAccess.file_exists(SKINS + n + "/skin.txt"):
+			out.append(StringName(n))
+	return out
+
+static func skin() -> StringName:
+	return _skin
+
+## Shows `id` from now on; a set that is not there is the original, so a
+## settings file naming a removed set still loads. Reads the folders afresh
+## when the set changes.
+static func use_skin(id: StringName) -> void:
+	if not skins().has(id):
+		id = ORIGINAL
+	if id != _skin:
+		_skin = id
+		reload()
+
+## A set's own name, from its skin.txt (the folder's name if it has none).
+static func skin_name(id: StringName) -> String:
+	if id == ORIGINAL:
+		return "Original"
+	return String(_skin_cfg(id).get("name", String(id).capitalize()))
+
+## A set's skin.txt as {"name", "cards"} -- `key: value` lines, `#` comments.
+static func _skin_cfg(id: StringName) -> Dictionary:
+	var out := {}
+	var f := FileAccess.open(SKINS + String(id) + "/skin.txt", FileAccess.READ)
+	if f == null:
+		return out
+	for line in f.get_as_text().replace("\r", "").split("\n"):
+		line = line.strip_edges()
+		if line.begins_with("#") or not line.contains(":"):
+			continue
+		var kv := line.split(":", true, 1)
+		out[kv[0].strip_edges()] = kv[1].strip_edges()
+	f.close()
+	return out
+
+static func _index() -> void:
+	if _indexed:
 		return
-	if dir_path == DIR:
-		_indexed = true
+	_indexed = true
+	_paths = _scan(DIR)
+	_portraits = _scan(PORTRAITS)
+	if _skin == ORIGINAL:
+		return
+	var root := SKINS + String(_skin) + "/"
+	var own_portraits := _scan(root + "portraits/")
+	if _skin_cfg(_skin).get("cards", "") == "portraits":
+		_paths.merge(_portraits, true)
+		_paths.merge(own_portraits, true)
+	for folder: String in CARD_FOLDERS:
+		_paths.merge(_scan(root + folder), true)
+	_portraits.merge(own_portraits, true)
+
+## Every .txt under `dir_path`, subfolders too, as id -> path. A look drawn
+## twice keeps the first found (folders sorted) and says so.
+static func _scan(dir_path: String) -> Dictionary:
+	var found := {}
+	_scan_into(dir_path, found)
+	return found
+
+static func _scan_into(dir_path: String, into: Dictionary) -> void:
 	var d := DirAccess.open(dir_path)
 	if d == null:
 		return
 	var names := d.get_files()
 	names.sort()
 	for file_name in names:
-		if not file_name.ends_with(".txt"):
+		if not file_name.ends_with(".txt") or file_name == "skin.txt":
 			continue
 		var id := StringName(file_name.trim_suffix(".txt"))
-		if _paths.has(id):
-			push_warning("PixelSprites: %s is drawn twice; %s is used" % [id, _paths[id]])
+		if into.has(id):
+			push_warning("PixelSprites: %s is drawn twice; %s is used" % [id, into[id]])
 			continue
-		_paths[id] = dir_path + file_name
+		into[id] = dir_path + file_name
 	var subs := d.get_directories()
 	subs.sort()
 	for sub in subs:
-		_index(dir_path + sub + "/")
+		_scan_into(dir_path + sub + "/", into)

@@ -1,0 +1,4 @@
+name: Cute
+# A cute reskin: 28 creature portraits (64x64) that double as the map
+# cards, 17 items and the two fungus tiles.
+cards: portraits

@@ -1,0 +1,57 @@
+name: scroll
+size: 32x32
+color a: #141418
+color b: #a28357
+color c: #1c181c
+color d: #e8d7ad
+color e: #841d1c
+color f: #c9b387
+color g: #68523a
+color h: #bc342e
+color i: #43312d
+color j: #a34c3e
+color k: #ad9c78
+color l: #d9c69a
+color m: #b38e5c
+color n: #511618
+color o: #7d6040
+color p: #992c28
+color q: #554032
+color r: #90714a
+color s: #322727
+color t: #c0a171
+color u: #6d4449
+color v: #8b595c
+PIXELS
+................................
+................................
+................................
+................................
+................................
+..aaaa..........................
+..auiiaa.................aaaa...
+.auccssca...............asssca..
+.aqciqqscaaaaaaaaaaaa..aigqiica.
+.aisrbboiqqsccigkqqqiaasottorqa.
+.ausqbmoqffbrttlddmtrtbbirtorga.
+.avvioboolddldddddldmldfgbtbrqa.
+..auvsgoolkkdlfldflddklfottbgqa.
+..asuusgrflkdlklklkdffklrtgrgsa.
+..arqqusolffdfklfkfdlklfrtqrrca.
+..armguiqtdldddldlldlfltrtrmrsa.
+..aommquirllfdllldldfflmrttbbqa.
+..agrbqugflkkflfkkfdlkdfrttmoqa.
+..aogiqqollkkllffflffkflrtcboia.
+..aiiiqogflllddftflltlrmofrmrqa.
+..aqgmrromtlfltjppflllbrgtkboqa.
+..aimtbrgmtrmfpeeejfffmbgbfqbqa.
+..aigrmoqrggrbepeeemmgbmotkogoa.
+..asorbqqaaaaaneeenaaaaqqbgqsra.
+...aisisa.....apena....asiisca..
+....aaaaa.....apha......aaaaaa..
+..............aaaa..............
+................................
+................................
+................................
+................................
+................................

@@ -1017,13 +1017,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_overview()
 		return
 
-	# In a 3D view, `v` is the cards' look: pictures or pixel art (2026-10-09,
-	# PixelSprites). The folder is read afresh each press, so a sprite saved
-	# from the editor shows on the next press without a restart.
+	# In a 3D view, `v` is the cards' look: pictures, then each art set's
+	# pixel art (2026-10-09/10, PixelSprites). The folders are read afresh
+	# each press, so a sprite saved from the editor shows on the next press
+	# without a restart.
 	if key == KEY_V:
 		if _map_view == diorama:
 			PixelSprites.reload()
-			state.msg_log.add(RenderTheme.toggle_sprites(), Color(0.70, 0.74, 0.80))
+			state.msg_log.add(RenderTheme.cycle_look(), Color(0.70, 0.74, 0.80))
 		else:
 			state.msg_log.add(RenderTheme.cycle(), Color(0.70, 0.74, 0.80))
 		_map_view.forget_metrics()
@@ -1227,6 +1228,10 @@ func _on_title_chosen(id: StringName) -> void:
 		&"3d":
 			RenderTheme.cycle_view()
 			_apply_view_setting()
+		&"art":
+			PixelSprites.reload()
+			RenderTheme.cycle_look()
+			diorama.forget_metrics()
 		&"effects":
 			Effects.cycle()
 			_map_view.apply_effects_mode()
@@ -1259,6 +1264,7 @@ func _back_to_title_if_waiting() -> void:
 func _setting_value(id: StringName) -> String:
 	match id:
 		&"3d": return RenderTheme.view_name()
+		&"art": return RenderTheme.look_name()
 		&"effects": return String(Effects.MODE_NAMES[Effects.mode()])
 		&"sound": return "off" if sound.muted else "on"
 		&"music": return "on" if sound.music_on else "off"

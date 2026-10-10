@@ -1,0 +1,57 @@
+name: shield
+size: 32x32
+color a: #141418
+color b: #7b6b56
+color c: #ecd088
+color d: #15141a
+color e: #d3a942
+color f: #aa9b7d
+color g: #553233
+color h: #a17f34
+color i: #5f5141
+color j: #362b28
+color k: #95866c
+color l: #baac8d
+color m: #846934
+color n: #534537
+color o: #44392f
+color p: #6d5e4d
+color q: #ba933a
+color r: #683d3c
+color s: #e1b646
+color t: #a09176
+color u: #877862
+color v: #201e1e
+PIXELS
+................................
+............aa..................
+...aaa.....avra..........aa.....
+..arrgaa...ajgjaaaa.aa..agraa...
+.arouopiaaankpitpnfanpaapuprra..
+.arouuirbpbukiplppkiubiiibunra..
+.anrutkblffbtkttlukufkllpflirja.
+.anrnltultllflbnitlflltfbllpgga.
+.aogutfufkuftfpinffkktpukffujra.
+.aiftffuttputtinoktfputtkfukoga.
+.aibfffktfpktpkfpuutuftttfkugga.
+.aoufffkfftbptmhhbupttfkkftkoga.
+.aiuuubbbppptmcoehtpbbpbpitpna..
+.aiulpnnniiouhsvqeipninnnjlfnna.
+.anuppnnjonnumevqqiinnnnnnbpina.
+.aofftffpbuukbhhqikbttuftttknoa.
+.anbkfkfukftnuubpkbkkukukktunva.
+.ajkbuktfktbkpibobutfbuffkkbiva.
+..avjukffkuuftinoukppbuutbnvda..
+...ajkutbpfkfupnntktpppbubiaa...
+....avopttbftfpnnkkugkbpnva.....
+....aaoibtukftpnnkpbbpibnaa.....
+......avnututfpoofttunbva.......
+......aaoiufkbpnnfkfpniaa.......
+........aviufrpnnbftbva.........
+........aaonuupnnkbiida.........
+..........avbbiookiova..........
+..........aajjtflojva...........
+............adptboaa............
+.............ajuja..............
+..............aaaa..............
+................................
