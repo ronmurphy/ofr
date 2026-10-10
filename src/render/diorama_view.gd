@@ -1003,13 +1003,24 @@ func _add_multimeshes(batches: Dictionary) -> void:
 				bar.size = Vector3(0.92, 0.14, 0.24)
 				mesh = bar
 				surface_style = 1
-			# The shrine (2026-10-10), the first feature model: a stepped
-			# pedestal and a crystal -- see _add_shrine.
-			"shrine_base", "shrine_step", "shrine_post":
-				var block := BoxMesh.new()
-				block.size = SHRINE_PARTS[kind]
-				mesh = block
+			# The shrine (2026-10-10), the first feature model: a low dais, a
+			# disc of its hue and four crystals -- see _add_shrine.
+			"shrine_dais":
+				var dais := CylinderMesh.new()
+				dais.top_radius = SHRINE_DAIS.x
+				dais.bottom_radius = SHRINE_DAIS.x
+				dais.height = SHRINE_DAIS.y
+				dais.radial_segments = 8
+				mesh = dais
 				surface_style = 2
+			"shrine_disc":
+				var disc := CylinderMesh.new()
+				disc.top_radius = SHRINE_DISC.x
+				disc.bottom_radius = SHRINE_DISC.x
+				disc.height = SHRINE_DISC.y
+				disc.radial_segments = 16
+				mesh = disc
+				surface_style = 14
 			"shrine_crystal":
 				mesh = _crystal()
 				# A glow (the surface shader's style 14): its own colour, lit
@@ -1065,33 +1076,39 @@ func _add_multimeshes(batches: Dictionary) -> void:
 
 ## THE SHRINE AS A MODEL (2026-10-10): the first terrain feature drawn as a
 ## model rather than a card -- the template for the rest, in
-## tools/3D_FEATURES.md. A stepped stone pedestal, a post, and a crystal
-## floating over it in the shrine's HUE, which is which shrine this is: the
-## colour the card carried is the crystal's, and it comes from
-## _surface_color, so light, memory and region apply as to any wall. The
-## floor under it keeps its shrine pattern. No engine light: the shrine is
-## not a light in the sim.
-const SHRINE_PARTS := {
-	"shrine_base": Vector3(0.80, 0.14, 0.80),
-	"shrine_step": Vector3(0.56, 0.14, 0.56),
-	"shrine_post": Vector3(0.26, 0.36, 0.26),
-}
-## Where each part's middle stands, up from the floor; the crystal floats a
-## little above the post, and its top stays under WALL_HEIGHT.
-const SHRINE_HEIGHTS := {"shrine_base": 0.07, "shrine_step": 0.21, "shrine_post": 0.46,
-	"shrine_crystal": 0.98}
-const CRYSTAL_SIZE := Vector2(0.34, 0.56)
+## tools/3D_FEATURES.md. A low round stone dais, a disc of the shrine's HUE set
+## into its top, and four small crystals of the same hue at its corners. The
+## hue is which shrine this is, so it is what glows; it comes from
+## _surface_color, so light, memory and region apply as to any wall.
+##
+## THE MIDDLE STAYS CLEAR. A shrine is stood ON to pray (p, or g), so whoever
+## stands there stands on the glowing disc among the crystals. The first
+## model put a pedestal and a floating crystal in the middle of the cell, and
+## the player stood inside it (Brad asked how you use one, 2026-10-10). The
+## dais is as low as the floor's own flagstones stand, the crystals stand
+## outside any card's footprint, and from overhead the disc shows round the
+## card hanging over it. No engine light: the shrine is not a light in the
+## sim.
+const SHRINE_DAIS := Vector2(0.46, 0.06)        # radius, height
+const SHRINE_DISC := Vector2(0.30, 0.012)
+## The crystals: where they stand from the middle of the cell, along each
+## diagonal, and how high their middles float.
+const SHRINE_CORNER := 0.36
+const SHRINE_CRYSTAL_Y := 0.30
+const CRYSTAL_SIZE := Vector2(0.14, 0.36)
 
 func _add_shrine(batches: Dictionary, x: int, y: int, visible: bool) -> void:
 	var stone := _surface_color(Tiles.WALL, x, y, visible)
 	var hue := _surface_color(Tiles.SHRINE, x, y, visible)
 	var at := Vector3(x + 0.5, 0.0, y + 0.5)
-	for part in SHRINE_PARTS:
-		_add_batch(batches, part, Transform3D(Basis.IDENTITY,
-			at + Vector3.UP * float(SHRINE_HEIGHTS[part])), stone)
-	# Turned 45 degrees, so its edge -- not a flat face -- meets the camera.
-	_add_batch(batches, "shrine_crystal", Transform3D(Basis(Vector3.UP, PI * 0.25),
-		at + Vector3.UP * float(SHRINE_HEIGHTS["shrine_crystal"])), hue)
+	_add_batch(batches, "shrine_dais", Transform3D(Basis.IDENTITY,
+		at + Vector3.UP * SHRINE_DAIS.y * 0.5), stone)
+	_add_batch(batches, "shrine_disc", Transform3D(Basis.IDENTITY,
+		at + Vector3.UP * (SHRINE_DAIS.y + SHRINE_DISC.y * 0.5)), hue)
+	for corner: Vector3 in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1)]:
+		# Turned 45 degrees, so an edge -- not a flat face -- meets the camera.
+		_add_batch(batches, "shrine_crystal", Transform3D(Basis(Vector3.UP, PI * 0.25),
+			at + corner * SHRINE_CORNER + Vector3.UP * SHRINE_CRYSTAL_Y), hue)
 
 ## An octahedron CRYSTAL_SIZE wide and tall, centred: flat faces, so it
 ## catches the light facet by facet.

@@ -318,6 +318,11 @@ func handle_key(key: int, back := false) -> bool:
 			tab = TABS[posmod(TABS.find(tab) + (-1 if back else 1), TABS.size())]
 			queue_redraw()
 			return true
+		KEY_PERIOD, KEY_ENTER, KEY_KP_ENTER:
+			# Confirm (a pad's A) has nothing to open here -- the page is
+			# already showing -- and must not close it under a thumb that
+			# pressed it to choose (B closes, as everywhere).
+			return true
 		_:
 			close()
 			return true
@@ -343,6 +348,15 @@ func _gui_input(event: InputEvent) -> void:
 			tab = t
 			queue_redraw()
 			return
+	# The page-turn buttons, for a mouse: the arrows' edges are a keyboard's.
+	if _page_rect(-1).has_point(click.position):
+		close()
+		legend_requested.emit()
+		return
+	if _page_rect(1).has_point(click.position):
+		close()
+		map_requested.emit()
+		return
 	var hit := _tile_at(click.position)
 	if hit >= 0:
 		_pick[tab] = hit
@@ -375,6 +389,14 @@ func _tab_rect(t: StringName) -> Rect2:
 	var w := 150.0
 	var x := p.end.x - PAD - (TABS.size() - TABS.find(t)) * (w + 12.0) + 12.0
 	return Rect2(Vector2(x, p.position.y + PAD - 6.0), Vector2(w, 34.0))
+
+## The page-turn buttons in the header, left of the tabs: -1 the legend, +1
+## the map.
+func _page_rect(side: int) -> Rect2:
+	var first := _tab_rect(TABS[0])
+	var w := 130.0
+	var x := first.position.x - 24.0 - (w + 12.0) * (2 if side < 0 else 1) + 12.0
+	return Rect2(Vector2(x, first.position.y), Vector2(w, first.size.y))
 
 ## Where the detail column starts: after the creatures' grid, the wider one.
 func _detail_rect() -> Rect2:
@@ -427,6 +449,13 @@ func _draw() -> void:
 		draw_string(font, Vector2(r.position.x, r.position.y + 23.0), String(t),
 			HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 15, Palette.STAIRS if on else Palette.UI_DIM)
 
+	for side in [-1, 1]:
+		var pr := _page_rect(side)
+		draw_rect(pr, Palette.UI_FRAME, false, 1.0)
+		draw_string(font, Vector2(pr.position.x, pr.position.y + 23.0),
+			"<  legend" if side < 0 else "map  >", HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 15,
+			Palette.UI_TEXT)
+
 	var list := all_c if tab == CREATURES else all_i
 	var pick: int = clampi(int(_pick[tab]), 0, list.size() - 1)
 	for i in list.size():
@@ -449,10 +478,16 @@ func _draw() -> void:
 			draw_rect(r.grow(1.0), Palette.STAIRS, false, 3.0)
 
 	_draw_detail(list[pick])
-	draw_string(font, Vector2(p.position.x + PAD, p.end.y - 18.0),
-		"arrows  move      tab or shoulders  creatures / items      past the left edge  the legend" +
-		"      past the right edge  the map      any other key  close",
+	draw_string(font, Vector2(p.position.x + PAD, p.end.y - 18.0), footer(),
 		HORIZONTAL_ALIGNMENT_LEFT, p.size.x - PAD * 2.0, 13, Palette.UI_DIM)
+
+## The hint line, for whatever is in the player's hands.
+func footer() -> String:
+	if pad_input:
+		return "d-pad  move      LB / RB  creatures / items      past the left edge  the legend" + \
+			"      past the right edge  the map      B  close"
+	return "arrows  move      tab  creatures / items      past the left edge  the legend" + \
+		"      past the right edge  the map      click  choose      esc  close"
 
 func _draw_detail(e: Dictionary) -> void:
 	var d := _detail_rect()

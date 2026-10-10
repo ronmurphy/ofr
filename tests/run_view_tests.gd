@@ -2763,6 +2763,38 @@ func _test_the_bestiary_screen(scene: Control) -> void:
 	b.queue_redraw()
 	await process_frame
 	check("  both tabs draw (any error would be counted at the end)", b.visible and b.tab == BestiaryPanel.ITEMS)
+	# A pad: A (confirm) chooses nothing and must not close it; B does.
+	b.open(&"player")
+	b.handle_key(KEY_PERIOD)
+	var a_kept := b.visible
+	b.handle_key(MainScene.PACK_BACK_KEY)
+	check("  on a pad, A keeps the page open and B closes it", a_kept and not b.visible)
+	# A mouse: a tile chooses, a tab switches, the page buttons turn the page.
+	b.open(&"player")
+	var click := func(panel: Control, at: Vector2) -> void:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = true
+		ev.position = at
+		panel._gui_input(ev)
+	click.call(b, b._tile_rect(3).get_center())
+	var chose: bool = int(b._pick[BestiaryPanel.CREATURES]) == 3
+	click.call(b, b._tab_rect(BestiaryPanel.ITEMS).get_center())
+	var tabbed: bool = b.tab == BestiaryPanel.ITEMS
+	b.tab = BestiaryPanel.CREATURES
+	click.call(b, b._page_rect(1).get_center())
+	var to_map: bool = not b.visible and scene.overview.visible
+	click.call(scene.overview, scene.overview.page_button(-1).get_center())
+	var back: bool = not scene.overview.visible and b.visible
+	click.call(b, b._page_rect(-1).get_center())
+	var to_legend: bool = not b.visible and scene.legend.visible
+	scene.legend.queue_redraw()
+	await process_frame
+	click.call(scene.legend, Rect2(scene.legend._page_buttons[1]).get_center())
+	var legend_on: bool = not scene.legend.visible and b.visible
+	check("  with a mouse: a tile chooses, a tab switches, and every page has buttons to turn it",
+		chose and tabbed and to_map and back and to_legend and legend_on,
+		"%s %s %s %s %s %s" % [chose, tabbed, to_map, back, to_legend, legend_on])
 	b.close()
 	scene.legend.portrait_requested.emit(&"goblin", "goblin", "")
 	var at: Dictionary = b.entries()[int(b._pick[b.tab])]
@@ -2832,8 +2864,9 @@ func _test_the_depth_card(scene: Control) -> void:
 	card.enabled = false
 
 ## THE SHRINE AS A MODEL (2026-10-10), the first feature model -- see
-## tools/3D_FEATURES.md: a pedestal and a crystal in the shrine's hue, no
-## card, inside its cell and under the walls.
+## tools/3D_FEATURES.md: a low dais, a disc and four crystals in the
+## shrine's hue, no card -- and the middle of the cell clear, because a
+## shrine is STOOD ON to pray.
 func _test_the_shrine_model(scene: Control) -> void:
 	print("-- the shrine model")
 	var d = scene.diorama
@@ -2847,48 +2880,55 @@ func _test_the_shrine_model(scene: Control) -> void:
 	gs.shrine_at[at] = 2
 	d._rebuild_world()
 	var crystal: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_crystal")
-	var base: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_base")
+	var dais: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_dais")
+	var disc: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_disc")
 	var shrines := 0
 	for y in gs.map.height:
 		for x in gs.map.width:
 			if gs.map.get_tile(x, y) == Tiles.SHRINE:
 				shrines += 1
 	check("precondition: a shrine in view (%d on the floor)" % shrines, shrines >= 1)
-	check("  it is a model: a pedestal and a crystal, one each per shrine (the must-succeed)",
-		crystal != null and base != null and crystal.multimesh.instance_count == shrines
-		and base.multimesh.instance_count == shrines)
-	# What _add_shrine hands the batch -- read there, as the headless renderer
-	# keeps no per-instance data to read back from the multimesh.
+	check("  it is a model: a dais, a disc and four crystals per shrine (the must-succeed)",
+		dais != null and disc != null and crystal != null
+		and dais.multimesh.instance_count == shrines and disc.multimesh.instance_count == shrines
+		and crystal.multimesh.instance_count == shrines * 4)
+	# What _add_shrine hands the batches -- read there, as the headless
+	# renderer keeps no per-instance data to read back from a multimesh.
 	var parts := {}
 	d._add_shrine(parts, at.x, at.y, true)
-	var hue_ok: bool = parts.has("shrine_crystal") and (parts["shrine_crystal"]["colors"][0] as Color) \
-		.is_equal_approx(d._surface_color(Tiles.SHRINE, at.x, at.y, true)) \
-		and (parts["shrine_base"]["colors"][0] as Color).is_equal_approx(
-			d._surface_color(Tiles.WALL, at.x, at.y, true)) \
-		and Vector2i(floori((parts["shrine_crystal"]["transforms"][0] as Transform3D).origin.x),
-			floori((parts["shrine_crystal"]["transforms"][0] as Transform3D).origin.z)) == at
+	var hue := d._surface_color(Tiles.SHRINE, at.x, at.y, true) as Color
+	var hue_ok: bool = (parts["shrine_disc"]["colors"][0] as Color).is_equal_approx(hue) \
+		and (parts["shrine_dais"]["colors"][0] as Color).is_equal_approx(
+			d._surface_color(Tiles.WALL, at.x, at.y, true))
+	var middle := Vector2(at.x + 0.5, at.y + 0.5)
+	var clear := true
+	for i in (parts["shrine_crystal"]["transforms"] as Array).size():
+		var t: Transform3D = parts["shrine_crystal"]["transforms"][i]
+		hue_ok = hue_ok and (parts["shrine_crystal"]["colors"][i] as Color).is_equal_approx(hue)
+		var off := Vector2(t.origin.x, t.origin.z) - middle
+		# Clear of the widest card that stands on a cell (0.6), and in the cell.
+		clear = clear and off.length() - DioramaView.CRYSTAL_SIZE.x * 0.5 > 0.3 \
+			and absf(off.x) + DioramaView.CRYSTAL_SIZE.x * 0.5 < 0.5 \
+			and absf(off.y) + DioramaView.CRYSTAL_SIZE.x * 0.5 < 0.5
+	var flat: bool = DioramaView.SHRINE_DAIS.y + DioramaView.SHRINE_DISC.y < 0.08
 	var card_here := false
-	var cards_here := []
 	for node in d._scene_root.get_children():
 		if (node is Label3D or node is Sprite3D) and Vector2i(floori(node.position.x),
 				floori(node.position.z)) == at:
 			card_here = true
-			cards_here.append(node.text if node is Label3D else "sprite")
-	check("  the crystal wears the shrine's hue, and no card is drawn there",
-		hue_ok and not card_here, "hue %s, cards %s" % [hue_ok, cards_here])
+	check("  everything glowing wears the shrine's hue, the dais is stone, and no card is drawn there",
+		hue_ok and not card_here)
+	check("  the middle stays clear for whoever stands on it: the dais flat, the crystals out of the way",
+		clear and flat)
 	var mesh := DioramaView._crystal()
-	var faces: PackedVector3Array = mesh.get_faces()
-	var outward := faces.size() == 24
 	var arrays := mesh.surface_get_arrays(0)
 	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var outward := verts.size() == 24
 	for k in range(0, verts.size(), 3):
 		var mid: Vector3 = (verts[k] + verts[k + 1] + verts[k + 2]) / 3.0
 		outward = outward and normals[k].dot(mid) > 0.0
-	check("  the crystal is eight facets, each facing out", outward)
-	var top := float(DioramaView.SHRINE_HEIGHTS["shrine_crystal"]) + DioramaView.CRYSTAL_SIZE.y * 0.5
-	check("  inside its cell and under the walls (top %.2f)" % top,
-		top < DioramaView.WALL_HEIGHT and DioramaView.SHRINE_PARTS["shrine_base"].x <= 1.0)
+	check("  a crystal is eight facets, each facing out", outward)
 	gs.map.set_tile(at.x, at.y, was)
 	gs.shrine_at = had_shrine
 	d._rebuild_world()

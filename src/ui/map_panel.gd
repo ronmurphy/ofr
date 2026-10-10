@@ -76,12 +76,33 @@ func handle_key(key: int) -> bool:
 func _gui_input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click != null and click.pressed:
+		# The page-turn buttons (2026-10-10); anywhere else closes.
+		for side in [-1, 1]:
+			if page_button(side).has_point(click.position):
+				visible = false
+				if side < 0:
+					bestiary_requested.emit()
+				else:
+					legend_requested.emit()
+				return
 		close()
+
+## The page-turn buttons, top right: -1 the bestiary, +1 the legend.
+func page_button(side: int) -> Rect2:
+	var w := 130.0
+	var x := size.x - 24.0 - (w + 12.0) * (2 if side < 0 else 1) + 12.0
+	return Rect2(Vector2(x, 20.0), Vector2(w, 32.0))
 
 func _draw() -> void:
 	if state == null or state.map == null:
 		return
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 0.0, 0.86), true)
+	for side in [-1, 1]:
+		var r := page_button(side)
+		draw_rect(r, Palette.UI_FRAME, false, 1.0)
+		draw_string(font, Vector2(r.position.x, r.position.y + 22.0),
+			"<  bestiary" if side < 0 else "legend  >", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 15,
+			Palette.UI_TEXT)
 
 	var w := state.map.width
 	var h := state.map.height

@@ -65,7 +65,13 @@ that moves is gated on it (`Effects.any()`, `Effects.shaders()`).
 8. **It replaces the card in 3D only.** The classic view keeps its glyph.
    Precedence in 3D: **model, then drawing (pixel look), then picture.** A
    feature with a model ignores a sprite file of the same look.
-9. **Tests** (`tests/run_view_tests.gd`): the batch exists with one instance
+9. **A walkable tile keeps its middle clear.** Shrines, graves, stairs,
+   traps and open doors are stood on; a card stands at the middle of its
+   cell, up to 0.6 wide and taller than a wall for the biggest creatures.
+   Anything solid goes at the edges or the corners, or stays as flat as the
+   floor; test it with something standing on the tile. (A chest is solid
+   and bumped: it may fill its cell.)
+10. **Tests** (`tests/run_view_tests.gd`): the batch exists with one instance
    per cell, its colour is the tile's, no card is drawn for that cell, and
    its geometry sits in the cell under the walls. Each batch's node is
    named `batch_<kind>`, so a test can find it. **The headless renderer
@@ -78,27 +84,31 @@ that moves is gated on it (`Effects.any()`, `Effects.shaders()`).
 
 ## 3. Built: the shrine (2026-10-10)
 
-`_add_shrine` in `diorama_view.gd`. A stepped stone pedestal and a floating
-crystal in the shrine's hue -- the mock-up's shape, in the game's rules.
+`_add_shrine` in `diorama_view.gd`. A low round stone dais, a disc of the
+shrine's hue set into its top, and four small crystals of the same hue at
+its corners.
 
 | part | mesh | colour |
 |---|---|---|
-| `shrine_base` | box 0.80 x 0.14 x 0.80 | stone (`_surface_color(Tiles.WALL, ...)`) |
-| `shrine_step` | box 0.56 x 0.14 x 0.56, on the base | stone |
-| `shrine_post` | box 0.26 x 0.36 x 0.26, on the step | stone |
-| `shrine_crystal` | an octahedron (`_crystal()`), 0.34 wide, 0.56 tall, turned 45 degrees, floating over the post; top at 1.26 | the shrine's hue (`_surface_color(Tiles.SHRINE, ...)`), so memory dims it |
+| `shrine_dais` | cylinder, radius 0.46, 0.06 high (as low as the floor's flagstones stand) | stone (`_surface_color(Tiles.WALL, ...)`) |
+| `shrine_disc` | cylinder, radius 0.30, 0.012 high, on the dais | the shrine's hue, glowing (style 14) |
+| `shrine_crystal` x4 | octahedra (`_crystal()`), 0.14 wide, 0.36 tall, turned 45 degrees, at the four corners (0.36 out along each diagonal), floating at 0.30 | the shrine's hue, glowing |
 
-The pedestal is surface style 2 (worked stone, as pillars). The crystal is
-**style 14, a glow**, added to `diorama_surface.gdshader` for it: its own
-colour, lit as a card is (the cell's light raised to at least 0.45), so it
-reads in a dim room. It is still only its own colour: it lights nothing
-else, and remembered it fades as everything does. The floor under it keeps
-its shrine pattern (style 13). No engine light: the shrine is not a light
-source in the sim. Tests: `_test_the_shrine_model` (view suite).
+The dais is surface style 2 (worked stone, as pillars). The disc and the
+crystals are **style 14, a glow**, added to `diorama_surface.gdshader` for
+them: their own colour, lit as a card is (the cell's light raised to at
+least 0.45), so they read in a dim room. It is still only their own colour:
+it lights nothing else, and remembered they fade as everything does. No
+engine light: the shrine is not a light source in the sim. Tests:
+`_test_the_shrine_model` (view suite), including that the middle of the
+cell stays clear.
 
-The first render showed two things worth knowing: at 0.28 x 0.46 and lit
-only by the light map the crystal was too small and too dim to read at play
-zoom -- hence the size and the glow.
+**How it got here, and why it matters for every model:** the first version
+was a stepped pedestal with a crystal floating over its middle. It looked
+right empty, and its test checked colour and size -- and nobody stood on it.
+A shrine is STOOD ON to pray (p, or g), and the player stood inside the
+pedestal with the crystal through their head. Brad's question ("how do you
+use one now?") found it. Hence rule 9.
 
 **Copy this one** for the next model: a function `_add_<feature>` called
 from the tile loop instead of `_add_tile_icon`, its parts added to the mesh

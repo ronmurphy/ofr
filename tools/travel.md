@@ -32,6 +32,18 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10 afternoon, the desktop: the shrine redone; every reference page has mouse buttons. Pull first.**
+- **The shrine model is now a low dais, a hue disc and four corner
+  crystals**: the first version put a pedestal in the middle of a tile you
+  STAND ON, and the player stood inside it. `tools/3D_FEATURES.md` gained
+  rule 10, *a walkable tile keeps its middle clear* -- read it before the
+  grave or the stairs.
+- **Legend, bestiary and map each have "< previous" and "next >" buttons**
+  for a mouse (`_page_buttons` in LegendPanel, `page_button()` in MapPanel,
+  `_page_rect()` in BestiaryPanel). In the bestiary a pad's A no longer
+  closes it (B does), and its footer names pad buttons when a pad is used.
+- **Suites:** full 3227 passed / 0 / 0 SCRIPT ERROR (15 min), quick 437/0.
+
 **2026-10-10 midday, the desktop: the depth card, the shrine model, and a design doc for 3D features. Pull first.**
 - **`tools/3D_FEATURES.md`** (new, Brad asked for it): how the 3D view
   draws a floor, the RULES for replacing a feature's card with a model,

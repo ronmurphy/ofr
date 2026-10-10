@@ -51,6 +51,8 @@ var state: GameState
 ## thing this panel is careful not to do.
 var _rows: Array = []
 var _pick := -1
+## The page-turn buttons as last drawn: -1 the map, +1 the bestiary.
+var _page_buttons := {}
 
 const PAD := 24.0
 const LINE := 21.0
@@ -207,8 +209,16 @@ func _gui_input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click == null or not click.pressed:
 		return
-	# A click ON a row you have met opens its picture; anywhere else closes,
-	# which is what this panel has always done.
+	# The page-turn buttons first; then a click ON a row you have met opens its
+	# page in the bestiary; anywhere else closes, as this panel always has.
+	for side in _page_buttons:
+		if Rect2(_page_buttons[side]).has_point(click.position):
+			visible = false
+			if side < 0:
+				map_requested.emit()
+			else:
+				bestiary_requested.emit()
+			return
 	var hit := _row_at(click.position)
 	if hit >= 0:
 		_open(hit)
@@ -296,9 +306,21 @@ func _draw() -> void:
 	var asc := font.get_ascent(font_size)
 	draw_string(font_bold, panel.position + Vector2(PAD, PAD + asc), "LEGEND",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size + 2, Palette.STAIRS)
-	draw_string(font, panel.position + Vector2(PAD, PAD + asc),
-		"left  the map     right  the bestiary     esc or click  close", HORIZONTAL_ALIGNMENT_RIGHT,
-		panel.size.x - PAD * 2.0, font_size, Palette.UI_DIM)
+	# Turning the page, by key or by click (2026-10-10): the reference is a
+	# ring of three pages -- see main.gd.
+	_page_buttons.clear()
+	var bw := 120.0
+	var by := panel.position.y + PAD - 4.0
+	_page_buttons[-1] = Rect2(Vector2(panel.end.x - PAD - bw * 2.0 - 12.0, by), Vector2(bw, asc + 10.0))
+	_page_buttons[1] = Rect2(Vector2(panel.end.x - PAD - bw, by), Vector2(bw, asc + 10.0))
+	for side in _page_buttons:
+		var r: Rect2 = _page_buttons[side]
+		draw_rect(r, Palette.UI_FRAME, false, 1.0)
+		draw_string(font, Vector2(r.position.x, r.position.y + asc + 3.0),
+			"<  map" if side < 0 else "bestiary  >", HORIZONTAL_ALIGNMENT_CENTER, r.size.x,
+			font_size, Palette.UI_TEXT)
+	draw_string(font, panel.position + Vector2(PAD, PAD + asc), "esc or click outside  close",
+		HORIZONTAL_ALIGNMENT_RIGHT, panel.size.x - PAD * 2.0 - bw * 2.0 - 30.0, font_size, Palette.UI_DIM)
 
 	var col_w := (panel.size.x - PAD * 2.0) / 4.0
 	var top := panel.position.y + PAD + 34.0
