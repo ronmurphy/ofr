@@ -462,6 +462,9 @@ var fungal := false
 ## kit is the only copy there is (see GameState._drop_loot). Saved; a save
 ## from before this reads a red risen as raised.
 var raised := false
+## An ally that has started running down game finishes the chase even if
+## what started it passes (GameState._ally_hunts, 2026-10-10). Saved.
+var on_hunt := false
 ## A bone ally the player has been told carries the red, so the warning is
 ## said once. Saved.
 var red_warned := false
@@ -604,6 +607,7 @@ func to_dict() -> Dictionary:
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
 		"climbs": climbs, "venom": venom, "webs": webs, "web_cool": web_cool,
+		"on_hunt": on_hunt,
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
@@ -662,6 +666,7 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.venom = int(d.get("venom", 0))
 	e.webs = bool(d.get("webs", false))
 	e.web_cool = int(d.get("web_cool", 0))
+	e.on_hunt = bool(d.get("on_hunt", false))
 	e.senses = bool(d.get("senses", false))
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))

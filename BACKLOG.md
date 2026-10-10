@@ -1830,6 +1830,27 @@ agreed with the desktop first.**
 - Test: `_test_the_spider` (mutation: without the venom, the bite check
   fails).
 
+**Allies hunt when you need it -- BUILT 2026-10-10 (the Legion; Brad's
+rule, shaped with the desktop).** Found in play: Brad's risen cave bear,
+loose, killed an unstruck spider standing beside him. `_ai_ally` sent any
+ally with `eats` hunting, the risen included, at any health, after anything
+that counted as game. Now (`_ally_hunts`, `_ally_prey`, `_ally_is_dead`):
+- **Only foragers** (rabbits), the desktop's essential change: striking a
+  wild thing makes it your enemy and turns a pack together, so an ally that
+  chose a fight with a wolf or a spider would set it on you, at half health
+  the worst moment. The player chooses fights with wild things.
+- **Only when someone needs the meat:** you at half your hp or less (the
+  haunch is left for you), or a tamed ally at half its own (it eats the
+  kill). The risen and bone allies never eat: the dead are not healed.
+- **Never at heel.** Loose, within its leash.
+- **A chase once begun is finished** (`Entity.on_hunt`, saved).
+- A hurt tamed ally still eats meat lying near, unless you are at half or
+  less, when every ally leaves it for you.
+- The first kill a floor says "The wolf runs down the rabbit for you."
+- Test: `_test_allies_hunt_when_you_need_it` (mutation: without the forager
+  rule, Brad's spider and a wolf are hunted). `_test_taming_the_wolves` now
+  hunts with the player at half hp.
+
 **The spider, night 2 of 3: the web -- BUILT 2026-10-10 (the Legion).**
 - **The tile:** `Tiles.WEB` (appended), walkable and seen through.
   `web_under` (saved) remembers the ground it was spun over, which comes

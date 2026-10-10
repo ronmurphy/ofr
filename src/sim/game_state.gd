@@ -1377,6 +1377,7 @@ func build_level() -> void:
 	fauna_rng.seed = int(rng.seed) ^ (effective_depth() * 4297) ^ 0xFA0A
 	_cloud_turn = -1
 	_cornered_said = {}
+	_hunt_said = false
 	scorched = {}
 	mud_under = {}
 	web_under = {}
@@ -3056,28 +3057,76 @@ func _turn_to_you(e: Entity) -> void:
 	e.drinking = 0
 	events.append({"kind": &"tamed", "to": Vector2i(e.x, e.y)})
 
-## THE PACK HUNTS FOR YOU. An ally with an appetite takes game within your
-## reach -- a rabbit's worth of fighting, never a bear -- and leaves the
-## haunch for you unless it is HURT: then it eats, and heals what the meat
-## would have healed you. The first ally that heals, and it is paid for with
-## your own larder; a well wolf never steals from it.
+## THE PACK HUNTS FOR YOU -- WHEN YOU NEED IT (Brad and both sessions,
+## 2026-10-10). Found in play: a risen cave bear, loose, killed an unstruck
+## spider beside Brad; `eats` alone sent every eating ally hunting, the
+## risen included, at any health, after anything that was game. Now:
+## - ONLY FORAGERS (rabbits): game that runs and never turns. Striking a
+##   wild thing makes it your enemy for good and turns a pack together
+##   (_attack), so an ally choosing a fight with a wolf or a spider would set
+##   it on you -- at half health, the worst moment. You choose fights with
+##   wild things; an ally does not choose one for you.
+## - ONLY WHEN SOMEONE NEEDS THE MEAT: you at half your hp or less (it is
+##   left for you), or a TAMED ally at half its own (it eats the kill). The
+##   risen never eat: an ally of the red's or the shovel's cannot be healed.
+## - NEVER AT HEEL: heel means stay with me. Loose, within its leash.
+## - A chase once begun is finished (`on_hunt`), so it does not stop and
+##   start as your hp crosses the line.
+## A hurt tamed ally still eats meat already lying near, unless you are at
+## half or less, when every ally leaves the meat for you.
 func _ally_hunts(actor: Entity, range_out: int) -> bool:
-	var hurt := actor.hp < actor.max_hp
-	if hurt and _eat_here(actor):
+	if actor.stance == Entity.Stance.HEEL:
+		actor.on_hunt = false
+		return false
+	var dead := _ally_is_dead(actor)
+	var you_need := player.hp * 2 <= player.max_hp
+	var it_needs := not dead and actor.hp * 2 <= actor.max_hp
+	var hurt := not dead and actor.hp < actor.max_hp
+	if hurt and not you_need and _eat_here(actor):
 		return true
-	var prey := _prey_for(actor)
-	if prey != null and Los.steps(player.x, player.y, prey.x, prey.y) <= range_out:
+	var prey := _ally_prey(actor)
+	if prey != null and Los.steps(player.x, player.y, prey.x, prey.y) <= range_out \
+			and (you_need or it_needs or actor.on_hunt):
+		actor.on_hunt = true
 		if actor.is_adjacent(prey):
 			_attack(actor, prey)
+			if not prey.alive and not _hunt_said:
+				_hunt_said = true
+				if map.is_visible(actor.x, actor.y):
+					msg_log.add("%s runs down the %s %s." % [_called(actor, true), prey.name,
+						"for you" if you_need else "and eats"], Color(0.70, 0.86, 0.66))
 		else:
 			_safe_step_toward(actor, Vector2i(prey.x, prey.y))
 		return true
-	if hurt:
+	actor.on_hunt = false
+	if hurt and not you_need:
 		var meat := _meat_near(actor)
 		if meat.x >= 0 and Los.steps(player.x, player.y, meat.x, meat.y) <= range_out:
 			_safe_step_toward(actor, meat, true)
 			return true
 	return false
+
+## The game an ally may run down: a forager it can see, near, as _prey_for
+## finds game -- never anything that fights back.
+func _ally_prey(actor: Entity) -> Entity:
+	var best: Entity = null
+	var best_d := HUNT_REACH + 1
+	for e in entities:
+		if e.ai != &"forager" or not _is_game(actor, e) or not _can_see(actor, e):
+			continue
+		var d := Los.steps(actor.x, actor.y, e.x, e.y)
+		if d <= HUNT_REACH and d < best_d:
+			best = e
+			best_d = d
+	return best
+
+## An ally that is one of the dead -- raised by the shovel or the red, or a
+## grave's bone ally. It cannot be healed, so it never eats.
+func _ally_is_dead(actor: Entity) -> bool:
+	return actor.raised or actor.unliving or actor.appearance == &"bone_ally"
+
+## Whether the log has said an ally hunted this floor (once a floor).
+var _hunt_said := false
 
 ## A pack's size at a depth: a number, or a table by band name (a pair of
 ## wolves on the upper floors, four in the caves). One, for the packless.

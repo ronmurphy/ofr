@@ -284,6 +284,7 @@ func _initialize() -> void:
 	_test_fire_as_a_fear()
 	_test_the_spider()
 	_test_the_web()
+	_test_allies_hunt_when_you_need_it()
 	_test_the_web_flies()
 	_test_casters()
 	_test_caster_standoff_and_blink()
@@ -1676,6 +1677,119 @@ func _test_every_sprite_is_a_look_the_game_draws() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## ALLIES HUNT WHEN YOU NEED IT (Brad and both sessions, 2026-10-10; found
+## in play: a risen bear killed an unstruck spider beside Brad). Only foragers;
+## only with you at half hp or less, or a tamed ally at half its own; never at
+## heel; the risen never eat; a chase once begun is finished.
+func _ally_pen(player_hp_frac: float) -> GameState:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.hp = maxi(1, int(gs.player.max_hp * player_hp_frac))
+	gs.torch_lit = true
+	gs.entities = [gs.player]
+	return gs
+
+func _make_ally(gs: GameState, name: String, x: int, y: int, risen: bool) -> Entity:
+	var a := _spawn(gs, name, x, y)
+	a.faction = Entity.Faction.PLAYER
+	a.raised = risen
+	a.stance = Entity.Stance.LOOSE
+	a.alertness = Entity.Alert.AWAKE
+	return a
+
+func _test_allies_hunt_when_you_need_it() -> void:
+	# Brad's case: a loose risen bear, an unstruck spider beside it, you at 10%.
+	var gs := _ally_pen(0.1)
+	var bear := _make_ally(gs, "cave bear", 6, 4, true)
+	var spi := _spawn(gs, "spider", 7, 4)
+	gs.entities = [gs.player, bear, spi]
+	check("precondition: you are at a tenth, the spider is game for a bear and beside it",
+		gs.player.hp * 10 <= gs.player.max_hp and gs._is_game(bear, spi) and bear.is_adjacent(spi))
+	for i in 6:
+		gs._take_ai_turn(bear)
+	check("an ally never hunts a spider: it fights back", spi.alive and spi.hp == spi.max_hp
+		and not spi.provoked)
+	# Nor a wolf: a pack would turn on you.
+	gs = _ally_pen(0.1)
+	bear = _make_ally(gs, "cave bear", 6, 4, true)
+	var wolf := _spawn(gs, "wolf", 7, 4)
+	gs.entities = [gs.player, bear, wolf]
+	for i in 6:
+		gs._take_ai_turn(bear)
+	check("  nor a wolf: struck, its pack would turn on you", wolf.alive and not wolf.provoked)
+	# A rabbit: hunted with you at half, not at full.
+	var hunted := func(frac: float, risen: bool, heel: bool) -> bool:
+		var g := _ally_pen(frac)
+		var dog := _make_ally(g, "wolf", 6, 4, risen)
+		if heel:
+			dog.stance = Entity.Stance.HEEL
+		var bun := _spawn(g, "rabbit", 7, 4)
+		bun.hp = 1
+		g.entities = [g.player, dog, bun]
+		g._take_ai_turn(dog)
+		return not bun.alive
+	check("a rabbit beside a tamed wolf is hunted with you at half", hunted.call(0.5, false, false))
+	check("  and not with you at full", not hunted.call(1.0, false, false))
+	check("  and never at heel, even at half", not hunted.call(0.5, false, true))
+	check("  a risen ally hunts it for you too", hunted.call(0.5, true, false))
+	# The log says so, once.
+	gs = _ally_pen(0.5)
+	var dog := _make_ally(gs, "wolf", 6, 4, false)
+	var bun := _spawn(gs, "rabbit", 7, 4)
+	bun.hp = 1
+	gs.entities = [gs.player, dog, bun]
+	gs._take_ai_turn(dog)
+	check("  and the log says it ran one down for you", _log_says(gs, "runs down the rabbit for you"))
+	# A risen ally never eats; a hurt tamed one eats with you healthy.
+	gs = _ally_pen(1.0)
+	bear = _make_ally(gs, "cave bear", 6, 4, true)
+	bear.hp = bear.max_hp / 3
+	var steak := Item.make(&"meat")
+	steak.x = 6
+	steak.y = 4
+	gs.ground = [steak]
+	gs.entities = [gs.player, bear]
+	gs._take_ai_turn(bear)
+	check("a hurt risen ally leaves the meat: the dead are not healed", gs.ground.has(steak))
+	gs = _ally_pen(1.0)
+	dog = _make_ally(gs, "wolf", 6, 4, false)
+	dog.hp = dog.max_hp / 2
+	bun = _spawn(gs, "rabbit", 7, 4)
+	bun.hp = 1
+	gs.entities = [gs.player, dog, bun]
+	gs._take_ai_turn(dog)
+	check("a tamed wolf at half its own hp hunts for itself, you healthy", not bun.alive)
+	var before := dog.hp
+	for i in 3:
+		gs._take_ai_turn(dog)
+	check("  and eats the kill (%d -> %d)" % [before, dog.hp], dog.hp > before)
+	# With you at half, a hurt tamed ally leaves meat for you.
+	gs = _ally_pen(0.5)
+	dog = _make_ally(gs, "wolf", 6, 4, false)
+	dog.hp = dog.max_hp - 2
+	steak = Item.make(&"meat")
+	steak.x = 6
+	steak.y = 4
+	gs.ground = [steak]
+	gs.entities = [gs.player, dog]
+	gs._take_ai_turn(dog)
+	check("with you at half, a hurt tamed wolf leaves the meat for you", gs.ground.has(steak))
+	# A chase once begun is finished, though you heal mid-chase.
+	gs = _ally_pen(0.5)
+	dog = _make_ally(gs, "wolf", 6, 4, false)
+	bun = _spawn(gs, "rabbit", 9, 4)
+	gs.entities = [gs.player, dog, bun]
+	gs._gather_lights()
+	gs.update_vision()
+	gs._take_ai_turn(dog)
+	check("precondition: the chase began", dog.on_hunt)
+	gs.player.hp = gs.player.max_hp
+	var gap := Los.steps(dog.x, dog.y, bun.x, bun.y)
+	gs._take_ai_turn(dog)
+	check("  healed, it keeps after the rabbit (%d -> %d)" % [gap, Los.steps(dog.x, dog.y, bun.x, bun.y)],
+		dog.on_hunt and (Los.steps(dog.x, dog.y, bun.x, bun.y) < gap or not bun.alive))
+
 ## THE WEB, the spider's night 2 (2026-10-10): a struck spider spits a web
 ## over its foe from 2 to WEB_RANGE away; whatever stands in a web is held --
 ## its next move only tears it free (two turns, loud) -- unless it burns the
@@ -17355,6 +17469,8 @@ func _test_taming_the_wolves() -> void:
 	var others := pack.slice(1)
 	for w in others:
 		cave.entities.erase(w)
+	# It hunts for you when you need the meat (2026-10-10): you at half hp.
+	cave.player.hp = cave.player.max_hp / 2
 	cave._take_ai_turn(dog)
 	check("a tamed wolf takes the rabbit beside it", not bun.alive)
 	var haunch_lies := false
@@ -17371,7 +17487,9 @@ func _test_taming_the_wolves() -> void:
 			still_lies = true
 	check("a well wolf leaves the haunch for you (and must)", dog.hp == dog.max_hp and still_lies)
 	# Well, it came back toward you; hurt, it goes back for the meat: a turn
-	# to reach it and a turn to eat.
+	# to reach it and a turn to eat -- with you healthy again, since at half
+	# or less every ally leaves the meat for you.
+	cave.player.hp = cave.player.max_hp
 	dog.hp = dog.max_hp - 3
 	for i in 3:
 		cave._take_ai_turn(dog)
