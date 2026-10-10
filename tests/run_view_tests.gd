@@ -2949,6 +2949,59 @@ func _test_the_shrine_model(scene: Control) -> void:
 	gs.web_under.erase(at)
 	d._rebuild_world()
 
+## THE EGG SAC AS A MODEL (2026-10-10, spider night 3 -- the Legion's nest,
+## the desktop's model): four eggs and four threads in silk, no card, on cave
+## floor, inside its cell and under the walls. Solid, so it may fill the cell.
+func _test_the_egg_sac_model(scene: Control) -> void:
+	print("-- the egg sac model")
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	scene._select_map_view(true)
+	gs.map.set_all_visible()
+	var at := Vector2i(gs.player.x + 1, gs.player.y)
+	var was: int = gs.map.get_tile(at.x, at.y)
+	gs.map.set_tile(at.x, at.y, Tiles.EGG_SAC)
+	d._rebuild_world()
+	var eggs: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_sac_egg")
+	var threads: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_sac_strand")
+	var sacs := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.EGG_SAC:
+				sacs += 1
+	check("precondition: a sac in view (%d on the floor)" % sacs, sacs >= 1)
+	check("  it is a model: four eggs and four threads per sac (the must-succeed)",
+		eggs != null and threads != null and eggs.multimesh.instance_count == sacs * 4
+		and threads.multimesh.instance_count == sacs * 4)
+	# What _add_egg_sac hands the batches (the headless renderer keeps no
+	# per-instance data to read back from a multimesh).
+	var parts := {}
+	d._add_egg_sac(parts, at.x, at.y, true)
+	var silk := d._surface_color(Tiles.EGG_SAC, at.x, at.y, true) as Color
+	var silk_ok := true
+	for kind in ["sac_egg", "sac_strand"]:
+		for c in parts[kind]["colors"]:
+			silk_ok = silk_ok and (c as Color).is_equal_approx(silk)
+	var card_here := false
+	for node in d._scene_root.get_children():
+		if (node is Label3D or node is Sprite3D) and Vector2i(floori(node.position.x),
+				floori(node.position.z)) == at:
+			card_here = true
+	check("  all of it in the tile's colour (silk), and no card is drawn there",
+		silk_ok and not card_here)
+	var tallest := 0.0
+	var inside := true
+	for egg: Vector4 in DioramaView.SAC_EGGS:
+		tallest = maxf(tallest, egg.w)
+		inside = inside and absf(egg.x) + egg.z < 0.5 and absf(egg.y) + egg.z < 0.5
+	inside = inside and DioramaView.SAC_STRAND_OUT + DioramaView.SAC_STRAND_WIDTH < 0.5
+	check("  inside its cell and well under the walls (%.2f high)" % tallest,
+		inside and tallest < 0.9 and DioramaView.SAC_STRAND_FROM.y < 0.9)
+	check("  on cave floor: a nest is always in a cave",
+		d.ground_under(Tiles.EGG_SAC, at.x, at.y) == Tiles.CAVE_FLOOR)
+	gs.map.set_tile(at.x, at.y, was)
+	d._rebuild_world()
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -3386,5 +3439,6 @@ func _test_both_views_share_one_moment() -> void:
 	await _test_the_bestiary_screen(scene)
 	_test_the_depth_card(scene)
 	_test_the_shrine_model(scene)
+	_test_the_egg_sac_model(scene)
 	scene.queue_free()
 	await process_frame

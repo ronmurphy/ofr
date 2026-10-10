@@ -817,8 +817,8 @@ this list only gains an item when one leaves it.** (Why, at length:
    rule and the bear's exception before starting.
 3. **DONE, ALL THREE NIGHTS (the Legion): the spider and its bite
    (2026-10-09), the web and its shot, and the nest (both 2026-10-10)** --
-   as built under "The spider" in the wild creatures update. The nest's 3D
-   model is the desktop's, after the Legion's push. **The spider** (the wild creatures update, "The spider"; designed in
+   as built under "The spider" in the wild creatures update. The egg
+   sac's 3D model: the desktop, 2026-10-10 (`tools/3D_FEATURES.md`). **The spider** (the wild creatures update, "The spider"; designed in
    full 2026-10-09 except its numbers). WILD, with a NEST that makes it
    hostile, like the den bear; walks the walls (the banshee's phasing,
    only to flee); a bite of damage plus a THREE-turn poison (the miasma's
@@ -1856,9 +1856,11 @@ with the desktop, its four changes taken).**
   the run hangs on) is taken off the floor into the sac.
 - **Vaults:** `e` is an egg sac; a cave vault's sac becomes the nest of the
   nearest spider (`x`), with the webs the author drew (`_nest_the_vault_sacs`).
-- **Looks:** md-egg 0xF0AAF, `8` in the classic view, both in SILK; a card
-  in 3D until the desktop's model; legend row "a spider's nest; burn it for
-  what it hides".
+- **Looks:** md-egg 0xF0AAF, `8` in the classic view, both in SILK; legend
+  row "a spider's nest; burn it for what it hides". **In 3D a model** (the
+  desktop, 2026-10-10): four pale eggs slung by four silk threads to the
+  cell's corners, on cave floor (`_add_egg_sac`; `tools/3D_FEATURES.md`).
+  `tools/probes/screenshot_nest.gd` renders a nest in all four views.
 - Test: `_test_the_nest` (mutation: without the defence, "inside and seen,
   it turns on you" fails).
 

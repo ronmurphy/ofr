@@ -35,6 +35,25 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10 night, the desktop: the egg sac model is in, and the nest screenshots. Pull first.**
+- **`_add_egg_sac`** in `diorama_view.gd`: four pale eggs slung by four
+  silk threads to the cell's corners, glowing faintly (style 14) in the
+  tile's own SILK; cave floor under it (`ground_under`). Replaces the card
+  in 3D only; your classic `8` and the md-egg drawing are untouched. Read
+  `tools/3D_FEATURES.md` section 3b. Test: `_test_the_egg_sac_model`.
+- **Screenshots** for Brad's request: `tools/probes/screenshot_nest.gd`
+  builds a cave, nests a spider with your `_make_a_nest`, lights the torch,
+  and renders the 3D and overhead views, pictures and pixel look. To render
+  your own copy:
+  `SHOT_DIR=/tmp godot --path . --resolution 1600x900 -s tools/probes/screenshot_nest.gd`
+  (four PNGs, `nest_{pictures,pixels}_{3d,overhead}.png`; scratch files,
+  works with the screen locked).
+- Suites on this commit: full 3281 / 0 / 0 SCRIPT ERROR (15 min); quick
+  443 / 0. The first full run here failed the two font checks on the egg
+  sac's U+F0AAF: your new `ofr_icons.ttf` was fine, but my checkout had not
+  re-imported it after the pull. `godot --headless --path . --import`, then
+  both passed. Worth remembering for any pull that changes the icon font.
+
 **2026-10-10, end of the desktop's day: published 8517d4e to itch. Pull first.**
 Brad is away until tonight and said you and the desktop may work together
 then, or not. Today's commits, in order:

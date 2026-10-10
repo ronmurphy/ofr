@@ -18,7 +18,7 @@ the floor changes (never every frame).
 |---|---|---|
 | floor, walls, rock, pillars, door frames | one **batch per kind**: `_add_batch(batches, kind, transform, colour)`, then `_add_multimeshes` makes ONE `MultiMeshInstance3D` per kind | the tile loop in `_rebuild_world`; mesh table in `_add_multimeshes` |
 | doors and gates | the **first models**: posts, header, leaf (`_add_door`); a leaf swings when it opens (`_swings`, `_draw_swings`, on "simple" and "full" only) | `_add_door`, `_gate_leaf()` |
-| features (stairs, brazier, grave, shrine, chest, trap, bones, water, fungus) | a **card**: the icon picture on a billboard, or under the pixel look its drawing (`_add_tile_icon` -> `_add_card`) | `_add_tile_icon` |
+| features (stairs, brazier, grave, chest, trap, bones, water, fungus; the shrine and the egg sac are models now, sections 3 and 3b) | a **card**: the icon picture on a billboard, or under the pixel look its drawing (`_add_tile_icon` -> `_add_card`) | `_add_tile_icon` |
 | creatures, items, bodies | cards (`_add_card`), pictures or drawings | `_add_items_and_entities`, `_add_bodies` |
 | light | the sim's light map as a texture the surface shader reads (`_build_cell_light`), plus engine `OmniLight3D`s **mirroring the sim's own sources** (`state.static_lights`, the torch), capped at `LIGHT_CAP` (8) on the web, 32 on Forward+ | `_add_lights` |
 
@@ -114,6 +114,34 @@ use one now?") found it. Hence rule 9.
 from the tile loop instead of `_add_tile_icon`, its parts added to the mesh
 table, colours from `_surface_color`, and a view test.
 
+## 3b. Built: the egg sac (2026-10-10)
+
+`_add_egg_sac` in `diorama_view.gd`, for the heart of the Legion's spider
+nest (`Tiles.EGG_SAC`, a402844). A cluster of four pale eggs, the biggest
+in the middle, slung by four silk threads from its top down to the cell's
+corners, as if strung there.
+
+| part | mesh | colour |
+|---|---|---|
+| `sac_egg` x4 | low-poly spheres (8 sides, 4 rings), scaled per egg: the middle one 0.44 wide and 0.56 tall, the others 0.26-0.32 wide round it | the tile's own (`_surface_color(Tiles.EGG_SAC, ...)`, silk), glowing (style 14) |
+| `sac_strand` x4 | thin boxes (0.025 square), from 0.48 up over the middle to 0.46 out along each diagonal at the floor | the same |
+
+- **Solid, so it may fill its cell** (the chest's exception to rule 9):
+  the sac is bumped and burned, never stood on.
+- **Its ground is cave floor**, not the tile's colour: `ground_under`
+  gives `CAVE_FLOOR` for `EGG_SAC`, as a web gives `web_under`. Without
+  that the floor under the sac was tinted silk.
+- **Glow, no light:** style 14 so a sac at the edge of the torch still
+  reads pale, as the shrine's crystals do. The sim gives it no light, so
+  neither does the view.
+- Tests: `_test_the_egg_sac_model` (view suite): four eggs and four strands
+  a sac, the tile's colour and no card, inside the cell and under 0.9, and
+  cave floor under it.
+- **Probe:** `tools/probes/screenshot_nest.gd` builds a cave, nests a spider
+  with the game's own `_make_a_nest`, lights the torch, and renders the
+  3D and overhead views in pictures and the pixel look:
+  `SHOT_DIR=/tmp godot --path . --resolution 1600x900 -s tools/probes/screenshot_nest.gd`
+
 ---
 
 ## 4. Designs for the next ones (proposals, not built)
@@ -191,6 +219,7 @@ are flat, and a model would only hide what lies on them.
 | step | size | why first |
 |---|---|---|
 | shrine | done | the template |
+| egg sac | done | the spider's nest needed it |
 | grave + rising effect | small | the rise is a moment players see every run |
 | brazier | small | most-seen feature; the heat gauge reads better |
 | stairs | medium | the down-well needs the floor cut open |

@@ -930,6 +930,8 @@ func _rebuild_world() -> void:
 				# the rest are cards.
 				if tile == Tiles.SHRINE:
 					_add_shrine(batches, x, y, visible)
+				elif tile == Tiles.EGG_SAC:
+					_add_egg_sac(batches, x, y, visible)
 				elif _tile_has_picture(tile):
 					_add_tile_icon(tile, x, y, visible)
 				else:
@@ -1029,6 +1031,21 @@ func _add_multimeshes(batches: Dictionary) -> void:
 				disc.radial_segments = 16
 				mesh = disc
 				surface_style = 14
+			# The egg sac (2026-10-10), the spider's nest's heart -- see
+			# _add_egg_sac. One low ovoid scaled per egg, and a thread.
+			"sac_egg":
+				var egg := SphereMesh.new()
+				egg.radius = 0.5
+				egg.height = 1.0
+				egg.radial_segments = 8
+				egg.rings = 4
+				mesh = egg
+				surface_style = 14
+			"sac_strand":
+				var strand := BoxMesh.new()
+				strand.size = Vector3(SAC_STRAND_WIDTH, 1.0, SAC_STRAND_WIDTH)
+				mesh = strand
+				surface_style = 14
 			"shrine_crystal":
 				mesh = _crystal()
 				# A glow (the surface shader's style 14): its own colour, lit
@@ -1117,6 +1134,40 @@ func _add_shrine(batches: Dictionary, x: int, y: int, visible: bool) -> void:
 		# Turned 45 degrees, so an edge -- not a flat face -- meets the camera.
 		_add_batch(batches, "shrine_crystal", Transform3D(Basis(Vector3.UP, PI * 0.25),
 			at + corner * SHRINE_CORNER + Vector3.UP * SHRINE_CRYSTAL_Y), hue)
+
+## THE EGG SAC (2026-10-10), the heart of a spider's nest -- spider night 3:
+## the Legion's sim, the desktop's model (tools/3D_FEATURES.md). It is SOLID,
+## so by rule 9 it may fill its cell: four pale eggs of different sizes in a
+## cluster, the largest SAC_EGGS[0] high, and four threads of silk from the top
+## of the cluster down to the cell's corners, as if it were slung there. Its
+## colour is the tile's -- SILK, through the theme -- glowing (style 14), so it
+## reads in a dark cave as a card would; burned, the tile goes and so does it.
+const SAC_EGGS: Array[Vector4] = [
+	Vector4(0.00, 0.03, 0.22, 0.56),   # x, z off the middle; radius; height
+	Vector4(-0.20, -0.09, 0.16, 0.40),
+	Vector4(0.19, -0.11, 0.15, 0.37),
+	Vector4(0.08, 0.21, 0.13, 0.32),
+]
+## Where the threads leave the cluster, and how far out along each diagonal
+## they meet the floor -- inside the cell.
+const SAC_STRAND_FROM := Vector3(0.0, 0.48, 0.0)
+const SAC_STRAND_OUT := 0.46
+const SAC_STRAND_WIDTH := 0.025
+
+func _add_egg_sac(batches: Dictionary, x: int, y: int, visible: bool) -> void:
+	var silk := _surface_color(Tiles.EGG_SAC, x, y, visible)
+	var at := Vector3(x + 0.5, 0.0, y + 0.5)
+	for egg: Vector4 in SAC_EGGS:
+		_add_batch(batches, "sac_egg", Transform3D(
+			Basis.from_scale(Vector3(egg.z * 2.0, egg.w, egg.z * 2.0)),
+			at + Vector3(egg.x, egg.w * 0.5, egg.y)), silk)
+	for corner: Vector3 in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1)]:
+		var top := SAC_STRAND_FROM
+		var foot := corner * SAC_STRAND_OUT
+		var run := foot - top
+		# A unit-tall thread, stretched to the run's length and turned along it.
+		var b := Basis(Quaternion(Vector3.UP, run.normalized())) * Basis.from_scale(Vector3(1.0, run.length(), 1.0))
+		_add_batch(batches, "sac_strand", Transform3D(b, at + (top + foot) * 0.5), silk)
 
 ## An octahedron CRYSTAL_SIZE wide and tall, centred: flat faces, so it
 ## catches the light facet by facet.
@@ -1519,10 +1570,13 @@ const GROUND_KINDS := {
 }
 
 ## What a cell's floor is drawn as: its own tile, except under a web, where it
-## is the ground the web was spun over (cave floor, rubble, mud...).
+## is the ground the web was spun over (cave floor, rubble, mud...), and under
+## an egg sac, cave floor -- a nest is always in a cave.
 func ground_under(tile: int, x: int, y: int) -> int:
 	if tile == Tiles.WEB and state != null:
 		return int(state.web_under.get(Vector2i(x, y), Tiles.FLOOR))
+	if tile == Tiles.EGG_SAC:
+		return Tiles.CAVE_FLOOR
 	return tile
 
 func _ground_surface_kind(tile: int) -> String:
