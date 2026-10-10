@@ -2219,6 +2219,38 @@ shape to aim at.
 
 ## Ideas, not yet designed
 
+**Two ideas from the trailer (Brad, 2026-10-09).** Brad had a short
+trailer made from screenshots of the 3D view and the new sprites. It got
+the colours and the scale wrong in places, but two of its moments are
+worth building. Brad likes both.
+
+- **THE GREAT DOOR -- escaping into daylight.** A tall double door of
+  banded wood, set in a wall higher than the rest, that swings open and
+  floods the room with light: shafts of it across the floor, the torch's
+  orange washed out to white. Not the latched gate (that is an animal's
+  door in a doorway). The desktop's proposal: this is THE WAY OUT at the
+  top of the climb. You carry the amulet up, the last floor's exit is the
+  great door, and walking into it opens it -- the light pours in, the
+  screen goes to white, and the run ends as an escape. Escaping today has
+  no moment of its own; this gives it one, and the light is the reward.
+  To decide: only the final exit, or also the door of a boss vault on the
+  way down (seen once, so it stays special); whether the light reaches
+  into the room as real light (the engine lights) or as a post-effect over
+  it (cheaper, and the web build can do it); what the white fades into
+  (the morgue's escape page).
+- **BIG WHILE ASLEEP.** A sleeping or denned animal is drawn LARGE -- the
+  trailer's sleeping bear was two to three cells tall and genuinely
+  frightening -- and the moment it wakes it shrinks to its normal card.
+  One creature to a cell is what keeps the grid readable, and a large
+  card hides whoever stands behind it, so it is only while it sleeps,
+  when nothing is fighting beside it. Scope: the den bear first (asleep in
+  its den is exactly when you meet it), then any sleeping creature of
+  threat 15 and up. The 3D view only; `BillboardSizes` and the creature's
+  `alertness` already give everything needed. Pairs with SLEEPING POSES
+  (the trailer's wolf and bear sleep curled up), which need a second
+  drawing per creature: a pose in the sprite format, not a colour
+  variant.
+
 **Pixel sprites drawn in code -- a fourth look for the 3D view (Brad,
 2026-10-09, from the Google Playground test). THE GAME SIDE IS BUILT
 (2026-10-09, desktop): see "AS BUILT" at the end of this entry.** The playground's rebuild of

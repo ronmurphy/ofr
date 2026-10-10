@@ -32,6 +32,16 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-09 night, the desktop: a new splash screen; two ideas in BACKLOG.**
+- **The boot splash is the new OFR logo** (Brad's pick): the same file,
+  `assets/art/roguelike-splash-art.png`, so `project.godot` is unchanged.
+  1920x1080 and 111 KB against the old 714 KB painting: the web pack is
+  about 1 MB smaller. The old splash is kept outside the repo
+  (`~/ofr-art-originals/logo-2026-10-09/`, with a transparent logo).
+- **BACKLOG "Ideas", top: the great door** (the climb's way out opens on
+  daylight) **and big while asleep** (a denned or sleeping animal drawn
+  large until it wakes). Ideas only; nothing joins your queue.
+
 **2026-10-09 late, the desktop: the whole set is drawn; terrain features can be drawn; the spider and web are waiting. Pull first.**
 - **Every creature and item look is hand-drawn now** (all 44), plus the
   purple and red fungus tiles. No starters are left. Nothing to do on your
