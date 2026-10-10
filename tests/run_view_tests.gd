@@ -2931,6 +2931,22 @@ func _test_the_shrine_model(scene: Control) -> void:
 	check("  a crystal is eight facets, each facing out", outward)
 	gs.map.set_tile(at.x, at.y, was)
 	gs.shrine_at = had_shrine
+	# A web over cave floor (2026-10-10, the Legion's loose end 2): the floor
+	# under it is the cave's, not flagstone.
+	d._rebuild_world()
+	var caves_before := 0
+	var cave_node: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_cave")
+	if cave_node != null:
+		caves_before = cave_node.multimesh.instance_count
+	gs.map.set_tile(at.x, at.y, Tiles.WEB)
+	gs.web_under[at] = Tiles.CAVE_FLOOR
+	d._rebuild_world()
+	cave_node = d._scene_root.get_node_or_null("batch_cave")
+	check("a web over cave floor is drawn on cave floor",
+		d.ground_under(Tiles.WEB, at.x, at.y) == Tiles.CAVE_FLOOR
+		and cave_node != null and cave_node.multimesh.instance_count == caves_before + 1)
+	gs.map.set_tile(at.x, at.y, was)
+	gs.web_under.erase(at)
 	d._rebuild_world()
 
 func _test_regions_colour_the_stone_not_the_floor() -> void:

@@ -165,6 +165,15 @@ func add_events(evts: Array, popup_size: int) -> void:
 					list.append({"type": &"shot", "path": line, "t": 0.0})
 			continue
 
+		if e["kind"] == &"web":
+			# A spider's web flying to where it lands (2026-10-10): a shot of
+			# silk, and no damage number -- nothing is hurt, something is held.
+			if Effects.any():
+				var silk := Los.path(e["from"].x, e["from"].y, to.x, to.y)
+				if not silk.is_empty():
+					list.append({"type": &"shot", "path": silk, "t": 0.0, "silk": true})
+			continue
+
 		if e["kind"] == &"shove":
 			# You just moved two cells without pressing anything. Without a
 			# mark where you landed that reads as the screen glitching rather

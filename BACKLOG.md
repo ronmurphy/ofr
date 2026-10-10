@@ -1857,10 +1857,12 @@ agreed with the desktop first.**
   `assets/sprites/features/web.txt`, the legend's row "holds you; tear free
   (loud) or burn", the bestiary's "Spits webs that hold you fast. Fire
   frees you." Vault glyph `w` (vault.gd, the linter, both editors).
-- **Not yet:** a flying-silk effect for the shot (the "ranged" event would
-  also pop a 0; a renderer job for the desktop if wanted); the web drawn
-  over cave floor shows the flagstone ground in 3D (`GROUND_KINDS` has no
-  web); a risen spider ally does not spit webs yet.
+- **Done by the desktop, 2026-10-10:** the silk in flight -- `_shoot_web`
+  sends a `web` event, which Fx draws as a shot of silk (`Palette.SILK`)
+  with no damage number, nothing on "still" (`_test_the_web_flies`); and
+  the floor under a web in 3D is the ground it was spun over
+  (`DioramaView.ground_under`, from `web_under`).
+- **Not yet:** a risen spider ally does not spit webs.
 - Test: `_test_the_web` (mutation: without the hold, six checks fail).
 
 **Allies step out of the poison on their own -- BUILT 2026-10-04 (Legion),

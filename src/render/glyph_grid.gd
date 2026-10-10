@@ -917,7 +917,8 @@ func _draw_shot(e: Dictionary, t: float) -> void:
 	var cell := Fx.shot_cell(e, t, state.map)
 	if cell.x < 0:
 		return
-	draw_circle(_centre(cell), maxf(1.5, cell_size * 0.15), Palette.SHOT)
+	draw_circle(_centre(cell), maxf(1.5, cell_size * 0.15),
+		Palette.SILK if e.get("silk", false) else Palette.SHOT)
 
 ## Sparks and shards -- see Fx.burst_points -- laid on the grid: each piece
 ## snapped to a quarter of a cell, so a burst reads as blocks breaking rather

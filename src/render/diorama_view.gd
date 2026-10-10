@@ -246,6 +246,8 @@ var _fx_quad: PlaneMesh
 var _fx_material: StandardMaterial3D
 var _shot_mesh: SphereMesh
 var _shot_material: StandardMaterial3D
+## A web in flight: the same ball, in silk -- see Fx's `web` event.
+var _silk_material: StandardMaterial3D
 ## Sparks and shards: small cubes, coloured per instance.
 var _bit_mesh: BoxMesh
 ## Contact marks use larger cubes so their shared quarter-cell size reads here too.
@@ -345,6 +347,9 @@ func _build_viewport() -> void:
 	_shot_material = StandardMaterial3D.new()
 	_shot_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_shot_material.albedo_color = Palette.SHOT
+	_silk_material = StandardMaterial3D.new()
+	_silk_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_silk_material.albedo_color = Palette.SILK
 	_bit_mesh = BoxMesh.new()
 	_bit_mesh.size = Vector3(0.08, 0.08, 0.08)
 	_contact_bit_mesh = BoxMesh.new()
@@ -883,13 +888,16 @@ func _rebuild_world() -> void:
 			if not visible and not map.is_explored(x, y):
 				continue
 			var tile := map.get_tile(x, y)
-			var color := _surface_color(tile, x, y, visible)
+			# A web lies over ground of its own (state.web_under): the floor
+			# under it is drawn as that ground, not as flagstone (2026-10-10).
+			var ground := ground_under(tile, x, y)
+			var color := _surface_color(ground, x, y, visible)
 			if color.a <= 0.0:
 				continue
 			var solid := tile == Tiles.WALL or tile == Tiles.ROCK \
 				or tile == Tiles.PILLAR or tile == Tiles.STALAGMITE \
 				or Tiles.is_shut(tile) or tile == Tiles.CHEST
-			var ground_kind := _ground_surface_kind(tile)
+			var ground_kind := _ground_surface_kind(ground)
 			var kind := ground_kind
 			var height := WALL_HEIGHT
 			if tile == Tiles.CHEST:
@@ -1509,6 +1517,13 @@ const GROUND_KINDS := {
 	Tiles.PIT: "pit", Tiles.STAIRS_DOWN: "stairs", Tiles.STAIRS_UP: "stairs",
 	Tiles.TRAP: "trap", Tiles.SHRINE: "shrine",
 }
+
+## What a cell's floor is drawn as: its own tile, except under a web, where it
+## is the ground the web was spun over (cave floor, rubble, mud...).
+func ground_under(tile: int, x: int, y: int) -> int:
+	if tile == Tiles.WEB and state != null:
+		return int(state.web_under.get(Vector2i(x, y), Tiles.FLOOR))
+	return tile
 
 func _ground_surface_kind(tile: int) -> String:
 	return GROUND_KINDS.get(tile, "ground")
@@ -2237,7 +2252,7 @@ func _draw_fx() -> void:
 				if Fx.shot_cell(e, t, map).x >= 0:
 					var ball := MeshInstance3D.new()
 					ball.mesh = _shot_mesh
-					ball.material_override = _shot_material
+					ball.material_override = _silk_material if e.get("silk", false) else _shot_material
 					var p := Fx.shot_point(e, t)
 					ball.position = Vector3(p.x + 0.5, 0.5, p.y + 0.5)
 					_fx_root.add_child(ball)

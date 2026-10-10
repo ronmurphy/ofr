@@ -284,6 +284,7 @@ func _initialize() -> void:
 	_test_fire_as_a_fear()
 	_test_the_spider()
 	_test_the_web()
+	_test_the_web_flies()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -1679,6 +1680,46 @@ func _test_every_sprite_is_a_look_the_game_draws() -> void:
 ## over its foe from 2 to WEB_RANGE away; whatever stands in a web is held --
 ## its next move only tears it free (two turns, loud) -- unless it burns the
 ## web (one turn, torch or fire blade). A bear and a spider walk through.
+## THE WEB IN FLIGHT (2026-10-10, the desktop, the Legion's loose end 1): a
+## spider's shot is an event the views draw as silk flying from it to where
+## the web lands -- a shot with no damage number, as recall's arrows are.
+func _test_the_web_flies() -> void:
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = true
+	var spi := _spawn(gs, "spider", 8, 4)
+	spi.provoked = true
+	spi.grudge = gs.player
+	gs.entities = [gs.player, spi]
+	gs._gather_lights()
+	gs.update_vision()
+	gs.events.clear()
+	check("precondition: the spider spits (the must-succeed)", gs._shoot_web(spi, gs.player))
+	var flew := {}
+	for e in gs.events:
+		if e["kind"] == &"web":
+			flew = e
+	check("  and says so: from the spider to where the web lands",
+		not flew.is_empty() and flew["from"] == Vector2i(8, 4) and flew["to"] == Vector2i(5, 4))
+	var was := Effects.mode()
+	Effects.set_mode(Effects.Mode.SHADERS)
+	var fx := Fx.new()
+	fx.add_events([flew], 16)
+	var silk := 0
+	var numbers := 0
+	for item in fx.list:
+		if item["type"] == &"shot" and bool(item.get("silk", false)):
+			silk += 1
+		elif item["type"] == &"popup":
+			numbers += 1
+	check("  drawn as one shot of silk, and no damage number", silk == 1 and numbers == 0)
+	Effects.set_mode(Effects.Mode.NONE)
+	var still := Fx.new()
+	still.add_events([flew], 16)
+	check("  and on still, nothing flies", still.list.is_empty())
+	Effects.set_mode(was)
+
 func _test_the_web() -> void:
 	check("a web is ground you can walk into and see through",
 		Tiles.is_walkable(Tiles.WEB) and Tiles.is_transparent(Tiles.WEB)

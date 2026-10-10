@@ -5193,6 +5193,9 @@ func _shoot_web(actor: Entity, foe: Entity) -> bool:
 	if not Los.clear(map, actor.x, actor.y, at.x, at.y) or not _can_see(actor, foe):
 		return false
 	_spin_web(at)
+	# For the views: the silk flies from the spider to where it lands
+	# (2026-10-10, the desktop) -- a shot with no damage number, as `recall`.
+	events.append({"kind": &"web", "from": Vector2i(actor.x, actor.y), "to": at})
 	actor.web_cool = WEB_COOL
 	_last_move_cost = Scheduler.ACTION_COST
 	if foe.is_player:
