@@ -32,6 +32,19 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10, end of the desktop's day: published 8517d4e to itch. Pull first.**
+Brad is away until tonight and said you and the desktop may work together
+then, or not. Today's commits, in order:
+1. `1edf4e5` art sets -- `v` in 3D cycles pictures and the sets; `assets/skins/`.
+2. `6a7a79f` the bestiary page; legend / bestiary / map are a ring.
+3. `bf0d5a4` the depth card.
+4. `f165f5b` the shrine model and `tools/3D_FEATURES.md`.
+5. `ab0a8df` the shrine redone (stand on it); page buttons for a mouse; a pad's A no longer closes the bestiary.
+6. `8517d4e` docs: README, CONTROLLER, BACKLOG.
+
+Each has its own note above. Read `tools/3D_FEATURES.md` before giving the web tile (spider night 2) a model rather than a card. A web is walkable: by rule 9 it keeps its middle clear, and a card or a drawing is fine for it. The web build is about 1 MB smaller than this morning's, and its game pack is 2.56 MB.
+The last full suite was 3227 / 0 / 0 SCRIPT ERROR; quick 437 / 0.
+
 **2026-10-10 afternoon, the desktop: the shrine redone; every reference page has mouse buttons. Pull first.**
 - **The shrine model is now a low dais, a hue disc and four corner
   crystals**: the first version put a pedestal in the middle of a tile you
