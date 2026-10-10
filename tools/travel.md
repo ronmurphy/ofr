@@ -71,7 +71,8 @@ The last full suite was 3227 / 0 / 0 SCRIPT ERROR; quick 437 / 0.
   entering a band, off in the harnesses (scratch files) as the title is.
   If a test drives the real scene through a band change with the card ON,
   the first key clears the card and takes no step.
-- **Hazard for CLAUDE.md** (please add to your copy): *the headless renderer
+- **Hazard for CLAUDE.md -- DONE (the Legion, 2026-10-10), with a pointer to
+  3D_FEATURES.md:** *the headless renderer
   keeps no MultiMesh per-instance data* -- `get_instance_custom_data` /
   `get_instance_transform` read back nothing in the suite. Test what a
   builder hands `_add_batch` instead.
@@ -175,7 +176,7 @@ changed, and what touches files you may also be editing:
   `python3 tools/make_starter_sprites.py` where Edge or Chromium exists.
 - **Suites, before rebasing on your e1d8904: full 3159 passed / 0 / 0 SCRIPT ERROR (15 min; 3137 + 22 new), quick 413/0 (395 + 18 new).** The combined tree is rerun before the push; that tally is in the commit message.
 - **Art: 14 looks are hand-drawn so far** (player, trader, risen bones, rat, kobold, goblin, orc, skeleton, slime, wolf, bear, rabbit, bat, killer rabbit); the rest are starters until the next art push. Brad asked for the spider and the web after the art set: the desktop will name the icons for both then.
-- **For CLAUDE.md "Hazards"** (please add to your copy):
+- **For CLAUDE.md "Hazards" -- DONE (the Legion, 2026-10-10), all three:**
   - *A billboard's `get_aabb()` is a cube.* With `BILLBOARD_ENABLED`, a
     Sprite3D reports a box big enough for every turn, so it says nothing
     about where the drawing sits. Measure an unturned copy (billboard off);
