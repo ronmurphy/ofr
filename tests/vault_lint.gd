@@ -17,7 +17,7 @@ const TERRAIN := {
 	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus",
 	"v": "purple fungus", ";": "red fungus", "&": "brazier",
 	"A": "shrine", "X": "pit", "t": "trap", ">": "stairs down", "<": "stairs up",
-	"n": "grave", "C": "chest", "H": "latched gate",
+	"n": "grave", "C": "chest", "H": "latched gate", "w": "web",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit",
@@ -29,7 +29,7 @@ const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 ## tiles.gd says so explicitly, and the reason is that a headstone which
 ## blocked movement would be one more thing generation has to prove it never
 ## wedged into a corridor.
-const PASSABLE := [".", "_", "+", "'", "H", "~", "=", "%", ",", "*", "v", ";",
+const PASSABLE := [".", "_", "+", "'", "H", "w", "~", "=", "%", ",", "*", "v", ";",
 	"A", "X", "t", ">", "<", "n", "m", "M", "?", "!", ")", "[", "}", "(", "r", "x"]
 ## Creatures by name: a digit on the board, named by a `place N: name` line.
 const NAMED := ["1", "2", "3", "4", "5", "6", "7", "8", "9"]

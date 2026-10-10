@@ -1298,7 +1298,8 @@ const BESTIARY := [
 	{"name": "spider", "app": &"spider", "hp": 8, "power": 3, "def": 1,
 	 "speed": 120, "ai": &"hunter", "flee": 0.5, "min_depth": 1, "threat": 7,
 	 "bands": {&"upper": 0.35, &"caves": 0.6, &"fortress": 0.35},
-	 "max_per_floor": 1, "wild": true, "eats": true, "venom": 3, "climbs": true},
+	 "max_per_floor": 1, "wild": true, "eats": true, "venom": 3, "climbs": true,
+	 "webs": true},
 ]
 
 ## The deepest tier that exists.
@@ -1378,6 +1379,7 @@ func build_level() -> void:
 	_cornered_said = {}
 	scorched = {}
 	mud_under = {}
+	web_under = {}
 	tending = {}
 	red_from = {}
 	withering = []
@@ -3151,6 +3153,7 @@ static func monster_from(entry: Dictionary, x: int, y: int) -> Entity:
 	m.phasing = entry.get("phasing", false)
 	m.climbs = entry.get("climbs", false)
 	m.venom = int(entry.get("venom", 0))
+	m.webs = entry.get("webs", false)
 	m.knockback = int(entry.get("knockback", 0))
 	m.unliving = entry.get("unliving", false)
 	m.resists.clear()
@@ -4707,6 +4710,15 @@ func player_move(dx: int, dy: int) -> bool:
 		_end_player_turn()
 		return true
 
+	# CAUGHT IN A WEB: a move only tears you free -- two turns, and loud.
+	# Burning it (G) is quicker and quiet. You can still strike from it.
+	if map.get_tile(player.x, player.y) == Tiles.WEB:
+		_unweb(Vector2i(player.x, player.y))
+		msg_log.add("You tear yourself free of the web.", Color(0.85, 0.80, 0.68))
+		_end_player_turn(Scheduler.ACTION_COST * WEB_TEAR_COST)
+		_make_noise(Vector2i(player.x, player.y), WEB_NOISE, &"web", player)
+		return true
+
 	# Opened by walking into it, the way a door is. No key, and the act is
 	# unmistakably deliberate -- you cannot cross a chest by accident.
 	if map.get_tile(nx, ny) == Tiles.CHEST:
@@ -4766,6 +4778,9 @@ func player_move(dx: int, dy: int) -> bool:
 	var cost := move_cost_for(player, nx, ny)
 	player.x = nx
 	player.y = ny
+	if map.get_tile(nx, ny) == Tiles.WEB:
+		msg_log.add("You walk into a web, and it holds. Struggle free (loud, two turns) or burn it.",
+			Color(0.90, 0.86, 0.72))
 	_end_player_turn(cost)
 	return true
 
@@ -5114,6 +5129,80 @@ func _fungus_ground(c: Vector2i) -> bool:
 ## While fungus covers it the square walks as fungus, not as mud. One floor
 ## only; saved.
 var mud_under: Dictionary = {}
+
+## WEBS (the spider, night 2 of 3). What each web was spun over, cell ->
+## tile, so tearing or burning it gives that ground back. One floor; saved.
+var web_under: Dictionary = {}
+## A spider spits a web this far, at most, and not at arm's length (it bites).
+const WEB_RANGE := 5
+## Turns between one web shot and the next.
+const WEB_COOL := 4
+## Tearing free of a web, in actions: two turns, as Brad set it.
+const WEB_TEAR_COST := 2
+## And it is loud: a fight's worth. Hunters walk to a noise (2026-10-04), which
+## is how the others catch up with you while you struggle.
+const WEB_NOISE := 6
+
+## Does a web hold this creature? Everything except the heavy (a bear walks
+## straight through silk) and the climbers (a spider is at home on it).
+func _web_holds(e: Entity) -> bool:
+	return not e.heavy and not e.climbs
+
+## Ground a web can be spun over: open, dry ground, not water or a feature.
+func _webbable(t: int) -> bool:
+	return t == Tiles.FLOOR or t == Tiles.CAVE_FLOOR or t == Tiles.RUBBLE \
+		or t == Tiles.BONES or t == Tiles.MUD
+
+func _spin_web(c: Vector2i) -> void:
+	web_under[c] = map.get_tile(c.x, c.y)
+	map.set_tile(c.x, c.y, Tiles.WEB)
+
+## The web at `c` is gone: torn or burned. Its ground comes back.
+func _unweb(c: Vector2i) -> void:
+	var under: int = int(web_under.get(c, _bare_ground(c)))
+	web_under.erase(c)
+	map.set_tile(c.x, c.y, under)
+
+## A held creature's move: it only tears itself free. True if that was its
+## turn. Called before every creature move (_through_the_door, whose callers
+## all stop when it answers true).
+func _torn_free(actor: Entity) -> bool:
+	var at := Vector2i(actor.x, actor.y)
+	if map.get_tile(at.x, at.y) != Tiles.WEB or not _web_holds(actor):
+		return false
+	_unweb(at)
+	_last_move_cost = Scheduler.ACTION_COST * WEB_TEAR_COST
+	if map.is_visible(at.x, at.y):
+		msg_log.add("The %s tears free of the web." % actor.name, Color(0.80, 0.76, 0.66))
+	_make_noise(at, WEB_NOISE, &"web", actor)
+	return true
+
+## The spider's ranged attack: a web spat over its foe, who is then held. Not
+## at arm's length (there it bites), not on ground a web will not take, not
+## at something a web does not hold, and not again until WEB_COOL turns pass.
+func _shoot_web(actor: Entity, foe: Entity) -> bool:
+	if actor.web_cool > 0:
+		actor.web_cool -= 1
+		return false
+	var d := Los.steps(actor.x, actor.y, foe.x, foe.y)
+	if d < 2 or d > WEB_RANGE or not _web_holds(foe):
+		return false
+	var at := Vector2i(foe.x, foe.y)
+	if not _webbable(map.get_tile(at.x, at.y)):
+		return false
+	if not Los.clear(map, actor.x, actor.y, at.x, at.y) or not _can_see(actor, foe):
+		return false
+	_spin_web(at)
+	actor.web_cool = WEB_COOL
+	_last_move_cost = Scheduler.ACTION_COST
+	if foe.is_player:
+		msg_log.add("The %s spits a web over you! Struggle free (loud, two turns) or burn it."
+			% actor.name, Color(0.90, 0.86, 0.72))
+		_travel.clear()
+	elif map.is_visible(at.x, at.y) or map.is_visible(actor.x, actor.y):
+		msg_log.add("The %s spits a web over the %s." % [actor.name, foe.name],
+			Color(0.80, 0.76, 0.66))
+	return true
 
 ## Call just before fungus is set on `c`: remember it if it is mud.
 func _note_mud(c: Vector2i) -> void:
@@ -5468,6 +5557,12 @@ func _crawl_red() -> void:
 
 ## What a square is under its fungus.
 ## The chains as rows a save can hold: [x, y, from_x, from_y].
+func _web_under_rows() -> Array:
+	var rows := []
+	for c in web_under:
+		rows.append([c.x, c.y, int(web_under[c])])
+	return rows
+
 func _red_from_rows() -> Array:
 	var rows: Array = []
 	for c in red_from:
@@ -5739,6 +5834,15 @@ func _fungus_underfoot(underfoot: int) -> void:
 ## Fire against the wrong fungus, from G: a fire weapon burns it in one, a lit
 ## torch scorches it away in TORCH_SCORCHES. True if this spent the turn.
 func _burn_at(c: Vector2i) -> bool:
+	# A web goes up in one, torch or fire blade (dry silk; night 2).
+	if map.get_tile(c.x, c.y) == Tiles.WEB:
+		if not _can_burn():
+			return false
+		_unweb(c)
+		msg_log.add("The web shrivels in the flame.", Color(0.96, 0.66, 0.36))
+		events.append({"kind": &"burn", "to": c})
+		_end_player_turn()
+		return true
 	if not Tiles.is_bad_fungus(map.get_tile(c.x, c.y)):
 		return false
 	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
@@ -7448,6 +7552,9 @@ func actions_here() -> Array:
 		var grave := bury_target()
 		if fire.x >= 0:
 			out.append([KEY_G, "kindle the brazier (%d)" % flare_kindle(torch_flare)])
+		elif burn_target().x >= 0 and _can_burn() \
+				and map.get_tile(burn_target().x, burn_target().y) == Tiles.WEB:
+			out.append([KEY_G, "burn the web"])
 		elif burn_target().x >= 0 and _fire_in_hand():
 			# Taught here, because this box is where players learn the game.
 			out.append([KEY_G, "burn the fungus"])
@@ -7539,15 +7646,22 @@ func gem_use_here(gem: Item) -> String:
 ## you, turning clockwise from your facing. (-1, -1) if none.
 func burn_target() -> Vector2i:
 	var here := Vector2i(player.x, player.y)
-	if Tiles.is_bad_fungus(map.get_tile(here.x + player.facing.x, here.y + player.facing.y)):
+	# A web you are caught in first: it is what is holding you.
+	if map.get_tile(here.x, here.y) == Tiles.WEB:
+		return here
+	if _burnable(map.get_tile(here.x + player.facing.x, here.y + player.facing.y)):
 		return here + player.facing
-	if Tiles.is_bad_fungus(map.get_tile(here.x, here.y)):
+	if _burnable(map.get_tile(here.x, here.y)):
 		return here
 	for i in 8:
 		var d := Entity.turned(player.facing, i)
-		if Tiles.is_bad_fungus(map.get_tile(here.x + d.x, here.y + d.y)):
+		if _burnable(map.get_tile(here.x + d.x, here.y + d.y)):
 			return here + d
 	return Vector2i(-1, -1)
+
+## What fire takes: the wrong fungus, and a web.
+static func _burnable(t: int) -> bool:
+	return Tiles.is_bad_fungus(t) or t == Tiles.WEB
 
 func _fire_in_hand() -> bool:
 	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
@@ -8682,6 +8796,7 @@ func to_dict() -> Dictionary:
 		"hidden_traps": _cells_to_strings(hidden_traps.keys()),
 		"scorched": scorched,
 		"mud_under": _cells_to_strings(mud_under.keys()),
+		"web_under": _web_under_rows(),
 		"tending": tending,
 		"red_from": _red_from_rows(),
 		"withering": withering.map(func(chain): return chain.map(
@@ -8836,6 +8951,10 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			hidden_traps[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
+	web_under = {}
+	for row in d.get("web_under", []):
+		if row.size() == 3:
+			web_under[Vector2i(int(row[0]), int(row[1]))] = int(row[2])
 	mud_under = {}
 	for key in d.get("mud_under", []):
 		var bits: PackedStringArray = String(key).split(",")
@@ -9312,6 +9431,9 @@ func _take_ai_turn(actor: Entity) -> int:
 			return _last_move_cost
 		foe = in_view
 
+	# The spider spits a web before it closes (night 2, 2026-10-10).
+	if actor.webs and _shoot_web(actor, foe):
+		return _last_move_cost
 	match actor.ai:
 		&"slime":   _ai_slime(actor, foe)
 		&"erratic": _ai_erratic(actor, foe)
@@ -10501,6 +10623,9 @@ const DOOR_SHOULDER_COST := 3
 ## `player_close_door` or here that lets it -- which is why the open door you
 ## find behind you tells you something came through.
 func _through_the_door(actor: Entity, at: Vector2i) -> bool:
+	# Held in a web, the move only tears it free (every caller stops here).
+	if _torn_free(actor):
+		return true
 	var tile := map.get_tile(at.x, at.y)
 	if not Tiles.is_shut(tile):
 		return false

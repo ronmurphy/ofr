@@ -283,6 +283,7 @@ func _initialize() -> void:
 	_test_the_latched_gate()
 	_test_fire_as_a_fear()
 	_test_the_spider()
+	_test_the_web()
 	_test_casters()
 	_test_caster_standoff_and_blink()
 	_test_nothing_arrives_inside_a_door()
@@ -1674,6 +1675,100 @@ func _test_every_sprite_is_a_look_the_game_draws() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## THE WEB, the spider's night 2 (2026-10-10): a struck spider spits a web
+## over its foe from 2 to WEB_RANGE away; whatever stands in a web is held --
+## its next move only tears it free (two turns, loud) -- unless it burns the
+## web (one turn, torch or fire blade). A bear and a spider walk through.
+func _test_the_web() -> void:
+	check("a web is ground you can walk into and see through",
+		Tiles.is_walkable(Tiles.WEB) and Tiles.is_transparent(Tiles.WEB)
+		and Vault.TERRAIN.get("w", -1) == Tiles.WEB)
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = true
+	var spi := _spawn(gs, "spider", 8, 4)
+	spi.provoked = true
+	spi.grudge = gs.player
+	gs.entities = [gs.player, spi]
+	gs._gather_lights()
+	gs.update_vision()
+	check("precondition: a struck spider three steps off, and it can see you",
+		spi.hostile_to(gs.player) and gs._can_see(spi, gs.player) and spi.webs)
+	gs._take_ai_turn(spi)
+	check("it spits a web over you", gs.map.get_tile(5, 4) == Tiles.WEB
+		and _log_says(gs, "spits a web over you"))
+	check("  over the floor it remembers", int(gs.web_under.get(Vector2i(5, 4), -1)) == Tiles.FLOOR)
+	check("  and must wait before the next", spi.web_cool == GameState.WEB_COOL
+		and not gs._shoot_web(spi, gs.player))
+	# Held: your move only tears you free, for two turns, loudly.
+	var t0 := gs.elapsed
+	gs.player_move(-1, 0)
+	check("caught, a move only tears you free (you stay put)",
+		gs.player.x == 5 and gs.map.get_tile(5, 4) == Tiles.FLOOR
+		and _log_says(gs, "tear yourself free"))
+	check("  and it costs two turns (%d)" % (gs.elapsed - t0),
+		gs.elapsed - t0 == Scheduler.ACTION_COST * GameState.WEB_TEAR_COST)
+	gs.player_move(-1, 0)
+	check("  free, the next move walks", gs.player.x == 4)
+	# Burning: one turn, with the torch, and the HERE box offers it.
+	gs.player.x = 5
+	gs._spin_web(Vector2i(5, 4))
+	var offered := false
+	for row in gs.actions_here():
+		if String(row[1]) == "burn the web":
+			offered = true
+	check("caught with a lit torch, the HERE box offers to burn the web", offered)
+	t0 = gs.elapsed
+	gs.player_pickup()
+	check("  G burns it in one turn (%d)" % (gs.elapsed - t0),
+		gs.map.get_tile(5, 4) == Tiles.FLOOR and gs.elapsed - t0 == Scheduler.ACTION_COST
+		and _log_says(gs, "shrivels"))
+	gs.torch_lit = false
+	gs._spin_web(Vector2i(5, 4))
+	check("  doused, with no fire blade, there is nothing to burn it with",
+		not gs._burn_at(Vector2i(5, 4)) and gs.map.get_tile(5, 4) == Tiles.WEB)
+	# Over mud, the mud comes back.
+	gs.map.set_tile(12, 6, Tiles.MUD)
+	gs._spin_web(Vector2i(12, 6))
+	gs._unweb(Vector2i(12, 6))
+	check("a web over mud gives the mud back", gs.map.get_tile(12, 6) == Tiles.MUD)
+	# Not at arm's length: there it bites.
+	gs = _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.torch_lit = true
+	spi = _spawn(gs, "spider", 6, 4)
+	spi.provoked = true
+	gs.entities = [gs.player, spi]
+	gs._gather_lights()
+	gs.update_vision()
+	check("beside you it does not spit, it bites", not gs._shoot_web(spi, gs.player)
+		and gs.map.get_tile(5, 4) != Tiles.WEB)
+	# Who it holds.
+	gs = _arena(21, 9)
+	gs.player.x = 1
+	gs.player.y = 1
+	var gob := _spawn(gs, "goblin", 6, 4)
+	var bear := _spawn(gs, "cave bear", 6, 6)
+	var bat := _spawn(gs, "cave bat", 10, 4)
+	var other := _spawn(gs, "spider", 10, 6)
+	gs.entities = [gs.player, gob, bear, bat, other]
+	for e in [gob, bear, bat, other]:
+		gs._spin_web(Vector2i(e.x, e.y))
+	check("a goblin in a web only tears free", gs._torn_free(gob)
+		and gs._last_move_cost == Scheduler.ACTION_COST * GameState.WEB_TEAR_COST
+		and gs.map.get_tile(6, 4) != Tiles.WEB)
+	check("  a bat too: webs hold flyers", gs._torn_free(bat))
+	check("  but a bear walks through", not gs._torn_free(bear) and gs.map.get_tile(6, 6) == Tiles.WEB)
+	check("  and a spider is at home in one", not gs._torn_free(other))
+	# Saved.
+	var back := GameState.new(1)
+	back.apply_dict(gs.to_dict())
+	check("what a web was spun over is saved", back.web_under.has(Vector2i(6, 6)))
+	check("the bestiary says it webs",
+		BestiaryPanel.traits(gs._bestiary_row(&"spider")).has("Spits webs that hold you fast. Fire frees you."))
+
 ## THE SPIDER, night 1 of 3 (2026-10-09): WILD, its bite poisons, it flees
 ## up the walls and climbs down after, it hunts bats; upper floors, caves and
 ## the fortress. Its web (night 2) and nest (night 3) are still to come.

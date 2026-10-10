@@ -85,7 +85,7 @@ const ASCII_GROUND_TILES := [
 	Tiles.FLOOR, Tiles.DOOR_OPEN, Tiles.STAIRS_DOWN, Tiles.STAIRS_UP,
 	Tiles.CAVE_FLOOR, Tiles.RUBBLE, Tiles.WATER, Tiles.MUD, Tiles.BONES,
 	Tiles.FUNGUS, Tiles.PIT, Tiles.TRAP, Tiles.SHRINE, Tiles.GRAVE,
-	Tiles.FUNGUS_PURPLE, Tiles.FUNGUS_RED,
+	Tiles.FUNGUS_PURPLE, Tiles.FUNGUS_RED, Tiles.WEB,
 ]
 ## Surface colour alpha that tells the shader "remembered, but show me as I
 ## am" -- the stairs, which the classic view never lets memory dim.

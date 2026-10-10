@@ -815,9 +815,9 @@ this list only gains an item when one leaves it.** (Why, at length:
    fear" in the wild creatures update.** **Fire as a fear** (the wild creatures update): a lit torch keeps an
    unstruck animal back; read the entry for the wolves' "cornered by flame"
    rule and the bear's exception before starting.
-3. **NIGHT 1 OF 3 DONE 2026-10-09 (the Legion): the spider and its bite**
-   -- as built under "The spider" in the wild creatures update. Night 2 is
-   the web tile and the shot, night 3 the nest. **The spider** (the wild creatures update, "The spider"; designed in
+3. **NIGHTS 1 AND 2 OF 3 DONE (the Legion): the spider and its bite
+   (2026-10-09), the web and its shot (2026-10-10)** -- as built under "The
+   spider" in the wild creatures update. Night 3 is the nest. **The spider** (the wild creatures update, "The spider"; designed in
    full 2026-10-09 except its numbers). WILD, with a NEST that makes it
    hostile, like the den bear; walks the walls (the banshee's phasing,
    only to flee); a bite of damage plus a THREE-turn poison (the miasma's
@@ -1829,6 +1829,39 @@ agreed with the desktop first.**
 - Fire as a fear already covers it as an unstruck animal.
 - Test: `_test_the_spider` (mutation: without the venom, the bite check
   fails).
+
+**The spider, night 2 of 3: the web -- BUILT 2026-10-10 (the Legion).**
+- **The tile:** `Tiles.WEB` (appended), walkable and seen through.
+  `web_under` (saved) remembers the ground it was spun over, which comes
+  back when it goes (`_spin_web`, `_unweb`).
+- **The shot:** a hostile spider (`Entity.webs`) spits a web over its foe
+  before it closes (`_shoot_web`, ahead of the AI's dispatch): from 2 to
+  `WEB_RANGE` (5) away, line of sight and seeing it, onto open dry ground
+  (floor, cave floor, rubble, bones, mud), never at something a web does not
+  hold, then `WEB_COOL` (4) turns before the next. Beside you it bites.
+  "The spider spits a web over you! Struggle free (loud, two turns) or burn
+  it."
+- **Held:** whatever stands in a web -- you, a monster, an animal, a bat (it
+  holds flyers) -- has its next move only tear it free: the web goes, two
+  turns (`WEB_TEAR_COST`), a noise of 6 (`WEB_NOISE`) that hunters walk to.
+  You can still strike from it. For creatures this is `_torn_free`, called
+  at the top of `_through_the_door`, which every creature move passes.
+  Walking into one says so in the log. Not held: the heavy (a bear walks
+  through) and climbers (a spider).
+- **Burning:** G with a lit torch or a fire blade burns it in one turn,
+  quietly ("The web shrivels in the flame."); `burn_target` finds the one
+  you are in first, and the HERE box offers "burn the web".
+- **Looks:** md-spider_web 0xF0BCA (added with the tile this time), `:` in
+  the classic view (`w` is the wight's letter), a 0.60 x 0.50 card on the
+  ground in 3D (`ASCII_GROUND_TILES`), the desktop's drawing moved to
+  `assets/sprites/features/web.txt`, the legend's row "holds you; tear free
+  (loud) or burn", the bestiary's "Spits webs that hold you fast. Fire
+  frees you." Vault glyph `w` (vault.gd, the linter, both editors).
+- **Not yet:** a flying-silk effect for the shot (the "ranged" event would
+  also pop a 0; a renderer job for the desktop if wanted); the web drawn
+  over cave floor shows the flagstone ground in 3D (`GROUND_KINDS` has no
+  web); a risen spider ally does not spit webs yet.
+- Test: `_test_the_web` (mutation: without the hold, six checks fail).
 
 **Allies step out of the poison on their own -- BUILT 2026-10-04 (Legion),
 the last thing of the night.** Brad's bear ally died in the purple's cloud

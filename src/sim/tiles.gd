@@ -52,6 +52,12 @@ enum {
 	## open, like a door; appended, never inserted (tiles save as numbers).
 	GATE_CLOSED,
 	GATE_OPEN,
+	## THE SPIDER'S WEB (night 2 of 3, 2026-10-09/10). Spun where a spider's
+	## shot lands, or drawn in a vault. Whatever stands in it is HELD: its
+	## next move only tears it free (two turns, loud), unless it burns the web
+	## first (one turn, a torch or a fire weapon). A bear and a spider walk
+	## through. Appended, never inserted.
+	WEB,
 }
 
 ## walk  = an actor may stand here
@@ -97,6 +103,8 @@ const DATA := {
 	# A latched gate: walked into to open, like a door, and as opaque shut.
 	GATE_CLOSED:   {"id": &"gate_closed",   "walk": true, "clear": false},
 	GATE_OPEN:     {"id": &"gate_open",     "walk": true, "clear": true},
+	# Silk: seen through, walked into -- and then you are in it.
+	WEB:           {"id": &"web",           "walk": true, "clear": true},
 	# Walkable on purpose: falling in is always a choice, never an accident.
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.

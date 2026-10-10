@@ -45,6 +45,8 @@ const TERRAIN := {
 	# A latched gate (2026-10-09): H, a gate with bars. Shut, like `+`; no
 	# animal gets past it, anything with hands does, a bear smashes it.
 	"H": Tiles.GATE_CLOSED,
+	# A spider's web (2026-10-10): w. Walkable; it holds what walks in.
+	"w": Tiles.WEB,
 }
 ## Content markers stand on plain floor; the floor is laid first, then these.
 ##

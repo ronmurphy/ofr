@@ -184,6 +184,8 @@ static func traits(row: Dictionary) -> Array:
 		out.append("Its bite poisons.")
 	if bool(row.get("climbs", false)):
 		out.append("Flees up the walls.")
+	if bool(row.get("webs", false)):
+		out.append("Spits webs that hold you fast. Fire frees you.")
 	if bool(row.get("flying", false)):
 		out.append("Flies.")
 	if bool(row.get("phasing", false)):

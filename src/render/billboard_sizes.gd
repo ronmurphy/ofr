@@ -67,6 +67,7 @@ const BOX := {
 	&"trap":          Vector2(0.55, 0.40),
 	&"water":         Vector2(0.50, 0.30),
 	&"fungus":        Vector2(0.50, 0.40),
+	&"web":           Vector2(0.60, 0.50),
 	&"purple_fungus": Vector2(0.50, 0.40),
 	&"red_fungus":    Vector2(0.50, 0.40),
 	&"bones":         Vector2(0.50, 0.30),

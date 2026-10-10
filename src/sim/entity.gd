@@ -298,6 +298,11 @@ var climbs := false
 ## Turns of poison its bite leaves (`poisoned`, the miasma's own): the
 ## spider's 3. Zero for everything else. Saved.
 var venom: int = 0
+## Spits webs (the spider, night 2): a ranged shot that spins a WEB tile under
+## its target (GameState._shoot_web). `web_cool` counts the turns until the
+## next. Both saved.
+var webs := false
+var web_cool: int = 0
 ## How many cells this creature's melee hit shoves its target back. 0 for
 ## everything that fights by standing still and swinging.
 var knockback := 0
@@ -598,7 +603,7 @@ func to_dict() -> Dictionary:
 		"attack_range": attack_range, "standoff": standoff,
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
-		"climbs": climbs, "venom": venom,
+		"climbs": climbs, "venom": venom, "webs": webs, "web_cool": web_cool,
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
@@ -655,6 +660,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.phasing = bool(d.get("phasing", false))
 	e.climbs = bool(d.get("climbs", false))
 	e.venom = int(d.get("venom", 0))
+	e.webs = bool(d.get("webs", false))
+	e.web_cool = int(d.get("web_cool", 0))
 	e.senses = bool(d.get("senses", false))
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))
