@@ -2831,6 +2831,68 @@ func _test_the_depth_card(scene: Control) -> void:
 	card.reset()
 	card.enabled = false
 
+## THE SHRINE AS A MODEL (2026-10-10), the first feature model -- see
+## tools/3D_FEATURES.md: a pedestal and a crystal in the shrine's hue, no
+## card, inside its cell and under the walls.
+func _test_the_shrine_model(scene: Control) -> void:
+	print("-- the shrine model")
+	var d = scene.diorama
+	var gs: GameState = scene.state
+	scene._select_map_view(true)
+	gs.map.set_all_visible()
+	var at := Vector2i(gs.player.x + 1, gs.player.y)
+	var was: int = gs.map.get_tile(at.x, at.y)
+	var had_shrine := gs.shrine_at.duplicate()
+	gs.map.set_tile(at.x, at.y, Tiles.SHRINE)
+	gs.shrine_at[at] = 2
+	d._rebuild_world()
+	var crystal: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_crystal")
+	var base: MultiMeshInstance3D = d._scene_root.get_node_or_null("batch_shrine_base")
+	var shrines := 0
+	for y in gs.map.height:
+		for x in gs.map.width:
+			if gs.map.get_tile(x, y) == Tiles.SHRINE:
+				shrines += 1
+	check("precondition: a shrine in view (%d on the floor)" % shrines, shrines >= 1)
+	check("  it is a model: a pedestal and a crystal, one each per shrine (the must-succeed)",
+		crystal != null and base != null and crystal.multimesh.instance_count == shrines
+		and base.multimesh.instance_count == shrines)
+	# What _add_shrine hands the batch -- read there, as the headless renderer
+	# keeps no per-instance data to read back from the multimesh.
+	var parts := {}
+	d._add_shrine(parts, at.x, at.y, true)
+	var hue_ok: bool = parts.has("shrine_crystal") and (parts["shrine_crystal"]["colors"][0] as Color) \
+		.is_equal_approx(d._surface_color(Tiles.SHRINE, at.x, at.y, true)) \
+		and (parts["shrine_base"]["colors"][0] as Color).is_equal_approx(
+			d._surface_color(Tiles.WALL, at.x, at.y, true)) \
+		and Vector2i(floori((parts["shrine_crystal"]["transforms"][0] as Transform3D).origin.x),
+			floori((parts["shrine_crystal"]["transforms"][0] as Transform3D).origin.z)) == at
+	var card_here := false
+	var cards_here := []
+	for node in d._scene_root.get_children():
+		if (node is Label3D or node is Sprite3D) and Vector2i(floori(node.position.x),
+				floori(node.position.z)) == at:
+			card_here = true
+			cards_here.append(node.text if node is Label3D else "sprite")
+	check("  the crystal wears the shrine's hue, and no card is drawn there",
+		hue_ok and not card_here, "hue %s, cards %s" % [hue_ok, cards_here])
+	var mesh := DioramaView._crystal()
+	var faces: PackedVector3Array = mesh.get_faces()
+	var outward := faces.size() == 24
+	var arrays := mesh.surface_get_arrays(0)
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for k in range(0, verts.size(), 3):
+		var mid: Vector3 = (verts[k] + verts[k + 1] + verts[k + 2]) / 3.0
+		outward = outward and normals[k].dot(mid) > 0.0
+	check("  the crystal is eight facets, each facing out", outward)
+	var top := float(DioramaView.SHRINE_HEIGHTS["shrine_crystal"]) + DioramaView.CRYSTAL_SIZE.y * 0.5
+	check("  inside its cell and under the walls (top %.2f)" % top,
+		top < DioramaView.WALL_HEIGHT and DioramaView.SHRINE_PARTS["shrine_base"].x <= 1.0)
+	gs.map.set_tile(at.x, at.y, was)
+	gs.shrine_at = had_shrine
+	d._rebuild_world()
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -3267,5 +3329,6 @@ func _test_both_views_share_one_moment() -> void:
 	_test_the_pixel_look(scene)
 	await _test_the_bestiary_screen(scene)
 	_test_the_depth_card(scene)
+	_test_the_shrine_model(scene)
 	scene.queue_free()
 	await process_frame

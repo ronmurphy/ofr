@@ -918,7 +918,11 @@ func _rebuild_world() -> void:
 			if is_door:
 				_add_door(batches, x, y, tile, color, visible)
 			elif tile in ASCII_GROUND_TILES:
-				if _tile_has_picture(tile):
+				# A feature with a MODEL is its model (tools/3D_FEATURES.md);
+				# the rest are cards.
+				if tile == Tiles.SHRINE:
+					_add_shrine(batches, x, y, visible)
+				elif _tile_has_picture(tile):
 					_add_tile_icon(tile, x, y, visible)
 				else:
 					_add_ascii_ground_mark(tile, x, y, visible, color)
@@ -999,6 +1003,18 @@ func _add_multimeshes(batches: Dictionary) -> void:
 				bar.size = Vector3(0.92, 0.14, 0.24)
 				mesh = bar
 				surface_style = 1
+			# The shrine (2026-10-10), the first feature model: a stepped
+			# pedestal and a crystal -- see _add_shrine.
+			"shrine_base", "shrine_step", "shrine_post":
+				var block := BoxMesh.new()
+				block.size = SHRINE_PARTS[kind]
+				mesh = block
+				surface_style = 2
+			"shrine_crystal":
+				mesh = _crystal()
+				# A glow (the surface shader's style 14): its own colour, lit
+				# as a card is, so it reads in a dim room.
+				surface_style = 14
 			"chest":
 				var chest := BoxMesh.new()
 				chest.size = Vector3(CELL * 0.72, 0.65, CELL * 0.72)
@@ -1035,6 +1051,8 @@ func _add_multimeshes(batches: Dictionary) -> void:
 			multimesh.set_instance_transform(i, transforms[i])
 			multimesh.set_instance_custom_data(i, colors[i])
 		var instance := MultiMeshInstance3D.new()
+		# Named for its kind, so a test can find a model's parts.
+		instance.name = "batch_" + kind
 		instance.multimesh = multimesh
 		instance.material_override = _surface_material(surface_style)
 		_scene_root.add_child(instance)
@@ -1044,6 +1062,58 @@ func _add_multimeshes(batches: Dictionary) -> void:
 	_leaf_mesh.size = Vector3(0.78, 1.12, 0.12)
 	_gate_leaf_mesh = _gate_leaf()
 	_leaf_material = _surface_material(2)
+
+## THE SHRINE AS A MODEL (2026-10-10): the first terrain feature drawn as a
+## model rather than a card -- the template for the rest, in
+## tools/3D_FEATURES.md. A stepped stone pedestal, a post, and a crystal
+## floating over it in the shrine's HUE, which is which shrine this is: the
+## colour the card carried is the crystal's, and it comes from
+## _surface_color, so light, memory and region apply as to any wall. The
+## floor under it keeps its shrine pattern. No engine light: the shrine is
+## not a light in the sim.
+const SHRINE_PARTS := {
+	"shrine_base": Vector3(0.80, 0.14, 0.80),
+	"shrine_step": Vector3(0.56, 0.14, 0.56),
+	"shrine_post": Vector3(0.26, 0.36, 0.26),
+}
+## Where each part's middle stands, up from the floor; the crystal floats a
+## little above the post, and its top stays under WALL_HEIGHT.
+const SHRINE_HEIGHTS := {"shrine_base": 0.07, "shrine_step": 0.21, "shrine_post": 0.46,
+	"shrine_crystal": 0.98}
+const CRYSTAL_SIZE := Vector2(0.34, 0.56)
+
+func _add_shrine(batches: Dictionary, x: int, y: int, visible: bool) -> void:
+	var stone := _surface_color(Tiles.WALL, x, y, visible)
+	var hue := _surface_color(Tiles.SHRINE, x, y, visible)
+	var at := Vector3(x + 0.5, 0.0, y + 0.5)
+	for part in SHRINE_PARTS:
+		_add_batch(batches, part, Transform3D(Basis.IDENTITY,
+			at + Vector3.UP * float(SHRINE_HEIGHTS[part])), stone)
+	# Turned 45 degrees, so its edge -- not a flat face -- meets the camera.
+	_add_batch(batches, "shrine_crystal", Transform3D(Basis(Vector3.UP, PI * 0.25),
+		at + Vector3.UP * float(SHRINE_HEIGHTS["shrine_crystal"])), hue)
+
+## An octahedron CRYSTAL_SIZE wide and tall, centred: flat faces, so it
+## catches the light facet by facet.
+static func _crystal() -> ArrayMesh:
+	var w := CRYSTAL_SIZE.x * 0.5
+	var h := CRYSTAL_SIZE.y * 0.5
+	var ring: Array[Vector3] = [Vector3(w, 0, 0), Vector3(0, 0, w), Vector3(-w, 0, 0), Vector3(0, 0, -w)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tips: Array[Vector3] = [Vector3(0, h, 0), Vector3(0, -h, 0)]
+	for i in 4:
+		var a: Vector3 = ring[i]
+		var b: Vector3 = ring[(i + 1) % 4]
+		for tip: Vector3 in tips:
+			var face: Array[Vector3] = [tip, b, a]
+			if tip.y < 0.0:
+				face = [tip, a, b]
+			var normal: Vector3 = (face[0] + face[1] + face[2]).normalized()
+			for v: Vector3 in face:
+				st.set_normal(normal)
+				st.add_vertex(v)
+	return st.commit()
 
 ## A pen gate's leaf, centred like the door leaf (0.78 wide, 1.12 tall): four
 ## upright slats with gaps between, two rails across the front and a diagonal

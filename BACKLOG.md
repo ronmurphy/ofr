@@ -2417,6 +2417,19 @@ an alternative to the icon-font "pictures" on the 3D cards.
   in the overview test, 5 in the view suite.
   **Not yet, Brad's ideas:** seen / slain / deaths-to counts (not tracked
   yet); a redesign of the legend now the bestiary has moved out of it.
+- **THE DEPTH CARD -- BUILT 2026-10-10 (desktop)** (`src/ui/depth_card.gd`):
+  DEPTH n, the band's name and one line, on entering each band (the
+  entrance, the caves, the fortress, the Deep; the climb's three in purple)
+  and at every run start or load. Never what lives there. Any key clears it
+  without a step; it goes by itself after 4.5 s. Between bands, the number
+  alone, briefly. Hiding the floor build behind it (the mock-up's loading
+  idea) is NOT done: the floor is built before the card can show.
+- **3D FEATURES -- THE SHRINE IS THE FIRST MODEL (2026-10-10, desktop).** A
+  stone pedestal and a crystal in the shrine's hue, replacing its card in
+  3D; the shader's new style 14 (glow) for the crystal. The plan for the
+  rest -- the great gate, the grave and the rising effect, the brazier, the
+  stairs, the chest -- with the rules any feature model follows, is in
+  `tools/3D_FEATURES.md`.
 - **Still open:** redrawing any of them better (any file, any order);
   the rest of the terrain features as drawings; a title-screen row for the look, if wanted; the
   editor reading the files back rather than embedding (Brad, 2026-10-09:

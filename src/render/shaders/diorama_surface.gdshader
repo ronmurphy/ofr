@@ -18,7 +18,7 @@ render_mode diffuse_lambert, specular_schlick_ggx;
 // below 0.75 for a landmark whose remembered colour must be shown as it is.
 // These small patterns add material character without changing that game
 // information.
-uniform int surface_style = 0; // 0 floor, 1 masonry, 2 worked stone, 3 natural rock
+uniform int surface_style = 0; // 0 floor, 1 masonry, 2 worked stone, 3 natural rock, 14 glow
 // rgb = light-map colour, a = 1 if the cell is in view now, 0 if remembered.
 uniform sampler2D cell_light : filter_linear, repeat_disable;
 uniform vec2 map_size = vec2(96.0, 54.0);
@@ -283,7 +283,15 @@ void fragment() {
 	// cell (at map_weight, the lights supply the rest), the memory colour on
 	// a remembered one. The albedo is what the engine lights have to work
 	// with, and it is zero where nothing is seen.
-	vec3 emit = mix(remembered, lit * map_weight, seen) * face;
+	vec3 shown = lit * map_weight;
+	// Style 14, a GLOW (the shrine's crystal, 2026-10-10): its own colour,
+	// lit as a card is -- the cell's light, raised to at least 0.45 -- so it
+	// reads in a dim room. Its own colour only: it lights nothing else, and
+	// remembered it fades as everything does.
+	if (surface_style == 14) {
+		shown = surface * mix(cell.rgb, vec3(1.0), 0.45);
+	}
+	vec3 emit = mix(remembered, shown, seen) * face;
 	vec3 albedo = surface * face * seen;
 	if (linear_light) {
 		emit = pow(max(emit, vec3(0.0)), vec3(2.2));

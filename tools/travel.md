@@ -32,6 +32,26 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10 midday, the desktop: the depth card, the shrine model, and a design doc for 3D features. Pull first.**
+- **`tools/3D_FEATURES.md`** (new, Brad asked for it): how the 3D view
+  draws a floor, the RULES for replacing a feature's card with a model,
+  the shrine as the worked example, and designs for the great gate, the
+  grave (with the rising effect), the brazier, the stairs and the chest.
+  Read it before touching a feature in 3D.
+- **The shrine is a model now** (`_add_shrine`, `_crystal()` in
+  diorama_view.gd): a stone pedestal and a crystal in the shrine's hue;
+  no card. The surface shader has a new **style 14, glow**, for the
+  crystal. Every batch node is now named `batch_<kind>`.
+- **The depth card** (`src/ui/depth_card.gd`, bf0d5a4): a title card on
+  entering a band, off in the harnesses (scratch files) as the title is.
+  If a test drives the real scene through a band change with the card ON,
+  the first key clears the card and takes no step.
+- **Hazard for CLAUDE.md** (please add to your copy): *the headless renderer
+  keeps no MultiMesh per-instance data* -- `get_instance_custom_data` /
+  `get_instance_transform` read back nothing in the suite. Test what a
+  builder hands `_add_batch` instead.
+- **Suites:** full 3227 passed / 0 / 0 SCRIPT ERROR (15 min; no main-suite change), quick 435/0 (5 shrine checks, 8 depth-card checks).
+
 **2026-10-10 late morning, the desktop: the bestiary is its own page. Pull first.**
 - **`src/ui/bestiary_panel.gd`** (`BestiaryPanel`), made in `main.gd`
   (`_make_bestiary`, first thing in `_ready`), NOT in main.tscn. Legend,
