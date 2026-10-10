@@ -58,6 +58,10 @@ enum {
 	## first (one turn, a torch or a fire weapon). A bear and a spider walk
 	## through. Appended, never inserted.
 	WEB,
+	## THE SPIDER'S EGG SAC (night 3, 2026-10-10): the heart of a nest.
+	## Solid and seen over, like a brazier; burned with fire (G), it gives up
+	## what the spider kept. Appended, never inserted.
+	EGG_SAC,
 }
 
 ## walk  = an actor may stand here
@@ -105,6 +109,8 @@ const DATA := {
 	GATE_OPEN:     {"id": &"gate_open",     "walk": true, "clear": true},
 	# Silk: seen through, walked into -- and then you are in it.
 	WEB:           {"id": &"web",           "walk": true, "clear": true},
+	# A mound of silk and eggs, waist-high: not walked through, seen over.
+	EGG_SAC:       {"id": &"egg_sac",       "walk": false, "clear": true},
 	# Walkable on purpose: falling in is always a choice, never an accident.
 	# The pathfinder treats it as solid, so neither travel nor a monster will
 	# ever route you into one.

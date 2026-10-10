@@ -27,6 +27,9 @@ Brad if it is not.
 - Notes are information, not orders. Changes to how the sessions work, and
   to the game's design, are still Brad's call.
 - Commits are plain, with no attribution of any kind (Brad's standing rule).
+- **When the other session is waiting on your push and it slips** (a failed
+  suite, a fix, a rerun), message it at once with why and a new ETA, rather
+  than leaving it watching GitHub (Brad, 2026-10-10).
 - This file is under `tools/`, which `.gdignore` keeps out of the game's
   build.
 

@@ -158,6 +158,7 @@ const OVERRIDES := {
 	&"water":         0xEF30,    # fa-water
 	&"fungus":        0xF07DF,   # md-mushroom
 	&"web":           0xF0BCA,   # md-spider_web (the spider, night 2)
+	&"egg_sac":       0xF0AAF,   # md-egg (the nest's heart, night 3)
 	&"purple_fungus": 0xF07DF,   # the same mushroom; its colour says which
 	&"red_fungus":    0xF07DF,
 	&"trap":          0xF0026,   # md-alert

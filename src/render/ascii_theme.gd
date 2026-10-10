@@ -30,6 +30,8 @@ const TABLE := {
 	&"fungus":      {"ch": "*",      "fg": Palette.FUNGUS,   "bg": Color("14201b")},
 	# Not `w`, the wight's letter (the desktop's note): a colon of silk.
 	&"web":         {"ch": ":",      "fg": Color("d8d4c8"),  "bg": Color("17171c")},
+	# The nest's egg sac, in silk (night 3; `8` was free).
+	&"egg_sac":     {"ch": "8",      "fg": Palette.SILK,     "bg": Color("17171c")},
 	&"purple_fungus": {"ch": "*",    "fg": Palette.FUNGUS_PURPLE, "bg": Color("1c1424")},
 	&"red_fungus":  {"ch": "*",      "fg": Palette.FUNGUS_RED, "bg": Color("241314")},
 	&"pit":         {"ch": " ",      "fg": Palette.PIT_RIM,  "bg": Color("000000")},

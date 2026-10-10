@@ -68,6 +68,7 @@ const BOX := {
 	&"water":         Vector2(0.50, 0.30),
 	&"fungus":        Vector2(0.50, 0.40),
 	&"web":           Vector2(0.60, 0.50),
+	&"egg_sac":       Vector2(0.60, 0.55),
 	&"purple_fungus": Vector2(0.50, 0.40),
 	&"red_fungus":    Vector2(0.50, 0.40),
 	&"bones":         Vector2(0.50, 0.30),

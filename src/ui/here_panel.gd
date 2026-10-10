@@ -88,6 +88,11 @@ func status_line() -> String:
 		return "poisoned -- 1 hp a turn, %d more turn%s" % [state.player.poisoned,
 			"" if state.player.poisoned == 1 else "s"]
 	var ground := state.map.get_tile(state.player.x, state.player.y)
+	# The spider's (2026-10-10): caught first, then the nest's warning.
+	if ground == Tiles.WEB:
+		return "caught in a web -- a move tears free (loud, 2 turns)"
+	if not state.nest_of(Vector2i(state.player.x, state.player.y)).is_empty():
+		return "a spider's nest -- it defends it"
 	if Tiles.is_bad_fungus(ground):
 		return "%s fungus -- it hurts to stand here" % ("purple"
 			if ground == Tiles.FUNGUS_PURPLE else "red")

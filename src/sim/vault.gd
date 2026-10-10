@@ -47,6 +47,9 @@ const TERRAIN := {
 	"H": Tiles.GATE_CLOSED,
 	# A spider's web (2026-10-10): w. Walkable; it holds what walks in.
 	"w": Tiles.WEB,
+	# A spider's egg sac (2026-10-10): e. The nest's heart: the nearest
+	# spider (an `x`) defends the cells round it.
+	"e": Tiles.EGG_SAC,
 }
 ## Content markers stand on plain floor; the floor is laid first, then these.
 ##

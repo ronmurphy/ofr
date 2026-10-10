@@ -465,6 +465,9 @@ var raised := false
 ## An ally that has started running down game finishes the chase even if
 ## what started it passes (GameState._ally_hunts, 2026-10-10). Saved.
 var on_hunt := false
+## The heart of the nest this spider defends (its egg sac), or (-1, -1).
+## Saved. The nest itself is GameState.nests.
+var nest_at := Vector2i(-1, -1)
 ## A bone ally the player has been told carries the red, so the warning is
 ## said once. Saved.
 var red_warned := false
@@ -607,7 +610,7 @@ func to_dict() -> Dictionary:
 		"blink_range": blink_range, "blink_cool": blink_cool,
 		"phasing": phasing, "senses": senses, "knockback": knockback,
 		"climbs": climbs, "venom": venom, "webs": webs, "web_cool": web_cool,
-		"on_hunt": on_hunt,
+		"on_hunt": on_hunt, "nest_at": [nest_at.x, nest_at.y],
 		"charges": charges, "risen": risen, "corrupted": corrupted,
 		"unliving": unliving,
 		"resists": resists, "weak_to": weak_to,
@@ -667,6 +670,8 @@ static func from_dict(d: Dictionary) -> Entity:
 	e.webs = bool(d.get("webs", false))
 	e.web_cool = int(d.get("web_cool", 0))
 	e.on_hunt = bool(d.get("on_hunt", false))
+	var na: Array = d.get("nest_at", [-1, -1])
+	e.nest_at = Vector2i(int(na[0]), int(na[1])) if na.size() == 2 else Vector2i(-1, -1)
 	e.senses = bool(d.get("senses", false))
 	e.wail_radius = int(d.get("wail_radius", 0))
 	e.wail_cool = int(d.get("wail_cool", 0))

@@ -815,9 +815,10 @@ this list only gains an item when one leaves it.** (Why, at length:
    fear" in the wild creatures update.** **Fire as a fear** (the wild creatures update): a lit torch keeps an
    unstruck animal back; read the entry for the wolves' "cornered by flame"
    rule and the bear's exception before starting.
-3. **NIGHTS 1 AND 2 OF 3 DONE (the Legion): the spider and its bite
-   (2026-10-09), the web and its shot (2026-10-10)** -- as built under "The
-   spider" in the wild creatures update. Night 3 is the nest. **The spider** (the wild creatures update, "The spider"; designed in
+3. **DONE, ALL THREE NIGHTS (the Legion): the spider and its bite
+   (2026-10-09), the web and its shot, and the nest (both 2026-10-10)** --
+   as built under "The spider" in the wild creatures update. The nest's 3D
+   model is the desktop's, after the Legion's push. **The spider** (the wild creatures update, "The spider"; designed in
    full 2026-10-09 except its numbers). WILD, with a NEST that makes it
    hostile, like the den bear; walks the walls (the banshee's phasing,
    only to flee); a bite of damage plus a THREE-turn poison (the miasma's
@@ -1829,6 +1830,37 @@ agreed with the desktop first.**
 - Fire as a fear already covers it as an unstruck animal.
 - Test: `_test_the_spider` (mutation: without the venom, the bite check
   fails).
+
+**The spider, night 3 of 3: the nest -- BUILT 2026-10-10 (the Legion; designed
+with the desktop, its four changes taken).**
+- **Where:** a spider set down in a CAVE by `_place_the_wild` nests there
+  (`_make_a_nest`). A spider set in a room (a floor without caves) wanders.
+- **The heart:** an EGG SAC (`Tiles.EGG_SAC`, appended; solid, seen over)
+  beside the spider, only where it cannot cut the floor in two
+  (`_sac_fits`: its open neighbours must still reach each other round it
+  within a 13x13 window).
+- **The nest** is the cells within `NEST_REACH` (4) of the sac, inside its
+  cave -- a heart and a radius, not the whole cave, which on a cave floor
+  can be most of the map (`nests`, saved: heart, room, seen, hoard;
+  `Entity.nest_at`, saved). 4-7 webs are strung in it, on its own stream.
+- **Legible before hostile:** the first sight of a nest says "Webs hang
+  thick here. Something nests." (`_spot_nests`, each turn); standing in one,
+  the HERE box's status line says "a spider's nest -- it defends it" (and
+  "caught in a web -- a move tears free (loud, 2 turns)" in a web). Then,
+  inside and seen, an unstruck spider turns on you for good ("The spider
+  rears up: you are in its nest!"), before it minds fire.
+- **Burning:** a nest web turns its spider; G with fire burns the sac
+  ("The egg sac crackles and burns. In the ashes: ..."), which turns it too.
+- **The hoard is MOVED, not added** (CLAUDE.md: the caves are sparse by
+  design): one ordinary item the floor already rolled (not a gem, nothing
+  the run hangs on) is taken off the floor into the sac.
+- **Vaults:** `e` is an egg sac; a cave vault's sac becomes the nest of the
+  nearest spider (`x`), with the webs the author drew (`_nest_the_vault_sacs`).
+- **Looks:** md-egg 0xF0AAF, `8` in the classic view, both in SILK; a card
+  in 3D until the desktop's model; legend row "a spider's nest; burn it for
+  what it hides".
+- Test: `_test_the_nest` (mutation: without the defence, "inside and seen,
+  it turns on you" fails).
 
 **Allies hunt when you need it -- BUILT 2026-10-10 (the Legion; Brad's
 rule, shaped with the desktop).** Found in play: Brad's risen cave bear,

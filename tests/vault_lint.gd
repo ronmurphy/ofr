@@ -17,7 +17,7 @@ const TERRAIN := {
 	"=": "mud", "%": "rubble", ",": "bones", "*": "fungus",
 	"v": "purple fungus", ";": "red fungus", "&": "brazier",
 	"A": "shrine", "X": "pit", "t": "trap", ">": "stairs down", "<": "stairs up",
-	"n": "grave", "C": "chest", "H": "latched gate", "w": "web",
+	"n": "grave", "C": "chest", "H": "latched gate", "w": "web", "e": "egg sac",
 }
 const CONTENTS := {"m": "monster", "M": "guardian", "?": "item", "!": "potion",
 	")": "weapon", "[": "armour", "}": "launcher", "(": "sack", "r": "rabbit",

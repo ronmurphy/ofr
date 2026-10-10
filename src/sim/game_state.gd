@@ -1381,6 +1381,7 @@ func build_level() -> void:
 	scorched = {}
 	mud_under = {}
 	web_under = {}
+	nests = []
 	tending = {}
 	red_from = {}
 	withering = []
@@ -1525,6 +1526,7 @@ func build_level() -> void:
 		_populate_cave(region)
 	_place_the_wild(gen)
 	_place_vault_contents(gen)
+	_nest_the_vault_sacs()
 	_assign_beats()
 	_place_first_gem()
 	_place_the_satchel()
@@ -1905,7 +1907,11 @@ func cave_cells(region: Rect2i) -> int:
 	var n := 0
 	for y in range(region.position.y, region.end.y):
 		for x in range(region.position.x, region.end.x):
-			if map.in_bounds(x, y) and map.is_walkable(x, y) \
+			# An egg sac stands on cave floor: it is still the cave's size
+			# (2026-10-10 -- it is laid after the cave is peopled, and one
+			# cell less could tip the ceiling under what was spent).
+			if map.in_bounds(x, y) and (map.is_walkable(x, y) \
+					or map.get_tile(x, y) == Tiles.EGG_SAC) \
 					and map.material_at(x, y) == Materials.CAVERN:
 				n += 1
 	return n
@@ -2908,6 +2914,11 @@ func _place_the_wild(gen: MapGen) -> void:
 					bruin.denned = true
 					bruin.alertness = Entity.Alert.ASLEEP
 				_make_a_den(area)
+			# A spider set down in a cave makes its nest there (night 3).
+			if in_caves and e["app"] == &"spider":
+				var weaver: Entity = entity_at(at.x, at.y)
+				if weaver != null:
+					_make_a_nest(weaver, area, gen.protected)
 			break
 
 func _roll_the_wild() -> void:
@@ -5179,6 +5190,184 @@ func _fungus_ground(c: Vector2i) -> bool:
 ## only; saved.
 var mud_under: Dictionary = {}
 
+## THE NEST (the spider, night 3 of 3, 2026-10-10; shaped with the desktop).
+## A spider set down in a cave nests there: an EGG SAC at its heart, webs
+## strung round it, and the cells within NEST_REACH of the sac, inside its
+## cave, are the nest. Seen first ("Webs hang thick here. Something nests."),
+## then the HERE box names it, then -- inside and seen -- the spider turns on
+## you. Burning a nest web or the sac turns it too. The sac holds one item
+## the floor had already rolled, MOVED there (the caves stay as sparse as
+## they are designed to be): burned, it gives it up.
+## Each nest: {"heart": Vector2i, "room": Rect2i, "seen": bool,
+## "hoard": item Dictionary or {}}. One floor; saved.
+var nests: Array = []
+const NEST_REACH := 4
+
+## The nest a cell is in, or an empty Dictionary.
+func nest_of(c: Vector2i) -> Dictionary:
+	for n in nests:
+		var heart: Vector2i = n["heart"]
+		var room: Rect2i = n["room"]
+		if room.has_point(c) and Los.steps(c.x, c.y, heart.x, heart.y) <= NEST_REACH:
+			return n
+	return {}
+
+## The spider whose nest has its heart at `heart`, alive, or null.
+func _weaver_of(heart: Vector2i) -> Entity:
+	for e in entities:
+		if e.alive and e.nest_at == heart:
+			return e
+	return null
+
+## Turn a nest's spider on you, as a blow would: for good.
+func _rouse_the_weaver(heart: Vector2i, why: String) -> void:
+	var w := _weaver_of(heart)
+	if w == null or w.provoked:
+		return
+	w.provoked = true
+	w.grudge = player
+	w.alertness = Entity.Alert.AWAKE
+	w.last_seen = Vector2i(player.x, player.y)
+	if map.is_visible(w.x, w.y):
+		msg_log.add(why % w.name, Color(0.95, 0.55, 0.45))
+
+## Can the sac go at `c` without cutting the floor in two? Its open
+## neighbours must still reach each other round it, within a small window --
+## if they do, nothing further away can have relied on `c`. (A sealed stair
+## is the one cave failure that is a real bug: CLAUDE.md.)
+func _sac_fits(c: Vector2i) -> bool:
+	if not _webbable(map.get_tile(c.x, c.y)) or entity_at(c.x, c.y) != null:
+		return false
+	if c == stairs or c == Vector2i(player.x, player.y) or not items_at(c.x, c.y).is_empty():
+		return false
+	var open: Array = []
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			var n := Vector2i(c.x + dx, c.y + dy)
+			if (dx != 0 or dy != 0) and map.is_walkable(n.x, n.y):
+				open.append(n)
+	if open.is_empty():
+		return false
+	# STRAIGHT steps only (2026-10-10): a diagonal between two walls is no
+	# way through in the game, and the first version let one count, which
+	# walled single cells off on three floors in 180.
+	var window := Rect2i(c - Vector2i(6, 6), Vector2i(13, 13))
+	var seen := {open[0]: true}
+	var todo: Array = [open[0]]
+	while not todo.is_empty():
+		var cur: Vector2i = todo.pop_back()
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = cur + d
+			if n == c or seen.has(n) or not window.has_point(n) or not map.is_walkable(n.x, n.y):
+				continue
+			seen[n] = true
+			todo.append(n)
+	for n in open:
+		if not seen.has(n):
+			return false
+	return true
+
+## A nest for `weaver` in cave `room`: the sac beside it where it fits, webs
+## round it on the nest's own stream, and one of the floor's items moved in.
+## `protected` is the generator's: a hand-drawn vault's ground is never
+## nested over (the cave vault test caught webs painted on one).
+func _make_a_nest(weaver: Entity, room: Rect2i, protected: Dictionary = {}) -> void:
+	var heart := Vector2i(-1, -1)
+	for r in [1, 2]:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if heart.x >= 0 or maxi(absi(dx), absi(dy)) != r:
+					continue
+				var c := Vector2i(weaver.x + dx, weaver.y + dy)
+				if room.has_point(c) and not protected.has(c) and _sac_fits(c):
+					heart = c
+	if heart.x < 0:
+		return
+	var nest_rng := RandomNumberGenerator.new()
+	nest_rng.seed = int(rng.seed) ^ (depth * 4093) ^ (heart.x * 131 + heart.y) ^ 0x5E57
+	map.set_tile(heart.x, heart.y, Tiles.EGG_SAC)
+	weaver.nest_at = heart
+	var nest := {"heart": heart, "room": room, "seen": false, "hoard": {}}
+	nests.append(nest)
+	# The webs: 4-7 on open dry ground in the nest, never the stairs.
+	var spots: Array = []
+	for dy in range(-NEST_REACH, NEST_REACH + 1):
+		for dx in range(-NEST_REACH, NEST_REACH + 1):
+			var c := Vector2i(heart.x + dx, heart.y + dy)
+			if c == heart or not room.has_point(c) or c == stairs or protected.has(c):
+				continue
+			if _webbable(map.get_tile(c.x, c.y)) and entity_at(c.x, c.y) == null:
+				spots.append(c)
+	for _i in nest_rng.randi_range(4, 7):
+		if spots.is_empty():
+			break
+		var pick: Vector2i = spots[nest_rng.randi_range(0, spots.size() - 1)]
+		spots.erase(pick)
+		_spin_web(pick)
+	_hoard_into(nest, nest_rng)
+
+## Move one item the floor already has into the nest's sac: an ordinary
+## thing (nothing the run hangs on -- the slime's refusals), off the floor.
+func _hoard_into(nest: Dictionary, nest_rng: RandomNumberGenerator) -> void:
+	var loot: Array = []
+	for it in ground:
+		if not _slime_refuses(it) and it.kind != Item.Kind.GEM:
+			loot.append(it)
+	if loot.is_empty():
+		return
+	var taken: Item = loot[nest_rng.randi_range(0, loot.size() - 1)]
+	ground.erase(taken)
+	nest["hoard"] = taken.to_dict()
+
+## A vault's own sacs (`e`): each becomes a nest for the nearest spider,
+## with the webs the author drew and no more.
+func _nest_the_vault_sacs() -> void:
+	for spot_y in map.height:
+		for spot_x in map.width:
+			if map.get_tile(spot_x, spot_y) != Tiles.EGG_SAC:
+				continue
+			var heart := Vector2i(spot_x, spot_y)
+			if not nest_of(heart).is_empty():
+				continue
+			var best: Entity = null
+			for e in entities:
+				if e.alive and e.webs and e.nest_at.x < 0 \
+						and Los.steps(e.x, e.y, heart.x, heart.y) <= NEST_REACH \
+						and (best == null or Los.steps(e.x, e.y, heart.x, heart.y)
+							< Los.steps(best.x, best.y, heart.x, heart.y)):
+					best = e
+			if best != null:
+				best.nest_at = heart
+			var nest_rng := RandomNumberGenerator.new()
+			nest_rng.seed = int(rng.seed) ^ (depth * 4093) ^ (heart.x * 131 + heart.y) ^ 0x5E57
+			var nest := {"heart": heart, "room": Rect2i(heart - Vector2i(NEST_REACH, NEST_REACH),
+				Vector2i(NEST_REACH * 2 + 1, NEST_REACH * 2 + 1)), "seen": false, "hoard": {}}
+			nests.append(nest)
+			_hoard_into(nest, nest_rng)
+
+## Once a floor, the first sight of each nest says so (the tell, before it
+## turns on you). Called with the player's turn.
+func _spot_nests() -> void:
+	for n in nests:
+		if bool(n["seen"]):
+			continue
+		var heart: Vector2i = n["heart"]
+		if map.is_visible(heart.x, heart.y):
+			n["seen"] = true
+			msg_log.add("Webs hang thick here. Something nests.", Color(0.90, 0.86, 0.72))
+
+## Inside its nest and seen, an unstruck spider turns on you. True if it did
+## (that was its turn).
+func _defends_the_nest(actor: Entity) -> bool:
+	# In the pre-run you are not on the floor yet.
+	if actor.nest_at.x < 0 or actor.provoked or _prerunning:
+		return false
+	var n := nest_of(Vector2i(player.x, player.y))
+	if n.is_empty() or Vector2i(n["heart"]) != actor.nest_at or not _can_see(actor, player):
+		return false
+	_rouse_the_weaver(actor.nest_at, "The %s rears up: you are in its nest!")
+	return true
+
 ## WEBS (the spider, night 2 of 3). What each web was spun over, cell ->
 ## tile, so tearing or burning it gives that ground back. One floor; saved.
 var web_under: Dictionary = {}
@@ -5609,6 +5798,15 @@ func _crawl_red() -> void:
 
 ## What a square is under its fungus.
 ## The chains as rows a save can hold: [x, y, from_x, from_y].
+func _nest_rows() -> Array:
+	var rows := []
+	for n in nests:
+		var h: Vector2i = n["heart"]
+		var rm: Rect2i = n["room"]
+		rows.append({"heart": [h.x, h.y], "room": [rm.position.x, rm.position.y,
+			rm.size.x, rm.size.y], "seen": n["seen"], "hoard": n["hoard"]})
+	return rows
+
 func _web_under_rows() -> Array:
 	var rows := []
 	for c in web_under:
@@ -5893,6 +6091,27 @@ func _burn_at(c: Vector2i) -> bool:
 		_unweb(c)
 		msg_log.add("The web shrivels in the flame.", Color(0.96, 0.66, 0.36))
 		events.append({"kind": &"burn", "to": c})
+		var in_nest := nest_of(c)
+		if not in_nest.is_empty():
+			_rouse_the_weaver(in_nest["heart"], "The %s comes for the one burning its nest!")
+		_end_player_turn()
+		return true
+	# The egg sac (night 3): it burns, and gives up what the spider kept.
+	if map.get_tile(c.x, c.y) == Tiles.EGG_SAC:
+		if not _can_burn():
+			return false
+		map.set_tile(c.x, c.y, _bare_ground(c))
+		pathfinder.set_solid(c.x, c.y, false)
+		events.append({"kind": &"burn", "to": c})
+		var said := "The egg sac crackles and burns."
+		for n in nests:
+			if Vector2i(n["heart"]) == c and not (n["hoard"] as Dictionary).is_empty():
+				var kept := Item.from_dict(n["hoard"])
+				n["hoard"] = {}
+				_drop_item_at(kept, c)
+				said += " In the ashes: %s." % kept.display_name()
+		msg_log.add(said, Color(0.96, 0.66, 0.36))
+		_rouse_the_weaver(c, "The %s shrieks and comes for you!")
 		_end_player_turn()
 		return true
 	if not Tiles.is_bad_fungus(map.get_tile(c.x, c.y)):
@@ -7607,6 +7826,9 @@ func actions_here() -> Array:
 		elif burn_target().x >= 0 and _can_burn() \
 				and map.get_tile(burn_target().x, burn_target().y) == Tiles.WEB:
 			out.append([KEY_G, "burn the web"])
+		elif burn_target().x >= 0 and _can_burn() \
+				and map.get_tile(burn_target().x, burn_target().y) == Tiles.EGG_SAC:
+			out.append([KEY_G, "burn the egg sac"])
 		elif burn_target().x >= 0 and _fire_in_hand():
 			# Taught here, because this box is where players learn the game.
 			out.append([KEY_G, "burn the fungus"])
@@ -7711,9 +7933,9 @@ func burn_target() -> Vector2i:
 			return here + d
 	return Vector2i(-1, -1)
 
-## What fire takes: the wrong fungus, and a web.
+## What fire takes: the wrong fungus, a web, and an egg sac.
 static func _burnable(t: int) -> bool:
-	return Tiles.is_bad_fungus(t) or t == Tiles.WEB
+	return Tiles.is_bad_fungus(t) or t == Tiles.WEB or t == Tiles.EGG_SAC
 
 func _fire_in_hand() -> bool:
 	var blade: Variant = player.equipped.get(Item.Slot.WEAPON, null)
@@ -8629,6 +8851,7 @@ func _end_player_turn(cost: int = Scheduler.ACTION_COST) -> void:
 	_tick_returning()
 	_thaw_rooms()
 	_spot_traps()
+	_spot_nests()
 	_rot_bodies()
 	# The cost was already being computed and thrown away. Difficult ground has
 	# always charged the world for the time it takes; this is the first thing
@@ -8849,6 +9072,7 @@ func to_dict() -> Dictionary:
 		"scorched": scorched,
 		"mud_under": _cells_to_strings(mud_under.keys()),
 		"web_under": _web_under_rows(),
+		"nests": _nest_rows(),
 		"tending": tending,
 		"red_from": _red_from_rows(),
 		"withering": withering.map(func(chain): return chain.map(
@@ -9003,6 +9227,13 @@ func apply_dict(d: Dictionary) -> bool:
 		var bits: PackedStringArray = String(key).split(",")
 		if bits.size() == 2:
 			hidden_traps[Vector2i(bits[0].to_int(), bits[1].to_int())] = true
+	nests = []
+	for row in d.get("nests", []):
+		var nest_h: Array = row.get("heart", [-1, -1])
+		var nest_r: Array = row.get("room", [0, 0, 0, 0])
+		nests.append({"heart": Vector2i(int(nest_h[0]), int(nest_h[1])),
+			"room": Rect2i(int(nest_r[0]), int(nest_r[1]), int(nest_r[2]), int(nest_r[3])),
+			"seen": bool(row.get("seen", false)), "hoard": row.get("hoard", {})})
 	web_under = {}
 	for row in d.get("web_under", []):
 		if row.size() == 3:
@@ -11094,6 +11325,9 @@ func _ai_wild(actor: Entity) -> void:
 		return
 	# Up and about: a den bear that left is an ordinary bear from now on.
 	actor.denned = false
+	# A spider in its nest turns on you before it minds the fire (night 3).
+	if _defends_the_nest(actor):
+		return
 	# FIRE, AN INNATE FEAR: before hunting, drinking or wandering.
 	if _keeps_back_from_fire(actor):
 		return

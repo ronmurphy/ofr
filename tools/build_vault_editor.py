@@ -57,6 +57,7 @@ TILES = """const TILES = [
   { ch: "'", cat: "structure", show: "'", icon: 0xF081C, name: "open door",   fg: "#b4813f", bg: "#14120f", pass: true  },
   { ch: "H", cat: "structure", show: "+", icon: 0xF081B, name: "latched gate", fg: "#93a05a", bg: "#1c1712", pass: true  },
   { ch: "w", cat: "features", show: ":", icon: 0xF0BCA, name: "web", fg: "#d8d4c8", bg: "#17171c", pass: true  },
+  { ch: "e", cat: "features", show: "8", icon: 0xF0AAF, name: "egg sac", fg: "#e8e4dc", bg: "#17171c", pass: false },
   { ch: "O", cat: "structure", show: "\\u25cf", name: "pillar",      fg: "#9a9082", bg: "#3a382f", pass: false },
   { ch: "^", cat: "structure", show: "\\u25b2", name: "stalagmite",  fg: "#857a69", bg: "#241f19", pass: false },
   { ch: "~", cat: "ground", show: "~", icon: 0xEF30,  name: "water",       fg: "#4d7f9e", bg: "#15242e", pass: true  },

@@ -285,6 +285,7 @@ func _initialize() -> void:
 	_test_the_spider()
 	_test_the_web()
 	_test_allies_hunt_when_you_need_it()
+	_test_the_nest()
 	_test_the_web_flies()
 	_test_casters()
 	_test_caster_standoff_and_blink()
@@ -1677,6 +1678,154 @@ func _test_every_sprite_is_a_look_the_game_draws() -> void:
 ## ordinary roll never puts a rabbit in one, going down or coming up; the
 ## garrison's warren vault, with its `r` markers, is the only way in. The
 ## caves keep every rabbit they had.
+## THE NEST, the spider's night 3 (2026-10-10, shaped with the desktop): an
+## egg sac at its heart, webs round it, NEST_REACH of it inside its cave is
+## the nest. Seen first, named by the HERE box, then -- inside and seen --
+## the spider turns on you; burning a nest web or the sac turns it too; the
+## sac holds an item MOVED from the floor; it never cuts the floor in two.
+func _test_the_nest() -> void:
+	check("an egg sac is solid and seen over",
+		not Tiles.is_walkable(Tiles.EGG_SAC) and Tiles.is_transparent(Tiles.EGG_SAC)
+		and Vault.TERRAIN.get("e", -1) == Tiles.EGG_SAC)
+	# On real cave floors.
+	var nested := 0
+	var hoards := 0
+	var bad := []
+	for i in 16:
+		var f := GameState.new(97000 + i)
+		f.new_game()
+		f.depth = 5
+		f.build_level()
+		for n in f.nests:
+			nested += 1
+			var heart: Vector2i = n["heart"]
+			if f.map.get_tile(heart.x, heart.y) != Tiles.EGG_SAC:
+				bad.append("seed %d: no sac at the heart" % (97000 + i))
+			var w := f._weaver_of(heart)
+			if w == null:
+				bad.append("seed %d: no spider for its nest" % (97000 + i))
+			var webs := 0
+			for dy in range(-GameState.NEST_REACH, GameState.NEST_REACH + 1):
+				for dx in range(-GameState.NEST_REACH, GameState.NEST_REACH + 1):
+					if f.map.get_tile(heart.x + dx, heart.y + dy) == Tiles.WEB:
+						webs += 1
+			if webs < 1:
+				bad.append("seed %d: a nest with no webs" % (97000 + i))
+			if not (n["hoard"] as Dictionary).is_empty():
+				hoards += 1
+				var kept := Item.from_dict(n["hoard"])
+				for it in f.ground:
+					if it.id == kept.id and it.x == kept.x and it.y == kept.y:
+						bad.append("seed %d: the hoard is still on the floor" % (97000 + i))
+		# The way down is still reachable from where you start.
+		var seen := {Vector2i(f.player.x, f.player.y): true}
+		var todo := [Vector2i(f.player.x, f.player.y)]
+		while not todo.is_empty():
+			var cur: Vector2i = todo.pop_back()
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+					Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+				var n2: Vector2i = cur + d
+				if not seen.has(n2) and f.map.in_bounds(n2.x, n2.y) \
+						and (f.map.is_walkable(n2.x, n2.y) or Tiles.is_shut(f.map.get_tile(n2.x, n2.y))):
+					seen[n2] = true
+					todo.append(n2)
+		if not f.nests.is_empty() and not seen.has(f.stairs):
+			bad.append("seed %d: the stairs are cut off" % (97000 + i))
+	check("precondition: cave floors have nests (%d on 16), some with a hoard (%d)" % [nested, hoards],
+		nested >= 3 and hoards >= 1)
+	check("every nest has its sac, its spider and webs, its hoard moved, the stairs reachable",
+		bad.is_empty(), str(bad.slice(0, 4)))
+	# In an arena.
+	var gs := _arena(25, 13)
+	# _arena builds a real floor 1 first, and it may have had a nest.
+	gs.nests = []
+	gs.player.x = 8
+	gs.player.y = 6
+	gs.torch_lit = true
+	var room := Rect2i(1, 1, 23, 11)
+	var spi := _spawn(gs, "spider", 15, 6)
+	var cheese := Item.make(&"potion_healing")
+	cheese.x = 3
+	cheese.y = 3
+	gs.ground = [cheese]
+	gs.entities = [gs.player, spi]
+	gs._make_a_nest(spi, room)
+	var heart := spi.nest_at
+	check("a nest: the sac beside the spider", heart.x >= 0
+		and gs.map.get_tile(heart.x, heart.y) == Tiles.EGG_SAC and Los.steps(15, 6, heart.x, heart.y) <= 2)
+	check("  and the floor's potion moved into it", gs.ground.is_empty()
+		and not (gs.nests[0]["hoard"] as Dictionary).is_empty())
+	gs._gather_lights()
+	gs.update_vision()
+	gs._spot_nests()
+	check("first sight of it says so", _log_says(gs, "Something nests"))
+	# Outside the nest: left alone.
+	for i in 3:
+		gs._take_ai_turn(spi)
+	check("outside its nest, the spider leaves you be", not spi.provoked)
+	# Inside, seen: it turns on you; the HERE box named it first.
+	var inside := heart + Vector2i(-3, 0)
+	if gs.map.get_tile(inside.x, inside.y) == Tiles.WEB:
+		gs._unweb(inside)
+	gs.player.x = inside.x
+	gs.player.y = inside.y
+	gs._gather_lights()
+	gs.update_vision()
+	var box := HerePanel.new()
+	box.state = gs
+	check("inside, the HERE box says it is a nest", box.status_line() == "a spider's nest -- it defends it",
+		box.status_line())
+	box.free()
+	spi.x = heart.x + 1
+	spi.y = heart.y
+	gs._take_ai_turn(spi)
+	check("inside and seen, it turns on you", spi.provoked and _log_says(gs, "you are in its nest"))
+	# Burning: a nest web turns it; the sac gives up its hoard.
+	spi.provoked = false
+	var web_cell := Vector2i(-1, -1)
+	for dy in range(-4, 5):
+		for dx in range(-4, 5):
+			if gs.map.get_tile(heart.x + dx, heart.y + dy) == Tiles.WEB and web_cell.x < 0:
+				web_cell = heart + Vector2i(dx, dy)
+	check("precondition: a web in the nest", web_cell.x >= 0)
+	gs._burn_at(web_cell)
+	check("burning a nest web turns its spider", spi.provoked)
+	spi.provoked = false
+	gs._burn_at(heart)
+	var fell := false
+	for it in gs.ground:
+		if it.id == &"potion_healing" and Vector2i(it.x, it.y) == heart:
+			fell = true
+	check("burning the sac gives up what it kept, and turns the spider",
+		fell and spi.provoked and gs.map.is_walkable(heart.x, heart.y) and _log_says(gs, "In the ashes"))
+	# Never where it would cut the floor in two.
+	gs = _arena(15, 7)
+	for x in range(1, 14):
+		for y in [1, 2, 4, 5]:
+			gs.map.set_tile(x, y, Tiles.WALL)
+	check("a sac never goes in a one-wide corridor", not gs._sac_fits(Vector2i(7, 3)))
+	gs = _arena(15, 7)
+	check("  but open ground takes one", gs._sac_fits(Vector2i(7, 3)))
+	# A vault's e is a nest for the nearest spider.
+	gs = _arena(21, 9)
+	gs.nests = []
+	gs.player.x = 1
+	gs.player.y = 1
+	gs.depth = 5
+	var gen := MapGen.new(gs.rng)
+	gen.vault_contents = [{"ch": "x", "pos": Vector2i(10, 4)}]
+	gs._place_vault_contents(gen)
+	gs.map.set_tile(11, 5, Tiles.EGG_SAC)
+	gs._nest_the_vault_sacs()
+	var drawn: Entity = gs.entity_at(10, 4)
+	check("a vault's e is the nest of the spider beside it",
+		drawn != null and drawn.nest_at == Vector2i(11, 5) and gs.nests.size() == 1)
+	# Saved.
+	var back := GameState.new(1)
+	back.apply_dict(gs.to_dict())
+	check("nests are saved", back.nests.size() == 1 and Vector2i(back.nests[0]["heart"]) == Vector2i(11, 5))
+	check("  and the spider's", Entity.from_dict(drawn.to_dict()).nest_at == Vector2i(11, 5))
+
 ## ALLIES HUNT WHEN YOU NEED IT (Brad and both sessions, 2026-10-10; found
 ## in play: a risen bear killed an unstruck spider beside Brad). Only foragers;
 ## only with you at half hp or less, or a tamed ally at half its own; never at
