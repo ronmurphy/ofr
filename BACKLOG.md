@@ -2397,9 +2397,26 @@ an alternative to the icon-font "pictures" on the 3D cards.
   (`_test_every_art_set_is_whole`), 10 on the exports, 3 in the view suite.
   `assets/skins/README.md` explains the layout. The old zips and previews
   are kept outside the repo, `~/ofr-art-originals/skins-2026-10-10/`.
-  **Not yet:** the bestiary showing the portraits (`PixelSprites.portrait`
-  is ready; `main.gd _show_portrait` still opens the 720 PNG scenes in
-  `assets/art/creatures/`).
+- **THE BESTIARY -- BUILT 2026-10-10 (desktop), from the mock-up Brad
+  had made, as Brad and the desktop reworked it.** Its own page,
+  `BestiaryPanel`, in a RING with the legend and the map: left and right
+  turn the page (in the bestiary, at the grid's edge), so every page is one
+  press from the other two and none needs a button of its own. Two tabs
+  (tab, or the pad's shoulders): CREATURES -- you, the trader, your risen
+  bones, then the wild animals, then the monsters -- and ITEMS, the whole
+  catalogue. Each entry: its portrait from the art set in use (an item, its
+  card), its tags, a sentence per thing it does (from its own table row;
+  the items' wording from the inventory's verbs and the legend's notes) and
+  its numbers (HP, power, defense, speed; an item's power, defense, reach,
+  throw). What you have not met is "???" -- no silhouette: a dragon-shaped
+  shadow would tell a floor-one player there is a dragon. Items are known
+  once seen lying or carried (`BestiaryLog.note_item`, from
+  `_note_sightings`). A creature's row in the legend opens its page. The
+  old 720 ASCII portraits in `assets/art/creatures/` are kept but no longer
+  ship (`.gdignore`, 4.2 MB). Tests: 10 on the page, the ring and its keys
+  in the overview test, 5 in the view suite.
+  **Not yet, Brad's ideas:** seen / slain / deaths-to counts (not tracked
+  yet); a redesign of the legend now the bestiary has moved out of it.
 - **Still open:** redrawing any of them better (any file, any order);
   the rest of the terrain features as drawings; a title-screen row for the look, if wanted; the
   editor reading the files back rather than embedding (Brad, 2026-10-09:

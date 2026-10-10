@@ -3965,6 +3965,14 @@ func _note_sightings() -> void:
 			BestiaryLog.note_corrupted(e.appearance)
 		else:
 			BestiaryLog.note(e.appearance)
+	# Items too (2026-10-10), for the bestiary's items page: what lies in
+	# sight, and what you carry -- your starting kit was never on a floor.
+	for item in ground:
+		if map.is_visible(item.x, item.y):
+			BestiaryLog.note_item(item.id)
+	if player != null:
+		for item in player.inventory:
+			BestiaryLog.note_item(item.id)
 
 ## Drains the presentation queue. Called by the renderer once per refresh.
 func take_events() -> Array:

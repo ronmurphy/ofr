@@ -239,6 +239,7 @@ func _initialize() -> void:
 	_test_the_floor_was_alive_before_you()
 	_test_graves_raise_the_dead()
 	_test_bestiary_is_earned()
+	_test_the_bestiary_page()
 	_test_meat_keeps_its_worth()
 	_test_binding_a_stone()
 	_test_gems_bite()
@@ -12652,6 +12653,83 @@ func _test_the_dead_have_names() -> void:
 	check("a name survives a suspend", restored.player_name == "Gabe",
 		restored.player_name)
 
+## THE BESTIARY PAGE (2026-10-10): what is not met is "???" and nothing else;
+## what is, its words and numbers from its own table; items known once seen,
+## lying or carried. See BestiaryPanel.
+func _test_the_bestiary_page() -> void:
+	var was := BestiaryLog._path
+	BestiaryLog.use_path("user://scratch_bestiary_page.txt")
+	BestiaryLog.clear_scratch()
+	var panel := BestiaryPanel.new()
+	var creatures := BestiaryPanel.creature_entries()
+	var items := BestiaryPanel.item_entries()
+	var ids := []
+	for e in creatures:
+		ids.append(e["id"])
+	check("precondition: every creature has an entry, you and the trader first (%d)" % creatures.size(),
+		creatures.size() == GameState.BESTIARY.size() + 4 and ids[0] == &"player"
+		and ids[1] == &"trader" and ids.has(&"spider") and ids.has(&"killer_rabbit"))
+	check("  and every item in the catalogue (%d)" % items.size(), items.size() == Item.CATALOGUE.size())
+	check("a fresh record knows you and the trader, and nothing else",
+		BestiaryPanel.known_count(creatures) == 2 and BestiaryPanel.known_count(items) == 0)
+	var spider: Dictionary = {}
+	for e in creatures:
+		if e["id"] == &"spider":
+			spider = e
+	var hidden := panel.describe(spider)
+	check("an unmet creature is ??? -- no tags, no numbers",
+		hidden["title"] == "???" and hidden["tags"] == "" and (hidden["stats"] as Array).is_empty())
+	BestiaryLog.note(&"spider")
+	creatures = BestiaryPanel.creature_entries()
+	for e in creatures:
+		if e["id"] == &"spider":
+			spider = e
+	var shown := panel.describe(spider)
+	var stats := {}
+	for row in shown["stats"]:
+		stats[row[0]] = row[1]
+	var row: Dictionary = spider["row"]
+	check("met, it has its name, its tags, its ways and its numbers (the must-succeed)",
+		shown["title"] == "SPIDER" and String(shown["tags"]).begins_with("wild animal")
+		and (shown["lines"] as Array).has("Its bite poisons.")
+		and (shown["lines"] as Array).has("Flees up the walls.")
+		and stats.get("HP") == str(int(row["hp"])) and stats.get("power") == str(int(row["power"])))
+	# Items: seen lying, or carried.
+	var gs := _arena(21, 9)
+	gs.player.x = 5
+	gs.player.y = 4
+	gs.player.inventory.clear()
+	var sword := Item.make(&"short_sword")
+	sword.x = 7
+	sword.y = 4
+	gs.ground.append(sword)
+	var far := Item.make(&"war_bow")
+	far.x = 18
+	far.y = 7
+	gs.ground.append(far)
+	gs.map.clear_visible()
+	gs.map.show_cell(7, 4)
+	gs._note_sightings()
+	check("an item in sight is learned, one out of sight is not",
+		BestiaryLog.knows_item(&"short_sword") and not BestiaryLog.knows_item(&"war_bow"))
+	gs.player.inventory.append(Item.make(&"potion_healing"))
+	gs._note_sightings()
+	check("  and what you carry is known", BestiaryLog.knows_item(&"potion_healing"))
+	var by_id := {}
+	for e in BestiaryPanel.item_entries():
+		by_id[e["id"]] = e
+	var blade := panel.describe(by_id[&"short_sword"])
+	var potion := panel.describe(by_id[&"potion_healing"])
+	var unseen := panel.describe(by_id[&"war_bow"])
+	check("a known weapon says what it is and its power",
+		String(blade["tags"]).begins_with("weapon") and (blade["stats"] as Array).has(["power", "+4"]))
+	check("  a potion what it does", (potion["lines"] as Array).has("Heals 12."))
+	check("  and an unseen bow is ???", unseen["title"] == "???" and (unseen["stats"] as Array).is_empty())
+	check("creature records are untouched by item ones", not BestiaryLog.knows(&"short_sword"))
+	panel.free()
+	BestiaryLog.clear_scratch()
+	BestiaryLog.use_path(was)
+
 ## The legend shows what you have MET, and nothing else.
 func _test_bestiary_is_earned() -> void:
 	# Against a scratch file, never the player's own record. Restored below.
@@ -14709,25 +14787,53 @@ func _test_the_overview_map() -> void:
 			and m._terrain_colour(Tiles.FLOOR).a > 0.0)
 	m.free()
 
-	# The two screens are pages of one reference: the legend goes right to the
-	# map, the map goes left back. On a handheld this is the ONLY route to the
-	# map, because every button on a standard pad is already bound.
+	# THREE pages of one reference in a RING (2026-10-10): legend, bestiary,
+	# map. Right goes on round, left goes back. On a handheld this is the ONLY
+	# route to the map and the bestiary, because every button on a standard
+	# pad is already bound.
+	var turned := []
 	var leg := LegendPanel.new()
 	leg.state = gs
+	leg.bestiary_requested.connect(func() -> void: turned.append("legend>bestiary"))
+	leg.map_requested.connect(func() -> void: turned.append("legend<map"))
 	leg.visible = true
-	var paged := [false]
-	leg.map_requested.connect(func() -> void: paged[0] = true)
 	leg.handle_key(KEY_RIGHT)
-	check("the legend pages right to the map", paged[0])
+	leg.visible = true
+	leg.handle_key(KEY_LEFT)
 	leg.free()
-
 	var m2 := MapPanel.new()
 	m2.state = gs
+	m2.bestiary_requested.connect(func() -> void: turned.append("map<bestiary"))
+	m2.legend_requested.connect(func() -> void: turned.append("map>legend"))
 	m2.visible = true
-	var back := [false]
-	m2.legend_requested.connect(func() -> void: back[0] = true)
 	m2.handle_key(KEY_LEFT)
-	check("and the map pages left to the legend", back[0])
+	m2.visible = true
+	m2.handle_key(KEY_RIGHT)
+	var b := BestiaryPanel.new()
+	b.state = gs
+	b.legend_requested.connect(func() -> void: turned.append("bestiary<legend"))
+	b.map_requested.connect(func() -> void: turned.append("bestiary>map"))
+	b.open(&"player")
+	b.handle_key(KEY_LEFT)
+	b.open(&"player")
+	b.handle_key(KEY_RIGHT)
+	var moved_inside: bool = b.visible and int(b._pick[BestiaryPanel.CREATURES]) == 1
+	for i in BestiaryPanel.COLS[BestiaryPanel.CREATURES]:
+		b.handle_key(KEY_RIGHT)
+	check("the three pages turn in a ring, both ways (%s)" % ", ".join(turned),
+		turned == ["legend>bestiary", "legend<map", "map<bestiary", "map>legend",
+			"bestiary<legend", "bestiary>map"])
+	check("  the bestiary moves inside its grid and turns the page only at its edge",
+		moved_inside and not b.visible)
+	b.open(&"player")
+	b.handle_key(KEY_TAB)
+	var tabbed := b.tab == BestiaryPanel.ITEMS
+	b.handle_key(KEY_TAB, true)
+	check("  tab changes between creatures and items, and back",
+		tabbed and b.tab == BestiaryPanel.CREATURES)
+	b.handle_key(KEY_Z)
+	check("  and any other key closes it", not b.visible)
+	b.free()
 	# Anything else closes rather than paging, so a stray press does not trap
 	# the player between two screens.
 	var m3 := MapPanel.new()

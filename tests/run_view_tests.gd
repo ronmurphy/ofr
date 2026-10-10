@@ -2730,6 +2730,46 @@ func _test_the_pixel_look(scene: Control) -> void:
 		gs.map.set_tile(spots[i].x, spots[i].y, was_tiles[i])
 	d._rebuild_world()
 
+## THE BESTIARY (2026-10-10): its own page in the legend / bestiary / map
+## ring, the art set's portraits, and a creature's row in the legend opening
+## its page.
+func _test_the_bestiary_screen(scene: Control) -> void:
+	print("-- the bestiary")
+	var b: BestiaryPanel = scene.bestiary
+	check("precondition: the scene made a bestiary page, closed",
+		b != null and not b.visible and b.get_parent() == scene)
+	scene._open_legend()
+	scene.legend.handle_key(KEY_RIGHT)
+	check("  right from the legend turns to the bestiary", b.visible and not scene.legend.visible)
+	BestiaryLog.note(&"goblin")
+	var goblin: Dictionary = {}
+	for e in BestiaryPanel.creature_entries():
+		if e["id"] == &"goblin":
+			goblin = e
+	var was_skin := PixelSprites.skin()
+	PixelSprites.use_skin(PixelSprites.ORIGINAL)
+	var original = b.picture(goblin)
+	var portrait := PixelSprites.image(PixelSprites.portrait(&"goblin"))
+	PixelSprites.use_skin(&"horror")
+	var horror = b.picture(goblin)
+	PixelSprites.use_skin(was_skin)
+	check("  a met creature shows its portrait, from the art set in use",
+		original is Texture2D and portrait != null
+		and (original as Texture2D).get_width() == portrait.get_width()
+		and horror is Texture2D and horror != original)
+	b.queue_redraw()
+	await process_frame
+	b.handle_key(KEY_TAB)
+	b.queue_redraw()
+	await process_frame
+	check("  both tabs draw (any error would be counted at the end)", b.visible and b.tab == BestiaryPanel.ITEMS)
+	b.close()
+	scene.legend.portrait_requested.emit(&"goblin", "goblin", "")
+	var at: Dictionary = b.entries()[int(b._pick[b.tab])]
+	check("  a creature's row in the legend opens its page", b.visible and b.tab == BestiaryPanel.CREATURES
+		and at["id"] == &"goblin")
+	b.close()
+
 func _test_regions_colour_the_stone_not_the_floor() -> void:
 	var names := []
 	for eff in range(1, 20):
@@ -3164,5 +3204,6 @@ func _test_both_views_share_one_moment() -> void:
 	_test_the_overhead_view(scene)
 	_test_the_3d_look(scene)
 	_test_the_pixel_look(scene)
+	await _test_the_bestiary_screen(scene)
 	scene.queue_free()
 	await process_frame

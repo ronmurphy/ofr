@@ -31,11 +31,14 @@ static func font_size_default() -> int:
 ## message with an unexpected character in it would come out as tofu.
 @export var icon_font: Font
 
-## A creature row was chosen, and there is a picture for it.
+## A creature row was chosen: main.gd opens its page in the bestiary.
 signal portrait_requested(app: StringName, title: String, note: String)
-## Right pages across to the overview map. Brad's idea, and it is what let the
-## map exist without a controller button of its own: these are two pages of one
-## reference, the way a Zelda menu pages between map and equipment.
+## The reference is THREE pages in a ring (2026-10-10): right to the
+## bestiary, left round to the map. Brad's idea first (two pages, legend and
+## map), and it is what lets the map and the bestiary exist without a
+## controller button of their own, the way a Zelda menu pages between map and
+## equipment.
+signal bestiary_requested()
 signal map_requested()
 
 var state: GameState
@@ -255,6 +258,9 @@ func handle_key(key: int) -> bool:
 			_open(_pick)
 		KEY_RIGHT:
 			visible = false
+			bestiary_requested.emit()
+		KEY_LEFT:
+			visible = false
 			map_requested.emit()
 		_:
 			close()
@@ -291,7 +297,7 @@ func _draw() -> void:
 	draw_string(font_bold, panel.position + Vector2(PAD, PAD + asc), "LEGEND",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size + 2, Palette.STAIRS)
 	draw_string(font, panel.position + Vector2(PAD, PAD + asc),
-		"esc or click to close", HORIZONTAL_ALIGNMENT_RIGHT,
+		"left  the map     right  the bestiary     esc or click  close", HORIZONTAL_ALIGNMENT_RIGHT,
 		panel.size.x - PAD * 2.0, font_size, Palette.UI_DIM)
 
 	var col_w := (panel.size.x - PAD * 2.0) / 4.0

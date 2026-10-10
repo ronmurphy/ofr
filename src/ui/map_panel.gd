@@ -20,6 +20,9 @@ extends Control
 
 signal closed()
 signal legend_requested()
+## Left turns back to the bestiary, right on round to the legend: the three
+## pages are a ring (2026-10-10).
+signal bestiary_requested()
 
 @export var font: Font
 @export var font_bold: Font
@@ -60,6 +63,10 @@ func handle_key(key: int) -> bool:
 	if not visible:
 		return false
 	if key == KEY_LEFT:
+		visible = false
+		bestiary_requested.emit()
+		return true
+	if key == KEY_RIGHT:
 		visible = false
 		legend_requested.emit()
 		return true
@@ -234,5 +241,5 @@ func _legend_line(at: Vector2, board: Vector2) -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4).x + 18.0
 
 	draw_string(font, Vector2(at.x, y + 24.0),
-		"left  the legend        any other key  close",
+		"left  the bestiary        right  the legend        any other key  close",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4, Palette.UI_DIM)

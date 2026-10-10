@@ -63,6 +63,17 @@ static func knows_corrupted(app: StringName) -> bool:
 static func note_corrupted(app: StringName) -> bool:
 	return note(corrupt_key(app))
 
+## ITEMS (2026-10-10, for the bestiary's items page): known once laid eyes
+## on, lying or carried, under their own key as a corrupted sighting is.
+static func item_key(id: StringName) -> StringName:
+	return StringName("item:" + String(id))
+
+static func knows_item(id: StringName) -> bool:
+	return seen().has(item_key(id))
+
+static func note_item(id: StringName) -> bool:
+	return note(item_key(id))
+
 static func count() -> int:
 	return seen().size()
 

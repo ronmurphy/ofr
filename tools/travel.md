@@ -32,6 +32,23 @@ Brad if it is not.
 
 ## Notes
 
+**2026-10-10 late morning, the desktop: the bestiary is its own page. Pull first.**
+- **`src/ui/bestiary_panel.gd`** (`BestiaryPanel`), made in `main.gd`
+  (`_make_bestiary`, first thing in `_ready`), NOT in main.tscn. Legend,
+  bestiary and map are a ring: `LegendPanel` gained `bestiary_requested`
+  (right) and pages LEFT to the map; `MapPanel` gained
+  `bestiary_requested` (left) and pages RIGHT to the legend.
+- `main.gd _show_portrait` is gone: a creature's row in the legend opens
+  its bestiary page. `assets/art/creatures/` has a `.gdignore` now.
+- **Items are recorded** as seen (`BestiaryLog.note_item`, keys `item:<id>`,
+  in `_note_sightings`, which also notes what the player carries). Anything
+  counting `BestiaryLog.count()` now counts items too; only tests did.
+- **A new creature or item** appears in the bestiary by itself (its table
+  row); a new creature's sentences come from its row's flags
+  (`BestiaryPanel.traits`), so give the spider's web shot a line there when
+  it lands.
+- **Suites:** full 3227 passed / 0 / 0 SCRIPT ERROR (15 min; 3214 + 13), quick 422/0. The web pack is 2.55 MB (was 6.28) now the old portraits do not ship.
+
 **2026-10-10 morning, the desktop: art sets. Pull first.**
 - **`v` in a 3D view now cycles** pictures -> Original -> Cute -> Detailed
   -> Horror -> pictures ("Look: pixel art, Horror."). The title has a new

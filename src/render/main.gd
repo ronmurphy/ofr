@@ -20,6 +20,9 @@ extends Control
 @onready var pad_setup: PadPanel = $PadSetup
 @onready var talk: TalkPanel = $Talk
 @onready var overview: MapPanel = $Overview
+## The bestiary (2026-10-10): made here rather than in main.tscn, and placed
+## just above the map. See _make_bestiary.
+var bestiary: BestiaryPanel
 @onready var here: HerePanel = $Here
 @onready var trade: TradePanel = $Trade
 @onready var sound: SoundDeck = $Sound
@@ -221,6 +224,8 @@ const MOVES := {
 
 func _ready() -> void:
 	_map_view = grid
+	# First, before anything binds a state to the panels -- see _make_bestiary.
+	_make_bestiary()
 	# One list of effects and one set of step glides, read by whichever view is
 	# showing -- so both show the same moment, and switching views mid-arrow or
 	# mid-stride loses neither. See Fx and StepMotion.
@@ -330,11 +335,16 @@ func _ready() -> void:
 	inventory.satchel_drop_requested.connect(_on_satchel_drop)
 	menu.resume_requested.connect(_close_menu)
 	menu.pad_requested.connect(_open_pad_setup)
-	legend.portrait_requested.connect(_show_portrait)
-	# Two pages of one reference. The legend pages right to the map and the map
-	# pages left back, so the map needs no controller button of its own --
-	# every button on a standard pad is already bound.
+	# A creature's row in the legend opens its page in the bestiary.
+	legend.portrait_requested.connect(func(app, _t, _n): _open_bestiary(app))
+	# THREE pages of one reference, in a ring (2026-10-10): legend, bestiary,
+	# map, and round again. Left and right turn the page, so every page is one
+	# press from the other two, and none needs a controller button of its own.
+	legend.bestiary_requested.connect(_open_bestiary)
 	legend.map_requested.connect(_open_overview)
+	bestiary.legend_requested.connect(_open_legend)
+	bestiary.map_requested.connect(_open_overview)
+	overview.bestiary_requested.connect(_open_bestiary)
 	overview.legend_requested.connect(_open_legend)
 	pad_setup.closed.connect(_refresh)
 	pad_setup.closed.connect(_back_to_title_if_waiting)
@@ -470,13 +480,14 @@ func _process(delta: float) -> void:
 	sidebar.help_loud = Sidebar.help_is_loud(state)
 	sidebar.show_minimap = _map_view == diorama
 	legend.pad_input = _pad_input
+	bestiary.pad_input = _pad_input
 	menu.pad_input = _pad_input
 	trade.pad_input = _pad_input
 	talk.pad_input = _pad_input
 	name_entry.pad_input = _pad_input
 	inventory.pad_input = _pad_input
 
-	if menu.visible or legend.visible or title.visible:
+	if menu.visible or legend.visible or bestiary.visible or title.visible:
 		return
 	if _look:
 		sidebar.hovered = _look_at
@@ -514,22 +525,25 @@ func _open_pad_setup() -> void:
 	pad_setup.open(pad.cfg)
 	_refresh()
 
-## Somebody said something. Open the panel for it.
-##
-## The introduction is told ONCE per player and the flag is set when the panel
-## OPENS, not when it closes -- a player who escapes out of it has decided they
-## do not want it, and replaying it next run would be the game arguing.
-## A creature's picture, opened from the legend.
-##
-## The same panel the trader talks through: a portrait beside some words is the
-## shape both of them want, and building a second one would have meant two
-## places that lay out a 720 image and drift apart.
-##
-## A creature with no file yet simply shows its words. That is not a fallback
-## bolted on -- it is what let the viewer ship before the art did.
 func _open_overview() -> void:
 	overview.state = state
 	overview.open()
+	_refresh()
+
+## A full-screen page like the legend and the map, created rather than placed
+## in main.tscn -- the scene is the editor's file, open in it while the game
+## runs -- and put just above the map so the panels over the map stay over it.
+func _make_bestiary() -> void:
+	bestiary = BestiaryPanel.new()
+	bestiary.name = "Bestiary"
+	bestiary.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(bestiary)
+	move_child(bestiary, overview.get_index() + 1)
+	bestiary.state = state
+
+func _open_bestiary(select: StringName = &"") -> void:
+	bestiary.state = state
+	bestiary.open(select)
 	_refresh()
 
 func _open_legend() -> void:
@@ -537,13 +551,11 @@ func _open_legend() -> void:
 	legend.open()
 	_refresh()
 
-func _show_portrait(app: StringName, title: String, note: String) -> void:
-	var path := "res://assets/art/creatures/%s.png" % String(app)
-	if app == &"trader":
-		path = "res://assets/art/trader.png"
-	talk.open(title, [{"text": note, "art": path}])
-	_refresh()
-
+## Somebody said something. Open the panel for it.
+##
+## The introduction is told ONCE per player and the flag is set when the panel
+## OPENS, not when it closes -- a player who escapes out of it has decided they
+## do not want it, and replaying it next run would be the game arguing.
 func _maybe_talk(evts: Array) -> void:
 	for ev in evts:
 		if ev.get("kind", &"") != &"talk":
@@ -631,7 +643,7 @@ func _on_talk_finished() -> void:
 ## Is the MAP what the player is looking at -- no panel, no cursor?
 func _world_has_focus() -> bool:
 	return not (title.visible or inventory.visible or menu.visible or legend.visible
-		or summary.visible or name_entry.visible or pad_setup.visible
+		or bestiary.visible or summary.visible or name_entry.visible or pad_setup.visible
 		or talk.visible or overview.visible or trade.visible or _aiming or _look)
 
 ## May a HELD direction take another step? See GameState.threat_in_view for
@@ -730,6 +742,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# work cannot be asked to use that controller to escape the screen.
 	if overview.visible:
 		overview.handle_key(key)
+		_refresh()
+		return
+
+	if bestiary.visible:
+		# The shoulders change tab, as they turn the trader's piles: left and
+		# right are taken -- they move, and turn the page at the edge.
+		if _synthetic:
+			var step := TradePanel.pad_pile_step(pad.cfg, key)
+			if step != 0:
+				bestiary.handle_key(KEY_TAB, step < 0)
+				_refresh()
+				return
+		bestiary.handle_key(key, key_event.shift_pressed)
 		_refresh()
 		return
 
@@ -1401,6 +1426,8 @@ func _bind_state(s: GameState) -> void:
 	inventory.state = s
 	menu.state = s
 	legend.state = s
+	bestiary.state = s
+	bestiary.close()
 	summary.state = s
 	# A fresh state is a fresh run, so the record of the last one goes away
 	# with it -- and re-arms, so the next ending opens its own.
