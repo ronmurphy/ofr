@@ -131,6 +131,14 @@ in three beats -- approach, wake ("!"), burn or break.
 - **Size:** one cell in the sim, drawn about two cells tall in 3D (as the
   dragon already is). A real multi-cell creature would touch every
   occupancy, path, sight and web rule for one creature.
+- **Her art is drawn (Manus, 2026-10-10):** `assets/art/brood_pack/`
+  (`.gdignore`d, so neither scanned nor shipped): a 64x64 card and portrait
+  in our format, an egg sac drawing to match the 3D model, PNG previews,
+  and a guide drawing her over 3x3 cells (we agreed about two; settle it
+  when her card is built). When her row exists, copy the two `.txt` files
+  into `assets/sprites/creatures/` and `assets/portraits/`. **Never put a
+  pack under `assets/sprites/`:** the scan reads every subfolder, and five
+  art checks fail on a stray README or a look drawn twice.
 - **Hatchlings:** a new small spider row; sacs hatch 1-2 when she wakes or
   when one burns.
 - **The reward** (Brad: a specific enchant or gem, or a named item): a VENOM
