@@ -96,6 +96,64 @@ the breathe pass and Gabe's 3D view.
 **Next: small things, then play.** See "Next up" below: the new-player fixes from
 the 2026-09-26 playtest, David's background music, and the miasma.
 
+**BAND BOSSES -- the Brood Mother first (Brad, from a Manus mock-up; designed
+with both sessions, 2026-10-10). DESIGNED, NOT BUILT.** A boss at the end of
+a band, on a floor of its own. Build ONE, play it, then design the next.
+Mock-up: `SPIDER_LAIR_CONCEPT.md` and three images (Brad's; kept outside the
+repo): a cavern the spider took, a web field, lesser nests, a heart nest,
+columns as her climbing routes, a lit brazier at the entrance, and the fight
+in three beats -- approach, wake ("!"), burn or break.
+- **A COMBAT boss** (Brad: the mock-up is meant to be fought).
+- **WHERE: a between-floor, never a renumbering.** Brad: "its own room and
+  floor, like a floor that sits between floor 3 and floor 4." Inserting a
+  real depth would shift every depth-keyed table (Bands.of, the climb's
+  mirror, MAX_DEPTH, every `min_depth`/`ascent_from`, the fungus table,
+  traps, ceilings, the morgue, the tests), so instead depth STAYS 3 and a
+  saved flag (`boss_floor`) says you are between: floor 3's way down builds
+  the boss floor -- a short approach, then the lair, nothing else peopled --
+  and its exit leads to depth 4 and clears the flag. Both sessions reached
+  this separately.
+- **The first is the TRAINER AREA's exit:** between the upper band and the
+  caves. **Rock, not brick** (the desktop's call): an approach of worked
+  stone breaking into a cavern the spider took -- the doorway to the caves.
+  Image 3 (the pixel look) is the target, not the masonry of images 1-2.
+- **The exit appears only when she is dead** (Brad): a hard gate, his
+  choice. ANY death counts (an ally's blow, fire, a hatchling's misstep).
+  Reserve the stairs cell when the floor is built, so it can never land in
+  a web or under a sac.
+- **The depth card names her** on her floor (Brad: yes, on a floor of its
+  own -- the one exception to "the card never says what lives here").
+- **Fire:** no fear of it -- she is a boss -- but a FIRE weapon hurts her
+  more (Brad). Items already carry `"element": &"fire"`; rows have
+  `weak_to` at `VULNERABLE` 1.60 for slash/pierce/blunt -- extend it to a
+  weapon's element rather than a new system. Her hatchlings DO fear fire,
+  so the torch protects you from the swarm, not from her.
+- **Size:** one cell in the sim, drawn about two cells tall in 3D (as the
+  dragon already is). A real multi-cell creature would touch every
+  occupancy, path, sight and web rule for one creature.
+- **Hatchlings:** a new small spider row; sacs hatch 1-2 when she wakes or
+  when one burns.
+- **The reward** (Brad: a specific enchant or gem, or a named item): a VENOM
+  FANG -- a poison effect for a weapon at the brazier, or a named poison
+  dagger. Combining at the brazier is what the caves are meant to teach.
+- **Open (Brad):** the climb comes back through 4 -> 3 -- what is the boss
+  floor then: skipped, an empty lair, something new? The desktop's lean:
+  build the descent's, play it, then decide.
+- **Watch, from the code (the desktop):**
+  1. TWO ways down: `_fall_into_pit` does `depth += 1; build_level()` on
+     its own. Route it and `player_descend` through ONE "go down" that
+     knows the boss floor; a fall lands at the approach, never in the lair.
+  2. XP: `player_descend` pays `room_threat_ceiling() * XP_DEPTH_MULTIPLIER`
+     for the floor survived -- not again for the boss floor; the kill pays.
+  3. The suite: only one test calls `player_descend`; any helper walking a
+     run through depth 3 meets the flag. Prefer covering the real path to a
+     static off-switch.
+  4. `build_level`'s cost: the suite builds thousands of floors (CLAUDE.md).
+- **The split:** the Legion builds the sim (the flag and the floor, her row,
+  hatchlings, fire weakness, the gate, the reward); the desktop the look
+  (her big card and sprite, silk threads between webs and down the columns,
+  the lair's rock, the depth card, a screenshot probe). About 3-4 nights.
+
 **THE NEXT BIG UPDATE: THE HOUSE -- the cosy update (Brad with Steph and
 Michelle, 2026-10-06; designed with the desktop session the same afternoon;
 not started).** A week of sessions, in slices that each ship alone. It
