@@ -136,9 +136,25 @@ in three beats -- approach, wake ("!"), burn or break.
 - **The reward** (Brad: a specific enchant or gem, or a named item): a VENOM
   FANG -- a poison effect for a weapon at the brazier, or a named poison
   dagger. Combining at the brazier is what the caves are meant to teach.
-- **Open (Brad):** the climb comes back through 4 -> 3 -- what is the boss
-  floor then: skipped, an empty lair, something new? The desktop's lean:
-  build the descent's, play it, then decide.
+- **The climb (Brad, 2026-10-10): a HARDER fight** -- a CORRUPTED Brood
+  Mother, or TWO. He is open to suggestions; NOT YET PICKED. The descent's
+  lair still comes first. The options on the table (the desktop's):
+  1. **Corrupted = RISEN:** her own body raised, the climb's theme. Harder
+     by being DIFFERENT -- the undead's rules (resists slash/pierce, weak to
+     blunt), so the descent's fire-and-blade answer works less.
+  2. **Two:** two mothers, or the middle option -- the risen mother plus
+     one living daughter (an ordinary spider grown from her brood).
+  Three points from the code, whichever is picked:
+  - `_rise_from` HALVES max hp and scales power by `RISEN_HITS`, so the
+    generic rise brings her back WEAKER: she needs her own climb row and
+    numbers, not the generic rise. (And a risen spider does not spit webs
+    yet -- the web's open item.)
+  - **Two web-spitters can stun-lock you:** `WEB_RANGE` 5, `WEB_COOL` 4,
+    `WEB_TEAR_COST` 2 -- staggered, two keep you caught for ever. Any time
+    two web shooters can share a fight (two mothers, a mother and a grown
+    spider), add a rule that a target just torn free cannot be webbed again
+    for a few turns. Today `max_per_floor` 1 hides it.
+  - Whichever, it is the same between-floor, met on the climb from 4 to 3.
 - **Watch, from the code (the desktop):**
   1. TWO ways down: `_fall_into_pit` does `depth += 1; build_level()` on
      its own. Route it and `player_descend` through ONE "go down" that
