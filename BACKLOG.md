@@ -136,9 +136,17 @@ in three beats -- approach, wake ("!"), burn or break.
 - **The reward** (Brad: a specific enchant or gem, or a named item): a VENOM
   FANG -- a poison effect for a weapon at the brazier, or a named poison
   dagger. Combining at the brazier is what the caves are meant to teach.
-- **The climb (Brad, 2026-10-10): a HARDER fight** -- a CORRUPTED Brood
-  Mother, or TWO. He is open to suggestions; NOT YET PICKED. The descent's
-  lair still comes first. The options on the table (the desktop's):
+- **The climb -- PICKED (Brad, 2026-10-10, later the same night): TWO
+  RISEN mothers, with the descent's hp SPLIT between them** (the same total,
+  two targets -- and so more webs). Fair to the player by FIRE:
+  - **Burning an egg sac** holds BOTH mothers' web shots back a few turns
+    (on the descent as well as the climb).
+  - **A fire shot** (a fire sling or arrow) striking a mother holds HER web
+    shots back. So a fire item is the strong answer, and the torch on a sac
+    is the fallback anyone has.
+  - Plus the stun-lock rule below: just torn free, you cannot be webbed
+    again for a few turns.
+  The options that were on the table (the desktop's), kept for the record:
   1. **Corrupted = RISEN:** her own body raised, the climb's theme. Harder
      by being DIFFERENT -- the undead's rules (resists slash/pierce, weak to
      blunt), so the descent's fire-and-blade answer works less.
