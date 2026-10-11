@@ -146,6 +146,12 @@ in three beats -- approach, wake ("!"), burn or break.
     is the fallback anyone has.
   - Plus the stun-lock rule below: just torn free, you cannot be webbed
     again for a few turns.
+  - **The fallback is spent as it is used** (the desktop): a player with
+    no fire item holds the webs back only by burning sacs, so the climb's
+    lair needs a GUARANTEED minimum of sacs, reachable without walking
+    between both mothers, for the fight to be winnable that way -- drawn
+    into the lair, not left to chance. A burned sac hatching 1-2 is a fair
+    price (the hatchlings fear the torch).
   The options that were on the table (the desktop's), kept for the record:
   1. **Corrupted = RISEN:** her own body raised, the climb's theme. Harder
      by being DIFFERENT -- the undead's rules (resists slash/pierce, weak to
